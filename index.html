@@ -553,9 +553,17 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
     {v:"8.7",label:"Part Button Readability",items:[
       "Two-word part names now displayed on two lines, one word per row, centered",
       "Bits with dashes in their name (e.g. Low-Rush) split across two lines, dash removed",
+      "Ratchets keep their dashes (e.g. 1-60 stays intact)",
       "Part button minimum height increased and text sized up to fill available space",
       "Deck review buttons: removed small category labels (blade/ratchet/bit) above each value",
       "Deck review buttons use PartLabel for consistent multi-line display",
+    ]},
+    {v:"8.8",label:"Challonge Import Reliability",items:[
+      "4 CORS proxies now attempted in sequence: allorigins, corsproxy.io, allorigins-raw, cors-anywhere",
+      "Each proxy retries up to 2 times with increasing delay before moving to the next",
+      "Smart error routing: definitive API errors (403, 404) stop retrying immediately",
+      "Status message updates live to show which proxy is being tried",
+      "More descriptive final error message with fallback suggestion",
     ]},
   ];
 
@@ -672,12 +680,10 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
     let slug = "";
     try {
       const url = new URL(raw.startsWith("http") ? raw : "https://"+raw);
-      // Strip /participants, /standings etc from end of path
       const cleanPath = url.pathname.replace(/\/(participants|standings|teams|matches).*$/i,"");
       const parts = cleanPath.replace(/^\/|\/$/g,"").split("/").filter(Boolean);
       const subdomain = url.hostname.split(".")[0];
       const isCommunity = subdomain !== "challonge" && subdomain !== "www";
-      // For /tournaments/slug path style, take last segment
       const pathSlug = parts[parts.length-1] || parts[0];
       slug = isCommunity ? `${subdomain}-${pathSlug}` : pathSlug;
     } catch {
@@ -688,38 +694,83 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
     setChallongeStatus("loading"); setChallongeMsg(`Fetching "${slug}"...`);
     const API_KEY = "68330566a844961951645c6e25c48a7619d0f21c2d4b0f4a";
     const apiUrl = `https://api.challonge.com/v1/tournaments/${slug}/participants.json?api_key=${API_KEY}`;
-    // Try multiple CORS proxies in order
-    const proxies = [
-      `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`,
-      `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`,
+
+    // Helper: parse response text from any proxy format
+    const parseResponse = (text) => {
+      const wrapper = JSON.parse(text);
+      // allorigins: {contents, status} — corsproxy & raw: direct array/object
+      const data = (wrapper && wrapper.contents !== undefined)
+        ? JSON.parse(wrapper.contents)
+        : wrapper;
+      if(!data) throw new Error("Empty response");
+      if(data.errors) throw new Error(Array.isArray(data.errors)?data.errors.join(", "):String(data.errors));
+      if(!Array.isArray(data)) throw new Error("Unexpected response format");
+      return data;
+    };
+
+    // Helper: attempt a single fetch with timeout
+    const attempt = async (url, timeout=10000) => {
+      const res = await fetch(url, {signal: AbortSignal.timeout(timeout)});
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.text();
+    };
+
+    // Helper: retry a function up to N times with delay
+    const withRetry = async (fn, retries=2, delayMs=800) => {
+      let lastErr;
+      for(let i=0; i<=retries; i++){
+        try { return await fn(); }
+        catch(e){
+          lastErr = e;
+          if(i<retries) await new Promise(r=>setTimeout(r, delayMs*(i+1)));
+        }
+      }
+      throw lastErr;
+    };
+
+    // Proxy list — tried in order, each with retries
+    const proxyConfigs = [
+      {
+        name:"allorigins",
+        buildUrl: () => `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`,
+      },
+      {
+        name:"corsproxy.io",
+        buildUrl: () => `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`,
+      },
+      {
+        name:"allorigins-raw",
+        buildUrl: () => `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`,
+      },
+      {
+        name:"cors-anywhere",
+        buildUrl: () => `https://cors-anywhere.herokuapp.com/${apiUrl}`,
+      },
     ];
+
     let lastErr = "";
-    for(const proxyUrl of proxies){
+    for(const proxy of proxyConfigs){
       try {
-        const res = await fetch(proxyUrl, {signal: AbortSignal.timeout(8000)});
-        if(!res.ok) throw new Error(`HTTP ${res.status}`);
-        const text = await res.text();
-        // allorigins wraps in {contents:...}, corsproxy returns raw JSON
-        let data;
-        try {
-          const wrapper = JSON.parse(text);
-          data = wrapper.contents ? JSON.parse(wrapper.contents) : wrapper;
-        } catch { throw new Error("Invalid JSON response"); }
-        if(data.errors) throw new Error(Array.isArray(data.errors)?data.errors.join(", "):String(data.errors));
-        if(!Array.isArray(data)) throw new Error("Unexpected response format");
+        setChallongeMsg(`Trying ${proxy.name}...`);
+        const text = await withRetry(()=>attempt(proxy.buildUrl()), 2, 600);
+        const data = parseResponse(text);
         const names = data.map(p=>(p.participant?.display_name||p.participant?.name||"").trim()).filter(Boolean);
-        if(!names.length) throw new Error("No participants found — is the tournament public and does it have entrants?");
+        if(!names.length) throw new Error("No participants found — is this tournament public with entrants added?");
         const merged = [...new Set([...players,...names])];
-        setPlayers(merged); sSave(KEYS.players,merged);
+        setPlayers(merged); sSave(KEYS.players, merged);
         setChallongeStatus("ok");
         setChallongeMsg(`✓ Imported ${names.length} players from "${slug}"`);
         return;
       } catch(err) {
         lastErr = err.message;
+        // If it's a definitive API error (403, 404, no participants) don't try more proxies
+        if(err.message.includes("HTTP 403")||err.message.includes("HTTP 404")||err.message.includes("No participants")) {
+          break;
+        }
       }
     }
     setChallongeStatus("error");
-    setChallongeMsg(`Failed: ${lastErr}`);
+    setChallongeMsg(`Failed after all attempts: ${lastErr}. Try again or enter names manually.`);
   };
 
   return (
