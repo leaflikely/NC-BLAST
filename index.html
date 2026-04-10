@@ -69,7 +69,7 @@ function useScale() {
       // Base design width is 480px. Scale linearly but clamp generously.
       // On narrow phones: scale down. On tablets/desktop: scale up to fill width.
       const wScale = Math.min(w / 480, 2.2);
-      // Also consider height — don't let things get so tall they need scrolling on short screens
+      // Also consider height -- do not let things get so tall they need scrolling on short screens
       const hScale = Math.min(h / 700, 2.0);
       const s = Math.min(wScale, hScale);
       // Clamp: never go below 0.7 or above 2.0
@@ -565,6 +565,19 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       "Status message updates live to show which proxy is being tried",
       "More descriptive final error message with fallback suggestion",
     ]},
+    {v:"8.9",label:"Challonge Import Live Status & Enter Key",items:[
+      "Live status messages during import describe exactly what is happening at each step",
+      "Each proxy attempt and retry shows a unique descriptive sentence so nothing looks stuck",
+      "⏳ spinner indicator shown during active import",
+      "Enter key now submits the Challonge URL field",
+      "Enter key also submits the manual player name add field",
+    ]},
+    {v:"9.0",label:"Netlify Function Integration",items:[
+      "NC BLAST now uses its own Netlify server function as the first Challonge proxy",
+      "Netlify function bypasses CORS entirely with no rate limits or downtime",
+      "Falls back to public proxies automatically if Netlify is unreachable",
+      "Blank screen bug fixed: apostrophes in JS comments were breaking Babel parsing",
+    ]},
   ];
 
   return (
@@ -649,6 +662,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
   const [challongeUrl,setChallongeUrl] = useState("");
   const [challongeStatus,setChallongeStatus] = useState(null); // null | "loading" | "ok" | "error"
   const [challongeMsg,setChallongeMsg] = useState("");
+  const [csvFallback,setCsvFallback] = useState(null); // null | {names:[]} when all proxies fail
+  const csvRef = useRef();
   const [confirmClear,setConfirmClear] = useState(false);
   const pRef = useRef();
 
@@ -691,15 +706,16 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
     }
     if(!slug){ setChallongeStatus("error"); setChallongeMsg("Couldn't read a tournament slug from that URL."); return; }
 
-    setChallongeStatus("loading"); setChallongeMsg(`Fetching "${slug}"...`);
+    setChallongeStatus("loading"); setChallongeMsg(`Reading the tournament URL...`);
     const API_KEY = "68330566a844961951645c6e25c48a7619d0f21c2d4b0f4a";
     const apiUrl = `https://api.challonge.com/v1/tournaments/${slug}/participants.json?api_key=${API_KEY}`;
 
     // Helper: parse response text from any proxy format
-    const parseResponse = (text) => {
+    const parseResponse = (text, raw) => {
       const wrapper = JSON.parse(text);
-      // allorigins: {contents, status} — corsproxy & raw: direct array/object
-      const data = (wrapper && wrapper.contents !== undefined)
+      // raw=true (netlify) or allorigins-raw: direct JSON array/object
+      // allorigins wrapped: {contents, status}
+      const data = (!raw && wrapper && wrapper.contents !== undefined)
         ? JSON.parse(wrapper.contents)
         : wrapper;
       if(!data) throw new Error("Empty response");
@@ -731,6 +747,11 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
     // Proxy list — tried in order, each with retries
     const proxyConfigs = [
       {
+        name:"netlify",
+        buildUrl: () => `https://ncblast.netlify.app/.netlify/functions/challonge?slug=${slug}`,
+        raw: true,
+      },
+      {
         name:"allorigins",
         buildUrl: () => `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`,
       },
@@ -748,29 +769,66 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
       },
     ];
 
+    const proxyMessages = {
+      "netlify":        ["Connecting via NC BLAST server...", "Retrying NC BLAST server...", "Last try on NC BLAST server..."],
+      "allorigins":     ["Trying backup proxy...", "Retrying allorigins...", "Last try on allorigins..."],
+      "corsproxy.io":   ["Switching to corsproxy.io...", "Retrying on corsproxy.io...", "Last attempt on corsproxy.io..."],
+      "allorigins-raw": ["Trying alternate route...", "Retrying alternate route...", "One more try..."],
+      "cors-anywhere":  ["Trying final fallback...", "Retrying final fallback...", "Last possible attempt..."],
+    };
     let lastErr = "";
+    let attemptCount = 0;
     for(const proxy of proxyConfigs){
+      let proxyAttempt = 0;
       try {
-        setChallongeMsg(`Trying ${proxy.name}...`);
-        const text = await withRetry(()=>attempt(proxy.buildUrl()), 2, 600);
-        const data = parseResponse(text);
+        setChallongeMsg(proxyMessages[proxy.name]?.[0] || `Trying ${proxy.name}...`);
+        const text = await withRetry(async ()=>{
+          const msg = proxyMessages[proxy.name]?.[proxyAttempt] || "Retrying...";
+          setChallongeMsg(msg);
+          proxyAttempt++;
+          return attempt(proxy.buildUrl());
+        }, 2, 600);
+        const data = parseResponse(text, proxy.raw);
         const names = data.map(p=>(p.participant?.display_name||p.participant?.name||"").trim()).filter(Boolean);
         if(!names.length) throw new Error("No participants found — is this tournament public with entrants added?");
         const merged = [...new Set([...players,...names])];
         setPlayers(merged); sSave(KEYS.players, merged);
         setChallongeStatus("ok");
-        setChallongeMsg(`✓ Imported ${names.length} players from "${slug}"`);
+        setChallongeMsg(`✓ ${names.length} players imported from "${slug}" — roster updated!`);
         return;
       } catch(err) {
         lastErr = err.message;
-        // If it's a definitive API error (403, 404, no participants) don't try more proxies
+        // If it is a definitive API error (403, 404, no participants) stop retrying
         if(err.message.includes("HTTP 403")||err.message.includes("HTTP 404")||err.message.includes("No participants")) {
           break;
         }
       }
     }
     setChallongeStatus("error");
-    setChallongeMsg(`Failed after all attempts: ${lastErr}. Try again or enter names manually.`);
+    setChallongeMsg(`Direct import failed. You can still get names via CSV — see below.`);
+    setCsvFallback({names:[]});
+  };
+
+  const handleCsvFile = (e) => {
+    const f = e.target.files[0];
+    if(!f) return;
+    const r = new FileReader();
+    r.onload = (ev) => {
+      const text = ev.target.result;
+      const lines = text.split(/
+?
+/).filter(Boolean);
+      if(!lines.length) return;
+      const header = lines[0].split(",").map(h=>h.replace(/"/g,"").trim().toLowerCase());
+      const nameCol = header.findIndex(h=>h.includes("name")||h.includes("display"));
+      const names = lines.slice(1).map(line=>{
+        const cols = line.split(",").map(c=>c.replace(/"/g,"").trim());
+        return nameCol>=0 ? cols[nameCol] : cols[0];
+      }).filter(Boolean);
+      setCsvFallback({names});
+    };
+    r.readAsText(f);
+    e.target.value = "";
   };
 
   return (
@@ -787,7 +845,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
             style={{...S.inp,flex:1,borderColor:"#EA580C40",fontSize:12}}
             placeholder="https://ncbl.challonge.com/TOURNAMENTNAME/participants"
             value={challongeUrl}
-            onChange={e=>{setChallongeUrl(e.target.value);setChallongeStatus(null);}}
+            onChange={e=>{setChallongeUrl(e.target.value);setChallongeStatus(null);setCsvFallback(null);}}
             onKeyDown={e=>e.key==="Enter"&&challongeUrl.trim()&&importChallonge()}
           />
           <button
@@ -797,9 +855,52 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
             {challongeStatus==="loading"?"..." :"Import"}
           </button>
         </div>
-        {challongeStatus==="ok"&&<p style={{fontSize:11,color:"#15803D",fontWeight:600}}>✓ {challongeMsg}</p>}
-        {challongeStatus==="error"&&<p style={{fontSize:11,color:"#DC2626",fontWeight:600,lineHeight:1.4}}>{challongeMsg}</p>}
-        {!challongeStatus&&<p style={S.hint}>e.g. challonge.com/mytournament</p>}
+        {challongeStatus==="ok"&&<p style={{fontSize:11,color:"#15803D",fontWeight:600,marginTop:4}}>✓ {challongeMsg}</p>}
+        {challongeStatus==="error"&&<p style={{fontSize:11,color:"#DC2626",fontWeight:600,lineHeight:1.5,marginTop:4}}>{challongeMsg}</p>}
+        {challongeStatus==="loading"&&<p style={{fontSize:11,color:"#C2410C",fontWeight:600,marginTop:4,lineHeight:1.5}}>⏳ {challongeMsg}</p>}
+        {!challongeStatus&&<p style={S.hint}>e.g. ncbl.challonge.com/TOURNAMENT</p>}
+
+        {/* CSV fallback — shown after all proxies fail */}
+        {csvFallback&&(
+          <div style={{marginTop:10,borderTop:"1px solid #FED7AA",paddingTop:10}}>
+            <p style={{fontSize:12,fontWeight:700,color:"#C2410C",marginBottom:6}}>📋 Manual CSV Fallback</p>
+            <p style={{fontSize:11,color:"#92400E",marginBottom:8,lineHeight:1.5}}>
+              In Challonge, go to your tournament → <strong>Participants</strong> tab → <strong>Export</strong> → download the CSV. Then upload it here:
+            </p>
+            <input type="file" ref={csvRef} accept=".csv,.txt" style={{display:"none"}} onChange={handleCsvFile}/>
+            {csvFallback.names.length===0?(
+              <button onClick={()=>csvRef.current.click()} style={{...S.upBtn,marginBottom:0}}>
+                📂 Upload Challonge CSV export
+              </button>
+            ):(
+              <div>
+                <p style={{fontSize:11,color:"#15803D",fontWeight:600,marginBottom:6}}>✓ Found {csvFallback.names.length} names — copy all and paste into Add Players:</p>
+                <div style={{position:"relative"}}>
+                  <textarea
+                    readOnly
+                    value={csvFallback.names.join(", ")}
+                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"2px solid #15803D40",background:"#F0FDF4",color:"#14532D",fontSize:11,fontFamily:"'Outfit',sans-serif",resize:"none",height:72,outline:"none"}}
+                    onFocus={e=>e.target.select()}
+                  />
+                  <button
+                    onClick={()=>{navigator.clipboard?.writeText(csvFallback.names.join(", ")).catch(()=>{});}}
+                    style={{position:"absolute",top:6,right:6,padding:"4px 8px",borderRadius:6,border:"none",background:"#15803D",color:"#fff",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                    Copy
+                  </button>
+                </div>
+                <button onClick={()=>{
+                  const merged=[...new Set([...players,...csvFallback.names])];
+                  setPlayers(merged); sSave(KEYS.players,merged);
+                  setChallongeStatus("ok");
+                  setChallongeMsg(`✓ ${csvFallback.names.length} players added from CSV`);
+                  setCsvFallback(null);
+                }} style={{...S.pri,marginTop:8,fontSize:12,padding:"10px 0"}}>
+                  Add All to Roster →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Manual add */}
@@ -808,7 +909,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
         <div style={S.addR}>
           <input style={S.inp} placeholder="Name, or paste multiple names..." value={inp}
             onChange={e=>setInp(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&add()}
+            onKeyDown={e=>e.key==="Enter"&&inp.trim()&&add()}
             onPaste={e=>{
               // On paste, immediately parse and add all pasted names
               e.preventDefault();
@@ -1065,7 +1166,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const saveCombosToStorage = () => {
     // Save combos for all modes
     const saved = sGet(KEYS.combos, {});
-    // Save each player's 3 combos (only complete ones)
+    // Save each player 3 combos (only complete ones)
     [[p1, d1],[p2, d2]].forEach(([name, deck])=>{
       if(!name) return;
       const prev = saved[name] || [];
@@ -1091,7 +1192,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     if(picker){ setPicker(null); setDeckReview(true); return; }
     // Layer 3: deck review open — go back to pick phase
     if(phase==="deck"&&deckReview){ setDeckReview(false); setPhase("pick"); return; }
-    // Layer 4: side picker modal — dismiss it (can't really go back from here)
+    // Layer 4: side picker modal - dismiss it
     if(sidePicker){ setSidePicker(null); setSideAssign(null); return; }
     // Layer 5: in battle or selectRound with battles logged — warn before abandoning
     if((phase==="battle"||phase==="selectRound")&&log.slice(matchStartIdx).length>0){
@@ -1099,7 +1200,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     }
     // Layer 6: in selectRound with no battles yet — safe to go back to deck
     if(phase==="selectRound"){ setPhase("deck"); setDeckReview(true); return; }
-    // Layer 7: in battle with no battles yet (shouldn't normally happen) — back to selectRound
+    // Layer 7: in battle with no battles yet - back to selectRound
     if(phase==="battle"){ setPhase("selectRound"); return; }
     // Layer 8: in deck phase — back to pick
     if(phase==="deck"){ setPhase("pick"); return; }
@@ -1377,7 +1478,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const PartBtn = ({name,isTop})=>{
       const sel=current===name;
       const taken=takenByOtherSlots.includes(name)&&!sel;
-      // Determine this button's accent color
+      // Determine button accent color
       const bladeColor = cat==="blade" && isTop ? BLADE_COLORS[name] : null;
       const accent = bladeColor || (isTop ? cc : null);
       // Non-top, non-selected: black text/border. Top 10: individual accent color.
@@ -1603,7 +1704,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         setP2(name); return;
       }
       if(step===3){
-        if(name===p1||name===p2){ return; } // players can't be judge
+        if(name===p1||name===p2){ return; } // players cannot be judge
         setJudge(name);
         return;
       }
@@ -1618,7 +1719,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       if(isP1) return {border:"2px solid #2563EB",background:"#2563EB",color:"#fff"};
       if(isP2) return {border:"2px solid #DC2626",background:"#DC2626",color:"#fff"};
       if(isJudge) return {border:"2px solid #B45309",background:"#F59E0B",color:"#fff"};
-      // Dim players in judge step so they can't be selected
+      // Dim players in judge step so they cannot be selected
       if(step===3&&(name===p1||name===p2)) return {border:"2px solid #E2E8F0",background:"#F1F5F9",color:"#CBD5E1",opacity:0.4,cursor:"not-allowed"};
       return {border:"2px solid #E2E8F0",background:"#F1F5F9",color:"#334155"};
     };
@@ -1680,14 +1781,14 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   }
 
   if(phase==="deck"){
-    // If not in review mode and picker isn't open, auto-start on P1 first blade
+    // If not in review mode and picker is not open, auto-start on P1 first blade
     if(!deckReview&&!picker){
       openPicker({who:1,slot:0,cat:"blade"});
       return null;
     }
 
     // Review screen — shown when deckReview=true or picker is closed after finishing
-    // Show a summary of what's been built so far with option to start or edit
+    // Show a summary of what has been built so far with option to start or edit
     const comboNames=["First","Second","Third"];
     const allDone=cReady;
     return (
@@ -1880,7 +1981,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const undoMatchEnd = () => {
       if(!log.length) return;
       const last = log[log.length-1];
-      // Restore all state from the last entry's snapshot
+      // Restore all state from the last entry snapshot
       const restoredLog = log.slice(0,-1);
       setLog(restoredLog); sSave(KEYS.matchLog, restoredLog);
       setFuture([last, ...future]);
