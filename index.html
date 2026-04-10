@@ -510,6 +510,15 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       "Abandon match warning still triggers when mid-match battles exist",
       "Side picker modal dismissable via back",
     ]},
+    {v:"8.4",label:"Abandon Confirm Instant Response",items:[
+      "Abandon match confirmation now renders at top of MatchScreen — fires instantly on first press with no delay",
+      "Changelog version number on main menu now always shows the latest version dynamically",
+    ]},
+    {v:"8.5",label:"Undo/Redo Match Boundary Fix",items:[
+      "Undo and redo can no longer cross into a previous match's battles",
+      "Undo button disabled at the start of each match until a battle is logged",
+      "Redo stack cleared when a new match begins — no stale future from prior matches",
+    ]},
   ];
 
   return (
@@ -547,7 +556,7 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
         <div style={{fontSize:40,marginBottom:4}}>⚔️</div>
         <h1 style={S.logo}>NC <span style={{color:"#EA580C"}}>BLAST</span></h1>
         <p style={S.sub}>NorCal Battle Log and Stat Tracker</p>
-        <button onClick={()=>setShowChangelog(true)} style={{marginTop:6,background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>v8.0 — Changelog</button>
+        <button onClick={()=>setShowChangelog(true)} style={{marginTop:6,background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>v{CHANGELOG[CHANGELOG.length-1].v} — Changelog</button>
       </div>
       <button onClick={onOpenLib} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 14px",borderRadius:12,border:hasLib?"2px solid #15803D40":"2px dashed #EA580C",background:hasLib?"#15803D08":"#FFF7ED",cursor:"pointer",marginBottom:16,textAlign:"left"}}>
         <span style={{color:hasLib?"#15803D":"#EA580C"}}>{IC.db}</span>
@@ -778,7 +787,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
 /* ═══════════════════════════════════════
    BOTTOM BAR + HISTORY
 ═══════════════════════════════════════ */
-function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpenLib,onClearLog,dark,toggleDark}) {
+function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpenLib,onClearLog,dark,toggleDark,matchStartIdx}) {
   const [confirmClear,setConfirmClear] = useState(false);
   return (
     <>
@@ -832,7 +841,7 @@ function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpen
         <div style={{display:"flex",alignItems:"center",gap:2,background:"#fff",borderRadius:20,padding:"5px 6px",boxShadow:"0 2px 12px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.04)"}}>
           <button onClick={()=>setHistoryOpen(true)} style={S.barBtn}>{IC.history}</button>
           <div style={S.barDiv}/>
-          <button onClick={undo} disabled={!log.length} style={{...S.barBtn,opacity:log.length?1:0.3}}>{IC.undo} <span style={S.barLbl}>Undo</span></button>
+          <button onClick={undo} disabled={log.length<=matchStartIdx} style={{...S.barBtn,opacity:log.length>matchStartIdx?1:0.3}}>{IC.undo} <span style={S.barLbl}>Undo</span></button>
           <button onClick={redo} disabled={!future.length} style={{...S.barBtn,opacity:future.length?1:0.3,color:"#EA580C"}}><span style={{...S.barLbl,color:"#EA580C"}}>Redo</span> {IC.redo}</button>
           <div style={S.barDiv}/>
           <button onClick={toggleDark} style={{...S.barBtn,fontSize:16,lineHeight:1}} title="Toggle dark mode">{dark?"☀️":"🌙"}</button>
@@ -942,7 +951,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   };
 
   const undo = () => {
-    if(!log.length)return;
+    // Never undo past the start of the current match
+    if(log.length<=matchStartIdx) return;
     const l=log[log.length-1];
     const undoLog = log.slice(0,-1); setFuture([l,...future]); setLog(undoLog); sSave(KEYS.matchLog, undoLog);
     setPts(l._pp); setSets(l._ps); setCurSet(l._cs);
@@ -1018,6 +1028,33 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     reset();
   };
 
+
+  // ── Abandon confirm overlay — rendered first so it always shows instantly ──
+  if(abandonConfirm){
+    return (
+      <div style={{...S.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"60vh"}}>
+        <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:340,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",border:"2px solid var(--border)"}}>
+          <p style={{fontSize:16,fontWeight:800,color:"var(--text-primary)",marginBottom:8,textAlign:"center"}}>Abandon Match?</p>
+          <p style={{fontSize:13,color:"var(--text-secondary)",textAlign:"center",marginBottom:6,lineHeight:1.5}}>
+            This match has <strong style={{color:"#EF4444"}}>{log.slice(matchStartIdx).length} battle{log.slice(matchStartIdx).length!==1?"s":""}</strong> in progress.
+          </p>
+          <p style={{fontSize:12,color:"var(--text-faint)",textAlign:"center",marginBottom:20,lineHeight:1.4}}>
+            Abandoning will void all battles from this match and return to player selection.
+          </p>
+          <div style={{display:"flex",gap:10}}>
+            <button onClick={()=>setAbandonConfirm(false)}
+              style={{flex:1,padding:"12px 0",borderRadius:10,border:"2px solid var(--border)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              Keep Playing
+            </button>
+            <button onClick={abandonMatch}
+              style={{flex:1,padding:"12px 0",borderRadius:10,border:"none",background:"#EF4444",color:"#fff",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              Void & Exit
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── CX Picker ──────────────────────────────────────────────────────────────
   if(cxPicker){
@@ -1547,7 +1584,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           )}
         </div>
 
-        <button style={{...S.pri,opacity:canProceed?1:0.4}} disabled={!canProceed} onClick={()=>{setMatchStartIdx(log.length);setDeckReview(false);pushPhase("deck");}}>Build Decks →</button>
+        <button style={{...S.pri,opacity:canProceed?1:0.4}} disabled={!canProceed} onClick={()=>{setMatchStartIdx(log.length);setFuture([]);setDeckReview(false);setPhase("deck");}}>Build Decks →</button>
         {config.tm&&playersSelected&&!judge.trim()&&<p style={{...S.hint,color:"#D97706"}}>Select the judge on duty to continue</p>}
       </div>
     );
@@ -1739,7 +1776,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           <button style={{...S.pri,flex:2,margin:0,padding:"10px 0",fontSize:13}} disabled={r1===null||r2===null} onClick={()=>setPhase("battle")}>Battle! →</button>
           <button style={{...S.sec,flex:1,justifyContent:"center",fontSize:11,padding:"10px 8px"}} onClick={()=>setPhase("deck")}>✏️ Decks</button>
         </div>
-        <BottomBar log={log} future={future} undo={undo} redo={redo} historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} p1={p1} p2={p2} onOpenLib={onOpenLib} onClearLog={()=>{setLog([]);sSave(KEYS.matchLog,[]);}} dark={dark} toggleDark={toggleDark}/>
+        <BottomBar log={log} future={future} undo={undo} redo={redo} historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} p1={p1} p2={p2} onOpenLib={onOpenLib} onClearLog={()=>{setLog([]);sSave(KEYS.matchLog,[]);}} dark={dark} toggleDark={toggleDark} matchStartIdx={matchStartIdx}/>
       </div>
     );
   }
@@ -2010,32 +2047,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           </div>
         ))}
       </div>
-      <BottomBar log={log} future={future} undo={undo} redo={redo} historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} p1={p1} p2={p2} onOpenLib={onOpenLib} onClearLog={()=>{setLog([]);sSave(KEYS.matchLog,[]);}} dark={dark} toggleDark={toggleDark}/>
+      <BottomBar log={log} future={future} undo={undo} redo={redo} historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} p1={p1} p2={p2} onOpenLib={onOpenLib} onClearLog={()=>{setLog([]);sSave(KEYS.matchLog,[]);}} dark={dark} toggleDark={toggleDark} matchStartIdx={matchStartIdx}/>
 
-      {/* ── Abandon match confirmation ── */}
-      {abandonConfirm&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
-          <div style={{background:"#fff",borderRadius:18,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
-            <p style={{fontSize:16,fontWeight:800,color:"#1E293B",marginBottom:8,textAlign:"center"}}>Abandon Match?</p>
-            <p style={{fontSize:13,color:"#64748B",textAlign:"center",marginBottom:6,lineHeight:1.5}}>
-              This match has <strong style={{color:"#EF4444"}}>{log.slice(matchStartIdx).length} battle{log.slice(matchStartIdx).length!==1?"s":""}</strong> in progress.
-            </p>
-            <p style={{fontSize:12,color:"#94A3B8",textAlign:"center",marginBottom:20,lineHeight:1.4}}>
-              Abandoning will void all battles from this match and return to player selection. This cannot be undone.
-            </p>
-            <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>setAbandonConfirm(false)}
-                style={{flex:1,padding:"12px 0",borderRadius:10,border:"2px solid #E2E8F0",background:"#fff",color:"#475569",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-                Keep Playing
-              </button>
-              <button onClick={abandonMatch}
-                style={{flex:1,padding:"12px 0",borderRadius:10,border:"none",background:"#EF4444",color:"#fff",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-                Void & Exit
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
