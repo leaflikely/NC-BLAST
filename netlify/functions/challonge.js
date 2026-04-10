@@ -1,4 +1,3 @@
-const fetch = require('node-fetch');
 exports.handler = async (event) => {
   const slug = event.queryStringParameters?.slug;
   const key = "68330566a844961951645c6e25c48a7619d0f21c2d4b0f4a";
