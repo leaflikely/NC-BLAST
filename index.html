@@ -46,6 +46,10 @@
     --input-bg:#1E293B;
   }
   body{background:var(--bg);min-height:100vh;font-family:'Outfit',sans-serif;color:var(--text-primary)}
+  input,textarea{color:var(--text-primary);background:var(--input-bg);}
+  input::placeholder{color:var(--text-faint);}
+  /* Bottom bar always uses surface color */
+  .bottom-bar{background:var(--surface);}
 </style>
 </head>
 <body>
@@ -103,6 +107,27 @@ const CXE_BLADES = ["Blitz","Fortress","Rage"];
 const CXE_OVER_BLADES = ["Break","Guard","Flow"];
 const CX_ASSISTS = ["Accel", "Bound", "Defense", "Dual", "Flare", "Flow", "Forge", "Free", "Guard", "Heavy", "High", "Jolt", "Low", "Normal", "Rush", "Slash", "Spike", "Tail", "Taper", "Trans", "Wheel", "Wide", "Xtend"];
 const CX_ASSIST_TOP5 = ["Heavy", "Wheel", "Slash", "Free", "Dual"];
+
+// Split a part name into display lines for buttons
+// Splits on space or dash (removing dash), returns array of words
+function splitPartName(name, keepDash) {
+  // keepDash=true: only split on spaces (ratchets keep their dashes e.g. "1-60")
+  // keepDash=false (default): also split on dashes (bits e.g. "Low-Rush" → ["Low","Rush"])
+  if(keepDash) return name.split(" ").filter(Boolean);
+  return name.replace(/-/g, " ").split(" ").filter(Boolean);
+}
+// Render a part name in a button: multi-line if 2+ words, sized to fill space
+function PartLabel({name, size, keepDash}) {
+  const words = splitPartName(name, keepDash);
+  if(words.length===1){
+    return <span style={{fontSize:size||13,fontWeight:800,lineHeight:1.1,textAlign:"center"}}>{name}</span>;
+  }
+  return (
+    <span style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1,lineHeight:1.1,textAlign:"center"}}>
+      {words.map((w,i)=><span key={i} style={{fontSize:size||13,fontWeight:800}}>{w}</span>)}
+    </span>
+  );
+}
 
 // Quick full combos for blade picker shortcuts
 const QUICK_COMBOS = [
@@ -269,7 +294,7 @@ function LibraryManager({parts,setParts,onClose}) {
         {/* Search bar */}
         <div style={{marginBottom:10,position:"relative"}}>
           <input
-            style={{...S.inp,width:"100%",paddingLeft:32,borderColor:ac+"40",background:"#FAFAFA"}}
+            style={{...S.inp,width:"100%",paddingLeft:32,borderColor:ac+"40"}}
             placeholder={`Search ${tab}...`}
             value={libSearch}
             onChange={e=>setLibSearch(e.target.value)}
@@ -519,6 +544,19 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       "Undo button disabled at the start of each match until a battle is logged",
       "Redo stack cleared when a new match begins — no stale future from prior matches",
     ]},
+    {v:"8.6",label:"Dark Mode Text & UI Fixes",items:[
+      "All text input fields now readable in dark mode — removed hardcoded white backgrounds",
+      "Placeholder text color adapts to dark mode via CSS",
+      "Confirmation modals (Clear Roster, Clear Log, Abandon Match) use dark surface colors",
+      "Bottom bar and match log panel use theme surface color",
+    ]},
+    {v:"8.7",label:"Part Button Readability",items:[
+      "Two-word part names now displayed on two lines, one word per row, centered",
+      "Bits with dashes in their name (e.g. Low-Rush) split across two lines, dash removed",
+      "Part button minimum height increased and text sized up to fill available space",
+      "Deck review buttons: removed small category labels (blade/ratchet/bit) above each value",
+      "Deck review buttons use PartLabel for consistent multi-line display",
+    ]},
   ];
 
   return (
@@ -573,7 +611,7 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
         {config.tm&&(
           <div style={{marginTop:12}}>
             <input
-              style={{...S.inp,width:"100%",borderColor:"#7C3AED60",background:"#F5F3FF"}}
+              style={{...S.inp,width:"100%",borderColor:"#7C3AED60"}}
               placeholder="Tournament name..."
               value={config.tournamentName||""}
               onChange={e=>setConfig({...config,tournamentName:e.target.value})}
@@ -696,7 +734,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
         <h2 style={{...S.label,color:"#C2410C",marginBottom:8}}>Import from Challonge</h2>
         <div style={{display:"flex",gap:8,marginBottom:8}}>
           <input
-            style={{...S.inp,flex:1,borderColor:"#EA580C40",background:"#fff",fontSize:12}}
+            style={{...S.inp,flex:1,borderColor:"#EA580C40",fontSize:12}}
             placeholder="https://ncbl.challonge.com/TOURNAMENTNAME/participants"
             value={challongeUrl}
             onChange={e=>{setChallongeUrl(e.target.value);setChallongeStatus(null);}}
@@ -763,8 +801,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
       {/* In-app clear all confirmation modal */}
       {confirmClear&&(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
-          <div style={{background:"#fff",borderRadius:18,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
-            <p style={{fontSize:16,fontWeight:800,color:"#1E293B",marginBottom:8,textAlign:"center"}}>Clear Roster?</p>
+          <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)",border:"1px solid var(--border)"}}>
+            <p style={{fontSize:16,fontWeight:800,color:"var(--text-primary)",marginBottom:8,textAlign:"center"}}>Clear Roster?</p>
             <p style={{fontSize:13,color:"#64748B",textAlign:"center",marginBottom:20,lineHeight:1.5}}>This will remove all <strong style={{color:"#EF4444"}}>{players.length} players</strong> from the roster. This cannot be undone.</p>
             <div style={{display:"flex",gap:10}}>
               <button onClick={()=>setConfirmClear(false)}
@@ -791,7 +829,7 @@ function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpen
   const [confirmClear,setConfirmClear] = useState(false);
   return (
     <>
-      <div style={{position:"fixed",top:0,right:0,bottom:0,width:historyOpen?Math.min(340,window.innerWidth-40):0,background:"#fff",boxShadow:historyOpen?"-4px 0 24px rgba(0,0,0,0.12)":"none",transition:"width 0.25s ease",overflow:"hidden",zIndex:100}}>
+      <div style={{position:"fixed",top:0,right:0,bottom:0,width:historyOpen?Math.min(340,window.innerWidth-40):0,background:"var(--surface)",boxShadow:historyOpen?"-4px 0 24px rgba(0,0,0,0.25)":"none",transition:"width 0.25s ease",overflow:"hidden",zIndex:100}}>
         <div style={{width:Math.min(340,window.innerWidth-40),padding:"20px 16px",overflowY:"auto",height:"100%"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
             <h2 style={{margin:0,fontSize:18,fontWeight:800,color:"#1E293B"}}>Match Log</h2>
@@ -805,8 +843,8 @@ function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpen
           {/* Clear log confirmation modal */}
           {confirmClear&&(
             <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
-              <div style={{background:"#fff",borderRadius:18,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}}>
-                <p style={{fontSize:16,fontWeight:800,color:"#1E293B",marginBottom:8,textAlign:"center"}}>Clear Match Log?</p>
+              <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)",border:"1px solid var(--border)"}}>
+                <p style={{fontSize:16,fontWeight:800,color:"var(--text-primary)",marginBottom:8,textAlign:"center"}}>Clear Match Log?</p>
                 <p style={{fontSize:13,color:"#64748B",textAlign:"center",marginBottom:20,lineHeight:1.5}}>This will permanently delete all <strong style={{color:"#EF4444"}}>{log.length} battle records</strong> from the log. This cannot be undone.</p>
                 <div style={{display:"flex",gap:10}}>
                   <button onClick={()=>setConfirmClear(false)}
@@ -838,7 +876,7 @@ function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpen
       </div>
       {historyOpen&&<div onClick={()=>setHistoryOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.2)",zIndex:99}}/>}
       <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",justifyContent:"center",padding:"10px 16px 20px",background:"linear-gradient(transparent 0%, #F0F4F8 40%)",zIndex:50}}>
-        <div style={{display:"flex",alignItems:"center",gap:2,background:"#fff",borderRadius:20,padding:"5px 6px",boxShadow:"0 2px 12px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.04)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:2,background:"var(--surface)",borderRadius:20,padding:"5px 6px",boxShadow:"0 2px 12px rgba(0,0,0,0.15), 0 0 0 1px var(--border)"}}>
           <button onClick={()=>setHistoryOpen(true)} style={S.barBtn}>{IC.history}</button>
           <div style={S.barDiv}/>
           <button onClick={undo} disabled={log.length<=matchStartIdx} style={{...S.barBtn,opacity:log.length>matchStartIdx?1:0.3}}>{IC.undo} <span style={S.barLbl}>Undo</span></button>
@@ -1321,18 +1359,19 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               setDeckReview(true);
             }
           }}
-          style={{padding:"10px 4px",borderRadius:9,
+          style={{padding:"8px 4px",borderRadius:9,
             border:sel?`2px solid ${accent||cc}`:taken?"2px solid #E2E8F0":idleBorder,
             background:sel?(accent||cc):taken?"var(--surface3)":idleBg,
             color:sel?"#fff":taken?"#CBD5E1":idleColor,
-            fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",
             cursor:taken?"not-allowed":"pointer",
             opacity:taken?0.45:1,
-            display:"flex",alignItems:"center",justifyContent:"center",
-            textAlign:"center",lineHeight:1.2,
-            position:"relative",minHeight:40,
+            display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+            textAlign:"center",lineHeight:1.1,
+            position:"relative",minHeight:48,width:"100%",
+            fontFamily:"'Outfit',sans-serif",
           }}>
-          {sel&&<span style={{marginRight:3}}>{IC.check}</span>}{name}
+          {sel&&<span style={{fontSize:9,marginBottom:1}}>{IC.check}</span>}
+          <PartLabel name={name} size={splitPartName(name,cat!=="bit").length>1?12:13} keepDash={cat!=="bit"}/>
           {taken&&<span style={{position:"absolute",bottom:2,fontSize:7,fontWeight:700,color:"#94A3B8",letterSpacing:0.3}}>IN USE</span>}
         </button>
       );
@@ -1447,7 +1486,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
           <div style={{flex:1,position:"relative"}}>
             <input
-              style={{...S.inp,width:"100%",paddingLeft:32,borderColor:cc+"40",background:"#FAFAFA"}}
+              style={{...S.inp,width:"100%",paddingLeft:32,borderColor:cc+"40"}}
               placeholder={`Search ${cat}s...`}
               value={pickerSearch}
               onChange={e=>setPickerSearch(e.target.value)}
@@ -1576,7 +1615,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   Name not present — enter manually
                 </button>
               ):(
-                <input style={{...S.inp,width:"100%",borderColor:"#F59E0B60"}} placeholder="Enter judge name..." value={judge} autoFocus
+                <input style={{...S.inp,width:"100%",borderColor:"#F59E0B60",color:"var(--text-primary)"}} placeholder="Enter judge name..." value={judge} autoFocus
                   onChange={e=>setJudge(e.target.value)}
                   onKeyDown={e=>e.key==="Enter"&&judge.trim()&&setManualJudge(false)}/>
               )}
@@ -1618,9 +1657,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     const val=pl.deck[slot][cat];
                     return (
                       <button key={cat} onClick={()=>openPicker({who:pl.who,slot,cat,returnToReview:true})}
-                        style={{flex:1,padding:"8px 4px",borderRadius:8,border:`2px solid ${val?cc:"#E2E8F0"}`,background:val?cc+"14":"#F8FAFC",color:val?cc:"#94A3B8",fontSize:10,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
-                        <span style={{fontSize:8,fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,opacity:0.5}}>{cat}</span>
-                        {val||"—"}
+                        style={{flex:1,padding:"8px 4px",borderRadius:8,border:`2px solid ${val?cc:"#E2E8F0"}`,background:val?cc+"14":"var(--surface2)",color:val?cc:"var(--text-faint)",fontFamily:"'Outfit',sans-serif",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:44,gap:0}}>
+                        {val ? <PartLabel name={val} size={splitPartName(val,cat!=="bit").length>1?10:12} keepDash={cat!=="bit"}/> : <span style={{fontSize:12,fontWeight:700}}>—</span>}
                       </button>
                     );
                   })}
