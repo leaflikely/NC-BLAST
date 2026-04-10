@@ -815,9 +815,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
     const r = new FileReader();
     r.onload = (ev) => {
       const text = ev.target.result;
-      const lines = text.split(/
-?
-/).filter(Boolean);
+      const lines = text.split(/[\r\n]+/).filter(Boolean);
       if(!lines.length) return;
       const header = lines[0].split(",").map(h=>h.replace(/"/g,"").trim().toLowerCase());
       const nameCol = header.findIndex(h=>h.includes("name")||h.includes("display"));
