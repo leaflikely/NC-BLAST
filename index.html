@@ -493,6 +493,23 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       "Challonge import error handling improved with fallback proxy and descriptive messages",
       "Match history on over screen scoped to current match only",
     ]},
+    {v:"8.1",label:"Changelog Added",items:[
+      "Comprehensive in-app changelog accessible from main menu (v8.0 — Changelog link)",
+      "All versions from v1.0 documented with bullet-point change descriptions",
+      "Newest version shown first",
+    ]},
+    {v:"8.2",label:"Round Count Fix",items:[
+      "Round number in Google Sheets now resets to 1 for each new match",
+      "Previously the round counter grew continuously across all matches in a session",
+    ]},
+    {v:"8.3",label:"Back Button Reliability",items:[
+      "Rewrote back navigation as a deterministic context-aware function",
+      "Eliminated stale closure bug that caused delayed or non-responsive back presses",
+      "Removed phaseStack approach in favor of phase-specific logic per screen",
+      "Back now correctly handles: CX picker → part picker → deck review → pick → players",
+      "Abandon match warning still triggers when mid-match battles exist",
+      "Side picker modal dismissable via back",
+    ]},
   ];
 
   return (
@@ -832,7 +849,6 @@ function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpen
 ═══════════════════════════════════════ */
 function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheetsStatus,onBack,onDownloadCSV,onSendSheets,onOpenLib,dark,toggleDark}) {
   const [phase,setPhase] = useState("pick");
-  const [phaseStack,setPhaseStack] = useState([]);
   const [abandonConfirm,setAbandonConfirm] = useState(false);
   const [overBackConfirm,setOverBackConfirm] = useState(false);
   const [p1,setP1] = useState(null);
@@ -965,24 +981,34 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     sSave(KEYS.combos, saved);
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setPhaseStack([]); };
+  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setMatchStartIdx(sGet(KEYS.matchLog,[]).length); };
 
   // Navigation helpers
-  const pushPhase = (newPhase) => { setPhaseStack(s=>[...s,phase]); setPhase(newPhase); };
+  // Unified back navigation — context-aware, no stale closure issues
+  const pushPhase = (newPhase) => { setPhase(newPhase); }; // kept for call-site compat
   const goBack = () => {
-    if(picker){ setPicker(null); setDeckReview(true); return; }
+    // Layer 1: CX picker open — close it, return to blade picker
     if(cxPicker){ setCxPicker(null); return; }
-    // If mid-match (battles have been logged), warn before abandoning
-    if(log.slice(matchStartIdx).length>0 && phase!=="over"){
+    // Layer 2: part picker open — close it, return to deck review
+    if(picker){ setPicker(null); setDeckReview(true); return; }
+    // Layer 3: deck review open — go back to pick phase
+    if(phase==="deck"&&deckReview){ setDeckReview(false); setPhase("pick"); return; }
+    // Layer 4: side picker modal — dismiss it (can't really go back from here)
+    if(sidePicker){ setSidePicker(null); setSideAssign(null); return; }
+    // Layer 5: in battle or selectRound with battles logged — warn before abandoning
+    if((phase==="battle"||phase==="selectRound")&&log.slice(matchStartIdx).length>0){
       setAbandonConfirm(true); return;
     }
-    if(phaseStack.length>0){
-      const prev=phaseStack[phaseStack.length-1];
-      setPhaseStack(s=>s.slice(0,-1));
-      setPhase(prev);
-    } else {
-      onBack();
-    }
+    // Layer 6: in selectRound with no battles yet — safe to go back to deck
+    if(phase==="selectRound"){ setPhase("deck"); setDeckReview(true); return; }
+    // Layer 7: in battle with no battles yet (shouldn't normally happen) — back to selectRound
+    if(phase==="battle"){ setPhase("selectRound"); return; }
+    // Layer 8: in deck phase — back to pick
+    if(phase==="deck"){ setPhase("pick"); return; }
+    // Layer 9: in pick — back to players screen
+    if(phase==="pick"){ onBack(); return; }
+    // Layer 10: over screen handled separately via overBackConfirm
+    onBack();
   };
   const abandonMatch = () => {
     // Void match: remove its battles from the log and return to pick
@@ -1521,7 +1547,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           )}
         </div>
 
-        <button style={{...S.pri,opacity:canProceed?1:0.4}} disabled={!canProceed} onClick={()=>{setMatchStartIdx(log.length);setDeckReview(false);setPhaseStack([]);pushPhase("deck");}}>Build Decks →</button>
+        <button style={{...S.pri,opacity:canProceed?1:0.4}} disabled={!canProceed} onClick={()=>{setMatchStartIdx(log.length);setDeckReview(false);pushPhase("deck");}}>Build Decks →</button>
         {config.tm&&playersSelected&&!judge.trim()&&<p style={{...S.hint,color:"#D97706"}}>Select the judge on duty to continue</p>}
       </div>
     );
@@ -1710,7 +1736,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         </div>
 
         <div style={{display:"flex",gap:6}}>
-          <button style={{...S.pri,flex:2,margin:0,padding:"10px 0",fontSize:13}} disabled={r1===null||r2===null} onClick={()=>pushPhase("battle")}>Battle! →</button>
+          <button style={{...S.pri,flex:2,margin:0,padding:"10px 0",fontSize:13}} disabled={r1===null||r2===null} onClick={()=>setPhase("battle")}>Battle! →</button>
           <button style={{...S.sec,flex:1,justifyContent:"center",fontSize:11,padding:"10px 8px"}} onClick={()=>setPhase("deck")}>✏️ Decks</button>
         </div>
         <BottomBar log={log} future={future} undo={undo} redo={redo} historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} p1={p1} p2={p2} onOpenLib={onOpenLib} onClearLog={()=>{setLog([]);sSave(KEYS.matchLog,[]);}} dark={dark} toggleDark={toggleDark}/>
