@@ -762,8 +762,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
     // Proxy list — tried in order, each with retries
     const proxyConfigs = [
       {
-        name:"netlify",
-        buildUrl: () => `https://ncblast.netlify.app/.netlify/functions/challonge?slug=${slug}`,
+        name:"cloudflare",
+        buildUrl: () => `https://challonge-proxy.YOUR-ACCOUNT-NAME.workers.dev/?slug=${slug}`,
         raw: true,
       },
       {
