@@ -762,8 +762,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
     // Proxy list — tried in order, each with retries
     const proxyConfigs = [
       {
-        name:"netlify",
-        buildUrl: () => `challonge-proxy.danny61734.workers.dev/?slug=${slug}`,
+        name:"cloudflare",
+        buildUrl: () => `https://challonge-proxy.danny61734.workers.dev/?slug=${slug}`,
         raw: true,
       },
       {
@@ -785,7 +785,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
     ];
 
     const proxyMessages = {
-      "netlify":        ["Connecting via NC BLAST server...", "Retrying NC BLAST server...", "Last try on NC BLAST server..."],
+      "cloudflare": ["Connecting via NC BLAST server...", "Retrying NC BLAST server...", "Last try on NC BLAST server..."],
       "allorigins":     ["Trying backup proxy...", "Retrying allorigins...", "Last try on allorigins..."],
       "corsproxy.io":   ["Switching to corsproxy.io...", "Retrying on corsproxy.io...", "Last attempt on corsproxy.io..."],
       "allorigins-raw": ["Trying alternate route...", "Retrying alternate route...", "One more try..."],
