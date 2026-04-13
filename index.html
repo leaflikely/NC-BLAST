@@ -707,8 +707,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
     if(!slug){ setChallongeStatus("error"); setChallongeMsg("Couldn't read a tournament slug from that URL."); return; }
 
     setChallongeStatus("loading"); setChallongeMsg(`Reading the tournament URL...`);
-    const API_KEY = "68330566a844961951645c6e25c48a7619d0f21c2d4b0f4a";
-    const apiUrl = `https://api.challonge.com/v1/tournaments/${slug}/participants.json?api_key=${API_KEY}`;
+    const apiUrl = `https://api.challonge.com/v1/tournaments/${slug}/participants.json?api_key=REDACTED`;
 
     // Helper: parse response text from any proxy format
     const parseResponse = (text, raw) => {
