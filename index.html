@@ -586,7 +586,15 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       "Public fallback proxies reduced to 1 attempt each — worst-case requests cut from 15 to 7",
       "Import source badge displayed after successful import: Live from Challonge API or Served from NC BLAST cache",
     ]},
-  ];
+   {v:"9.2",label:"Migrated to Cloudflare",items:[
+          "Site hosting moved from Netlify to Cloudflare Pages",
+          "Challonge proxy function moved from Netlify Functions to Cloudflare Workers",
+          "Worker caches tournament participant lists at the CDN edge for 30 minutes",
+          "Challonge API key moved to encrypted Cloudflare environment variable",
+          "Proxy retry logic updated: Cloudflare Worker gets 3 attempts, public fallbacks get 1 each",
+        ]},
+   
+   ];
 
   return (
     <>
