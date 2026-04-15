@@ -87,7 +87,7 @@ function useScale() {
 /* ═══════════════════════════════════════
    PERSISTENT STORAGE — localStorage
 ═══════════════════════════════════════ */
-const KEYS = { parts: "bx-library-v9", players: "bx-roster-v2", combos: "bx-combos-v1", matchLog: "bx-matchlog-v1" };
+const KEYS = { parts: "bx-library-v9", players: "bx-roster-v2", combos: "bx-combos-v1", matchLog: "bx-matchlog-v1", challongeMap: "bx-challonge-map-v1" };
 function sGet(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; } }
 function sSave(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
 
@@ -675,10 +675,11 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       "Player names longer than 15 characters truncated to 12 + ellipsis after match selection — prevents UI overflow",
       "Pick Combo and battle score screen grey text updated to use CSS variables for dark mode correctness",
       "Active Matches tab on Select Match screen — shows all open Challonge bracket pairings for the loaded tournament",
-      "Tap any active match pairing to pre-select both players instantly — only judge selection remains",
-      "Refresh button on Active Matches tab re-fetches open matches from Challonge",
+      "Tap any active match pairing to pre-select both players — judge picker appears inline below the match list",
+      "Build Decks button appears inline on active matches tab once players and judge are confirmed",
+      "Challonge participant IDs stored to localStorage on import — names resolve correctly across page reloads",
+      "Participant ID to display name lookup now stringifies IDs to prevent type mismatch (number vs string)",
       "Submit to Challonge button on Match Over screen — sends result directly to Challonge bracket",
-      "Challonge match ID tracked per pairing so submission targets the correct bracket slot",
       "Submission refreshes active matches automatically so next round pairings appear immediately",
     ]},
    ];
@@ -2125,15 +2126,15 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     // Select a pairing from an active Challonge match
     const selectActivePairing = (match) => {
       const idMap = challongeParticipants || {};
-      // reverse lookup: challongeId -> displayName
       const reverseMap = {};
-      Object.entries(idMap).forEach(([name,id])=>{ reverseMap[id]=name; });
-      const name1 = reverseMap[match.player1_id] || null;
-      const name2 = reverseMap[match.player2_id] || null;
+      // Challonge IDs can come back as numbers — stringify both sides for reliable lookup
+      Object.entries(idMap).forEach(([name,id])=>{ reverseMap[String(id)]=name; });
+      const name1 = reverseMap[String(match.player1_id)] || null;
+      const name2 = reverseMap[String(match.player2_id)] || null;
       if(name1) setP1(tn(name1));
       if(name2) setP2(tn(name2));
       setChallongeMatchId(match.id);
-      setPickTab("roster"); // switch back to roster for judge selection if needed
+      // Stay on active tab — judge picker and Build Decks button shown below the match list
     };
 
     return (
@@ -2199,44 +2200,84 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
         {/* ── ACTIVE MATCHES TAB ── */}
         {pickTab==="active"&&(
-          <div style={S.card}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <span style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>Open matches — {challongeSlug}</span>
-              <button type="button" onClick={fetchActiveMatches}
-                style={{fontSize:11,fontWeight:700,color:"#1D4ED8",background:"none",border:"none",cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
-                ↻ Refresh
-              </button>
-            </div>
-            {activeMatches==="loading"&&<p style={{fontSize:12,color:"var(--text-muted)",fontStyle:"italic",textAlign:"center",padding:"12px 0"}}>⏳ Loading active matches...</p>}
-            {Array.isArray(activeMatches)&&activeMatches.length===0&&(
-              <p style={{fontSize:12,color:"var(--text-muted)",fontStyle:"italic",textAlign:"center",padding:"12px 0"}}>No open matches found. The bracket may not have started yet, or all matches are complete.</p>
-            )}
-            {Array.isArray(activeMatches)&&activeMatches.map((match,mi)=>{
-              const idMap = challongeParticipants||{};
-              const reverseMap = {};
-              Object.entries(idMap).forEach(([n,id])=>{ reverseMap[id]=n; });
-              const name1 = reverseMap[match.player1_id]||`Player ${match.player1_id}`;
-              const name2 = reverseMap[match.player2_id]||`Player ${match.player2_id}`;
-              const isSelected = challongeMatchId===match.id;
-              return (
-                <button type="button" key={mi} onClick={()=>selectActivePairing(match)}
-                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"12px 14px",borderRadius:10,border:`2px solid ${isSelected?"#1D4ED8":"var(--border)"}`,background:isSelected?"#EFF6FF":"var(--surface2)",marginBottom:mi<activeMatches.length-1?8:0,cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:800,color:"var(--text-primary)"}}>{tn(name1)} <span style={{color:"var(--text-muted)",fontWeight:400}}>vs</span> {tn(name2)}</div>
-                    <div style={{fontSize:10,color:"var(--text-muted)",marginTop:2}}>Round {match.round} · Match #{match.suggested_play_order||mi+1}</div>
-                  </div>
-                  {isSelected
-                    ? <span style={{fontSize:11,fontWeight:800,color:"#1D4ED8"}}>✓ Selected</span>
-                    : <span style={{fontSize:11,fontWeight:700,color:"var(--text-muted)"}}>Select →</span>
-                  }
+          <div>
+            <div style={{...S.card,marginBottom:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <span style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>Open matches — {challongeSlug}</span>
+                <button type="button" onClick={fetchActiveMatches}
+                  style={{fontSize:11,fontWeight:700,color:"#1D4ED8",background:"none",border:"none",cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                  ↻ Refresh
                 </button>
-              );
-            })}
+              </div>
+              {activeMatches==="loading"&&<p style={{fontSize:12,color:"var(--text-muted)",fontStyle:"italic",textAlign:"center",padding:"12px 0"}}>⏳ Loading active matches...</p>}
+              {Array.isArray(activeMatches)&&activeMatches.length===0&&(
+                <p style={{fontSize:12,color:"var(--text-muted)",fontStyle:"italic",textAlign:"center",padding:"12px 0"}}>No open matches found. The bracket may not have started, or all matches are complete.</p>
+              )}
+              {Array.isArray(activeMatches)&&activeMatches.map((match,mi)=>{
+                const idMap = challongeParticipants||{};
+                const reverseMap = {};
+                Object.entries(idMap).forEach(([n,id])=>{ reverseMap[String(id)]=n; });
+                const name1 = reverseMap[String(match.player1_id)]||`ID:${match.player1_id}`;
+                const name2 = reverseMap[String(match.player2_id)]||`ID:${match.player2_id}`;
+                const isSelected = challongeMatchId===match.id;
+                return (
+                  <button type="button" key={mi} onClick={()=>selectActivePairing(match)}
+                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"12px 14px",borderRadius:10,border:`2px solid ${isSelected?"#1D4ED8":"var(--border)"}`,background:isSelected?"#EFF6FF":"var(--surface2)",marginBottom:mi<activeMatches.length-1?8:0,cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:800,color:"var(--text-primary)"}}>{tn(name1)} <span style={{color:"var(--text-muted)",fontWeight:400}}>vs</span> {tn(name2)}</div>
+                      <div style={{fontSize:10,color:"var(--text-muted)",marginTop:2}}>Round {match.round} · Match #{match.suggested_play_order||mi+1}</div>
+                    </div>
+                    {isSelected
+                      ? <span style={{fontSize:11,fontWeight:800,color:"#1D4ED8"}}>✓ Selected</span>
+                      : <span style={{fontSize:11,fontWeight:700,color:"var(--text-muted)"}}>Select →</span>
+                    }
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Inline judge picker + Build Decks shown after a match is selected */}
+            {p1&&p2&&(
+              <div style={S.card}>
+                <p style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,marginBottom:8,textTransform:"uppercase"}}>
+                  {config.tm ? "Select Judge" : `${p1} vs ${p2} — ready`}
+                </p>
+                {config.tm&&(
+                  !manualJudge ? (
+                    <div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))",gap:6,marginBottom:8}}>
+                        {players.filter(n=>n!==p1&&n!==p2&&tn(n)!==p1&&tn(n)!==p2).map(name=>{
+                          const isJudge = judge===name;
+                          return (
+                            <button key={name} type="button" onClick={()=>setJudge(name)}
+                              style={{padding:"10px 6px",borderRadius:9,fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",border:`2px solid ${isJudge?"#B45309":"var(--border)"}`,background:isJudge?"#F59E0B":"var(--surface2)",color:isJudge?"#fff":"var(--text-primary)"}}>
+                              {tn(name)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <button type="button" onClick={()=>setManualJudge(true)} style={{...S.upBtn,marginBottom:0,justifyContent:"center",fontSize:11}}>
+                        Name not present — enter manually
+                      </button>
+                    </div>
+                  ) : (
+                    <input style={{...S.inp,width:"100%",borderColor:"#F59E0B60",color:"var(--text-primary)",marginBottom:8}} placeholder="Enter judge name..." value={judge} autoFocus
+                      onChange={e=>setJudge(e.target.value)}
+                      onKeyDown={e=>e.key==="Enter"&&judge.trim()&&setManualJudge(false)}/>
+                  )
+                )}
+                <button style={{...S.pri,margin:0,marginTop:config.tm?10:0,opacity:canProceed?1:0.4}} disabled={!canProceed}
+                  onClick={()=>{setMatchStartIdx(log.length);setFuture([]);setDeckReview(false);setPhase("deck");}}>
+                  Build Decks →
+                </button>
+                {config.tm&&!judge.trim()&&<p style={{...S.hint,color:"#D97706",marginTop:4}}>Select the judge on duty to continue</p>}
+              </div>
+            )}
           </div>
         )}
 
-        <button style={{...S.pri,opacity:canProceed?1:0.4}} disabled={!canProceed} onClick={()=>{setMatchStartIdx(log.length);setFuture([]);setDeckReview(false);setPhase("deck");}}>Build Decks →</button>
-        {config.tm&&playersSelected&&!judge.trim()&&<p style={{...S.hint,color:"#D97706"}}>Select the judge on duty to continue</p>}
+        {pickTab==="roster"&&<button style={{...S.pri,opacity:canProceed?1:0.4}} disabled={!canProceed} onClick={()=>{setMatchStartIdx(log.length);setFuture([]);setDeckReview(false);setPhase("deck");}}>Build Decks →</button>}
+        {pickTab==="roster"&&config.tm&&playersSelected&&!judge.trim()&&<p style={{...S.hint,color:"#D97706"}}>Select the judge on duty to continue</p>}
       </div>
     );
   }
@@ -2777,6 +2818,10 @@ function BeyJudgeApp() {
     const merged=mergeWithDefaults(saved);
     setParts(merged); sSave(KEYS.parts,merged);
     setPlayers(sGet(KEYS.players,[]));
+    // Restore last Challonge tournament context
+    const savedMap = sGet(KEYS.challongeMap, {});
+    if(savedMap.slug) setChallongeSlug(savedMap.slug);
+    if(savedMap.participants) setChallongeParticipants(savedMap.participants);
   },[]);
 
   const SHEETS_URL = "https://script.google.com/macros/s/AKfycbzvb5LkqMDXaMVJNFNQSf7dsUJK_0vbTfQ4gRRISGsRWg4mINvawLROxn0SaPqJ5o9E/exec";
@@ -2861,7 +2906,7 @@ function BeyJudgeApp() {
     <div style={{background:"var(--bg)",minHeight:"100vh",fontFamily:"'Outfit',sans-serif"}}>
       {libOpen&&<LibraryManager parts={parts} setParts={setParts} onClose={()=>setLibOpen(false)}/>}
       {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark}/>}
-      {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);}}/>}
+      {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}}/>}
       {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
     </div>
   );
