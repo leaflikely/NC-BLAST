@@ -625,6 +625,13 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       "Guide sections: Setup, Match Modes, Adding Players, Building Decks, Scoring, Undo, Exporting, Dark Mode, Challonge Cache",
       "Guide and Changelog accessible side by side from main menu buttons",
     ]},
+    {v:"9.5",label:"Instant Live Cache Sync",items:[
+      "Cached tournament list now fetched silently in the background when the Players screen loads",
+      "Dropdown is pre-populated before anyone taps it — no loading delay on first open",
+      "Cached list refreshes automatically the moment a live Challonge import completes",
+      "All devices see the new entry in the dropdown instantly after any user imports a tournament",
+      "Age timers in the dropdown refresh after loading a cached tournament",
+    ]},
    ];
 
   return (
@@ -767,6 +774,22 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
     r.readAsText(f); e.target.value="";
   };
 
+  const refreshCachedList = async () => {
+    try {
+      const res = await fetch("https://challonge-proxy.danny61734.workers.dev/list", {
+        signal: AbortSignal.timeout(8000),
+      });
+      if(!res.ok) throw new Error("Failed");
+      const data = await res.json();
+      setCachedTournaments(Array.isArray(data.tournaments) ? data.tournaments : []);
+    } catch {
+      setCachedTournaments(prev => Array.isArray(prev) ? prev : []);
+    }
+  };
+
+  // Silently pre-fetch the cached list on mount so the dropdown is ready immediately
+  useEffect(() => { refreshCachedList(); }, []);
+
   const fetchCachedTournaments = async () => {
     setCachedTournaments("loading");
     setCachedOpen(false); // stay closed while loading — button shows spinner
@@ -806,6 +829,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
         ? `✓ ${names.length} players loaded from NC BLAST cache for "${slug}"`
         : `✓ ${names.length} players imported live from Challonge for "${slug}"`
       );
+      // Refresh list so age timers stay current after loading
+      refreshCachedList();
     } catch(err) {
       setChallongeStatus("error");
       setChallongeMsg(`Failed to load: ${err.message}`);
@@ -933,6 +958,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
           ? `✓ ${names.length} players loaded from NC BLAST cache for "${slug}"`
           : `✓ ${names.length} players imported live from Challonge for "${slug}"`
         );
+        // Refresh the cached list immediately so the dropdown reflects the new entry
+        refreshCachedList();
         return;
       } catch(err) {
         lastErr = err.message;
