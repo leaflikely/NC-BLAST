@@ -698,7 +698,13 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       "Launch Error stays as a full-width immediate-fire button below the grid — no confirm step",
       "Cache deletion now awaits server response before refreshing the list — actually removes entries",
       "All player name display locations scale font size down for longer names and clip with ellipsis",
-      "Score block, selectRound, and over screen names all protected against mobile overflow",
+    ]},
+    {v:"10.4",label:"LER Undo Fix & Challonge Submit Fix",items:[
+      "Undo after a Launch Error strike now stays on the battle screen — only removes the strike, does not go back to combo selection",
+      "Pressing undo again after removing a strike correctly returns to combo selection",
+      "Challonge group-stage matches use group_player_ids not participant.id — participant map now stores both so cached imports work for submit",
+      "Submit winner ID lookup now resolves group_player_id → participant.id via __gid__ keys in the participant map",
+      "One tournament import now provides all data needed for the full event — no re-import required mid-tournament",
     ]},
    ];
 
@@ -922,6 +928,12 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
         if(name && id) {
           participantMap[name] = id;
           participantMap[tn(name)] = id;
+          // Also map group_player_ids -> participant.id so group-stage submit works
+          if(Array.isArray(p.participant?.group_player_ids)) {
+            p.participant.group_player_ids.forEach(gid => {
+              if(gid) participantMap[`__gid__${gid}`] = id;
+            });
+          }
         }
       });
       if(onChallongeImport) onChallongeImport(slug, participantMap);
@@ -1060,8 +1072,14 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
           const name = (p.participant?.display_name||p.participant?.name||"").trim();
           const id = p.participant?.id;
           if(name && id) {
-            participantMap[name] = id;          // full name key
-            participantMap[tn(name)] = id;      // truncated name key — matches what p1/p2 store
+            participantMap[name] = id;
+            participantMap[tn(name)] = id;
+            // Also map group_player_ids -> participant.id so group-stage submit works
+            if(Array.isArray(p.participant?.group_player_ids)) {
+              p.participant.group_player_ids.forEach(gid => {
+                if(gid) participantMap[`__gid__${gid}`] = id;
+              });
+            }
           }
         });
         if(onChallongeImport) onChallongeImport(slug, participantMap);
@@ -1575,7 +1593,10 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     setUsed1(l._u1); setUsed2(l._u2); setShuf(l._sh);
     if(l._lerStrikes) setLerStrikes(l._lerStrikes); else setLerStrikes([0,0]);
     setPendingFinish(null);
-    setPhase("selectRound");
+    // If we just undid a strike-only LER entry, stay on the battle screen
+    // so the judge can re-do the battle without going back to combo selection
+    if(l.type==="LER_STRIKE") setPhase("battle");
+    else setPhase("selectRound");
   };
 
   const redo = () => {
@@ -2771,19 +2792,22 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         {/* ── Challonge score submission ── */}
         {challongeSlug&&challongeMatchId&&(()=>{
           const winnerIsP1 = sets[0] >= need;
-          // Look up winner's Challonge participant ID:
-          // Try exact name match, then stripped-ellipsis match, then match stored player IDs
           const pmap = challongeParticipants||{};
+          // Strategy 1: exact name match
           let winnerId = pmap[winner];
+          // Strategy 2: truncated name prefix match
           if(!winnerId) {
-            // winner may be truncated — try finding by prefix match
             const winnerFull = Object.keys(pmap).find(k=>tn(k)===winner||k.startsWith(winner.replace("…","")));
             if(winnerFull) winnerId = pmap[winnerFull];
           }
-          if(!winnerId && challongeMatchId) {
-            // Last resort: use the player ID stored directly from the active match object
+          // Strategy 3: use the group_player_id from the active match object,
+          // then look it up as __gid__ in pmap to get the real participant id
+          if(!winnerId) {
             const storedMatch = Array.isArray(activeMatches) && activeMatches.find(m=>m.id===challongeMatchId);
-            if(storedMatch) winnerId = winnerIsP1 ? storedMatch.player1_id : storedMatch.player2_id;
+            if(storedMatch) {
+              const gid = winnerIsP1 ? storedMatch.player1_id : storedMatch.player2_id;
+              winnerId = pmap[`__gid__${gid}`] || gid; // fall back to gid itself if no mapping
+            }
           }
           const p1FinalScore = sets[0];
           const p2FinalScore = sets[1];
