@@ -699,12 +699,13 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       "Cache deletion now awaits server response before refreshing the list — actually removes entries",
       "All player name display locations scale font size down for longer names and clip with ellipsis",
     ]},
-    {v:"10.4",label:"LER Undo Fix & Challonge Submit Fix",items:[
-      "Undo after a Launch Error strike now stays on the battle screen — only removes the strike, does not go back to combo selection",
-      "Pressing undo again after removing a strike correctly returns to combo selection",
-      "Challonge group-stage matches use group_player_ids not participant.id — participant map now stores both so cached imports work for submit",
-      "Submit winner ID lookup now resolves group_player_id → participant.id via __gid__ keys in the participant map",
-      "One tournament import now provides all data needed for the full event — no re-import required mid-tournament",
+    {v:"10.4",label:"Submit & Delete Fixes",items:[
+      "Submit no longer exits early when winner ID is missing — always attempts the network call so loading state is visible",
+      "Submit error now shows the actual error message returned from the Worker or network instead of a generic label",
+      "Submit button label shows ⚠️ no ID when winner Challonge ID could not be resolved, making the problem visible",
+      "Cache delete now removes the entry from the UI immediately (optimistic update) so feedback is instant",
+      "Cache delete still calls the Worker to remove from KV and refreshes the list after 800ms to confirm server state",
+      "Undo LER strike logic reverted to simple behavior — will be revisited separately",
     ]},
    ];
 
@@ -884,24 +885,25 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
 
   const deleteCachedTournament = async (slug) => {
     setDeleteConfirmSlug(null);
-    try {
-      const res = await fetch(`https://challonge-proxy.danny61734.workers.dev/delete`, {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ slug }),
-        signal: AbortSignal.timeout(8000),
-      });
-      // Even if the server returns an error, still clean up locally
-      if(!res.ok) console.warn("Delete returned", res.status);
-    } catch(e) { console.warn("Delete fetch failed:", e.message); }
-    // Clear from device localStorage cache
+    // Immediately remove from the visible list so the UI responds instantly
+    setCachedTournaments(prev => Array.isArray(prev) ? prev.filter(t=>t.slug!==slug) : prev);
+    // Clear from device localStorage
     try {
       const store = JSON.parse(localStorage.getItem("bx-challonge-cache-v1")||"{}");
       delete store[slug];
       localStorage.setItem("bx-challonge-cache-v1", JSON.stringify(store));
     } catch {}
-    // Wait briefly for KV to propagate, then refresh
-    await new Promise(r => setTimeout(r, 500));
+    // Tell the Worker to delete from KV (fire and forget — UI already updated)
+    try {
+      await fetch(`https://challonge-proxy.danny61734.workers.dev/delete`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ slug }),
+        signal: AbortSignal.timeout(8000),
+      });
+    } catch(e) { console.warn("Delete fetch failed:", e.message); }
+    // Refresh after a short delay to confirm server state
+    await new Promise(r => setTimeout(r, 800));
     await refreshCachedList();
   };
 
@@ -1585,7 +1587,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   };
 
   const undo = () => {
-    // Never undo past the start of the current match
     if(log.length<=matchStartIdx) return;
     const l=log[log.length-1];
     const undoLog = log.slice(0,-1); setFuture([l,...future]); setLog(undoLog); sSave(KEYS.matchLog, undoLog);
@@ -1593,10 +1594,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     setUsed1(l._u1); setUsed2(l._u2); setShuf(l._sh);
     if(l._lerStrikes) setLerStrikes(l._lerStrikes); else setLerStrikes([0,0]);
     setPendingFinish(null);
-    // If we just undid a strike-only LER entry, stay on the battle screen
-    // so the judge can re-do the battle without going back to combo selection
-    if(l.type==="LER_STRIKE") setPhase("battle");
-    else setPhase("selectRound");
+    setPhase("selectRound");
   };
 
   const redo = () => {
@@ -1648,12 +1646,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
   const submitChallongeScore = async (matchId, p1Score, p2Score, winnerChallongeId) => {
     if(!challongeSlug || !matchId) return;
-    if(!winnerChallongeId) {
-      setChallongeSubmitStatus("error");
-      return;
-    }
     setChallongeSubmitStatus("loading");
-    // Build scores_csv from set scores if available, otherwise use set count
     const scoresCsv = setScores.length > 0
       ? setScores.map(s=>`${s.p1}-${s.p2}`).join(",")
       : `${p1Score}-${p2Score}`;
@@ -1674,7 +1667,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       setChallongeSubmitStatus("ok");
       fetchActiveMatches();
     } catch(err) {
-      setChallongeSubmitStatus("error");
+      setChallongeSubmitStatus(err.message || "error");
     }
   };
 
@@ -2822,9 +2815,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   ✓ Result submitted to Challonge
                 </div>
               )}
-              {challongeSubmitStatus==="error"&&(
-                <div style={{padding:"8px 12px",borderRadius:8,background:"#FEF2F2",border:"1px solid #FCA5A5",fontSize:12,fontWeight:600,color:"#DC2626",textAlign:"center",marginBottom:8}}>
-                  ✕ Submission failed{!winnerId?" — could not find Challonge ID for winner. Re-import the tournament from the Players screen and try again.":""} — try again
+              {challongeSubmitStatus&&challongeSubmitStatus!=="ok"&&challongeSubmitStatus!=="loading"&&(
+                <div style={{padding:"8px 12px",borderRadius:8,background:"#FEF2F2",border:"1px solid #FCA5A5",fontSize:11,fontWeight:600,color:"#DC2626",textAlign:"center",marginBottom:8}}>
+                  ✕ {challongeSubmitStatus}
                 </div>
               )}
               {challongeSubmitStatus!=="ok"&&(
@@ -2832,7 +2825,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   disabled={challongeSubmitStatus==="loading"}
                   onClick={()=>submitChallongeScore(challongeMatchId, p1FinalScore, p2FinalScore, winnerId)}
                   style={{display:"block",width:"100%",padding:"10px 0",borderRadius:9,border:"none",background:challongeSubmitStatus==="loading"?"#CBD5E1":"#EA580C",color:"#fff",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:challongeSubmitStatus==="loading"?"not-allowed":"pointer"}}>
-                  {challongeSubmitStatus==="loading"?"Submitting…":"Submit Result to Challonge"}
+                  {challongeSubmitStatus==="loading"?"Submitting…":`Submit Result to Challonge${winnerId?"":" ⚠️ no ID"}`}
                 </button>
               )}
             </div>
