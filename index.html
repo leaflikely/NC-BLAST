@@ -663,11 +663,11 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
     ]},
     {v:"10.0",label:"Battle Screen Compactness & Readability",items:[
       "Back button moved onto same row as Set/Battle/Match pills — all context in one line",
-      "Score block padding reduced, combo bubbles margin reduced to reclaim vertical space",
-      "Combo bubbles: player names removed (shown in score block already), blade on top line, ratchet+bit on second line with auto-scaling font",
+      "All battle screen sizing routed through viewport scale system — consistent across all device sizes",
+      "Combo bubbles: player names removed, blade on top line, ratchet+bit on second line with auto-scaling font",
       "All finish button text changed to black (var(--text-primary)) — readable in both light and dark mode",
-      "Penalty button badge uses surface CSS variables — adapts correctly in dark mode",
-      "Finish button padding reduced to fit all buttons on screen without scrolling",
+      "Penalty button badge uses CSS surface variables — adapts correctly in dark mode",
+      "Finish button padding scaled proportionally to fit all buttons without scrolling on any device",
     ]},
    ];
 
@@ -2489,56 +2489,59 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   // Battle screen
   const comboOf = (deck, idx) => deck[idx] || {};
   const battlesInThisSet = log.slice(matchStartIdx).filter(e=>e.set===curSet).length + 1;
+  const sc2 = S.page.maxWidth / 480; // derive scale factor from S for use in this component
+  const bp = (n) => Math.round(n * sc2);
+  const bf = (n) => Math.round(n * sc2);
   return (
-    <div style={{...S.page,paddingBottom:80}}>
+    <div style={{...S.page,paddingBottom:bp(80)}}>
 
       {/* ── Back + context strip on same row ── */}
-      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+      <div style={{display:"flex",alignItems:"center",gap:bp(6),marginBottom:bp(8),flexWrap:"wrap"}}>
         <button style={{...S.back,marginBottom:0}} onClick={goBack}>{IC.back} Back</button>
-        {config.bo>1&&<span style={{...S.pill,fontSize:12,fontWeight:700,padding:"4px 14px"}}>Set {curSet} of {config.bo}</span>}
-        <span style={{...S.pill,fontSize:12,fontWeight:700,padding:"4px 14px"}}>Battle {battlesInThisSet}</span>
-        {config.bo>1&&<span style={{...S.pill,fontSize:12,fontWeight:700,padding:"4px 14px"}}>Match: {sets[0]}–{sets[1]}</span>}
+        {config.bo>1&&<span style={{...S.pill}}>Set {curSet} of {config.bo}</span>}
+        <span style={{...S.pill}}>Battle {battlesInThisSet}</span>
+        {config.bo>1&&<span style={{...S.pill}}>Match: {sets[0]}–{sets[1]}</span>}
       </div>
 
       {/* ── Main score block ── */}
-      <div style={{background:"var(--surface)",borderRadius:20,padding:"12px 16px 10px",marginBottom:8,boxShadow:"0 2px 12px rgba(0,0,0,0.08)",border:"1px solid var(--border)"}}>
+      <div style={{background:"var(--surface)",borderRadius:bp(20),padding:`${bp(12)}px ${bp(16)}px ${bp(10)}px`,marginBottom:bp(8),boxShadow:"0 2px 12px rgba(0,0,0,0.08)",border:"1px solid var(--border)"}}>
         {/* Player names + strike indicators */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:3}}>
-            <span style={{fontSize:28,fontWeight:900,color:"#2563EB",fontFamily:"'Outfit',sans-serif"}}>{p1}{currentSides.p1Side?<span style={{fontSize:13,fontWeight:600,color:"#93C5FD",marginLeft:6}}>{currentSides.p1Side}</span>:""}</span>
-            {lerStrikes[0]>0&&<span style={{fontSize:10,fontWeight:800,color:"#F59E0B",background:"#FEF3C7",border:"1px solid #F59E0B",borderRadius:6,padding:"2px 7px",letterSpacing:0.5}}>⚠️ LER STRIKE — next error = point</span>}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:bp(10)}}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:bp(3)}}>
+            <span style={{fontSize:bf(28),fontWeight:900,color:"#2563EB",fontFamily:"'Outfit',sans-serif"}}>{p1}{currentSides.p1Side?<span style={{fontSize:bf(13),fontWeight:600,color:"#93C5FD",marginLeft:bp(6)}}>{currentSides.p1Side}</span>:""}</span>
+            {lerStrikes[0]>0&&<span style={{fontSize:bf(10),fontWeight:800,color:"#F59E0B",background:"#FEF3C7",border:"1px solid #F59E0B",borderRadius:bp(6),padding:`${bp(2)}px ${bp(7)}px`,letterSpacing:0.5}}>⚠️ LER STRIKE — next error = point</span>}
           </div>
-          <span style={{fontSize:11,fontWeight:600,color:"#CBD5E1"}}>SET SCORE</span>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
-            <span style={{fontSize:28,fontWeight:900,color:"#DC2626",fontFamily:"'Outfit',sans-serif"}}>{p2}{currentSides.p2Side?<span style={{fontSize:13,fontWeight:600,color:"#FCA5A5",marginLeft:6}}>{currentSides.p2Side}</span>:""}</span>
-            {lerStrikes[1]>0&&<span style={{fontSize:10,fontWeight:800,color:"#F59E0B",background:"#FEF3C7",border:"1px solid #F59E0B",borderRadius:6,padding:"2px 7px",letterSpacing:0.5}}>⚠️ LER STRIKE — next error = point</span>}
+          <span style={{fontSize:bf(11),fontWeight:600,color:"var(--text-disabled)"}}>SET SCORE</span>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:bp(3)}}>
+            <span style={{fontSize:bf(28),fontWeight:900,color:"#DC2626",fontFamily:"'Outfit',sans-serif"}}>{p2}{currentSides.p2Side?<span style={{fontSize:bf(13),fontWeight:600,color:"#FCA5A5",marginLeft:bp(6)}}>{currentSides.p2Side}</span>:""}</span>
+            {lerStrikes[1]>0&&<span style={{fontSize:bf(10),fontWeight:800,color:"#F59E0B",background:"#FEF3C7",border:"1px solid #F59E0B",borderRadius:bp(6),padding:`${bp(2)}px ${bp(7)}px`,letterSpacing:0.5}}>⚠️ LER STRIKE — next error = point</span>}
           </div>
         </div>
         {/* Big scores */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{flex:1,textAlign:"center"}}>
-            <span style={{fontSize:80,fontWeight:900,color:"#2563EB",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[0]}</span>
+            <span style={{fontSize:bf(80),fontWeight:900,color:"#2563EB",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[0]}</span>
           </div>
-          <div style={{textAlign:"center",minWidth:48,padding:"0 4px"}}>
-            <span style={{fontSize:32,fontWeight:800,color:"#E2E8F0"}}>–</span>
-            {config.pts>0&&<p style={{fontSize:9,fontWeight:700,color:"#CBD5E1",marginTop:4,letterSpacing:1}}>FIRST TO {config.pts}</p>}
+          <div style={{textAlign:"center",minWidth:bp(48),padding:`0 ${bp(4)}px`}}>
+            <span style={{fontSize:bf(32),fontWeight:800,color:"var(--border2)"}}>–</span>
+            {config.pts>0&&<p style={{fontSize:bf(9),fontWeight:700,color:"var(--text-disabled)",marginTop:bp(4),letterSpacing:1}}>FIRST TO {config.pts}</p>}
           </div>
           <div style={{flex:1,textAlign:"center"}}>
-            <span style={{fontSize:80,fontWeight:900,color:"#DC2626",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[1]}</span>
+            <span style={{fontSize:bf(80),fontWeight:900,color:"#DC2626",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[1]}</span>
           </div>
         </div>
       </div>
 
       {/* ── Combo display — two-line blade / ratchet+bit, no player name ── */}
-      <div style={{display:"flex",gap:8,marginBottom:8}}>
+      <div style={{display:"flex",gap:bp(8),marginBottom:bp(8)}}>
         {[{name:p1,deck:d1,ri:r1,cl:"#2563EB"},{name:p2,deck:d2,ri:r2,cl:"#DC2626"}].map((side,si)=>{
           const c=comboOf(side.deck,side.ri);
           const bladeText = c.blade || "—";
           const rbText = c.ratchet&&c.bit ? `${c.ratchet} ${c.bit}` : "—";
-          const bladeFz = bladeText.length > 14 ? 14 : bladeText.length > 10 ? 17 : 20;
-          const rbFz = rbText.length > 10 ? 13 : 16;
+          const bladeFz = bf(bladeText.length > 14 ? 14 : bladeText.length > 10 ? 17 : 20);
+          const rbFz = bf(rbText.length > 10 ? 13 : 16);
           return (
-            <div key={si} style={{flex:1,borderRadius:16,border:`3px solid ${side.cl}40`,background:`${side.cl}0D`,padding:"10px 8px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:76,gap:2}}>
+            <div key={si} style={{flex:1,borderRadius:bp(16),border:`3px solid ${side.cl}40`,background:`${side.cl}0D`,padding:`${bp(10)}px ${bp(8)}px`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:bp(76),gap:bp(2)}}>
               <span style={{fontSize:bladeFz,fontWeight:900,color:side.cl,textAlign:"center",lineHeight:1.15,fontFamily:"'Outfit',sans-serif"}}>{bladeText}</span>
               <span style={{fontSize:rbFz,fontWeight:700,color:side.cl,textAlign:"center",lineHeight:1.2,opacity:0.85,fontFamily:"'Outfit',sans-serif"}}>{rbText}</span>
             </div>
@@ -2546,24 +2549,24 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         })}
       </div>
 
-      {/* ── Scoring buttons — compact, full names, black text ── */}
-      <div style={{display:"flex",gap:8,marginTop:4}}>
+      {/* ── Scoring buttons — scaled, full names, black text ── */}
+      <div style={{display:"flex",gap:bp(8),marginTop:bp(4)}}>
         {[{i:0,cl:"#2563EB",name:p1},{i:1,cl:"#DC2626",name:p2}].map(side=>(
           <div key={side.i} style={{flex:1}}>
-            <p style={{textAlign:"center",fontSize:10,fontWeight:800,color:side.cl,marginBottom:4,letterSpacing:0.5,textTransform:"uppercase"}}>{side.name}</p>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <p style={{textAlign:"center",fontSize:bf(10),fontWeight:800,color:side.cl,marginBottom:bp(4),letterSpacing:0.5,textTransform:"uppercase"}}>{side.name}</p>
+            <div style={{display:"flex",flexDirection:"column",gap:bp(4)}}>
               {FINISH.map(f=>(
                 <button key={f.id} onClick={()=>doScore(side.i,f)}
-                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"8px 10px",borderRadius:10,border:`2px solid ${side.cl}60`,background:`${side.cl}12`,color:"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-                  <span style={{fontSize:13,fontWeight:800}}>{f.name}</span>
-                  <span style={{background:side.cl,color:"#fff",padding:"3px 8px",borderRadius:6,fontSize:12,fontWeight:900}}>+{f.p}</span>
+                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:`${bp(8)}px ${bp(10)}px`,borderRadius:bp(10),border:`2px solid ${side.cl}60`,background:`${side.cl}12`,color:"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                  <span style={{fontSize:bf(13),fontWeight:800}}>{f.name}</span>
+                  <span style={{background:side.cl,color:"#fff",padding:`${bp(3)}px ${bp(8)}px`,borderRadius:bp(6),fontSize:bf(12),fontWeight:900}}>+{f.p}</span>
                 </button>
               ))}
               {PENALTY.map(f=>(
                 <button key={f.id} onClick={()=>doScore(side.i,f)}
-                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"7px 10px",borderRadius:10,border:"1px dashed var(--border2)",background:"var(--surface2)",color:"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-                  <span style={{fontSize:12,fontWeight:700}}>{f.name}{f.id==="OF2"?" ×2":f.id==="OF3"?" ×3":""}</span>
-                  <span style={{background:"var(--surface3)",color:"var(--text-secondary)",padding:"3px 8px",borderRadius:6,fontSize:11,fontWeight:800}}>+{f.p}</span>
+                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:`${bp(7)}px ${bp(10)}px`,borderRadius:bp(10),border:"1px dashed var(--border2)",background:"var(--surface2)",color:"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                  <span style={{fontSize:bf(12),fontWeight:700}}>{f.name}{f.id==="OF2"?" ×2":f.id==="OF3"?" ×3":""}</span>
+                  <span style={{background:"var(--surface3)",color:"var(--text-secondary)",padding:`${bp(3)}px ${bp(8)}px`,borderRadius:bp(6),fontSize:bf(11),fontWeight:800}}>+{f.p}</span>
                 </button>
               ))}
             </div>
