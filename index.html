@@ -632,6 +632,11 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       "All devices see the new entry in the dropdown instantly after any user imports a tournament",
       "Age timers in the dropdown refresh after loading a cached tournament",
     ]},
+    {v:"9.6",label:"Cached Dropdown Reliability Fix",items:[
+      "Tapping the Cached Tournaments button always triggers a server refresh — open or close",
+      "Added type=button to all inner dropdown buttons to prevent unintended page reloads",
+      "Interacting with the dropdown in any way now guarantees the list is current",
+    ]},
    ];
 
   return (
@@ -1004,7 +1009,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
         {/* Cached tournaments dropdown */}
         <div style={{marginBottom:10}}>
           <button
-            onClick={cachedOpen ? ()=>setCachedOpen(false) : cachedTournaments==="loading" ? null : fetchCachedTournaments}
+            type="button"
+            onClick={()=>{ if(cachedOpen){ setCachedOpen(false); } else { fetchCachedTournaments(); } refreshCachedList(); }}
             disabled={cachedTournaments==="loading"}
             style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"9px 12px",borderRadius:10,border:"2px solid #7C3AED30",background:"#F5F3FF",color:"#6D28D9",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:cachedTournaments==="loading"?"not-allowed":"pointer",opacity:cachedTournaments==="loading"?0.7:1}}>
             <span>{cachedTournaments==="loading" ? "⏳ Checking server cache..." : "⚡ Cached Tournaments"}</span>
@@ -1019,7 +1025,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
                 const minsAgo = Math.floor(t.ageSeconds / 60);
                 const minsLeft = Math.max(0, 30 - minsAgo);
                 return (
-                  <button key={ti} onClick={()=>loadFromCache(t.slug)}
+                  <button type="button" key={ti} onClick={()=>loadFromCache(t.slug)}
                     style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"10px 14px",border:"none",borderTop:ti>0?"1px solid var(--border)":"none",background:"none",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
                     <div>
                       <div style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>{t.slug}</div>
