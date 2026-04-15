@@ -1462,6 +1462,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [pickTab,setPickTab] = useState("roster"); // "roster" | "active"
   const [activeMatches,setActiveMatches] = useState(null); // null | "loading" | []
   const [challongeMatchId,setChallongeMatchId] = useState(null);
+  const [challongeP1ParticipantId,setChallongeP1ParticipantId] = useState(null);
+  const [challongeP2ParticipantId,setChallongeP2ParticipantId] = useState(null);
   const [challongeSubmitStatus,setChallongeSubmitStatus] = useState(null);
   const [pendingFinish,setPendingFinish] = useState(null); // {pi, fin} — selected but not yet confirmed
 
@@ -1472,81 +1474,10 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     // penalty: listed under loser pi, points go to opponent
     const scoringPi = fin.penalty ? 1-pi : pi;
 
-    // ── Launch Error strike logic ────────────────────────────────────────────
-    // First LER: add a strike to the offending player, no points, redo battle.
-    // Second LER (strike already active for that player): award +1 to opponent,
-    // clear that player's strike, then redo.
-    // Any normal finish clears all strikes.
-    if(fin.id==="LER"){
-      const offender = pi; // pi = the player who committed the error
-      const newStrikes = [...lerStrikes];
+    // Clear any pending finish selection
+    setPendingFinish(null);
 
-      if(newStrikes[offender] === 0){
-        // First offence — just add strike, no point, redo immediately
-        newStrikes[offender] = 1;
-        setLerStrikes(newStrikes);
-        // Log the strike event so undo can restore it
-        const strikeEntry = {
-          set:curSet,shuffle:shuf,round:log.slice(matchStartIdx).length+1,
-          scorer:"—",scorerIdx:-1,judge:judge,penalty:true,
-          type:"LER_STRIKE",typeName:"Launch Error (Strike)",points:0,
-          p1Score:pts[0],p2Score:pts[1],p1Name:p1,p2Name:p2,
-          p1Combo:{...d1[r1]},p2Combo:{...d2[r2]},
-          p1ComboIdx:r1,p2ComboIdx:r2,
-          p1Side:currentSides.p1Side||"",p2Side:currentSides.p2Side||"",
-          winnerCombo:"—",time:new Date().toISOString(),
-          _pp:[...pts],_ps:[...sets],_cs:curSet,
-          _u1:[...used1],_u2:[...used2],_sh:shuf,
-          _lerStrikes:[...lerStrikes],
-        };
-        const newLog=[...log,strikeEntry];
-        setLog(newLog); sSave(KEYS.matchLog,newLog); setFuture([]);
-        // Stay on battle screen for redo — no phase change, no combo advance
-        return;
-      } else {
-        // Second offence — award point to opponent, clear strike, redo
-        newStrikes[offender] = 0;
-        setLerStrikes(newStrikes);
-        const opponent = 1-offender;
-        const raw=[pts[0],pts[1]]; raw[opponent]+=1;
-        const cap = config.pts>0 ? config.pts : Infinity;
-        const np = [Math.min(raw[0],cap),Math.min(raw[1],cap)];
-
-        const entry = {
-          set:curSet,shuffle:shuf,round:log.slice(matchStartIdx).length+1,
-          scorer:opponent===0?p1:p2,scorerIdx:opponent,judge:judge,penalty:true,
-          type:"LER",typeName:"Launch Error (2nd — Point)",points:1,
-          p1Score:np[0],p2Score:np[1],p1Name:p1,p2Name:p2,
-          p1Combo:{...d1[r1]},p2Combo:{...d2[r2]},
-          p1ComboIdx:r1,p2ComboIdx:r2,
-          p1Side:currentSides.p1Side||"",p2Side:currentSides.p2Side||"",
-          winnerCombo:comboStr(opponent===0?d1[r1]:d2[r2]),
-          time:new Date().toISOString(),
-          _pp:[...pts],_ps:[...sets],_cs:curSet,
-          _u1:[...used1],_u2:[...used2],_sh:shuf,
-          _lerStrikes:[...lerStrikes],
-        };
-        const newLog=[...log,entry];
-        setLog(newLog); sSave(KEYS.matchLog,newLog); setFuture([]); setPts(np);
-
-        const setWon = config.pts>0 && np[opponent]>=config.pts;
-        if(setWon){
-          const ns=[sets[0],sets[1]]; ns[opponent]+=1; setSets(ns);
-          setSetScores(ss=>[...ss,{p1:np[0],p2:np[1]}]);
-          if(ns[opponent]>=need){ saveCombosToStorage(); setPhase("over"); }
-          else {
-            if(config.tm){const loserPi=1-opponent;setSideAssign({pickPriority:loserPi});setSidePicker({priority:loserPi});}
-            setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(s=>s+1); setPhase("selectRound");
-          }
-        }
-        // else stay on battle screen for redo
-        return;
-      }
-    }
-
-    // ── Normal finish (or Own Finish) — clear all strikes ───────────────────
-    setLerStrikes([0,0]);
-
+    // ── Normal scoring ───────────────────────────────────────────────────────
     const raw=[pts[0],pts[1]]; raw[scoringPi]+=fin.p;
     const cap = config.pts > 0 ? config.pts : Infinity;
     const np = [Math.min(raw[0],cap), Math.min(raw[1],cap)];
@@ -1563,12 +1494,26 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       time:new Date().toISOString(),
       _pp:[...pts],_ps:[...sets],_cs:curSet,
       _u1:[...used1],_u2:[...used2],_sh:shuf,
-      _lerStrikes:[...lerStrikes],
     };
     const newLog=[...log,entry];
     setLog(newLog); sSave(KEYS.matchLog, newLog); setFuture([]); setPts(np);
 
     const setWon = config.pts>0 && np[scoringPi]>=config.pts;
+
+    // LER = redo (no combo advance, stay on battle screen or go to selectRound if set won)
+    if(fin.id==="LER"){
+      if(setWon){
+        const ns=[sets[0],sets[1]]; ns[scoringPi]+=1; setSets(ns);
+        setSetScores(ss=>[...ss,{p1:np[0],p2:np[1]}]);
+        if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
+        else {
+          if(config.tm){const loserPi=1-scoringPi;setSideAssign({pickPriority:loserPi});setSidePicker({priority:loserPi});}
+          setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(s=>s+1); setPhase("selectRound");
+        }
+      }
+      // else stay on battle screen — same combos, immediate rematch
+      return;
+    }
 
     const nu1=[...used1,r1]; const nu2=[...used2,r2];
     setUsed1(nu1); setUsed2(nu2); setR1(null); setR2(null);
@@ -1592,7 +1537,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const undoLog = log.slice(0,-1); setFuture([l,...future]); setLog(undoLog); sSave(KEYS.matchLog, undoLog);
     setPts(l._pp); setSets(l._ps); setCurSet(l._cs);
     setUsed1(l._u1); setUsed2(l._u2); setShuf(l._sh);
-    if(l._lerStrikes) setLerStrikes(l._lerStrikes); else setLerStrikes([0,0]);
     setPendingFinish(null);
     setPhase("selectRound");
   };
@@ -1671,7 +1615,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     }
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length); };
+  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length); };
 
   // Navigation helpers
   // Unified back navigation — context-aware, no stale closure issues
@@ -2223,7 +2167,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
     // Select a pairing from an active Challonge match
     const selectActivePairing = (match) => {
-      // Use server-resolved names first, fall back to local participant map, then ID
       const idMap = challongeParticipants || {};
       const reverseMap = {};
       Object.entries(idMap).forEach(([name,id])=>{ reverseMap[String(id)]=name; });
@@ -2232,6 +2175,10 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       setP1(tn(name1));
       setP2(tn(name2));
       setChallongeMatchId(match.id);
+      // Store the real participant IDs now — needed for submit on the over screen
+      // player1_participant_id is resolved server-side from group_player_ids
+      setChallongeP1ParticipantId(match.player1_participant_id || match.player1_id || null);
+      setChallongeP2ParticipantId(match.player2_participant_id || match.player2_id || null);
     };
 
     return (
@@ -2785,21 +2732,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         {/* ── Challonge score submission ── */}
         {challongeSlug&&challongeMatchId&&(()=>{
           const winnerIsP1 = sets[0] >= need;
-          const pmap = challongeParticipants||{};
-          const storedMatch = Array.isArray(activeMatches) && activeMatches.find(m=>m.id===challongeMatchId);
-
-          // Primary: use the real participant ID stored on the match object by the Worker
-          // These are resolved server-side from group_player_ids so they are always correct
-          let winnerId = storedMatch
-            ? (winnerIsP1 ? storedMatch.player1_participant_id : storedMatch.player2_participant_id)
-            : null;
-
-          // Fallback: name-based lookup in participant map (for non-group-stage or re-imports)
-          if(!winnerId) winnerId = pmap[winner];
-          if(!winnerId) {
-            const winnerFull = Object.keys(pmap).find(k=>tn(k)===winner||k.startsWith(winner.replace("…","")));
-            if(winnerFull) winnerId = pmap[winnerFull];
-          }
+          // Use participant IDs stored at match-selection time — always correct
+          const winnerId = winnerIsP1 ? challongeP1ParticipantId : challongeP2ParticipantId;
           const p1FinalScore = sets[0];
           const p2FinalScore = sets[1];
           return (
@@ -2867,12 +2801,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:bp(10)}}>
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:bp(3)}}>
             <span style={{fontSize:bf(p1&&p1.length>10?20:28),fontWeight:900,color:"#2563EB",fontFamily:"'Outfit',sans-serif",maxWidth:"40vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"inline-block"}}>{p1}{currentSides.p1Side?<span style={{fontSize:bf(11),fontWeight:600,color:"#93C5FD",marginLeft:bp(4)}}>{currentSides.p1Side}</span>:""}</span>
-            {lerStrikes[0]>0&&<span style={{fontSize:bf(10),fontWeight:800,color:"#F59E0B",background:"#FEF3C7",border:"1px solid #F59E0B",borderRadius:bp(6),padding:`${bp(2)}px ${bp(7)}px`,letterSpacing:0.5}}>⚠️ LER STRIKE — next error = point</span>}
+            
           </div>
           <span style={{fontSize:bf(11),fontWeight:600,color:"var(--text-disabled)"}}>SET SCORE</span>
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:bp(3)}}>
             <span style={{fontSize:bf(p2&&p2.length>10?20:28),fontWeight:900,color:"#DC2626",fontFamily:"'Outfit',sans-serif",maxWidth:"40vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"inline-block"}}>{p2}{currentSides.p2Side?<span style={{fontSize:bf(11),fontWeight:600,color:"#FCA5A5",marginLeft:bp(4)}}>{currentSides.p2Side}</span>:""}</span>
-            {lerStrikes[1]>0&&<span style={{fontSize:bf(10),fontWeight:800,color:"#F59E0B",background:"#FEF3C7",border:"1px solid #F59E0B",borderRadius:bp(6),padding:`${bp(2)}px ${bp(7)}px`,letterSpacing:0.5}}>⚠️ LER STRIKE — next error = point</span>}
+            
           </div>
         </div>
         {/* Big scores */}
