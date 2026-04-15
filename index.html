@@ -769,7 +769,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
 
   const fetchCachedTournaments = async () => {
     setCachedTournaments("loading");
-    setCachedOpen(true);
+    setCachedOpen(false); // stay closed while loading — button shows spinner
     try {
       const res = await fetch("https://challonge-proxy.danny61734.workers.dev/list", {
         signal: AbortSignal.timeout(8000),
@@ -777,8 +777,10 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
       if(!res.ok) throw new Error("Failed to fetch");
       const data = await res.json();
       setCachedTournaments(Array.isArray(data.tournaments) ? data.tournaments : []);
+      setCachedOpen(true); // open only once data is ready — no flash
     } catch {
       setCachedTournaments([]);
+      setCachedOpen(true);
     }
   };
 
@@ -975,16 +977,14 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
         {/* Cached tournaments dropdown */}
         <div style={{marginBottom:10}}>
           <button
-            onClick={cachedOpen ? ()=>setCachedOpen(false) : fetchCachedTournaments}
-            style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"9px 12px",borderRadius:10,border:"2px solid #7C3AED30",background:"#F5F3FF",color:"#6D28D9",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-            <span>⚡ Cached Tournaments</span>
-            <span style={{fontSize:10,opacity:0.7}}>{cachedOpen ? "▲ Hide" : "▼ Show"}</span>
+            onClick={cachedOpen ? ()=>setCachedOpen(false) : cachedTournaments==="loading" ? null : fetchCachedTournaments}
+            disabled={cachedTournaments==="loading"}
+            style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"9px 12px",borderRadius:10,border:"2px solid #7C3AED30",background:"#F5F3FF",color:"#6D28D9",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:cachedTournaments==="loading"?"not-allowed":"pointer",opacity:cachedTournaments==="loading"?0.7:1}}>
+            <span>{cachedTournaments==="loading" ? "⏳ Checking server cache..." : "⚡ Cached Tournaments"}</span>
+            {cachedTournaments!=="loading"&&<span style={{fontSize:10,opacity:0.7}}>{cachedOpen ? "▲ Hide" : "▼ Show"}</span>}
           </button>
           {cachedOpen&&(
             <div style={{marginTop:4,border:"2px solid #7C3AED20",borderRadius:10,background:"var(--surface)",overflow:"hidden"}}>
-              {cachedTournaments==="loading"&&(
-                <p style={{fontSize:12,color:"#6D28D9",fontWeight:600,padding:"12px 14px",margin:0}}>⏳ Checking server cache...</p>
-              )}
               {Array.isArray(cachedTournaments)&&cachedTournaments.length===0&&(
                 <p style={{fontSize:12,color:"var(--text-muted)",fontWeight:500,padding:"12px 14px",margin:0,fontStyle:"italic"}}>No tournaments currently cached. Import one via the URL field below.</p>
               )}
