@@ -2786,21 +2786,19 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         {challongeSlug&&challongeMatchId&&(()=>{
           const winnerIsP1 = sets[0] >= need;
           const pmap = challongeParticipants||{};
-          // Strategy 1: exact name match
-          let winnerId = pmap[winner];
-          // Strategy 2: truncated name prefix match
+          const storedMatch = Array.isArray(activeMatches) && activeMatches.find(m=>m.id===challongeMatchId);
+
+          // Primary: use the real participant ID stored on the match object by the Worker
+          // These are resolved server-side from group_player_ids so they are always correct
+          let winnerId = storedMatch
+            ? (winnerIsP1 ? storedMatch.player1_participant_id : storedMatch.player2_participant_id)
+            : null;
+
+          // Fallback: name-based lookup in participant map (for non-group-stage or re-imports)
+          if(!winnerId) winnerId = pmap[winner];
           if(!winnerId) {
             const winnerFull = Object.keys(pmap).find(k=>tn(k)===winner||k.startsWith(winner.replace("…","")));
             if(winnerFull) winnerId = pmap[winnerFull];
-          }
-          // Strategy 3: use the group_player_id from the active match object,
-          // then look it up as __gid__ in pmap to get the real participant id
-          if(!winnerId) {
-            const storedMatch = Array.isArray(activeMatches) && activeMatches.find(m=>m.id===challongeMatchId);
-            if(storedMatch) {
-              const gid = winnerIsP1 ? storedMatch.player1_id : storedMatch.player2_id;
-              winnerId = pmap[`__gid__${gid}`] || gid; // fall back to gid itself if no mapping
-            }
           }
           const p1FinalScore = sets[0];
           const p2FinalScore = sets[1];
