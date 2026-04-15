@@ -691,6 +691,15 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       "Client falls back through server name → local participant map → raw ID for maximum resilience",
       "Cache deletion: trash icon per cached entry with confirmation modal — removes from server KV and all devices",
     ]},
+    {v:"10.3",label:"Battle Screen Squares, Confirm Step & Name Overflow",items:[
+      "Finish buttons redesigned as 2×3 square grid per player — XTR, OVR, BST, SPF, Own×2, Own×3",
+      "Tapping a finish highlights it without scoring — a Confirm button appears to commit the selection",
+      "Tapping the same finish again deselects it, allowing judges to correct accidental taps",
+      "Launch Error stays as a full-width immediate-fire button below the grid — no confirm step",
+      "Cache deletion now awaits server response before refreshing the list — actually removes entries",
+      "All player name display locations scale font size down for longer names and clip with ellipsis",
+      "Score block, selectRound, and over screen names all protected against mobile overflow",
+    ]},
    ];
 
   return (
@@ -870,20 +879,24 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
   const deleteCachedTournament = async (slug) => {
     setDeleteConfirmSlug(null);
     try {
-      await fetch(`https://challonge-proxy.danny61734.workers.dev/delete`, {
+      const res = await fetch(`https://challonge-proxy.danny61734.workers.dev/delete`, {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ slug }),
         signal: AbortSignal.timeout(8000),
       });
-    } catch {}
-    // Also clear from device localStorage cache
+      // Even if the server returns an error, still clean up locally
+      if(!res.ok) console.warn("Delete returned", res.status);
+    } catch(e) { console.warn("Delete fetch failed:", e.message); }
+    // Clear from device localStorage cache
     try {
       const store = JSON.parse(localStorage.getItem("bx-challonge-cache-v1")||"{}");
       delete store[slug];
       localStorage.setItem("bx-challonge-cache-v1", JSON.stringify(store));
     } catch {}
-    refreshCachedList();
+    // Wait briefly for KV to propagate, then refresh
+    await new Promise(r => setTimeout(r, 500));
+    await refreshCachedList();
   };
 
   const loadFromCache = async (slug) => {
@@ -1428,8 +1441,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [lerStrikes,setLerStrikes] = useState([0,0]); // launch error strike counter per player [p1,p2]
   const [pickTab,setPickTab] = useState("roster"); // "roster" | "active"
   const [activeMatches,setActiveMatches] = useState(null); // null | "loading" | []
-  const [challongeMatchId,setChallongeMatchId] = useState(null); // matched Challonge match ID for this pairing
-  const [challongeSubmitStatus,setChallongeSubmitStatus] = useState(null); // null | "loading" | "ok" | "error"
+  const [challongeMatchId,setChallongeMatchId] = useState(null);
+  const [challongeSubmitStatus,setChallongeSubmitStatus] = useState(null);
+  const [pendingFinish,setPendingFinish] = useState(null); // {pi, fin} — selected but not yet confirmed
 
   const need = Math.ceil(config.bo/2);
   const cReady = d1.every(comboReady)&&d2.every(comboReady);
@@ -1560,6 +1574,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     setPts(l._pp); setSets(l._ps); setCurSet(l._cs);
     setUsed1(l._u1); setUsed2(l._u2); setShuf(l._sh);
     if(l._lerStrikes) setLerStrikes(l._lerStrikes); else setLerStrikes([0,0]);
+    setPendingFinish(null);
     setPhase("selectRound");
   };
 
@@ -1642,7 +1657,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     }
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeSubmitStatus(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length); };
+  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length); };
 
   // Navigation helpers
   // Unified back navigation — context-aware, no stale closure issues
@@ -2537,7 +2552,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           <p style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,textAlign:"center",marginBottom:10}}>SET SCORE</p>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:0}}>
             <div style={{flex:1,textAlign:"center"}}>
-              <p style={{fontSize:26,fontWeight:900,color:"#2563EB",marginBottom:4,fontFamily:"'Outfit',sans-serif"}}>{p1}{currentSides.p1Side?<span style={{fontSize:13,fontWeight:600,color:"#93C5FD",marginLeft:6}}>{currentSides.p1Side} Side</span>:""}</p>
+              <p style={{fontSize:p1&&p1.length>10?18:26,fontWeight:900,color:"#2563EB",marginBottom:4,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p1}{currentSides.p1Side?<span style={{fontSize:11,fontWeight:600,color:"#93C5FD",marginLeft:4}}>{currentSides.p1Side}</span>:""}</p>
               <p style={{fontSize:58,fontWeight:900,color:"#2563EB",lineHeight:1}}>{pts[0]}</p>
             </div>
             <div style={{textAlign:"center",padding:"0 8px",minWidth:40}}>
@@ -2545,7 +2560,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               {config.pts>0&&<p style={{fontSize:9,fontWeight:600,color:"var(--text-muted)",marginTop:4}}>First to {config.pts}</p>}
             </div>
             <div style={{flex:1,textAlign:"center"}}>
-              <p style={{fontSize:26,fontWeight:900,color:"#DC2626",marginBottom:4,fontFamily:"'Outfit',sans-serif"}}>{p2}{currentSides.p2Side?<span style={{fontSize:13,fontWeight:600,color:"#FCA5A5",marginLeft:6}}>{currentSides.p2Side} Side</span>:""}</p>
+              <p style={{fontSize:p2&&p2.length>10?18:26,fontWeight:900,color:"#DC2626",marginBottom:4,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p2}{currentSides.p2Side?<span style={{fontSize:11,fontWeight:600,color:"#FCA5A5",marginLeft:4}}>{currentSides.p2Side}</span>:""}</p>
               <p style={{fontSize:58,fontWeight:900,color:"#DC2626",lineHeight:1}}>{pts[1]}</p>
             </div>
           </div>
@@ -2644,9 +2659,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             <p style={{fontSize:10,fontWeight:700,letterSpacing:2,color:"rgba(255,255,255,0.55)",marginBottom:10,textTransform:"uppercase"}}>{config.tournamentName}</p>
           )}
           <p style={{fontSize:10,fontWeight:700,letterSpacing:3,color:"rgba(255,255,255,0.6)",marginBottom:8,textTransform:"uppercase"}}>Winner</p>
-          <p style={{fontSize:72,fontWeight:900,color:"#fff",lineHeight:1,margin:"0 0 10px",fontFamily:"'Outfit',sans-serif"}}>{winner}</p>
+          <p style={{fontSize:winner&&winner.length>10?48:72,fontWeight:900,color:"#fff",lineHeight:1,margin:"0 0 10px",fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",padding:"0 8px"}}>{winner}</p>
           <p style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.5)",marginBottom:4,letterSpacing:1,textTransform:"uppercase"}}>defeats</p>
-          <p style={{fontSize:42,fontWeight:900,color:"rgba(255,255,255,0.75)",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{loserName}</p>
+          <p style={{fontSize:loserName&&loserName.length>10?28:42,fontWeight:900,color:"rgba(255,255,255,0.75)",lineHeight:1,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",padding:"0 8px"}}>{loserName}</p>
         </div>
 
         {/* ── Match score ── */}
@@ -2836,12 +2851,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         {/* Player names + strike indicators */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:bp(10)}}>
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:bp(3)}}>
-            <span style={{fontSize:bf(28),fontWeight:900,color:"#2563EB",fontFamily:"'Outfit',sans-serif"}}>{p1}{currentSides.p1Side?<span style={{fontSize:bf(13),fontWeight:600,color:"#93C5FD",marginLeft:bp(6)}}>{currentSides.p1Side}</span>:""}</span>
+            <span style={{fontSize:bf(p1&&p1.length>10?20:28),fontWeight:900,color:"#2563EB",fontFamily:"'Outfit',sans-serif",maxWidth:"40vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"inline-block"}}>{p1}{currentSides.p1Side?<span style={{fontSize:bf(11),fontWeight:600,color:"#93C5FD",marginLeft:bp(4)}}>{currentSides.p1Side}</span>:""}</span>
             {lerStrikes[0]>0&&<span style={{fontSize:bf(10),fontWeight:800,color:"#F59E0B",background:"#FEF3C7",border:"1px solid #F59E0B",borderRadius:bp(6),padding:`${bp(2)}px ${bp(7)}px`,letterSpacing:0.5}}>⚠️ LER STRIKE — next error = point</span>}
           </div>
           <span style={{fontSize:bf(11),fontWeight:600,color:"var(--text-disabled)"}}>SET SCORE</span>
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:bp(3)}}>
-            <span style={{fontSize:bf(28),fontWeight:900,color:"#DC2626",fontFamily:"'Outfit',sans-serif"}}>{p2}{currentSides.p2Side?<span style={{fontSize:bf(13),fontWeight:600,color:"#FCA5A5",marginLeft:bp(6)}}>{currentSides.p2Side}</span>:""}</span>
+            <span style={{fontSize:bf(p2&&p2.length>10?20:28),fontWeight:900,color:"#DC2626",fontFamily:"'Outfit',sans-serif",maxWidth:"40vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"inline-block"}}>{p2}{currentSides.p2Side?<span style={{fontSize:bf(11),fontWeight:600,color:"#FCA5A5",marginLeft:bp(4)}}>{currentSides.p2Side}</span>:""}</span>
             {lerStrikes[1]>0&&<span style={{fontSize:bf(10),fontWeight:800,color:"#F59E0B",background:"#FEF3C7",border:"1px solid #F59E0B",borderRadius:bp(6),padding:`${bp(2)}px ${bp(7)}px`,letterSpacing:0.5}}>⚠️ LER STRIKE — next error = point</span>}
           </div>
         </div>
@@ -2877,29 +2892,71 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         })}
       </div>
 
-      {/* ── Scoring buttons — scaled, full names, black text ── */}
+      {/* ── Scoring — two columns, pending selection, confirm button ── */}
       <div style={{display:"flex",gap:bp(8),marginTop:bp(4)}}>
-        {[{i:0,cl:"#2563EB",name:p1},{i:1,cl:"#DC2626",name:p2}].map(side=>(
-          <div key={side.i} style={{flex:1}}>
-            <p style={{textAlign:"center",fontSize:bf(10),fontWeight:800,color:side.cl,marginBottom:bp(4),letterSpacing:0.5,textTransform:"uppercase"}}>{side.name}</p>
-            <div style={{display:"flex",flexDirection:"column",gap:bp(4)}}>
-              {FINISH.map(f=>(
-                <button key={f.id} onClick={()=>doScore(side.i,f)}
-                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:`${bp(8)}px ${bp(10)}px`,borderRadius:bp(10),border:`2px solid ${side.cl}60`,background:`${side.cl}12`,color:"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-                  <span style={{fontSize:bf(13),fontWeight:800}}>{f.name}</span>
-                  <span style={{background:side.cl,color:"#fff",padding:`${bp(3)}px ${bp(8)}px`,borderRadius:bp(6),fontSize:bf(12),fontWeight:900}}>+{f.p}</span>
+        {[{i:0,cl:"#2563EB",name:p1},{i:1,cl:"#DC2626",name:p2}].map(side=>{
+          const pending = pendingFinish?.pi===side.i ? pendingFinish.fin : null;
+          return (
+            <div key={side.i} style={{flex:1}}>
+              <p style={{textAlign:"center",fontSize:bf(10),fontWeight:800,color:side.cl,marginBottom:bp(4),letterSpacing:0.5,textTransform:"uppercase",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{side.name}</p>
+
+              {/* 2×3 grid: XTR, OVR, BST, SPF, OF×2, OF×3 */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:bp(4),marginBottom:bp(4)}}>
+                {[
+                  ...FINISH,
+                  ...PENALTY.filter(f=>f.id!=="LER"),
+                ].map(f=>{
+                  const isSel = pending?.id===f.id;
+                  const isFinish = !f.penalty;
+                  const label = f.id==="OF2"?"Own ×2":f.id==="OF3"?"Own ×3":f.name;
+                  return (
+                    <button key={f.id} type="button"
+                      onClick={()=>setPendingFinish(isSel?null:{pi:side.i,fin:f})}
+                      style={{
+                        aspectRatio:"1",
+                        borderRadius:bp(10),
+                        border:`2px solid ${isSel?side.cl:isFinish?`${side.cl}50`:"var(--border2)"}`,
+                        background:isSel?side.cl:isFinish?`${side.cl}10`:"var(--surface2)",
+                        color:isSel?"#fff":"var(--text-primary)",
+                        fontFamily:"'Outfit',sans-serif",
+                        cursor:"pointer",
+                        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                        gap:bp(2),padding:bp(4),
+                      }}>
+                      <span style={{fontSize:bf(11),fontWeight:800,textAlign:"center",lineHeight:1.2,wordBreak:"break-word"}}>{label}</span>
+                      <span style={{
+                        background:isSel?"rgba(255,255,255,0.25)":side.cl,
+                        color:isSel?side.cl:"#fff",
+                        padding:`${bp(1)}px ${bp(5)}px`,
+                        borderRadius:bp(4),
+                        fontSize:bf(10),fontWeight:900,
+                        ...(isSel?{background:"rgba(255,255,255,0.3)",color:"#fff"}:{}),
+                      }}>+{f.p}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* LER — full width, immediate fire */}
+              {PENALTY.filter(f=>f.id==="LER").map(f=>(
+                <button key={f.id} type="button" onClick={()=>doScore(side.i,f)}
+                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:`${bp(7)}px ${bp(10)}px`,borderRadius:bp(10),border:"1px dashed var(--border2)",background:"var(--surface2)",color:"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:"pointer",boxSizing:"border-box"}}>
+                  <span style={{fontSize:bf(12),fontWeight:700}}>Launch Error</span>
+                  <span style={{background:"var(--surface3)",color:"var(--text-secondary)",padding:`${bp(2)}px ${bp(6)}px`,borderRadius:bp(4),fontSize:bf(11),fontWeight:800}}>LER</span>
                 </button>
               ))}
-              {PENALTY.map(f=>(
-                <button key={f.id} onClick={()=>doScore(side.i,f)}
-                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:`${bp(7)}px ${bp(10)}px`,borderRadius:bp(10),border:"1px dashed var(--border2)",background:"var(--surface2)",color:"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-                  <span style={{fontSize:bf(12),fontWeight:700}}>{f.name}{f.id==="OF2"?" ×2":f.id==="OF3"?" ×3":""}</span>
-                  <span style={{background:"var(--surface3)",color:"var(--text-secondary)",padding:`${bp(3)}px ${bp(8)}px`,borderRadius:bp(6),fontSize:bf(11),fontWeight:800}}>+{f.p}</span>
+
+              {/* Confirm button — appears when a finish is selected for this side */}
+              {pending&&(
+                <button type="button"
+                  onClick={()=>{ doScore(side.i,pending); setPendingFinish(null); }}
+                  style={{display:"block",width:"100%",marginTop:bp(6),padding:`${bp(10)}px 0`,borderRadius:bp(10),border:"none",background:side.cl,color:"#fff",fontSize:bf(13),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer",boxSizing:"border-box"}}>
+                  Confirm {pending.name} →
                 </button>
-              ))}
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <BottomBar log={log} future={future} undo={undo} redo={redo} historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} p1={p1} p2={p2} onOpenLib={onOpenLib} onClearLog={()=>{setLog([]);sSave(KEYS.matchLog,[]);}} dark={dark} toggleDark={toggleDark} matchStartIdx={matchStartIdx}/>
 
