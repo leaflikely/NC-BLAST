@@ -2898,10 +2898,10 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           const pending = pendingFinish?.pi===side.i ? pendingFinish.fin : null;
           return (
             <div key={side.i} style={{flex:1}}>
-              <p style={{textAlign:"center",fontSize:bf(10),fontWeight:800,color:side.cl,marginBottom:bp(4),letterSpacing:0.5,textTransform:"uppercase",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{side.name}</p>
+              <p style={{textAlign:"center",fontSize:bf(10),fontWeight:800,color:side.cl,marginBottom:bp(3),letterSpacing:0.5,textTransform:"uppercase",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{side.name}</p>
 
               {/* 2×3 grid: XTR, OVR, BST, SPF, OF×2, OF×3 */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:bp(4),marginBottom:bp(4)}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:bp(3),marginBottom:bp(3)}}>
                 {[
                   ...FINISH,
                   ...PENALTY.filter(f=>f.id!=="LER"),
@@ -2913,24 +2913,23 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     <button key={f.id} type="button"
                       onClick={()=>setPendingFinish(isSel?null:{pi:side.i,fin:f})}
                       style={{
-                        aspectRatio:"1",
-                        borderRadius:bp(10),
+                        height:bp(52),
+                        borderRadius:bp(9),
                         border:`2px solid ${isSel?side.cl:isFinish?`${side.cl}50`:"var(--border2)"}`,
                         background:isSel?side.cl:isFinish?`${side.cl}10`:"var(--surface2)",
                         color:isSel?"#fff":"var(--text-primary)",
                         fontFamily:"'Outfit',sans-serif",
                         cursor:"pointer",
                         display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                        gap:bp(2),padding:bp(4),
+                        gap:bp(2),padding:`0 ${bp(3)}px`,
                       }}>
-                      <span style={{fontSize:bf(11),fontWeight:800,textAlign:"center",lineHeight:1.2,wordBreak:"break-word"}}>{label}</span>
+                      <span style={{fontSize:bf(10),fontWeight:800,textAlign:"center",lineHeight:1.1,wordBreak:"break-word"}}>{label}</span>
                       <span style={{
-                        background:isSel?"rgba(255,255,255,0.25)":side.cl,
-                        color:isSel?side.cl:"#fff",
-                        padding:`${bp(1)}px ${bp(5)}px`,
+                        background:isSel?"rgba(255,255,255,0.3)":side.cl,
+                        color:"#fff",
+                        padding:`${bp(1)}px ${bp(4)}px`,
                         borderRadius:bp(4),
-                        fontSize:bf(10),fontWeight:900,
-                        ...(isSel?{background:"rgba(255,255,255,0.3)",color:"#fff"}:{}),
+                        fontSize:bf(9),fontWeight:900,
                       }}>+{f.p}</span>
                     </button>
                   );
@@ -2940,9 +2939,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               {/* LER — full width, immediate fire */}
               {PENALTY.filter(f=>f.id==="LER").map(f=>(
                 <button key={f.id} type="button" onClick={()=>doScore(side.i,f)}
-                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:`${bp(7)}px ${bp(10)}px`,borderRadius:bp(10),border:"1px dashed var(--border2)",background:"var(--surface2)",color:"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:"pointer",boxSizing:"border-box"}}>
-                  <span style={{fontSize:bf(12),fontWeight:700}}>Launch Error</span>
-                  <span style={{background:"var(--surface3)",color:"var(--text-secondary)",padding:`${bp(2)}px ${bp(6)}px`,borderRadius:bp(4),fontSize:bf(11),fontWeight:800}}>LER</span>
+                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:`${bp(6)}px ${bp(10)}px`,borderRadius:bp(9),border:"1px dashed var(--border2)",background:"var(--surface2)",color:"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:"pointer",boxSizing:"border-box",marginBottom:bp(3)}}>
+                  <span style={{fontSize:bf(11),fontWeight:700}}>Launch Error</span>
+                  <span style={{background:"var(--surface3)",color:"var(--text-secondary)",padding:`${bp(2)}px ${bp(6)}px`,borderRadius:bp(4),fontSize:bf(10),fontWeight:800}}>LER</span>
                 </button>
               ))}
 
@@ -2950,7 +2949,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               {pending&&(
                 <button type="button"
                   onClick={()=>{ doScore(side.i,pending); setPendingFinish(null); }}
-                  style={{display:"block",width:"100%",marginTop:bp(6),padding:`${bp(10)}px 0`,borderRadius:bp(10),border:"none",background:side.cl,color:"#fff",fontSize:bf(13),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer",boxSizing:"border-box"}}>
+                  style={{display:"block",width:"100%",padding:`${bp(9)}px 0`,borderRadius:bp(9),border:"none",background:side.cl,color:"#fff",fontSize:bf(12),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer",boxSizing:"border-box"}}>
                   Confirm {pending.name} →
                 </button>
               )}
