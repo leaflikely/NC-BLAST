@@ -2128,16 +2128,15 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
     // Select a pairing from an active Challonge match
     const selectActivePairing = (match) => {
+      // Use server-resolved names first, fall back to local participant map, then ID
       const idMap = challongeParticipants || {};
       const reverseMap = {};
-      // Challonge IDs can come back as numbers — stringify both sides for reliable lookup
       Object.entries(idMap).forEach(([name,id])=>{ reverseMap[String(id)]=name; });
-      const name1 = reverseMap[String(match.player1_id)] || null;
-      const name2 = reverseMap[String(match.player2_id)] || null;
-      if(name1) setP1(tn(name1));
-      if(name2) setP2(tn(name2));
+      const name1 = match.player1_name || reverseMap[String(match.player1_id)] || `ID:${match.player1_id}`;
+      const name2 = match.player2_name || reverseMap[String(match.player2_id)] || `ID:${match.player2_id}`;
+      setP1(tn(name1));
+      setP2(tn(name2));
       setChallongeMatchId(match.id);
-      // Stay on active tab — judge picker and Build Decks button shown below the match list
     };
 
     return (
@@ -2203,16 +2202,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
         {/* ── ACTIVE MATCHES TAB ── */}
         {pickTab==="active"&&(()=>{
-          // Build reverse ID map once
-          const idMap = challongeParticipants||{};
-          const reverseMap = {};
-          Object.entries(idMap).forEach(([n,id])=>{ reverseMap[String(id)]=n; });
-
           // Judge conflict: judge is one of the selected players
           const judgeIsPlayer = judge.trim() && (judge===p1||judge===p2||tn(judge)===p1||tn(judge)===p2);
 
-          // canProceed for active tab: match selected + judge chosen (if tm) + no conflict
-          const activeCanProceed = p1&&p2&&(!config.tm||judge.trim())&&!judgeIsPlayer;
+          // canProceed: match selected + judge chosen (if tm) + no conflict
+          const activeCanProceed = challongeMatchId&&p1&&p2&&(!config.tm||judge.trim())&&!judgeIsPlayer;
 
           return (
             <div>
@@ -2270,8 +2264,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                         <p style={{fontSize:12,color:"var(--text-muted)",fontStyle:"italic",textAlign:"center",padding:"12px 0"}}>No open matches found. The bracket may not have started, or all matches are complete.</p>
                       )}
                       {Array.isArray(activeMatches)&&activeMatches.map((match,mi)=>{
-                        const name1 = reverseMap[String(match.player1_id)]||`ID:${match.player1_id}`;
-                        const name2 = reverseMap[String(match.player2_id)]||`ID:${match.player2_id}`;
+                        // Use server-resolved names from Worker — no client ID lookup needed
+                        const name1 = match.player1_name || `ID:${match.player1_id}`;
+                        const name2 = match.player2_name || `ID:${match.player2_id}`;
                         const isSelected = challongeMatchId===match.id;
                         // Judge is playing in this match — cannot judge it
                         const judgeConflict = judge.trim()&&(
@@ -2305,8 +2300,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 }
               </div>
 
-              {/* ── Build Decks ── */}
-              {p1&&p2&&(
+              {/* ── Build Decks — shown as soon as a match is selected ── */}
+              {challongeMatchId&&(
                 <div>
                   {judgeIsPlayer&&(
                     <div style={{padding:"10px 14px",borderRadius:10,background:"#FEF2F2",border:"1px solid #FECACA",marginBottom:8,fontSize:12,fontWeight:600,color:"#DC2626",textAlign:"center"}}>
