@@ -213,6 +213,8 @@ const PENALTY = [
 const emptyCombo = () => ({blade:null,ratchet:null,bit:null});
 const comboStr = (c) => c?.blade&&c?.ratchet&&c?.bit ? `${c.blade} ${c.ratchet} ${c.bit}` : "—";
 const comboReady = (c) => c?.blade&&c?.ratchet&&c?.bit;
+// Truncate display names longer than 15 chars to 12 + ellipsis
+const tn = (name) => name && name.length > 15 ? name.slice(0,12) + "…" : (name||"");
 
 
 /* ═══════════════════════════════════════
@@ -669,6 +671,16 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       "Penalty button badge uses CSS surface variables — adapts correctly in dark mode",
       "Finish button padding scaled proportionally to fit all buttons without scrolling on any device",
     ]},
+    {v:"10.1",label:"Challonge Direct Scoring & Active Matches",items:[
+      "Player names longer than 15 characters truncated to 12 + ellipsis after match selection — prevents UI overflow",
+      "Pick Combo and battle score screen grey text updated to use CSS variables for dark mode correctness",
+      "Active Matches tab on Select Match screen — shows all open Challonge bracket pairings for the loaded tournament",
+      "Tap any active match pairing to pre-select both players instantly — only judge selection remains",
+      "Refresh button on Active Matches tab re-fetches open matches from Challonge",
+      "Submit to Challonge button on Match Over screen — sends result directly to Challonge bracket",
+      "Challonge match ID tracked per pairing so submission targets the correct bracket slot",
+      "Submission refreshes active matches automatically so next round pairings appear immediately",
+    ]},
    ];
 
   return (
@@ -775,7 +787,7 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
 /* ═══════════════════════════════════════
    SCREEN 2 — PLAYERS
 ═══════════════════════════════════════ */
-function PlayersScreen({players,setPlayers,onNext,onBack}) {
+function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
   const [inp,setInp] = useState("");
   const [challongeUrl,setChallongeUrl] = useState("");
   const [challongeStatus,setChallongeStatus] = useState(null); // null | "loading" | "ok" | "error"
@@ -860,6 +872,12 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
       if(!names.length) throw new Error("No participants found in cache");
       const merged = [...new Set([...players,...names])];
       setPlayers(merged); sSave(KEYS.players, merged);
+      const participantMap = {};
+      participants.forEach(p => {
+        const name = (p.participant?.display_name||p.participant?.name||"").trim();
+        if(name) participantMap[name] = p.participant?.id;
+      });
+      if(onChallongeImport) onChallongeImport(slug, participantMap);
       setChallongeStatus("ok");
       setChallongeSource(data.fromCache ? "cached" : "live");
       setChallongeMsg(data.fromCache
@@ -989,6 +1007,13 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
         const merged = [...new Set([...players,...names])];
         setPlayers(merged); sSave(KEYS.players, merged);
         lcSet(slug, names);
+        // Build participant ID map for Challonge score submission
+        const participantMap = {};
+        data.forEach(p => {
+          const name = (p.participant?.display_name||p.participant?.name||"").trim();
+          if(name) participantMap[name] = p.participant?.id;
+        });
+        if(onChallongeImport) onChallongeImport(slug, participantMap);
         setChallongeStatus("ok");
         setChallongeSource(fromServerCache ? "cached" : "live");
         setChallongeMsg(fromServerCache
@@ -1287,7 +1312,7 @@ function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpen
 /* ═══════════════════════════════════════
    SCREEN 3 — MATCH
 ═══════════════════════════════════════ */
-function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheetsStatus,onBack,onDownloadCSV,onSendSheets,onOpenLib,dark,toggleDark}) {
+function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheetsStatus,onBack,onDownloadCSV,onSendSheets,onOpenLib,dark,toggleDark,challongeSlug,challongeParticipants}) {
   const [phase,setPhase] = useState("pick");
   const [abandonConfirm,setAbandonConfirm] = useState(false);
   const [overBackConfirm,setOverBackConfirm] = useState(false);
@@ -1337,6 +1362,10 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [cxPicker,setCxPicker] = useState(null); // null | {step,who,slot,chip?,blade?,returnToReview?}
   const [deckReview,setDeckReview] = useState(false); // true = show review screen, false = in picker flow
   const [lerStrikes,setLerStrikes] = useState([0,0]); // launch error strike counter per player [p1,p2]
+  const [pickTab,setPickTab] = useState("roster"); // "roster" | "active"
+  const [activeMatches,setActiveMatches] = useState(null); // null | "loading" | []
+  const [challongeMatchId,setChallongeMatchId] = useState(null); // matched Challonge match ID for this pairing
+  const [challongeSubmitStatus,setChallongeSubmitStatus] = useState(null); // null | "loading" | "ok" | "error"
 
   const need = Math.ceil(config.bo/2);
   const cReady = d1.every(comboReady)&&d2.every(comboReady);
@@ -1501,7 +1530,49 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     sSave(KEYS.combos, saved);
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setMatchStartIdx(sGet(KEYS.matchLog,[]).length); };
+  const fetchActiveMatches = async () => {
+    if(!challongeSlug) return;
+    setActiveMatches("loading");
+    try {
+      const res = await fetch(`https://challonge-proxy.danny61734.workers.dev/matches?slug=${challongeSlug}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if(data.errors) throw new Error(data.errors[0]);
+      setActiveMatches(Array.isArray(data.matches) ? data.matches : []);
+    } catch(err) {
+      setActiveMatches([]);
+    }
+  };
+
+  const submitChallongeScore = async (matchId, p1Score, p2Score, winnerChallongeId) => {
+    if(!challongeSlug || !matchId) return;
+    setChallongeSubmitStatus("loading");
+    try {
+      const res = await fetch(`https://challonge-proxy.danny61734.workers.dev/submit`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          slug: challongeSlug,
+          matchId,
+          scores_csv: `${p1Score}-${p2Score}`,
+          winner_id: winnerChallongeId,
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if(data.errors) throw new Error(data.errors[0]);
+      setChallongeSubmitStatus("ok");
+      // Refresh active matches after submission so the list updates
+      fetchActiveMatches();
+    } catch(err) {
+      setChallongeSubmitStatus("error");
+    }
+  };
+
+  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeSubmitStatus(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length); };
 
   // Navigation helpers
   // Unified back navigation — context-aware, no stale closure issues
@@ -2019,89 +2090,150 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   }
 
   if(phase==="pick"){
-    // In tournament mode: 3 clicks — P1, P2, then Judge. In casual: 2 clicks — P1, P2.
     const playersSelected = p1 && p2;
-    // Which step are we on?
     const step = !p1 ? 1 : !p2 ? 2 : (config.tm && !judge.trim()) ? 3 : "done";
     const stepLabel = step===1?"Select P1":step===2?"Select P2":step===3?"Select Judge on Duty":"Ready";
     const stepColor = step===1?"#2563EB":step===2?"#DC2626":step===3?"#B45309":"#15803D";
 
     const handleNameClick = (name) => {
-      if(step===1){ setP1(name); return; }
+      if(step===1){ setP1(tn(name)); return; }
       if(step===2){
-        if(name===p1){ setP1(null); return; } // deselect P1
-        setP2(name); return;
+        if(name===p1||tn(name)===p1){ setP1(null); return; }
+        setP2(tn(name)); return;
       }
       if(step===3){
-        if(name===p1||name===p2){ return; } // players cannot be judge
-        setJudge(name);
-        return;
+        if(name===p1||name===p2||tn(name)===p1||tn(name)===p2){ return; }
+        setJudge(name); return;
       }
-      // done: deselect if clicked
-      if(name===p1){setP1(null);if(config.tm)setJudge("");}
-      else if(name===p2){setP2(null);if(config.tm)setJudge("");}
+      if(name===p1||tn(name)===p1){setP1(null);if(config.tm)setJudge("");}
+      else if(name===p2||tn(name)===p2){setP2(null);if(config.tm)setJudge("");}
       else if(config.tm&&name===judge){setJudge("");setManualJudge(false);}
     };
 
     const getButtonStyle = (name) => {
-      const isP1=p1===name, isP2=p2===name, isJudge=judge===name&&config.tm;
+      const isP1=p1===name||tn(name)===p1, isP2=p2===name||tn(name)===p2, isJudge=judge===name&&config.tm;
       if(isP1) return {border:"2px solid #2563EB",background:"#2563EB",color:"#fff"};
       if(isP2) return {border:"2px solid #DC2626",background:"#DC2626",color:"#fff"};
       if(isJudge) return {border:"2px solid #B45309",background:"#F59E0B",color:"#fff"};
-      // Dim players in judge step so they cannot be selected
-      if(step===3&&(name===p1||name===p2)) return {border:"2px solid #E2E8F0",background:"#F1F5F9",color:"#CBD5E1",opacity:0.4,cursor:"not-allowed"};
-      return {border:"2px solid #E2E8F0",background:"#F1F5F9",color:"#334155"};
+      if(step===3&&(name===p1||name===p2)) return {border:"2px solid var(--border)",background:"var(--surface3)",color:"var(--text-disabled)",opacity:0.4,cursor:"not-allowed"};
+      return {border:"2px solid var(--border)",background:"var(--surface2)",color:"var(--text-primary)"};
     };
 
     const canProceed = p1 && p2 && (!config.tm || judge.trim());
+    const hasChallonge = !!challongeSlug;
+
+    // Select a pairing from an active Challonge match
+    const selectActivePairing = (match) => {
+      const idMap = challongeParticipants || {};
+      // reverse lookup: challongeId -> displayName
+      const reverseMap = {};
+      Object.entries(idMap).forEach(([name,id])=>{ reverseMap[id]=name; });
+      const name1 = reverseMap[match.player1_id] || null;
+      const name2 = reverseMap[match.player2_id] || null;
+      if(name1) setP1(tn(name1));
+      if(name2) setP2(tn(name2));
+      setChallongeMatchId(match.id);
+      setPickTab("roster"); // switch back to roster for judge selection if needed
+    };
 
     return (
       <div style={S.page}><button style={S.back} onClick={goBack}>{IC.back} Back</button>
         <h1 style={S.title}>Select Match</h1>
 
         {/* Step indicator */}
-        <div style={{background:"#F8FAFC",borderRadius:12,padding:"10px 14px",marginBottom:12,border:`2px solid ${stepColor}30`,display:"flex",alignItems:"center",gap:8}}>
+        <div style={{background:"var(--surface2)",borderRadius:12,padding:"10px 14px",marginBottom:12,border:`2px solid ${stepColor}30`,display:"flex",alignItems:"center",gap:8}}>
           <div style={{width:8,height:8,borderRadius:"50%",background:stepColor,flexShrink:0}}/>
           <span style={{fontSize:13,fontWeight:700,color:stepColor}}>{stepLabel}</span>
-          {step!==1&&<span style={{fontSize:11,color:"#94A3B8",marginLeft:"auto"}}>
+          {step!==1&&<span style={{fontSize:11,color:"var(--text-muted)",marginLeft:"auto"}}>
             {p1&&<span style={{color:"#2563EB",fontWeight:600}}>{p1} </span>}
-            {p1&&p2&&<span style={{color:"#94A3B8"}}>vs </span>}
+            {p1&&p2&&<span style={{color:"var(--text-muted)"}}>vs </span>}
             {p2&&<span style={{color:"#DC2626",fontWeight:600}}>{p2}</span>}
             {config.tm&&judge&&<span style={{color:"#B45309",fontWeight:600}}> · ⚖️{judge}</span>}
           </span>}
         </div>
 
-        {/* Player grid */}
-        <div style={S.card}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
-            {players.map(name=>{
-              const isDisabled = step===3&&(name===p1||name===p2);
-              const btnStyle = getButtonStyle(name);
-              const tag = p1===name?"P1":p2===name?"P2":(judge===name&&config.tm)?"Judge":null;
+        {/* Tabs — only show Active Matches if a Challonge tournament is loaded */}
+        {hasChallonge&&(
+          <div style={{display:"flex",gap:0,marginBottom:12,borderRadius:10,overflow:"hidden",border:"2px solid var(--border)"}}>
+            {[["roster","👥 Roster"],["active","⚡ Active Matches"]].map(([tab,label])=>(
+              <button key={tab} type="button" onClick={()=>{ setPickTab(tab); if(tab==="active") fetchActiveMatches(); }}
+                style={{flex:1,padding:"9px 0",border:"none",background:pickTab===tab?"#1D4ED8":"var(--surface)",color:pickTab===tab?"#fff":"var(--text-secondary)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── ROSTER TAB ── */}
+        {pickTab==="roster"&&(
+          <div style={S.card}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
+              {players.map(name=>{
+                const isDisabled = step===3&&(name===p1||name===p2);
+                const btnStyle = getButtonStyle(name);
+                const tag = (p1===name||tn(name)===p1)?"P1":(p2===name||tn(name)===p2)?"P2":(judge===name&&config.tm)?"Judge":null;
+                return (
+                  <button key={name} disabled={isDisabled} onClick={()=>handleNameClick(name)}
+                    style={{padding:"12px 8px",borderRadius:10,fontSize:13,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:isDisabled?"not-allowed":"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,...btnStyle}}>
+                    {tn(name)}
+                    {tag&&<span style={{fontSize:9,fontWeight:800,letterSpacing:1,opacity:0.85}}>{tag}</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {config.tm&&step===3&&(
+              <div style={{marginTop:10,borderTop:"1px solid var(--border)",paddingTop:10}}>
+                {!manualJudge?(
+                  <button onClick={()=>setManualJudge(true)} style={{...S.upBtn,marginBottom:0,justifyContent:"center"}}>
+                    Name not present — enter manually
+                  </button>
+                ):(
+                  <input style={{...S.inp,width:"100%",borderColor:"#F59E0B60",color:"var(--text-primary)"}} placeholder="Enter judge name..." value={judge} autoFocus
+                    onChange={e=>setJudge(e.target.value)}
+                    onKeyDown={e=>e.key==="Enter"&&judge.trim()&&setManualJudge(false)}/>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ACTIVE MATCHES TAB ── */}
+        {pickTab==="active"&&(
+          <div style={S.card}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <span style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>Open matches — {challongeSlug}</span>
+              <button type="button" onClick={fetchActiveMatches}
+                style={{fontSize:11,fontWeight:700,color:"#1D4ED8",background:"none",border:"none",cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                ↻ Refresh
+              </button>
+            </div>
+            {activeMatches==="loading"&&<p style={{fontSize:12,color:"var(--text-muted)",fontStyle:"italic",textAlign:"center",padding:"12px 0"}}>⏳ Loading active matches...</p>}
+            {Array.isArray(activeMatches)&&activeMatches.length===0&&(
+              <p style={{fontSize:12,color:"var(--text-muted)",fontStyle:"italic",textAlign:"center",padding:"12px 0"}}>No open matches found. The bracket may not have started yet, or all matches are complete.</p>
+            )}
+            {Array.isArray(activeMatches)&&activeMatches.map((match,mi)=>{
+              const idMap = challongeParticipants||{};
+              const reverseMap = {};
+              Object.entries(idMap).forEach(([n,id])=>{ reverseMap[id]=n; });
+              const name1 = reverseMap[match.player1_id]||`Player ${match.player1_id}`;
+              const name2 = reverseMap[match.player2_id]||`Player ${match.player2_id}`;
+              const isSelected = challongeMatchId===match.id;
               return (
-                <button key={name} disabled={isDisabled} onClick={()=>handleNameClick(name)}
-                  style={{padding:"12px 8px",borderRadius:10,fontSize:13,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:isDisabled?"not-allowed":"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,...btnStyle}}>
-                  {name}
-                  {tag&&<span style={{fontSize:9,fontWeight:800,letterSpacing:1,opacity:0.85}}>{tag}</span>}
+                <button type="button" key={mi} onClick={()=>selectActivePairing(match)}
+                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"12px 14px",borderRadius:10,border:`2px solid ${isSelected?"#1D4ED8":"var(--border)"}`,background:isSelected?"#EFF6FF":"var(--surface2)",marginBottom:mi<activeMatches.length-1?8:0,cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:800,color:"var(--text-primary)"}}>{tn(name1)} <span style={{color:"var(--text-muted)",fontWeight:400}}>vs</span> {tn(name2)}</div>
+                    <div style={{fontSize:10,color:"var(--text-muted)",marginTop:2}}>Round {match.round} · Match #{match.suggested_play_order||mi+1}</div>
+                  </div>
+                  {isSelected
+                    ? <span style={{fontSize:11,fontWeight:800,color:"#1D4ED8"}}>✓ Selected</span>
+                    : <span style={{fontSize:11,fontWeight:700,color:"var(--text-muted)"}}>Select →</span>
+                  }
                 </button>
               );
             })}
           </div>
-          {/* Manual judge entry */}
-          {config.tm&&step===3&&(
-            <div style={{marginTop:10,borderTop:"1px solid #F1F5F9",paddingTop:10}}>
-              {!manualJudge?(
-                <button onClick={()=>setManualJudge(true)} style={{...S.upBtn,marginBottom:0,justifyContent:"center"}}>
-                  Name not present — enter manually
-                </button>
-              ):(
-                <input style={{...S.inp,width:"100%",borderColor:"#F59E0B60",color:"var(--text-primary)"}} placeholder="Enter judge name..." value={judge} autoFocus
-                  onChange={e=>setJudge(e.target.value)}
-                  onKeyDown={e=>e.key==="Enter"&&judge.trim()&&setManualJudge(false)}/>
-              )}
-            </div>
-          )}
-        </div>
+        )}
 
         <button style={{...S.pri,opacity:canProceed?1:0.4}} disabled={!canProceed} onClick={()=>{setMatchStartIdx(log.length);setFuture([]);setDeckReview(false);setPhase("deck");}}>Build Decks →</button>
         {config.tm&&playersSelected&&!judge.trim()&&<p style={{...S.hint,color:"#D97706"}}>Select the judge on duty to continue</p>}
@@ -2226,42 +2358,42 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
         {/* ── MATCH SCORE (small, top) ── */}
         {!isBO1&&(
-          <div style={{background:"#F1F5F9",borderRadius:12,padding:"8px 14px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontSize:10,fontWeight:700,color:"#94A3B8",letterSpacing:1}}>MATCH SCORE</span>
+          <div style={{background:"var(--surface2)",borderRadius:12,padding:"8px 14px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:10,fontWeight:700,color:"var(--text-muted)",letterSpacing:1}}>MATCH SCORE</span>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <span style={{fontSize:16,fontWeight:900,color:"#2563EB"}}>{sets[0]}</span>
-              <span style={{fontSize:13,fontWeight:700,color:"#CBD5E1"}}>–</span>
+              <span style={{fontSize:13,fontWeight:700,color:"var(--text-disabled)"}}>–</span>
               <span style={{fontSize:16,fontWeight:900,color:"#DC2626"}}>{sets[1]}</span>
             </div>
-            <span style={{fontSize:10,fontWeight:600,color:"#94A3B8"}}>Best of {config.bo}</span>
+            <span style={{fontSize:10,fontWeight:600,color:"var(--text-muted)"}}>Best of {config.bo}</span>
           </div>
         )}
 
         {/* ── SET + BATTLE counters ── */}
         <div style={{display:"grid",gridTemplateColumns:isBO1?"1fr":"1fr 1fr",gap:10,marginBottom:10}}>
           {!isBO1&&(
-            <div style={{background:"#fff",borderRadius:14,padding:"10px 12px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",textAlign:"center"}}>
-              <p style={{fontSize:9,fontWeight:700,color:"#94A3B8",letterSpacing:1,marginBottom:3}}>CURRENT SET</p>
-              <p style={{fontSize:28,fontWeight:900,color:"#1E293B",lineHeight:1}}>{curSet}</p>
+            <div style={{background:"var(--surface)",borderRadius:14,padding:"10px 12px",boxShadow:"0 1px 4px var(--shadow)",textAlign:"center"}}>
+              <p style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,marginBottom:3}}>CURRENT SET</p>
+              <p style={{fontSize:28,fontWeight:900,color:"var(--text-primary)",lineHeight:1}}>{curSet}</p>
             </div>
           )}
-          <div style={{background:"#fff",borderRadius:14,padding:"10px 12px",boxShadow:"0 1px 4px rgba(0,0,0,0.06)",textAlign:"center"}}>
-            <p style={{fontSize:9,fontWeight:700,color:"#94A3B8",letterSpacing:1,marginBottom:3}}>BATTLE</p>
-            <p style={{fontSize:28,fontWeight:900,color:"#1E293B",lineHeight:1}}>{battlesInSet}</p>
+          <div style={{background:"var(--surface)",borderRadius:14,padding:"10px 12px",boxShadow:"0 1px 4px var(--shadow)",textAlign:"center"}}>
+            <p style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,marginBottom:3}}>BATTLE</p>
+            <p style={{fontSize:28,fontWeight:900,color:"var(--text-primary)",lineHeight:1}}>{battlesInSet}</p>
           </div>
         </div>
 
         {/* ── SET SCORE (big, with player names) ── */}
-        <div style={{background:"#fff",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 8px rgba(0,0,0,0.08)",marginBottom:14,border:"2px solid #E2E8F0"}}>
-          <p style={{fontSize:9,fontWeight:700,color:"#94A3B8",letterSpacing:1,textAlign:"center",marginBottom:10}}>SET SCORE</p>
+        <div style={{background:"var(--surface)",borderRadius:16,padding:"16px 20px",boxShadow:"0 2px 8px var(--shadow)",marginBottom:14,border:"2px solid var(--border)"}}>
+          <p style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,textAlign:"center",marginBottom:10}}>SET SCORE</p>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:0}}>
             <div style={{flex:1,textAlign:"center"}}>
               <p style={{fontSize:26,fontWeight:900,color:"#2563EB",marginBottom:4,fontFamily:"'Outfit',sans-serif"}}>{p1}{currentSides.p1Side?<span style={{fontSize:13,fontWeight:600,color:"#93C5FD",marginLeft:6}}>{currentSides.p1Side} Side</span>:""}</p>
               <p style={{fontSize:58,fontWeight:900,color:"#2563EB",lineHeight:1}}>{pts[0]}</p>
             </div>
             <div style={{textAlign:"center",padding:"0 8px",minWidth:40}}>
-              <p style={{fontSize:28,fontWeight:800,color:"#E2E8F0",lineHeight:1}}>–</p>
-              {config.pts>0&&<p style={{fontSize:9,fontWeight:600,color:"#94A3B8",marginTop:4}}>First to {config.pts}</p>}
+              <p style={{fontSize:28,fontWeight:800,color:"var(--border2)",lineHeight:1}}>–</p>
+              {config.pts>0&&<p style={{fontSize:9,fontWeight:600,color:"var(--text-muted)",marginTop:4}}>First to {config.pts}</p>}
             </div>
             <div style={{flex:1,textAlign:"center"}}>
               <p style={{fontSize:26,fontWeight:900,color:"#DC2626",marginBottom:4,fontFamily:"'Outfit',sans-serif"}}>{p2}{currentSides.p2Side?<span style={{fontSize:13,fontWeight:600,color:"#FCA5A5",marginLeft:6}}>{currentSides.p2Side} Side</span>:""}</p>
@@ -2472,6 +2604,39 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         {(!config.tm||submitted)&&<button style={S.pri} onClick={()=>{setSheetsStatus(null);reset();}}>New Match</button>}
         <button style={{...S.sec,width:"100%",justifyContent:"center"}} onClick={()=>onDownloadCSV(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf})}>{IC.download} Download CSV</button>
 
+        {/* ── Challonge score submission ── */}
+        {challongeSlug&&challongeMatchId&&(()=>{
+          const winnerId = challongeParticipants?.[winner] || challongeParticipants?.[winner.replace("…","")];
+          const p1FinalScore = sets[0];
+          const p2FinalScore = sets[1];
+          return (
+            <div style={{marginTop:10,padding:"12px 14px",borderRadius:10,background:"#FFF7ED",border:"2px solid #EA580C40"}}>
+              <p style={{fontSize:11,fontWeight:700,color:"#C2410C",marginBottom:8}}>⚔️ Submit to Challonge</p>
+              <p style={{fontSize:11,color:"#92400E",marginBottom:10,lineHeight:1.5}}>
+                Winner: <strong>{winner}</strong> · Score: {p1FinalScore}–{p2FinalScore}
+              </p>
+              {challongeSubmitStatus==="ok"&&(
+                <div style={{padding:"8px 12px",borderRadius:8,background:"#F0FDF4",border:"1px solid #86EFAC",fontSize:12,fontWeight:600,color:"#15803D",textAlign:"center"}}>
+                  ✓ Result submitted to Challonge
+                </div>
+              )}
+              {challongeSubmitStatus==="error"&&(
+                <div style={{padding:"8px 12px",borderRadius:8,background:"#FEF2F2",border:"1px solid #FCA5A5",fontSize:12,fontWeight:600,color:"#DC2626",textAlign:"center",marginBottom:8}}>
+                  ✕ Submission failed — try again
+                </div>
+              )}
+              {challongeSubmitStatus!=="ok"&&(
+                <button type="button"
+                  disabled={challongeSubmitStatus==="loading"}
+                  onClick={()=>submitChallongeScore(challongeMatchId, p1FinalScore, p2FinalScore, winnerId)}
+                  style={{display:"block",width:"100%",padding:"10px 0",borderRadius:9,border:"none",background:challongeSubmitStatus==="loading"?"#CBD5E1":"#EA580C",color:"#fff",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:challongeSubmitStatus==="loading"?"not-allowed":"pointer"}}>
+                  {challongeSubmitStatus==="loading"?"Submitting…":"Submit Result to Challonge"}
+                </button>
+              )}
+            </div>
+          );
+        })()}
+
         {config.tm&&sheetsStatus==="success"&&(
           <div style={{marginTop:10,padding:"10px 14px",borderRadius:10,background:"#F0FDF4",border:"1px solid #86EFAC",fontSize:12,fontWeight:600,color:"#15803D",textAlign:"center"}}>
             ✓ Results submitted to Google Sheets
@@ -2604,6 +2769,8 @@ function BeyJudgeApp() {
   const [libOpen,setLibOpen] = useState(false);
   const [judge,setJudge] = useState("");
   const [sheetsStatus,setSheetsStatus] = useState(null); // null | "success" | "error"
+  const [challongeSlug,setChallongeSlug] = useState("");
+  const [challongeParticipants,setChallongeParticipants] = useState({}); // { displayName: challongeId }
 
   useEffect(()=>{
     const saved=sGet(KEYS.parts,{});
@@ -2694,8 +2861,8 @@ function BeyJudgeApp() {
     <div style={{background:"var(--bg)",minHeight:"100vh",fontFamily:"'Outfit',sans-serif"}}>
       {libOpen&&<LibraryManager parts={parts} setParts={setParts} onClose={()=>setLibOpen(false)}/>}
       {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark}/>}
-      {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark}/>}
-      {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark}/>}
+      {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);}}/>}
+      {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
     </div>
   );
 }
