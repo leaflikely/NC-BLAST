@@ -681,9 +681,15 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       "Matches where the judge is one of the players are greyed out with a ⚠️ warning inline",
       "Build Decks button locked with red warning banner if selected judge is playing in the chosen match",
       "Challonge participant IDs stored to localStorage on import — names resolve correctly across page reloads",
-      "Participant ID to display name lookup stringifies IDs to prevent type mismatch",
       "Submit to Challonge button on Match Over screen — sends result directly to Challonge bracket",
       "Submission refreshes active matches automatically so next round pairings appear immediately",
+    ]},
+    {v:"10.2",label:"Submit Fix, Name Resolution & Cache Delete",items:[
+      "Fixed instant submission failure: winner ID lookup now tries exact name match, truncated name prefix match, then match-stored player ID as final fallback",
+      "Submit error message now explains when winner Challonge ID cannot be found and suggests re-importing",
+      "Worker /matches route resolves player display names server-side — no ID strings shown to judges",
+      "Client falls back through server name → local participant map → raw ID for maximum resilience",
+      "Cache deletion: trash icon per cached entry with confirmation modal — removes from server KV and all devices",
     ]},
    ];
 
@@ -800,6 +806,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
   const [csvFallback,setCsvFallback] = useState(null); // null | {names:[]} when all proxies fail
   const [cachedTournaments,setCachedTournaments] = useState(null); // null | "loading" | []
   const [cachedOpen,setCachedOpen] = useState(false);
+  const [deleteConfirmSlug,setDeleteConfirmSlug] = useState(null); // slug pending delete confirmation
   const csvRef = useRef();
   const [confirmClear,setConfirmClear] = useState(false);
   const pRef = useRef();
@@ -845,7 +852,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
 
   const fetchCachedTournaments = async () => {
     setCachedTournaments("loading");
-    setCachedOpen(false); // stay closed while loading — button shows spinner
+    setCachedOpen(false);
     try {
       const res = await fetch("https://challonge-proxy.danny61734.workers.dev/list", {
         signal: AbortSignal.timeout(8000),
@@ -853,11 +860,30 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
       if(!res.ok) throw new Error("Failed to fetch");
       const data = await res.json();
       setCachedTournaments(Array.isArray(data.tournaments) ? data.tournaments : []);
-      setCachedOpen(true); // open only once data is ready — no flash
+      setCachedOpen(true);
     } catch {
       setCachedTournaments([]);
       setCachedOpen(true);
     }
+  };
+
+  const deleteCachedTournament = async (slug) => {
+    setDeleteConfirmSlug(null);
+    try {
+      await fetch(`https://challonge-proxy.danny61734.workers.dev/delete`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ slug }),
+        signal: AbortSignal.timeout(8000),
+      });
+    } catch {}
+    // Also clear from device localStorage cache
+    try {
+      const store = JSON.parse(localStorage.getItem("bx-challonge-cache-v1")||"{}");
+      delete store[slug];
+      localStorage.setItem("bx-challonge-cache-v1", JSON.stringify(store));
+    } catch {}
+    refreshCachedList();
   };
 
   const loadFromCache = async (slug) => {
@@ -879,7 +905,11 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
       const participantMap = {};
       participants.forEach(p => {
         const name = (p.participant?.display_name||p.participant?.name||"").trim();
-        if(name) participantMap[name] = p.participant?.id;
+        const id = p.participant?.id;
+        if(name && id) {
+          participantMap[name] = id;
+          participantMap[tn(name)] = id;
+        }
       });
       if(onChallongeImport) onChallongeImport(slug, participantMap);
       setChallongeStatus("ok");
@@ -1011,11 +1041,15 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
         const merged = [...new Set([...players,...names])];
         setPlayers(merged); sSave(KEYS.players, merged);
         lcSet(slug, names);
-        // Build participant ID map for Challonge score submission
+        // Build participant ID map — store both full name and truncated name as keys
         const participantMap = {};
         data.forEach(p => {
           const name = (p.participant?.display_name||p.participant?.name||"").trim();
-          if(name) participantMap[name] = p.participant?.id;
+          const id = p.participant?.id;
+          if(name && id) {
+            participantMap[name] = id;          // full name key
+            participantMap[tn(name)] = id;      // truncated name key — matches what p1/p2 store
+          }
         });
         if(onChallongeImport) onChallongeImport(slug, participantMap);
         setChallongeStatus("ok");
@@ -1079,6 +1113,28 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
           </button>
           {cachedOpen&&(
             <div style={{marginTop:4,border:"2px solid #7C3AED20",borderRadius:10,background:"var(--surface)",overflow:"hidden"}}>
+              {/* Delete confirmation modal */}
+              {deleteConfirmSlug&&(
+                <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+                  <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)",border:"1px solid var(--border)"}}>
+                    <p style={{fontSize:16,fontWeight:800,color:"var(--text-primary)",marginBottom:8,textAlign:"center"}}>Delete Cache?</p>
+                    <p style={{fontSize:13,color:"var(--text-secondary)",textAlign:"center",marginBottom:6,lineHeight:1.5}}>
+                      This will remove <strong style={{color:"#DC2626"}}>{deleteConfirmSlug}</strong> from the server cache for all devices.
+                    </p>
+                    <p style={{fontSize:11,color:"var(--text-muted)",textAlign:"center",marginBottom:20,lineHeight:1.4}}>Players can still be imported again by pasting the Challonge URL.</p>
+                    <div style={{display:"flex",gap:10}}>
+                      <button type="button" onClick={()=>setDeleteConfirmSlug(null)}
+                        style={{flex:1,padding:"12px 0",borderRadius:10,border:"2px solid var(--border)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                        Cancel
+                      </button>
+                      <button type="button" onClick={()=>deleteCachedTournament(deleteConfirmSlug)}
+                        style={{flex:1,padding:"12px 0",borderRadius:10,border:"none",background:"#DC2626",color:"#fff",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {Array.isArray(cachedTournaments)&&cachedTournaments.length===0&&(
                 <p style={{fontSize:12,color:"var(--text-muted)",fontWeight:500,padding:"12px 14px",margin:0,fontStyle:"italic"}}>No tournaments currently cached. Import one via the URL field below.</p>
               )}
@@ -1086,14 +1142,18 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
                 const minsAgo = Math.floor(t.ageSeconds / 60);
                 const minsLeft = Math.max(0, 30 - minsAgo);
                 return (
-                  <button type="button" key={ti} onClick={()=>loadFromCache(t.slug)}
-                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"10px 14px",border:"none",borderTop:ti>0?"1px solid var(--border)":"none",background:"none",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
-                    <div>
+                  <div key={ti} style={{display:"flex",alignItems:"center",borderTop:ti>0?"1px solid var(--border)":"none"}}>
+                    <button type="button" onClick={()=>loadFromCache(t.slug)}
+                      style={{flex:1,padding:"10px 14px",border:"none",background:"none",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
                       <div style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>{t.slug}</div>
                       <div style={{fontSize:10,color:"var(--text-muted)",marginTop:1}}>{t.participantCount} players · cached {minsAgo}m ago · expires in {minsLeft}m</div>
-                    </div>
-                    <span style={{fontSize:11,fontWeight:700,color:"#6D28D9",flexShrink:0,marginLeft:8}}>Load →</span>
-                  </button>
+                    </button>
+                    <button type="button" onClick={()=>setDeleteConfirmSlug(t.slug)}
+                      style={{padding:"10px 12px",border:"none",background:"none",cursor:"pointer",color:"#DC2626",opacity:0.6,flexShrink:0}}
+                      title="Delete from cache">
+                      {IC.trash}
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -1552,7 +1612,15 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
   const submitChallongeScore = async (matchId, p1Score, p2Score, winnerChallongeId) => {
     if(!challongeSlug || !matchId) return;
+    if(!winnerChallongeId) {
+      setChallongeSubmitStatus("error");
+      return;
+    }
     setChallongeSubmitStatus("loading");
+    // Build scores_csv from set scores if available, otherwise use set count
+    const scoresCsv = setScores.length > 0
+      ? setScores.map(s=>`${s.p1}-${s.p2}`).join(",")
+      : `${p1Score}-${p2Score}`;
     try {
       const res = await fetch(`https://challonge-proxy.danny61734.workers.dev/submit`, {
         method: "POST",
@@ -1560,16 +1628,14 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         body: JSON.stringify({
           slug: challongeSlug,
           matchId,
-          scores_csv: `${p1Score}-${p2Score}`,
+          scores_csv: scoresCsv,
           winner_id: winnerChallongeId,
         }),
         signal: AbortSignal.timeout(10000),
       });
-      if(!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if(data.errors) throw new Error(data.errors[0]);
+      if(!res.ok || data.errors) throw new Error(data.errors?.[0] || `HTTP ${res.status}`);
       setChallongeSubmitStatus("ok");
-      // Refresh active matches after submission so the list updates
       fetchActiveMatches();
     } catch(err) {
       setChallongeSubmitStatus("error");
@@ -2689,7 +2755,21 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
         {/* ── Challonge score submission ── */}
         {challongeSlug&&challongeMatchId&&(()=>{
-          const winnerId = challongeParticipants?.[winner] || challongeParticipants?.[winner.replace("…","")];
+          const winnerIsP1 = sets[0] >= need;
+          // Look up winner's Challonge participant ID:
+          // Try exact name match, then stripped-ellipsis match, then match stored player IDs
+          const pmap = challongeParticipants||{};
+          let winnerId = pmap[winner];
+          if(!winnerId) {
+            // winner may be truncated — try finding by prefix match
+            const winnerFull = Object.keys(pmap).find(k=>tn(k)===winner||k.startsWith(winner.replace("…","")));
+            if(winnerFull) winnerId = pmap[winnerFull];
+          }
+          if(!winnerId && challongeMatchId) {
+            // Last resort: use the player ID stored directly from the active match object
+            const storedMatch = Array.isArray(activeMatches) && activeMatches.find(m=>m.id===challongeMatchId);
+            if(storedMatch) winnerId = winnerIsP1 ? storedMatch.player1_id : storedMatch.player2_id;
+          }
           const p1FinalScore = sets[0];
           const p2FinalScore = sets[1];
           return (
@@ -2705,7 +2785,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               )}
               {challongeSubmitStatus==="error"&&(
                 <div style={{padding:"8px 12px",borderRadius:8,background:"#FEF2F2",border:"1px solid #FCA5A5",fontSize:12,fontWeight:600,color:"#DC2626",textAlign:"center",marginBottom:8}}>
-                  ✕ Submission failed — try again
+                  ✕ Submission failed{!winnerId?" — could not find Challonge ID for winner. Re-import the tournament from the Players screen and try again.":""} — try again
                 </div>
               )}
               {challongeSubmitStatus!=="ok"&&(
