@@ -1,7 +1,0 @@
-name = "challonge-proxy"
-main = "challonge.js"
-compatibility_date = "2024-01-01"
-
-[[kv_namespaces]]
-binding = "CHALLONGE_CACHE"
-id = "16b9f3f40eec45b7a497ffe22fccc959"
