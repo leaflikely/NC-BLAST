@@ -328,8 +328,22 @@ function LibraryManager({parts,setParts,onClose}) {
 ═══════════════════════════════════════ */
 function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark}) {
   const [showChangelog,setShowChangelog] = useState(false);
+  const [showGuide,setShowGuide] = useState(false);
   const total=parts.blades.length+parts.ratchets.length+parts.bits.length;
   const hasLib=total>0;
+
+  const GUIDE_SECTIONS = [
+    {icon:"⚔️", title:"What is NC BLAST?", body:"NC BLAST (NorCal Battle Log and Stat Tracker) is a judging and match tracking tool built for competitive Beyblade X. It lets judges score battles in real time, track combos, log match history, and export results to Google Sheets. It was built by and for the NorCal Beyblade League."},
+    {icon:"🏗️", title:"Setting Up", body:"Before your first match, tap the Parts Library button on the main screen to load your Beyblade X parts. You can add blades, ratchets, and bits manually or import from a file. Your library is saved between sessions so you only need to do this once."},
+    {icon:"🎯", title:"Match Modes", body:"Casual mode lets you score freely with no data sent anywhere — great for practice or unofficial matches. Ranked mode requires a tournament name and sends completed match data to the NC BLAST Google Sheets for stat tracking. Choose your point limit (4, 5, 7, or custom) and number of sets before starting."},
+    {icon:"👥", title:"Adding Players", body:"On the Players screen, type names manually or paste a comma-separated list to add multiple at once. You can also import directly from a Challonge tournament bracket by pasting the tournament URL — NC BLAST will pull the participant list automatically. Previously imported tournaments appear in the cached dropdown and load instantly."},
+    {icon:"🔨", title:"Building Decks", body:"Each player builds 3 combos before a match. Tap a Quick Combo to fill all 3 parts in one tap, or build manually by selecting blade → ratchet → bit in sequence. Previously used combos are saved per player and appear at the top for quick reuse. No two combos for the same player can share parts."},
+    {icon:"⚡", title:"Scoring a Battle", body:"Select which combo each player is using at the start of each battle. Then tap the finish type when the battle ends: XTR (Xtreme Finish) +3, OVR (Over Finish) +2, BST (Burst Finish) +2, or SPF (Spin Finish) +1. Penalty buttons handle Own Finish and Launch Errors — these are listed under the player who committed the error and award points to their opponent."},
+    {icon:"↩️", title:"Undo & Match Log", body:"Every battle is logged and can be undone using the Undo button in the bottom bar. The match log panel (clock icon) shows a full history of every battle this session. Undo and redo are scoped to the current match — you cannot accidentally undo into a previous match."},
+    {icon:"📤", title:"Exporting Results", body:"After a match ends, tap Send to Sheets to submit the results to the NC BLAST stat tracker (Ranked mode only). You can also download a CSV of the match at any time. The CSV includes every battle with full combo data, sides, finish types, scores, and timestamps."},
+    {icon:"🌙", title:"Dark Mode", body:"Toggle dark mode from the main screen or the bottom bar at any time. Your preference is saved and restored automatically on your next visit."},
+    {icon:"⚡", title:"Challonge Cache", body:"When a Challonge tournament is imported, the participant list is cached on the NC BLAST server for 30 minutes. Any device that imports the same tournament within that window loads from cache instantly with no API call. The cached tournaments dropdown on the Players screen shows all currently cached tournaments so you can load them without re-pasting the link."},
+  ];
 
   const CHANGELOG = [
     {v:"1.0",label:"Initial Build",items:[
@@ -596,11 +610,16 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
     {v:"9.3",label:"Server-Side Import Cache & Quick Combo Additions",items:[
       "Tournament participant lists cached server-side in Cloudflare KV for 30 minutes per slug",
       "Any device importing the same tournament within 30 minutes gets cached results — zero Challonge API calls",
-      "Worker explicitly returns fromCache flag so client knows the source of every import",
-      "Loading message shows Checking NC BLAST server cache... before attempting live fetch",
-      "Success message distinguishes: loaded from NC BLAST cache vs imported live from Challonge",
-      "Cloudflare Worker gets 3 attempts, public fallback proxies trimmed to 1 attempt each",
+      "Worker returns explicit fromCache flag so client knows the source of every import",
       "Quick Combos added: Hover Wyvern 9-60 Kick, Meteor Dragoon 7-70 Level, Meteor Dragoon 7-60 Level, Clock Mirage 7-55 Free-Ball",
+    ]},
+    {v:"9.4",label:"Cached Tournament Dropdown & In-App Guide",items:[
+      "Cached Tournaments dropdown on Players screen lists all server-cached slugs",
+      "Tap any cached tournament to load its participant list instantly — no URL needed",
+      "Badge shows how many minutes ago the cache was populated",
+      "Instructions & Guide modal added to main menu — covers all NC BLAST features",
+      "Guide sections: Setup, Match Modes, Adding Players, Building Decks, Scoring, Undo, Exporting, Dark Mode, Challonge Cache",
+      "Guide and Changelog accessible side by side from main menu buttons",
     ]},
    ];
 
@@ -633,12 +652,39 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
         </div>
       </div>
     )}
+    {showGuide&&(
+      <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.7)",zIndex:300,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 16px",overflowY:"auto"}}>
+        <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:480,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+            <div>
+              <h2 style={{margin:0,fontSize:20,fontWeight:900,color:"var(--text-primary)"}}>NC BLAST Guide</h2>
+              <p style={{margin:0,fontSize:11,color:"var(--text-faint)"}}>How to use NC BLAST</p>
+            </div>
+            <button onClick={()=>setShowGuide(false)} style={{background:"var(--surface3)",border:"none",borderRadius:10,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"var(--text-muted)",fontSize:18}}>{IC.x}</button>
+          </div>
+          {GUIDE_SECTIONS.map((sec,si)=>(
+            <div key={si} style={{marginBottom:20,paddingBottom:20,borderBottom:si<GUIDE_SECTIONS.length-1?"1px solid var(--border)":"none"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{fontSize:18}}>{sec.icon}</span>
+                <span style={{fontSize:14,fontWeight:800,color:"var(--text-primary)"}}>{sec.title}</span>
+              </div>
+              <p style={{fontSize:12,color:"var(--text-secondary)",lineHeight:1.7,margin:0}}>{sec.body}</p>
+            </div>
+          ))}
+          <button onClick={()=>setShowGuide(false)} style={{...S.pri,marginTop:4}}>Close</button>
+        </div>
+      </div>
+    )}
     <div style={S.page}>
       <div style={{textAlign:"center",marginBottom:24}}>
         <div style={{fontSize:40,marginBottom:4}}>⚔️</div>
         <h1 style={S.logo}>NC <span style={{color:"#EA580C"}}>BLAST</span></h1>
         <p style={S.sub}>NorCal Battle Log and Stat Tracker</p>
-        <button onClick={()=>setShowChangelog(true)} style={{marginTop:6,background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>v{CHANGELOG[CHANGELOG.length-1].v} — Changelog</button>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,marginTop:6}}>
+          <button onClick={()=>setShowGuide(true)} style={{background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>Guide & Intro</button>
+          <span style={{color:"var(--text-disabled)",fontSize:11}}>·</span>
+          <button onClick={()=>setShowChangelog(true)} style={{background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>v{CHANGELOG[CHANGELOG.length-1].v} — Changelog</button>
+        </div>
       </div>
       <button onClick={onOpenLib} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 14px",borderRadius:12,border:hasLib?"2px solid #15803D40":"2px dashed #EA580C",background:hasLib?"#15803D08":"#FFF7ED",cursor:"pointer",marginBottom:16,textAlign:"left"}}>
         <span style={{color:hasLib?"#15803D":"#EA580C"}}>{IC.db}</span>
@@ -688,6 +734,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
   const [challongeMsg,setChallongeMsg] = useState("");
   const [challongeSource,setChallongeSource] = useState(null); // null | "live" | "cached"
   const [csvFallback,setCsvFallback] = useState(null); // null | {names:[]} when all proxies fail
+  const [cachedTournaments,setCachedTournaments] = useState(null); // null | "loading" | []
+  const [cachedOpen,setCachedOpen] = useState(false);
   const csvRef = useRef();
   const [confirmClear,setConfirmClear] = useState(false);
   const pRef = useRef();
@@ -715,6 +763,49 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
     r.readAsText(f); e.target.value="";
   };
 
+  const fetchCachedTournaments = async () => {
+    setCachedTournaments("loading");
+    setCachedOpen(true);
+    try {
+      const res = await fetch("https://challonge-proxy.danny61734.workers.dev/list", {
+        signal: AbortSignal.timeout(8000),
+      });
+      if(!res.ok) throw new Error("Failed to fetch");
+      const data = await res.json();
+      setCachedTournaments(Array.isArray(data.tournaments) ? data.tournaments : []);
+    } catch {
+      setCachedTournaments([]);
+    }
+  };
+
+  const loadFromCache = async (slug) => {
+    setCachedOpen(false);
+    setChallongeStatus("loading");
+    setChallongeMsg("Loading from NC BLAST server cache...");
+    try {
+      const res = await fetch(`https://challonge-proxy.danny61734.workers.dev/?slug=${slug}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if(data.errors) throw new Error(data.errors[0]);
+      const participants = data.participants || [];
+      const names = participants.map(p=>(p.participant?.display_name||p.participant?.name||"").trim()).filter(Boolean);
+      if(!names.length) throw new Error("No participants found in cache");
+      const merged = [...new Set([...players,...names])];
+      setPlayers(merged); sSave(KEYS.players, merged);
+      setChallongeStatus("ok");
+      setChallongeSource(data.fromCache ? "cached" : "live");
+      setChallongeMsg(data.fromCache
+        ? `✓ ${names.length} players loaded from NC BLAST cache for "${slug}"`
+        : `✓ ${names.length} players imported live from Challonge for "${slug}"`
+      );
+    } catch(err) {
+      setChallongeStatus("error");
+      setChallongeMsg(`Failed to load: ${err.message}`);
+    }
+  };
+
   const importChallonge = async () => {
     const raw = challongeUrl.trim();
     let slug = "";
@@ -731,13 +822,13 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
     }
     if(!slug){ setChallongeStatus("error"); setChallongeMsg("Couldn't read a tournament slug from that URL."); return; }
 
-    setChallongeStatus("loading"); setChallongeMsg(`Checking NC BLAST server cache...`);
+    setChallongeStatus("loading"); setChallongeMsg(`Reading the tournament URL...`);
     const API_KEY = "68330566a844961951645c6e25c48a7619d0f21c2d4b0f4a";
     const apiUrl = `https://api.challonge.com/v1/tournaments/${slug}/participants.json?api_key=${API_KEY}`;
 
     // Helper: parse response text from any proxy format.
-    // Cloudflare Worker returns { participants: [], fromCache: bool }.
-    // Public proxies return raw array or allorigins envelope.
+    // For the netlify proxy the function returns { participants: [...], fetchedAt: ms }.
+    // fromCache is true when fetchedAt shows the CDN served a response older than 30s.
     const parseResponse = (text, raw) => {
       const wrapper = JSON.parse(text);
       let data = (!raw && wrapper && wrapper.contents !== undefined)
@@ -745,14 +836,14 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
         : wrapper;
       if(!data) throw new Error("Empty response");
       if(data.errors) throw new Error(Array.isArray(data.errors)?data.errors.join(", "):String(data.errors));
-      // Cloudflare Worker shape: { participants: [], fromCache: bool }
-      let fromServerCache = false;
-      if(data.participants !== undefined) {
-        fromServerCache = data.fromCache === true;
+      // Netlify wrapper shape: { participants: [], fetchedAt: number }
+      let fromCache = false;
+      if(data.participants && data.fetchedAt !== undefined) {
+        fromCache = (Date.now() - data.fetchedAt) > 30000;
         data = data.participants;
       }
       if(!Array.isArray(data)) throw new Error("Unexpected response format");
-      return { data, fromServerCache };
+      return { data, fromCache };
     };
 
     // Helper: attempt a single fetch with timeout
@@ -801,11 +892,11 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
     ];
 
     const proxyMessages = {
-      "cloudflare":     ["Checking NC BLAST server cache...", "Connecting to NC BLAST server...", "Last try on NC BLAST server..."],
-      "allorigins":     ["Trying backup proxy..."],
-      "corsproxy.io":   ["Switching to corsproxy.io..."],
-      "allorigins-raw": ["Trying alternate route..."],
-      "cors-anywhere":  ["Trying final fallback..."],
+      "cloudflare": ["Connecting via NC BLAST server...", "Retrying NC BLAST server...", "Last try on NC BLAST server..."],
+      "allorigins":     ["Trying backup proxy...", "Retrying allorigins...", "Last try on allorigins..."],
+      "corsproxy.io":   ["Switching to corsproxy.io...", "Retrying on corsproxy.io...", "Last attempt on corsproxy.io..."],
+      "allorigins-raw": ["Trying alternate route...", "Retrying alternate route...", "One more try..."],
+      "cors-anywhere":  ["Trying final fallback...", "Retrying final fallback...", "Last possible attempt..."],
     };
     let lastErr = "";
     let attemptCount = 0;
@@ -818,18 +909,15 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
           setChallongeMsg(msg);
           proxyAttempt++;
           return attempt(proxy.buildUrl());
-        }, proxy.retries, 600);
-        const { data, fromServerCache } = parseResponse(text, proxy.raw);
+        }, 2, 600);
+        const { data, fromCache } = parseResponse(text, proxy.raw);
         const names = data.map(p=>(p.participant?.display_name||p.participant?.name||"").trim()).filter(Boolean);
         if(!names.length) throw new Error("No participants found — is this tournament public with entrants added?");
         const merged = [...new Set([...players,...names])];
         setPlayers(merged); sSave(KEYS.players, merged);
         setChallongeStatus("ok");
-        setChallongeSource(fromServerCache ? "cached" : "live");
-        setChallongeMsg(fromServerCache
-          ? `✓ ${names.length} players loaded from NC BLAST cache for "${slug}"`
-          : `✓ ${names.length} players imported live from Challonge for "${slug}"`
-        );
+        setChallongeSource(fromCache ? "cached" : "live");
+        setChallongeMsg(`✓ ${names.length} players imported from "${slug}" — roster updated!`);
         return;
       } catch(err) {
         lastErr = err.message;
@@ -873,6 +961,41 @@ function PlayersScreen({players,setPlayers,onNext,onBack}) {
       {/* Challonge import */}
       <div style={{...S.card,border:"2px solid #E4600040",background:"#FFF7ED",marginBottom:12}}>
         <h2 style={{...S.label,color:"#C2410C",marginBottom:8}}>Import from Challonge</h2>
+
+        {/* Cached tournaments dropdown */}
+        <div style={{marginBottom:10}}>
+          <button
+            onClick={cachedOpen ? ()=>setCachedOpen(false) : fetchCachedTournaments}
+            style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"9px 12px",borderRadius:10,border:"2px solid #7C3AED30",background:"#F5F3FF",color:"#6D28D9",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+            <span>⚡ Cached Tournaments</span>
+            <span style={{fontSize:10,opacity:0.7}}>{cachedOpen ? "▲ Hide" : "▼ Show"}</span>
+          </button>
+          {cachedOpen&&(
+            <div style={{marginTop:4,border:"2px solid #7C3AED20",borderRadius:10,background:"var(--surface)",overflow:"hidden"}}>
+              {cachedTournaments==="loading"&&(
+                <p style={{fontSize:12,color:"#6D28D9",fontWeight:600,padding:"12px 14px",margin:0}}>⏳ Checking server cache...</p>
+              )}
+              {Array.isArray(cachedTournaments)&&cachedTournaments.length===0&&(
+                <p style={{fontSize:12,color:"var(--text-muted)",fontWeight:500,padding:"12px 14px",margin:0,fontStyle:"italic"}}>No tournaments currently cached. Import one via the URL field below.</p>
+              )}
+              {Array.isArray(cachedTournaments)&&cachedTournaments.map((t,ti)=>{
+                const minsAgo = Math.floor(t.ageSeconds / 60);
+                const minsLeft = Math.max(0, 30 - minsAgo);
+                return (
+                  <button key={ti} onClick={()=>loadFromCache(t.slug)}
+                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"10px 14px",border:"none",borderTop:ti>0?"1px solid var(--border)":"none",background:"none",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>{t.slug}</div>
+                      <div style={{fontSize:10,color:"var(--text-muted)",marginTop:1}}>{t.participantCount} players · cached {minsAgo}m ago · expires in {minsLeft}m</div>
+                    </div>
+                    <span style={{fontSize:11,fontWeight:700,color:"#6D28D9",flexShrink:0,marginLeft:8}}>Load →</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         <div style={{display:"flex",gap:8,marginBottom:8}}>
           <input
             style={{...S.inp,flex:1,borderColor:"#EA580C40",fontSize:12}}
