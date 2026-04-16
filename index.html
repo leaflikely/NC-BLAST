@@ -2331,47 +2331,41 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     ↻ Refresh
                   </button>
                 </div>
-                {(!config.tm||judge.trim())
-                  ? <>
-                      {activeMatches==="loading"&&<p style={{fontSize:12,color:"var(--text-muted)",fontStyle:"italic",textAlign:"center",padding:"12px 0"}}>⏳ Loading active matches...</p>}
-                      {Array.isArray(activeMatches)&&activeMatches.length===0&&(
-                        <p style={{fontSize:12,color:"var(--text-muted)",fontStyle:"italic",textAlign:"center",padding:"12px 0"}}>No open matches found. The bracket may not have started, or all matches are complete.</p>
-                      )}
-                      {Array.isArray(activeMatches)&&activeMatches.map((match,mi)=>{
-                        // Use server-resolved names from Worker — no client ID lookup needed
-                        const name1 = match.player1_name || `ID:${match.player1_id}`;
-                        const name2 = match.player2_name || `ID:${match.player2_id}`;
-                        const isSelected = challongeMatchId===match.id;
-                        // Judge is playing in this match — cannot judge it
-                        const judgeConflict = judge.trim()&&(
-                          judge===name1||judge===name2||tn(judge)===tn(name1)||tn(judge)===tn(name2)
-                        );
-                        return (
-                          <div key={mi} style={{marginBottom:mi<activeMatches.length-1?8:0}}>
-                            <button type="button"
-                              disabled={judgeConflict}
-                              onClick={()=>!judgeConflict&&selectActivePairing(match)}
-                              style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"12px 14px",borderRadius:10,
-                                border:`2px solid ${judgeConflict?"var(--border)":isSelected?"#1D4ED8":"var(--border)"}`,
-                                background:judgeConflict?"var(--surface3)":isSelected?"#EFF6FF":"var(--surface2)",
-                                opacity:judgeConflict?0.5:1,
-                                cursor:judgeConflict?"not-allowed":"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
-                              <div>
-                                <div style={{fontSize:13,fontWeight:800,color:judgeConflict?"var(--text-disabled)":"var(--text-primary)"}}>{tn(name1)} <span style={{fontWeight:400}}>vs</span> {tn(name2)}</div>
-                                <div style={{fontSize:10,color:"var(--text-muted)",marginTop:2}}>Round {match.round} · Match #{match.suggested_play_order||mi+1}</div>
-                                {judgeConflict&&<div style={{fontSize:10,color:"#DC2626",fontWeight:700,marginTop:3}}>⚠️ Judge is a player in this match</div>}
-                              </div>
-                              {!judgeConflict&&(isSelected
-                                ? <span style={{fontSize:11,fontWeight:800,color:"#1D4ED8",flexShrink:0,marginLeft:8}}>✓ Selected</span>
-                                : <span style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",flexShrink:0,marginLeft:8}}>Select →</span>
-                              )}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </>
-                  : <p style={{fontSize:12,color:"var(--text-muted)",fontStyle:"italic",textAlign:"center",padding:"12px 0"}}>Select a judge above to see available matches.</p>
-                }
+                {activeMatches==="loading"&&<p style={{fontSize:12,color:"var(--text-muted)",fontStyle:"italic",textAlign:"center",padding:"12px 0"}}>⏳ Loading active matches...</p>}
+                {Array.isArray(activeMatches)&&activeMatches.length===0&&(
+                  <p style={{fontSize:12,color:"var(--text-muted)",fontStyle:"italic",textAlign:"center",padding:"12px 0"}}>No open matches found. The bracket may not have started, or all matches are complete.</p>
+                )}
+                {!activeMatches&&<p style={{fontSize:12,color:"var(--text-muted)",fontStyle:"italic",textAlign:"center",padding:"12px 0"}}>Tap Refresh to load open matches.</p>}
+                {Array.isArray(activeMatches)&&activeMatches.map((match,mi)=>{
+                  const name1 = match.player1_name || `ID:${match.player1_id}`;
+                  const name2 = match.player2_name || `ID:${match.player2_id}`;
+                  const isSelected = challongeMatchId===match.id;
+                  const judgeConflict = judge.trim()&&(
+                    judge===name1||judge===name2||tn(judge)===tn(name1)||tn(judge)===tn(name2)
+                  );
+                  return (
+                    <div key={mi} style={{marginBottom:mi<activeMatches.length-1?8:0}}>
+                      <button type="button"
+                        disabled={judgeConflict}
+                        onClick={()=>!judgeConflict&&selectActivePairing(match)}
+                        style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"12px 14px",borderRadius:10,
+                          border:`2px solid ${judgeConflict?"var(--border)":isSelected?"#1D4ED8":"var(--border)"}`,
+                          background:judgeConflict?"var(--surface3)":isSelected?"#EFF6FF":"var(--surface2)",
+                          opacity:judgeConflict?0.5:1,
+                          cursor:judgeConflict?"not-allowed":"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
+                        <div>
+                          <div style={{fontSize:13,fontWeight:800,color:judgeConflict?"var(--text-disabled)":"var(--text-primary)"}}>{tn(name1)} <span style={{fontWeight:400}}>vs</span> {tn(name2)}</div>
+                          <div style={{fontSize:10,color:"var(--text-muted)",marginTop:2}}>Round {match.round} · Match #{match.suggested_play_order||mi+1}</div>
+                          {judgeConflict&&<div style={{fontSize:10,color:"#DC2626",fontWeight:700,marginTop:3}}>⚠️ Judge is a player in this match</div>}
+                        </div>
+                        {!judgeConflict&&(isSelected
+                          ? <span style={{fontSize:11,fontWeight:800,color:"#1D4ED8",flexShrink:0,marginLeft:8}}>✓ Selected</span>
+                          : <span style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",flexShrink:0,marginLeft:8}}>Select →</span>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* ── Build Decks — shown as soon as a match is selected ── */}
@@ -2466,10 +2460,10 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         {/* Step 1: pick priority player */}
         {!priorityKnown&&(
           <div style={{width:"100%",marginBottom:16}}>
-            <div style={{display:"flex",gap:14}}>
+            <div style={{display:"flex",flexDirection:"column",gap:14}}>
               {[{name:p1,pi:0,cl:"#2563EB"},{name:p2,pi:1,cl:"#DC2626"}].map(pl=>(
                 <button key={pl.pi} onClick={()=>setSidePicker({priority:pl.pi})}
-                  style={{flex:1,padding:"36px 0",borderRadius:20,border:`3px solid ${pl.cl}40`,background:`${pl.cl}0D`,color:pl.cl,fontSize:26,fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                  style={{width:"100%",padding:"28px 0",borderRadius:20,border:`3px solid ${pl.cl}40`,background:`${pl.cl}0D`,color:pl.cl,fontSize:26,fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
                   {pl.name}
                 </button>
               ))}
@@ -2482,7 +2476,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           <>
             <div style={{width:"100%",marginBottom:24}}>
               <p style={{fontSize:14,fontWeight:700,color:priorityColor,textAlign:"center",marginBottom:14,letterSpacing:0.5}}>{priorityName} — choose your side:</p>
-              <div style={{display:"flex",gap:14}}>
+              <div style={{display:"flex",flexDirection:"column",gap:14}}>
                 {["B","X"].map(side=>(
                   <button key={side} onClick={()=>{
                     const p1Side = sidePicker.priority===0 ? side : (side==="B"?"X":"B");
@@ -2490,7 +2484,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     setSideAssign({pickPriority:sidePicker.priority,p1Side,p2Side});
                     setCurrentSides({p1Side,p2Side});
                     setSidePicker(null);
-                  }} style={{flex:1,padding:"48px 0",borderRadius:20,border:`3px solid ${priorityColor}40`,background:`${priorityColor}0D`,color:priorityColor,fontSize:48,fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                  }} style={{width:"100%",padding:"36px 0",borderRadius:20,border:`3px solid ${priorityColor}40`,background:`${priorityColor}0D`,color:priorityColor,fontSize:48,fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
                     {side} Side
                   </button>
                 ))}
