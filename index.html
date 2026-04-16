@@ -2747,23 +2747,32 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const pending1 = pendingFinish?.pi===0 ? pendingFinish.fin : null;
   const pending2 = pendingFinish?.pi===1 ? pendingFinish.fin : null;
 
-  // Battle screen uses fixed viewport height — no scrolling ever
-  const BBAR = bp(56); // bottom bar height to reserve
+  // Battle screen: position:fixed full viewport, combo row pinned at bottom
+  const COMBO_ROW_H = bp(54); // fixed height for combo picker row at bottom
+  const STRIP_H = bp(36);     // top strip height
   return (
-    <div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",background:"var(--bg-solid)",padding:`${bp(8)}px ${bp(14)}px`,paddingBottom:BBAR,boxSizing:"border-box",overflow:"hidden"}}>
+    <div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",background:"var(--bg-solid)",boxSizing:"border-box",overflow:"hidden"}}>
 
-      {/* ── Back + context strip ── */}
-      <div style={{display:"flex",alignItems:"center",gap:bp(6),marginBottom:bp(6),flexWrap:"nowrap",flexShrink:0,minWidth:0}}>
-        <button style={{...S.back,marginBottom:0,flexShrink:0}} onClick={goBack}>{IC.back} Back</button>
-        {config.bo>1&&<span style={{...S.pill,flexShrink:0}}>Set {curSet}/{config.bo}</span>}
-        <span style={{...S.pill,flexShrink:0}}>B{battlesInThisSet}</span>
-        {config.bo>1&&<span style={{...S.pill,flexShrink:0}}>{sets[0]}–{sets[1]}</span>}
-        {currentSides.p1Side&&(
-          <button type="button" onClick={()=>setSideSwapConfirm(true)}
-            style={{marginLeft:"auto",padding:`${bp(3)}px ${bp(7)}px`,borderRadius:bp(8),border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:bf(10),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",flexShrink:0}}>
-            ⇄ Swap
-          </button>
-        )}
+      {/* ── Top strip: Back · pills · mini action bar · Swap ── */}
+      <div style={{height:STRIP_H,display:"flex",alignItems:"center",gap:bp(5),padding:`0 ${bp(10)}px`,flexShrink:0,borderBottom:"1px solid var(--border)"}}>
+        <button style={{...S.back,marginBottom:0,flexShrink:0,fontSize:bf(12)}} onClick={goBack}>{IC.back}</button>
+        {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0}}>Set {curSet}/{config.bo}</span>}
+        <span style={{...S.pill,flexShrink:0,margin:0}}>B{battlesInThisSet}</span>
+        {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0}}>{sets[0]}–{sets[1]}</span>}
+        {/* Mini action bar — history, undo, redo, dark, settings */}
+        <div style={{display:"flex",alignItems:"center",gap:bp(2),marginLeft:"auto",flexShrink:0}}>
+          <button onClick={()=>setHistoryOpen(true)} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.history}</button>
+          <button onClick={undo} disabled={log.length<=matchStartIdx} style={{background:"none",border:"none",color:log.length>matchStartIdx?"var(--text-muted)":"var(--text-disabled)",cursor:log.length>matchStartIdx?"pointer":"default",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.undo}</button>
+          <button onClick={redo} disabled={!future.length} style={{background:"none",border:"none",color:future.length?"#EA580C":"var(--text-disabled)",cursor:future.length?"pointer":"default",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.redo}</button>
+          <button onClick={toggleDark} style={{background:"none",border:"none",cursor:"pointer",padding:`${bp(3)}px ${bp(4)}px`,fontSize:bf(14),lineHeight:1}}>{dark?"☀️":"🌙"}</button>
+          <button onClick={onOpenLib} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",padding:`${bp(3)}px ${bp(4)}px`,display:"flex",alignItems:"center"}}>{IC.gear}</button>
+          {currentSides.p1Side&&(
+            <button type="button" onClick={()=>setSideSwapConfirm(true)}
+              style={{padding:`${bp(2)}px ${bp(6)}px`,borderRadius:bp(6),border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:bf(9),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginLeft:bp(2)}}>
+              ⇄
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Side swap confirmation modal ── */}
@@ -2835,28 +2844,28 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         })}
       </div>
 
-      {/* ── Two-column scoring + combo picker ── */}
-      <div style={{display:"flex",gap:bp(6),flex:1,minHeight:0,overflow:"hidden"}}>
+      {/* ── Two-column scoring (fill remaining space above combo row) ── */}
+      <div style={{display:"flex",gap:bp(6),flex:1,minHeight:0,padding:`${bp(6)}px ${bp(10)}px 0`,overflow:"hidden"}}>
         {[{i:0,cl:"#2563EB",name:p1,dk:d1,sel:r1,setSel:setR1,used:used1,pending:pending1},
           {i:1,cl:"#DC2626",name:p2,dk:d2,sel:r2,setSel:setR2,used:used2,pending:pending2}].map(side=>{
           const canConfirm = side.sel !== null && side.pending;
           return (
-            <div key={side.i} style={{flex:1,display:"flex",flexDirection:"column",gap:bp(3)}}>
-              <p style={{textAlign:"center",fontSize:bf(10),fontWeight:800,color:side.cl,marginBottom:bp(1),letterSpacing:0.5,textTransform:"uppercase",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{side.name}</p>
+            <div key={side.i} style={{flex:1,display:"flex",flexDirection:"column",gap:bp(3),overflow:"hidden"}}>
+              <p style={{textAlign:"center",fontSize:bf(10),fontWeight:800,color:side.cl,flexShrink:0,letterSpacing:0.5,textTransform:"uppercase",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{side.name}</p>
 
-              {/* Finish type buttons: 7 rows of 1 */}
-              <div style={{display:"flex",flexDirection:"column",gap:bp(3)}}>
+              {/* Finish type buttons: 6 rows of 1, fixed height each */}
+              <div style={{display:"flex",flexDirection:"column",gap:bp(2),flexShrink:0}}>
                 {[...FINISH,...PENALTY.filter(f=>f.id!=="LER")].map(f=>{
                   const isSel = side.pending?.id===f.id;
                   const isFinish = !f.penalty;
-                  const label = f.id==="OF2"?"Own Finish ×2":f.id==="OF3"?"Own Finish ×3":f.name;
+                  const label = f.id==="OF2"?"Own ×2":f.id==="OF3"?"Own ×3":f.id==="Spin Finish"?"SPF":f.name;
                   return (
                     <button key={f.id} type="button"
                       disabled={!bothCombosSelected}
                       onClick={()=>{if(bothCombosSelected)setPendingFinish(isSel?null:{pi:side.i,fin:f});}}
-                      style={{height:bp(30),borderRadius:bp(8),border:`2px solid ${!bothCombosSelected?"var(--border)":isSel?side.cl:isFinish?`${side.cl}50`:"var(--border2)"}`,background:!bothCombosSelected?"var(--surface2)":isSel?side.cl:isFinish?`${side.cl}10`:"var(--surface2)",color:!bothCombosSelected?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:bothCombosSelected?"pointer":"not-allowed",display:"flex",flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:bp(4),padding:`0 ${bp(8)}px`,opacity:bothCombosSelected?1:0.45}}>
-                      <span style={{fontSize:bf(10),fontWeight:800,lineHeight:1.1}}>{label}</span>
-                      <span style={{background:!bothCombosSelected?"var(--border2)":isSel?"rgba(255,255,255,0.3)":side.cl,color:"#fff",padding:`${bp(1)}px ${bp(5)}px`,borderRadius:bp(4),fontSize:bf(9),fontWeight:900,flexShrink:0}}>+{f.p}</span>
+                      style={{height:bp(28),borderRadius:bp(7),border:`2px solid ${!bothCombosSelected?"var(--border)":isSel?side.cl:isFinish?`${side.cl}50`:"var(--border2)"}`,background:!bothCombosSelected?"var(--surface2)":isSel?side.cl:isFinish?`${side.cl}10`:"var(--surface2)",color:!bothCombosSelected?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:bothCombosSelected?"pointer":"not-allowed",display:"flex",flexDirection:"row",alignItems:"center",justifyContent:"space-between",padding:`0 ${bp(7)}px`,opacity:bothCombosSelected?1:0.45,flexShrink:0}}>
+                      <span style={{fontSize:bf(9),fontWeight:800,lineHeight:1}}>{label}</span>
+                      <span style={{background:!bothCombosSelected?"var(--border2)":isSel?"rgba(255,255,255,0.3)":side.cl,color:"#fff",padding:`${bp(1)}px ${bp(4)}px`,borderRadius:bp(3),fontSize:bf(8),fontWeight:900,flexShrink:0}}>+{f.p}</span>
                     </button>
                   );
                 })}
@@ -2868,12 +2877,10 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 const hasStrike = lerStrikes[side.i]===1;
                 const lerFin = PENALTY.find(f=>f.id==="LER");
                 return (
-                  <button type="button"
-                    disabled={lerLocked}
+                  <button type="button" disabled={lerLocked} flexShrink={0}
                     onClick={()=>{
                       if(lerLocked) return;
                       if(!hasStrike){
-                        // First LER: log a strike entry (undoable) then add strike state
                         const strikeEntry = {
                           set:curSet,shuffle:shuf,round:log.slice(matchStartIdx).length+1,
                           scorer:side.i===0?p1:p2,scorerIdx:side.i,judge:judge,penalty:true,
@@ -2891,52 +2898,72 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                         setLog(newLog); sSave(KEYS.matchLog,newLog); setFuture([]);
                         setLerStrikes(s=>{const n=[...s];n[side.i]=1;return n;});
                       } else {
-                        // Second LER: clear strike and score the point
                         setLerStrikes([0,0]);
                         doScore(side.i,lerFin);
                       }
                     }}
-                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:`${bp(5)}px ${bp(8)}px`,borderRadius:bp(8),border:hasStrike?`2px solid #F59E0B`:"1px dashed var(--border2)",background:hasStrike?"#FEF9C3":"var(--surface2)",color:lerLocked?"var(--text-disabled)":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:lerLocked?"not-allowed":"pointer",boxSizing:"border-box",opacity:lerLocked?0.5:1}}>
-                    <span style={{fontSize:bf(10),fontWeight:700,color:hasStrike?"#B45309":"inherit"}}>{hasStrike?"⚠️ LER Strike — tap again":"Launch Error"}</span>
-                    <span style={{background:hasStrike?"#F59E0B":"var(--surface3)",color:"#fff",padding:`${bp(2)}px ${bp(5)}px`,borderRadius:bp(4),fontSize:bf(9),fontWeight:800}}>LER</span>
+                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",height:bp(28),padding:`0 ${bp(7)}px`,borderRadius:bp(7),border:hasStrike?`2px solid #F59E0B`:"1px dashed var(--border2)",background:hasStrike?"#FEF9C3":"var(--surface2)",color:lerLocked?"var(--text-disabled)":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:lerLocked?"not-allowed":"pointer",boxSizing:"border-box",opacity:lerLocked?0.5:1,flexShrink:0}}>
+                    <span style={{fontSize:bf(9),fontWeight:700,color:hasStrike?"#B45309":"inherit"}}>{hasStrike?"⚠️ Strike — tap again":"Launch Error"}</span>
+                    <span style={{background:hasStrike?"#F59E0B":"var(--surface3)",color:"#fff",padding:`${bp(1)}px ${bp(4)}px`,borderRadius:bp(3),fontSize:bf(8),fontWeight:800}}>LER</span>
                   </button>
                 );
               })()}
 
               {/* Confirm button */}
-              <button type="button"
-                disabled={!canConfirm}
+              <button type="button" disabled={!canConfirm}
                 onClick={()=>{ if(canConfirm){ doScore(side.i,side.pending); setPendingFinish(null); } }}
-                style={{display:"block",width:"100%",padding:`${bp(6)}px 0`,borderRadius:bp(8),border:"none",background:canConfirm?side.cl:"var(--surface3)",color:canConfirm?"#fff":"var(--text-disabled)",fontSize:bf(11),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:canConfirm?"pointer":"not-allowed",boxSizing:"border-box",transition:"background 0.15s"}}>
+                style={{display:"block",width:"100%",height:bp(32),borderRadius:bp(7),border:"none",background:canConfirm?side.cl:"var(--surface3)",color:canConfirm?"#fff":"var(--text-disabled)",fontSize:bf(11),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:canConfirm?"pointer":"not-allowed",boxSizing:"border-box",transition:"background 0.15s",flexShrink:0}}>
                 {canConfirm ? `Confirm ${side.pending.name} →` : side.pending ? "Pick combo ↓" : side.sel!==null ? "Pick finish ↑" : "Pick combo ↓"}
               </button>
-
-              {/* Combo buttons — layout switches based on available space */}
-              <div ref={side.i===0?comboAreaRef:null} style={{display:"flex",flexDirection:comboLayout,gap:bp(3),flex:1,minHeight:bp(comboLayout==="column"?120:44)}}>
-                {side.dk.map((c,i)=>{
-                  const isUsed = side.used.includes(i);
-                  const isSel = side.sel===i;
-                  // In row layout the buttons are side by side — need fixed height, not flex:1 on width
-                  const btnStyle = comboLayout==="column"
-                    ? {flex:1,minHeight:0,width:"100%"}
-                    : {flex:1,minWidth:0,height:"100%"};
-                  return (
-                    <button key={i} type="button" disabled={isUsed}
-                      onClick={()=>{ if(!isUsed) side.setSel(isSel?null:i); }}
-                      style={{...btnStyle,borderRadius:bp(8),position:"relative",border:`2px solid ${isUsed?"var(--border)":isSel?side.cl:"var(--border2)"}`,background:isUsed?"var(--surface2)":isSel?side.cl:"var(--surface)",color:isUsed?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:isUsed?"not-allowed":"pointer",opacity:isUsed?0.4:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:bp(2),padding:`${bp(3)}px ${bp(3)}px`,boxSizing:"border-box"}}>
-                      {isUsed&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><svg width="22" height="22" viewBox="0 0 40 40" fill="none" stroke="#DC2626" strokeWidth="4" strokeLinecap="round" opacity="0.5"><line x1="8" y1="8" x2="32" y2="32"/><line x1="32" y1="8" x2="8" y2="32"/></svg></div>}
-                      <span style={{fontWeight:800,fontSize:bf(12),lineHeight:1.1,textAlign:"center"}}>{c.blade||"—"}</span>
-                      <span style={{fontSize:bf(10),fontWeight:600,opacity:0.8,textAlign:"center"}}>{c.ratchet&&c.bit?`${c.ratchet} ${c.bit}`:"—"}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
             </div>
           );
         })}
       </div>
-      <BottomBar log={log} future={future} undo={undo} redo={redo} historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} p1={p1} p2={p2} onOpenLib={onOpenLib} onClearLog={()=>{setLog([]);sSave(KEYS.matchLog,[]);}} dark={dark} toggleDark={toggleDark} matchStartIdx={matchStartIdx}/>
+
+      {/* ── Combo picker row — ALWAYS pinned at bottom, exactly COMBO_ROW_H tall ── */}
+      <div style={{height:COMBO_ROW_H,display:"flex",gap:bp(6),padding:`${bp(4)}px ${bp(10)}px`,flexShrink:0,borderTop:"1px solid var(--border)"}}>
+        {[{i:0,cl:"#2563EB",dk:d1,sel:r1,setSel:setR1,used:used1},
+          {i:1,cl:"#DC2626",dk:d2,sel:r2,setSel:setR2,used:used2}].map(side=>(
+          <div key={side.i} style={{flex:1,display:"flex",gap:bp(4)}}>
+            {side.dk.map((c,i)=>{
+              const isUsed = side.used.includes(i);
+              const isSel = side.sel===i;
+              return (
+                <button key={i} type="button" disabled={isUsed}
+                  onClick={()=>{ if(!isUsed) side.setSel(isSel?null:i); }}
+                  style={{flex:1,height:"100%",borderRadius:bp(7),position:"relative",border:`2px solid ${isUsed?"var(--border)":isSel?side.cl:"var(--border2)"}`,background:isUsed?"var(--surface2)":isSel?side.cl:"var(--surface)",color:isUsed?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:isUsed?"not-allowed":"pointer",opacity:isUsed?0.4:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:bp(1),padding:`${bp(2)}px`,boxSizing:"border-box"}}>
+                  {isUsed&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><svg width="18" height="18" viewBox="0 0 40 40" fill="none" stroke="#DC2626" strokeWidth="4" strokeLinecap="round" opacity="0.5"><line x1="8" y1="8" x2="32" y2="32"/><line x1="32" y1="8" x2="8" y2="32"/></svg></div>}
+                  <span style={{fontWeight:800,fontSize:bf(10),lineHeight:1.1,textAlign:"center"}}>{c.blade||"—"}</span>
+                  <span style={{fontSize:bf(8),fontWeight:600,opacity:0.8,textAlign:"center"}}>{c.ratchet&&c.bit?`${c.ratchet} ${c.bit}`:"—"}</span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* Match history slide-over (kept from BottomBar, triggered by strip button) */}
+      <div style={{position:"fixed",top:0,right:0,bottom:0,width:historyOpen?Math.min(340,window.innerWidth-40):0,background:"var(--surface)",boxShadow:historyOpen?"-4px 0 24px rgba(0,0,0,0.25)":"none",transition:"width 0.25s ease",overflow:"hidden",zIndex:100}}>
+        <div style={{width:Math.min(340,window.innerWidth-40),padding:"20px 16px",overflowY:"auto",height:"100%"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <h2 style={{margin:0,fontSize:18,fontWeight:800,color:"var(--text-primary)"}}>Match Log</h2>
+            <button onClick={()=>setHistoryOpen(false)} style={{background:"var(--surface3)",border:"none",borderRadius:8,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"var(--text-muted)"}}>{IC.x}</button>
+          </div>
+          {log.length===0&&<p style={{color:"var(--text-disabled)",fontSize:13,fontStyle:"italic"}}>No battles yet</p>}
+          {log.slice().reverse().map((e,i)=>(
+            <div key={i} style={{padding:"10px 12px",borderRadius:10,marginBottom:8,background:e.scorerIdx===0?"#EFF6FF22":"#FEF2F222",borderLeft:`4px solid ${e.scorerIdx===0?"#2563EB":"#DC2626"}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+                <span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626",fontSize:14}}>{e.scorer}</span>
+                <span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)"}}>R{log.length-i} · Set {e.set}</span>
+              </div>
+              <div style={{fontSize:12,color:"var(--text-secondary)",marginBottom:2}}><span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626"}}>{e.typeName}</span> (+{e.points})</div>
+              <div style={{fontSize:11,color:"var(--text-muted)"}}>Won with: <span style={{fontWeight:600}}>{e.winnerCombo}</span></div>
+              <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2,fontWeight:600}}>{e.p1Name} {e.p1Score}–{e.p2Score} {e.p2Name}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {historyOpen&&<div onClick={()=>setHistoryOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.2)",zIndex:99}}/>}
     </div>
   );
 }
