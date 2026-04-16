@@ -79,13 +79,9 @@ function useScale() {
       document.documentElement.style.fontSize = (16 * clamped) + "px";
     }
     update();
-    // screen dimensions only change on orientation change, not keyboard open
+    // Only re-scale on orientation change — resize fires on keyboard open and causes input blur
     window.addEventListener("orientationchange", update);
-    window.addEventListener("resize", update);
-    return () => {
-      window.removeEventListener("orientationchange", update);
-      window.removeEventListener("resize", update);
-    };
+    return () => window.removeEventListener("orientationchange", update);
   }, []);
   return scale;
 }
@@ -94,7 +90,6 @@ function useScale() {
    PERSISTENT STORAGE — localStorage
 ═══════════════════════════════════════ */
 const KEYS = { parts: "bx-library-v9", players: "bx-roster-v2", combos: "bx-combos-v1", matchLog: "bx-matchlog-v1", challongeMap: "bx-challonge-map-v1" };
-const BUILD_TIME = "2026-04-16 1:03 PM PDT";
 function sGet(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; } }
 function sSave(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
 
@@ -205,10 +200,10 @@ const IC = {
 };
 
 const FINISH = [
-  {id:"XTR",p:3,name:"Xtreme Finish"},
+  {id:"SPF",p:1,name:"Spin Finish"},
   {id:"OVR",p:2,name:"Over Finish"},
   {id:"BST",p:2,name:"Burst Finish"},
-  {id:"SPF",p:1,name:"Spin Finish"},
+  {id:"XTR",p:3,name:"Xtreme Finish"},
 ];
 // Penalty finishes: listed under the LOSER, points go to OPPONENT
 const PENALTY = [
@@ -768,50 +763,48 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
         </div>
       </div>
     )}
-    <div style={S.page}>
-      <div style={{textAlign:"center",marginBottom:12}}>
-        <div style={{fontSize:28,marginBottom:2}}>⚔️</div>
-        <h1 style={S.logo}>NC <span style={{color:"#EA580C"}}>BLAST</span></h1>
-        <p style={S.sub}>NorCal Battle Log and Stat Tracker</p>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,marginTop:6}}>
-          <button onClick={()=>setShowGuide(true)} style={{background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>Guide & Intro</button>
+    <div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",background:"var(--bg-solid)",padding:"0",overflow:"hidden",boxSizing:"border-box"}}>
+      {/* Header */}
+      <div style={{textAlign:"center",padding:"10px 16px 6px",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          <span style={{fontSize:22}}>⚔️</span>
+          <h1 style={{...S.logo,fontSize:26}}>NC <span style={{color:"#EA580C"}}>BLAST</span></h1>
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginTop:4}}>
+          <button onClick={()=>setShowGuide(true)} style={{background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>Guide</button>
           <span style={{color:"var(--text-disabled)",fontSize:11}}>·</span>
-          <span style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><button onClick={()=>setShowChangelog(true)} style={{background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>v{CHANGELOG[CHANGELOG.length-1].v} — Changelog</button><span style={{fontSize:9,color:"var(--text-disabled)",fontWeight:500,letterSpacing:0.3}}>{BUILD_TIME}</span></span>
+          <button onClick={()=>setShowChangelog(true)} style={{background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>v{CHANGELOG[CHANGELOG.length-1].v} — Changelog</button>
+          <span style={{color:"var(--text-disabled)",fontSize:11}}>·</span>
+          <button onClick={toggleDark} style={{background:"none",border:"none",color:"var(--text-faint)",fontSize:13,cursor:"pointer",lineHeight:1,padding:0}}>{dark?"☀️":"🌙"}</button>
         </div>
       </div>
-      <button onClick={onOpenLib} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 14px",borderRadius:12,border:hasLib?"2px solid #15803D40":"2px dashed #EA580C",background:hasLib?"#15803D08":"#FFF7ED",cursor:"pointer",marginBottom:16,textAlign:"left"}}>
-        <span style={{color:hasLib?"#15803D":"#EA580C"}}>{IC.db}</span>
-        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:hasLib?"#15803D":"#EA580C"}}>{hasLib?`Library: ${parts.blades.length} blades · ${parts.ratchets.length} ratchets · ${parts.bits.length} bits`:"No parts loaded — tap to set up"}</div><div style={{fontSize:11,color:"#64748B",marginTop:1}}>{hasLib?"Tap to manage":"Import your Beyblade X parts first"}</div></div>
-      </button>
-      <div style={S.card}>
-        <h2 style={S.label}>Match Type</h2>
-        <div style={S.row}>{[[4,"4 Pts."],[5,"5 Pts."],[7,"7 Pts."],[0,"No Limit"]].map(([v,l])=>(<button key={v} style={{...S.chip,...(config.pts===v?S.chipOn:{})}} onClick={()=>setConfig({...config,pts:v})}>{l}</button>))}</div>
-        <div style={{...S.row,marginTop:8}}><button style={{...S.chip,...(config.pts>7?S.chipOn:{})}} onClick={()=>{const n=prompt("Custom point limit:"); if(n&&!isNaN(+n)&&+n>0)setConfig({...config,pts:+n});}}>{config.pts>7?config.pts+" Pts.":"Custom"}</button></div>
-        <h2 style={{...S.label,marginTop:14}}>Sets</h2>
-        <div style={S.row}>{[1,3,5].map(v=>(<button key={v} style={{...S.chip,...S.chipW,...(config.bo===v?S.chipBl:{})}} onClick={()=>setConfig({...config,bo:v})}>{v===1?"Best-of-1":`Best-of-${v}`}</button>))}</div>
-        <h2 style={{...S.label,marginTop:14}}>Tournament Mode</h2>
-        <div style={S.row}>{[false,true].map(v=>(<button key={String(v)} style={{...S.chip,...(config.tm===v?(v?{background:"#7C3AED",borderColor:"#7C3AED",color:"#fff"}:S.chipOn):{})}} onClick={()=>setConfig({...config,tm:v})}>{v?"On":"Off"}</button>))}</div>
-        {config.tm&&(
-          <div style={{marginTop:12}}>
-            <input
-              style={{...S.inp,width:"100%",borderColor:"#7C3AED60"}}
-              placeholder="Tournament name..."
-              value={config.tournamentName||""}
-              onChange={e=>setConfig({...config,tournamentName:e.target.value})}
-            />
-            {!config.tournamentName?.trim()&&<p style={{...S.hint,color:"#7C3AED",marginTop:4}}>Enter tournament name to continue</p>}
-          </div>
-        )}
-
-      </div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-        <span style={{fontSize:13,fontWeight:600,color:"var(--text-muted)"}}>Dark Mode</span>
-        <button onClick={toggleDark} style={{width:48,height:26,borderRadius:13,border:"none",background:dark?"#2563EB":"var(--border2)",cursor:"pointer",position:"relative",transition:"background 0.2s"}}>
-          <span style={{position:"absolute",top:3,left:dark?24:3,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
+      {/* Scrollable content area */}
+      <div style={{flex:1,overflowY:"auto",padding:"0 12px",minHeight:0}}>
+        <button onClick={onOpenLib} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 12px",borderRadius:10,border:hasLib?"2px solid #15803D40":"2px dashed #EA580C",background:hasLib?"#15803D08":"#FFF7ED",cursor:"pointer",marginBottom:8,textAlign:"left",boxSizing:"border-box"}}>
+          <span style={{color:hasLib?"#15803D":"#EA580C",flexShrink:0}}>{IC.db}</span>
+          <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:700,color:hasLib?"#15803D":"#EA580C",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{hasLib?`${parts.blades.length} blades · ${parts.ratchets.length} ratchets · ${parts.bits.length} bits`:"No parts loaded — tap to set up"}</div></div>
         </button>
+        <div style={{...S.card,marginBottom:8}}>
+          <h2 style={S.label}>Match Type</h2>
+          <div style={S.row}>{[[4,"4 Pts."],[5,"5 Pts."],[7,"7 Pts."],[0,"No Limit"]].map(([v,l])=>(<button key={v} style={{...S.chip,...(config.pts===v?S.chipOn:{})}} onClick={()=>setConfig({...config,pts:v})}>{l}</button>))}</div>
+          <div style={{...S.row,marginTop:6}}><button style={{...S.chip,...(config.pts>7?S.chipOn:{})}} onClick={()=>{const n=prompt("Custom point limit:"); if(n&&!isNaN(+n)&&+n>0)setConfig({...config,pts:+n});}}>{config.pts>7?config.pts+" Pts.":"Custom"}</button></div>
+          <h2 style={{...S.label,marginTop:10}}>Sets</h2>
+          <div style={S.row}>{[1,3,5].map(v=>(<button key={v} style={{...S.chip,...S.chipW,...(config.bo===v?S.chipBl:{})}} onClick={()=>setConfig({...config,bo:v})}>{v===1?"BO1":`BO${v}`}</button>))}</div>
+          <h2 style={{...S.label,marginTop:10}}>Tournament Mode</h2>
+          <div style={S.row}>{[false,true].map(v=>(<button key={String(v)} style={{...S.chip,...(config.tm===v?(v?{background:"#7C3AED",borderColor:"#7C3AED",color:"#fff"}:S.chipOn):{})}} onClick={()=>setConfig({...config,tm:v})}>{v?"On":"Off"}</button>))}</div>
+          {config.tm&&(
+            <div style={{marginTop:8}}>
+              <input style={{...S.inp,width:"100%",borderColor:"#7C3AED60"}} placeholder="Tournament name..." value={config.tournamentName||""} onChange={e=>setConfig({...config,tournamentName:e.target.value})}/>
+              {!config.tournamentName?.trim()&&<p style={{...S.hint,color:"#7C3AED",marginTop:3}}>Enter tournament name to continue</p>}
+            </div>
+          )}
+        </div>
       </div>
-      <button style={{...S.pri,opacity:(hasLib&&(!config.tm||config.tournamentName?.trim()))?1:0.4}} disabled={!hasLib||(config.tm&&!config.tournamentName?.trim())} onClick={onNext}>Next: Players →</button>
-      {!hasLib&&<p style={S.hint}>Set up your parts library first</p>}
+      {/* Fixed bottom actions */}
+      <div style={{flexShrink:0,padding:"6px 12px 10px",borderTop:"1px solid var(--border)"}}>
+        <button style={{...S.pri,margin:0,opacity:(hasLib&&(!config.tm||config.tournamentName?.trim()))?1:0.4}} disabled={!hasLib||(config.tm&&!config.tournamentName?.trim())} onClick={onNext}>Next: Players →</button>
+        {!hasLib&&<p style={{...S.hint,marginTop:4,marginBottom:0}}>Set up your parts library first</p>}
+      </div>
     </div>
     </>
   );
@@ -1132,10 +1125,12 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
   };
 
   return (
-    <div style={S.page}>
-      <button style={S.back} onClick={onBack}>{IC.back} Format</button>
-      <h1 style={S.title}>Player Roster</h1>
-      <p style={S.sub}>Players are saved between sessions</p>
+    <div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",background:"var(--bg-solid)",overflow:"hidden",boxSizing:"border-box"}}>
+      <div style={{flexShrink:0,padding:"8px 12px 4px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:8}}>
+        <button style={{...S.back,marginBottom:0}} onClick={onBack}>{IC.back} Format</button>
+        <h1 style={{...S.title,margin:0,fontSize:18}}>Player Roster</h1>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"8px 12px",minHeight:0}}>
 
       {/* Challonge import */}
       <div style={{...S.card,border:"2px solid #E4600040",background:"#FFF7ED",marginBottom:12}}>
@@ -1317,18 +1312,22 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
         </div>
       </div>
 
-      <button style={{...S.pri,opacity:players.length>=2?1:0.4}} disabled={players.length<2} onClick={onNext}>Start Matches →</button>
-      {players.length<2&&<p style={S.hint}>Need at least 2 players</p>}
+      </div>{/* end scrollable area */}
+      {/* Fixed footer */}
+      <div style={{flexShrink:0,padding:"6px 12px 10px",borderTop:"1px solid var(--border)"}}>
+        <button style={{...S.pri,margin:0,opacity:players.length>=2?1:0.4}} disabled={players.length<2} onClick={onNext}>Start Matches →</button>
+        {players.length<2&&<p style={{...S.hint,marginTop:4,marginBottom:0}}>Need at least 2 players</p>}
+      </div>
 
       {/* In-app clear all confirmation modal */}
       {confirmClear&&(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
           <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)",border:"1px solid var(--border)"}}>
             <p style={{fontSize:16,fontWeight:800,color:"var(--text-primary)",marginBottom:8,textAlign:"center"}}>Clear Roster?</p>
-            <p style={{fontSize:13,color:"#64748B",textAlign:"center",marginBottom:20,lineHeight:1.5}}>This will remove all <strong style={{color:"#EF4444"}}>{players.length} players</strong> from the roster. This cannot be undone.</p>
+            <p style={{fontSize:13,color:"var(--text-secondary)",textAlign:"center",marginBottom:20,lineHeight:1.5}}>This will remove all <strong style={{color:"#EF4444"}}>{players.length} players</strong> from the roster. This cannot be undone.</p>
             <div style={{display:"flex",gap:10}}>
               <button onClick={()=>setConfirmClear(false)}
-                style={{flex:1,padding:"12px 0",borderRadius:10,border:"2px solid #E2E8F0",background:"#fff",color:"#475569",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                style={{flex:1,padding:"12px 0",borderRadius:10,border:"2px solid var(--border)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
                 Cancel
               </button>
               <button onClick={clearAll}
@@ -2918,7 +2917,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       </div>
 
       {/* ── Combo picker row — ALWAYS pinned at bottom, exactly COMBO_ROW_H tall ── */}
-      <div style={{height:COMBO_ROW_H,display:"flex",gap:bp(6),padding:`${bp(4)}px ${bp(10)}px`,flexShrink:0,borderTop:"1px solid var(--border)"}}>
+      <div style={{height:COMBO_ROW_H,display:"flex",gap:bp(6),padding:`${bp(4)}px ${bp(10)}px`,flexShrink:0}}>
         {[{i:0,cl:"#2563EB",dk:d1,sel:r1,setSel:setR1,used:used1},
           {i:1,cl:"#DC2626",dk:d2,sel:r2,setSel:setR2,used:used2}].map(side=>(
           <div key={side.i} style={{flex:1,display:"flex",gap:bp(4)}}>
