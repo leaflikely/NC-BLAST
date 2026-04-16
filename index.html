@@ -45,7 +45,7 @@
     --pill-bg:#334155;
     --input-bg:#1E293B;
   }
-  body{background:var(--bg);min-height:100vh;max-height:100vh;overflow:hidden;font-family:'Outfit',sans-serif;color:var(--text-primary)}
+  body{background:var(--bg);min-height:100vh;font-family:'Outfit',sans-serif;color:var(--text-primary)}
   input,textarea{color:var(--text-primary);background:var(--input-bg);}
   input::placeholder{color:var(--text-faint);}
   /* Bottom bar always uses surface color */
@@ -228,7 +228,7 @@ function makeS(sc) {
   const f = (n) => Math.round(n * sc); // scale font
   const r = (n) => Math.round(n * sc); // scale radius
   return {
-  page:{maxWidth:p(480),margin:"0 auto",padding:`${p(14)}px ${p(14)}px ${p(80)}px`,minHeight:"100vh",maxHeight:"100vh",overflow:"hidden",boxSizing:"border-box"},
+  page:{maxWidth:p(480),margin:"0 auto",padding:`${p(14)}px ${p(14)}px ${p(80)}px`,boxSizing:"border-box"},
   logo:{fontSize:f(30),fontWeight:900,color:"var(--text-primary)",margin:0,letterSpacing:-1},
   title:{fontSize:f(22),fontWeight:800,color:"var(--text-primary)",textAlign:"center",margin:`0 0 ${p(4)}px`},
   sub:{textAlign:"center",color:"var(--text-muted)",fontSize:f(13),marginBottom:p(20),fontWeight:500},
@@ -763,7 +763,7 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
         </div>
       </div>
     )}
-    <div style={S.page}>
+    <div style={{...S.page,height:"100dvh",overflowY:"auto"}}>
       <div style={{textAlign:"center",marginBottom:16}}>
         <div style={{fontSize:32,marginBottom:4}}>⚔️</div>
         <h1 style={S.logo}>NC <span style={{color:"#EA580C"}}>BLAST</span></h1>
@@ -1127,7 +1127,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
   };
 
   return (
-    <div style={S.page}>
+    <div style={{...S.page,height:"100dvh",overflowY:"auto"}}>
       <button style={S.back} onClick={onBack}>{IC.back} Format</button>
       <h1 style={S.title}>Player Roster</h1>
       <p style={S.sub}>Players are saved between sessions</p>
@@ -1686,7 +1686,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   // ── Abandon confirm overlay — rendered first so it always shows instantly ──
   if(abandonConfirm){
     return (
-      <div style={{...S.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+      <div style={{...S.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",maxHeight:"100dvh",overflowY:"auto"}}>
         <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:340,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",border:"2px solid var(--border)"}}>
           <p style={{fontSize:16,fontWeight:800,color:"var(--text-primary)",marginBottom:8,textAlign:"center"}}>Abandon Match?</p>
           <p style={{fontSize:13,color:"var(--text-secondary)",textAlign:"center",marginBottom:6,lineHeight:1.5}}>
@@ -2215,7 +2215,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     };
 
     return (
-      <div style={S.page}><button style={S.back} onClick={goBack}>{IC.back} Back</button>
+      <div style={{...S.page,maxHeight:"100dvh",overflowY:"auto"}}><button style={S.back} onClick={goBack}>{IC.back} Back</button>
         <h1 style={S.title}>Select Match</h1>
 
         {/* Step indicator */}
@@ -2407,7 +2407,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const comboNames=["First","Second","Third"];
     const allDone=cReady;
     return (
-      <div style={S.page}>
+      <div style={{...S.page,maxHeight:"100dvh",overflowY:"auto"}}>
         <button style={S.back} onClick={goBack}>{IC.back} Back</button>
         <h1 style={S.title}>Deck Review</h1>
         <p style={S.sub}>Tap any part to change it</p>
@@ -2450,7 +2450,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const otherName = priorityKnown ? (sidePicker.priority===0?p2:p1) : null;
 
     return (
-      <div style={{...S.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:0}}>
+      <div style={{...S.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:0,maxHeight:"100dvh",overflowY:"auto"}}>
         <div style={{textAlign:"center",marginBottom:36}}>
           <p style={{fontSize:13,fontWeight:700,letterSpacing:2,color:"var(--text-muted)",textTransform:"uppercase",marginBottom:12}}>Set {curSet} · Assign Sides</p>
           <h1 style={{fontSize:38,fontWeight:900,color:"var(--text-primary)",margin:"0 0 10px",lineHeight:1}}>
@@ -2532,7 +2532,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     };
 
     return (
-      <div style={{...S.page,paddingBottom:80,overflow:"auto"}}>
+      <div style={{...S.page,paddingBottom:80}}>
 
         {/* ── Back button + confirm modal ── */}
         {!submitted&&(
