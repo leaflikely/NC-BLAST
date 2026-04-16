@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>NC BLAST Overlay</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet"/>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 1920px; height: 1080px;
+    background: transparent;
+    overflow: hidden;
+    font-family: 'Barlow', sans-serif;
+  }
+
+  /* ── CSS VARIABLES ─────────────────────────── */
+  :root {
+    --p1-hue: 210; /* blue */
+    --p2-hue: 15;  /* orange */
+    --p1-color: hsl(var(--p1-hue), 90%, 58%);
+    --p2-color: hsl(var(--p2-hue), 90%, 58%);
+    --p1-glow: hsl(var(--p1-hue), 90%, 58%);
+    --p2-glow: hsl(var(--p2-hue), 90%, 58%);
+    --gold: #FFD700;
+    --dark: #080C14;
+    --panel: rgba(8, 12, 22, 0.92);
+    --border-bright: rgba(255,255,255,0.12);
+    --text: #F0F4FF;
+    --muted: rgba(240,244,255,0.5);
+    --widget-w: 860px;
+  }
+
+  /* ── DRAGGABLE CONTAINER ───────────────────── */
+  #widget {
+    position: absolute;
+    top: 880px; left: 30px;
+    width: var(--widget-w);
+    cursor: move;
+    user-select: none;
+    filter: drop-shadow(0 0 40px rgba(0,0,0,0.8));
+  }
+
+  /* ── RESIZE HANDLE ─────────────────────────── */
+  #resize-handle {
+    position: absolute;
+    bottom: -6px; right: -6px;
+    width: 18px; height: 18px;
+    cursor: se-resize;
+    z-index: 100;
+  }
+  #resize-handle::after {
+    content: '';
+    position: absolute;
+    bottom: 4px; right: 4px;
+    width: 10px; height: 10px;
+    border-right: 2px solid rgba(255,255,255,0.3);
+    border-bottom: 2px solid rgba(255,255,255,0.3);
+  }
+
+  /* ── MAIN CARD ─────────────────────────────── */
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border-bright);
+    border-radius: 6px;
+    overflow: hidden;
+    backdrop-filter: blur(12px);
+    position: relative;
+  }
+
+  /* Animated gradient border on top */
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg,
+      var(--p1-color) 0%,
+      transparent 45%,
+      transparent 55%,
+      var(--p2-color) 100%
+    );
+    z-index: 10;
+  }
+
+  /* ── TOURNAMENT BAR ────────────────────────── */
+  .tourney-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 12px;
+    background: rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--border-bright);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    gap: 10px;
+  }
+  .tourney-bar .brand {
+    color: var(--gold);
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    font-size: 14px;
+  }
+  .tourney-bar .judge-pill {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px;
+    padding: 2px 10px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* ── SCOREBOARD ROW ────────────────────────── */
+  .scoreboard {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 10px 14px 8px;
+    gap: 10px;
+  }
+
+  /* Player block */
+  .player {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .player.right {
+    align-items: flex-end;
+    text-align: right;
+  }
+
+  .player-name {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(22px, 3.2vw, 34px);
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 280px;
+  }
+  .p1 .player-name { color: var(--p1-color); text-shadow: 0 0 20px var(--p1-glow); }
+  .p2 .player-name { color: var(--p2-color); text-shadow: 0 0 20px var(--p2-glow); }
+
+  .player-side {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* Combo display under name */
+  .combo-display {
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .player.right .combo-display { align-items: flex-end; }
+
+  .combo-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    opacity: 0.7;
+  }
+
+  .combo-parts {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .player.right .combo-parts { justify-content: flex-end; }
+
+  .combo-part {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .p1 .combo-part {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--p1-color);
+    border: 1px solid rgba(59,130,246,0.25);
+  }
+  .p2 .combo-part {
+    background: rgba(249, 115, 22, 0.15);
+    color: var(--p2-color);
+    border: 1px solid rgba(249,115,22,0.25);
+  }
+  .combo-dot {
+    color: var(--muted);
+    font-size: 9px;
+    opacity: 0.5;
+  }
+
+  /* ── CENTER SCORE ──────────────────────────── */
+  .center-score {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .pts-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .pts-num {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: clamp(40px, 6vw, 64px);
+    font-weight: 900;
+    line-height: 1;
+    min-width: 44px;
+    text-align: center;
+    transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), color 0.15s;
+  }
+  .pts-num.p1-pts { color: var(--p1-color); text-shadow: 0 0 30px var(--p1-glow); }
+  .pts-num.p2-pts { color: var(--p2-color); text-shadow: 0 0 30px var(--p2-glow); }
+  .pts-num.pop { transform: scale(1.35); }
+
+  .pts-divider {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 28px;
+    font-weight: 400;
+    color: var(--muted);
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  /* Point limit label */
+  .pts-limit {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  /* Set win dots */
+  .sets-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .set-dots {
+    display: flex;
+    gap: 4px;
+  }
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-bright);
+    transition: background 0.2s, border-color 0.2s, transform 0.2s;
+  }
+  .dot.won { transform: scale(1.15); }
+  .dot.p1-dot.won { background: var(--p1-color); border-color: var(--p1-color); box-shadow: 0 0 8px var(--p1-glow); }
+  .dot.p2-dot.won { background: var(--p2-color); border-color: var(--p2-color); box-shadow: 0 0 8px var(--p2-glow); }
+  .dot.empty { background: transparent; }
+  .sets-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  /* ── FINISH FLASH BANNER ───────────────────── */
+  #finish-flash {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 50;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  #finish-flash.visible { opacity: 1; }
+  #finish-flash.p1-win { background: radial-gradient(ellipse at center, rgba(59,130,246,0.35) 0%, rgba(8,12,22,0.7) 70%); }
+  #finish-flash.p2-win { background: radial-gradient(ellipse at center, rgba(249,115,22,0.35) 0%, rgba(8,12,22,0.7) 70%); }
+
+  .flash-type {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 52px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    animation: flashPulse 0.3s ease-out;
+  }
+  .flash-winner {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.7);
+    margin-top: 4px;
+  }
+
+  @keyframes flashPulse {
+    0% { transform: scale(1.4); opacity: 0; }
+    60% { transform: scale(0.95); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  /* ── OFFLINE STATE ─────────────────────────── */
+  #offline-msg {
+    padding: 18px 24px;
+    text-align: center;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: none;
+  }
+  #offline-msg.visible { display: block; }
+
+  /* ── DRAG HANDLE INDICATOR (top of card) ───── */
+  .drag-indicator {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 3px 0 1px;
+    gap: 3px;
+    cursor: move;
+    opacity: 0.2;
+    transition: opacity 0.2s;
+  }
+  .drag-indicator:hover { opacity: 0.5; }
+  .drag-indicator span {
+    width: 24px; height: 2px;
+    background: var(--text);
+    border-radius: 2px;
+  }
+
+  /* ── SCALE WRAPPER ─────────────────────────── */
+  #scale-wrap {
+    transform-origin: top left;
+  }
+
+</style>
+</head>
+<body>
+
+<div id="widget">
+  <div id="scale-wrap">
+    <div class="card" id="main-card">
+
+      <!-- Drag indicator -->
+      <div class="drag-indicator" id="drag-handle">
+        <span></span><span></span><span></span>
+      </div>
+
+      <!-- Finish flash overlay (sits on top of card content) -->
+      <div id="finish-flash">
+        <div class="flash-type" id="flash-type-text">XTR</div>
+        <div class="flash-winner" id="flash-winner-text">Player wins</div>
+      </div>
+
+      <!-- Tournament bar -->
+      <div class="tourney-bar">
+        <span class="brand" id="brand-text">NC BLAST</span>
+        <span id="tourney-name" style="flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+        <span class="judge-pill" id="judge-name"></span>
+      </div>
+
+      <!-- Offline message (shown when no data) -->
+      <div id="offline-msg">Waiting for match data…</div>
+
+      <!-- Main scoreboard -->
+      <div class="scoreboard" id="scoreboard" style="display:none">
+
+        <!-- P1 (left) -->
+        <div class="player p1" id="p1-block">
+          <div class="player-name" id="p1-name">—</div>
+          <div class="player-side" id="p1-side"></div>
+          <div class="combo-display" id="p1-combo">
+            <div class="combo-label">Combo</div>
+            <div class="combo-parts" id="p1-parts"></div>
+          </div>
+        </div>
+
+        <!-- Center -->
+        <div class="center-score">
+          <div class="pts-row">
+            <span class="pts-num p1-pts" id="p1-pts">0</span>
+            <span class="pts-divider">–</span>
+            <span class="pts-num p2-pts" id="p2-pts">0</span>
+          </div>
+          <div class="pts-limit" id="pts-limit"></div>
+          <div class="sets-row" id="sets-row" style="display:none">
+            <div class="set-dots" id="p1-dots"></div>
+            <div class="sets-label" id="set-label">Sets</div>
+            <div class="set-dots" id="p2-dots"></div>
+          </div>
+        </div>
+
+        <!-- P2 (right) -->
+        <div class="player p2 right" id="p2-block">
+          <div class="player-name" id="p2-name">—</div>
+          <div class="player-side" id="p2-side"></div>
+          <div class="combo-display" id="p2-combo">
+            <div class="combo-label">Combo</div>
+            <div class="combo-parts" id="p2-parts"></div>
+          </div>
+        </div>
+
+      </div>
+
+    </div><!-- .card -->
+  </div><!-- #scale-wrap -->
+  <div id="resize-handle"></div>
+</div><!-- #widget -->
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────
+const WORKER = "https://challonge-proxy.danny61734.workers.dev";
+const params = new URLSearchParams(location.search);
+const SLOT = parseInt(params.get("slot") || "1");
+const EDIT_MODE = params.get("edit") === "1"; // ?edit=1 shows controls
+
+// ── STATE ────────────────────────────────────────────────────────
+let lastEtag = null;
+let lastState = null;
+let flashTimer = null;
+let p1PopTimer = null;
+let p2PopTimer = null;
+let widgetScale = parseFloat(localStorage.getItem("ncblast-scale") || "1");
+let widgetPos = JSON.parse(localStorage.getItem("ncblast-pos") || "null") || { x: 30, y: 880 };
+
+// ── ELEMENTS ─────────────────────────────────────────────────────
+const widget     = document.getElementById("widget");
+const scaleWrap  = document.getElementById("scale-wrap");
+const scoreboard = document.getElementById("scoreboard");
+const offlineMsg = document.getElementById("offline-msg");
+const flashEl    = document.getElementById("finish-flash");
+const flashType  = document.getElementById("flash-type-text");
+const flashWinner= document.getElementById("flash-winner-text");
+
+const el = id => document.getElementById(id);
+
+// ── APPLY SAVED POSITION & SCALE ─────────────────────────────────
+function applyTransform() {
+  widget.style.left = widgetPos.x + "px";
+  widget.style.top  = widgetPos.y + "px";
+  scaleWrap.style.transform = `scale(${widgetScale})`;
+  // Shrink widget container to match scaled content
+  const baseW = 860;
+  const baseH = el("main-card").offsetHeight || 140;
+  widget.style.width  = (baseW * widgetScale) + "px";
+  widget.style.height = (baseH * widgetScale) + "px";
+}
+
+// ── DRAG ─────────────────────────────────────────────────────────
+let dragging = false, dragStartX, dragStartY, dragOriginX, dragOriginY;
+
+function startDrag(e) {
+  const touch = e.touches ? e.touches[0] : e;
+  dragging = true;
+  dragStartX = touch.clientX;
+  dragStartY = touch.clientY;
+  dragOriginX = widgetPos.x;
+  dragOriginY = widgetPos.y;
+  e.preventDefault();
+}
+
+function onDrag(e) {
+  if (!dragging) return;
+  const touch = e.touches ? e.touches[0] : e;
+  widgetPos.x = dragOriginX + (touch.clientX - dragStartX);
+  widgetPos.y = dragOriginY + (touch.clientY - dragStartY);
+  // Clamp to screen
+  widgetPos.x = Math.max(0, Math.min(1920 - 100, widgetPos.x));
+  widgetPos.y = Math.max(0, Math.min(1080 - 40, widgetPos.y));
+  widget.style.left = widgetPos.x + "px";
+  widget.style.top  = widgetPos.y + "px";
+}
+
+function endDrag() {
+  if (!dragging) return;
+  dragging = false;
+  localStorage.setItem("ncblast-pos", JSON.stringify(widgetPos));
+}
+
+el("drag-handle").addEventListener("mousedown", startDrag);
+document.addEventListener("mousemove", onDrag);
+document.addEventListener("mouseup", endDrag);
+el("drag-handle").addEventListener("touchstart", startDrag, { passive: false });
+document.addEventListener("touchmove", onDrag, { passive: false });
+document.addEventListener("touchend", endDrag);
+
+// ── RESIZE ───────────────────────────────────────────────────────
+let resizing = false, resizeStartX, resizeStartScale;
+
+el("resize-handle").addEventListener("mousedown", e => {
+  resizing = true;
+  resizeStartX = e.clientX;
+  resizeStartScale = widgetScale;
+  e.preventDefault();
+  e.stopPropagation();
+});
+
+document.addEventListener("mousemove", e => {
+  if (!resizing) return;
+  const dx = e.clientX - resizeStartX;
+  widgetScale = Math.max(0.4, Math.min(2.5, resizeStartScale + dx / 400));
+  scaleWrap.style.transform = `scale(${widgetScale})`;
+  widget.style.width  = (860 * widgetScale) + "px";
+});
+
+document.addEventListener("mouseup", () => {
+  if (!resizing) return;
+  resizing = false;
+  localStorage.setItem("ncblast-scale", String(widgetScale));
+});
+
+// ── RENDER COMBO ─────────────────────────────────────────────────
+function renderCombo(containerId, combo, playerClass) {
+  const container = el(containerId);
+  if (!combo || !combo.blade) {
+    container.closest(".combo-display").style.display = "none";
+    return;
+  }
+  container.closest(".combo-display").style.display = "";
+  const parts = [combo.blade, combo.ratchet, combo.bit].filter(Boolean);
+  container.innerHTML = parts.map((p, i) => {
+    const dot = i < parts.length - 1 ? `<span class="combo-dot">·</span>` : "";
+    return `<span class="combo-part ${playerClass}">${p}</span>${dot}`;
+  }).join("");
+}
+
+// ── RENDER SET DOTS ───────────────────────────────────────────────
+function renderDots(containerId, won, needed, playerClass) {
+  const container = el(containerId);
+  let html = "";
+  for (let i = 0; i < needed; i++) {
+    const active = i < won ? "won" : "empty";
+    html += `<div class="dot ${playerClass} ${active}"></div>`;
+  }
+  container.innerHTML = html;
+}
+
+// ── POP ANIMATION ─────────────────────────────────────────────────
+function popScore(elId, timerRef) {
+  const node = el(elId);
+  node.classList.add("pop");
+  clearTimeout(timerRef);
+  return setTimeout(() => node.classList.remove("pop"), 350);
+}
+
+// ── FINISH FLASH ──────────────────────────────────────────────────
+const FINISH_LABELS = {
+  XTR: "XTREME",
+  OVR: "OVER",
+  BST: "BURST",
+  OF: "OUT OF BOUNDS",
+  OF2: "OUT — P2 PENALTY",
+  OF3: "OUT — P1 PENALTY",
+  "LER-STRIKE": "LER STRIKE",
+};
+
+function showFlash(type, scorerIdx, p1Name, p2Name, p1Color, p2Color) {
+  const label = FINISH_LABELS[type] || type;
+  const winner = scorerIdx === 0 ? p1Name : p2Name;
+  flashType.textContent = label;
+  flashType.style.color = scorerIdx === 0 ? p1Color : p2Color;
+  flashType.style.textShadow = `0 0 30px ${scorerIdx === 0 ? p1Color : p2Color}`;
+  flashWinner.textContent = (winner || "Player") + " SCORES";
+  flashEl.className = "visible " + (scorerIdx === 0 ? "p1-win" : "p2-win");
+
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
+    flashEl.className = "";
+  }, 2200);
+}
+
+// ── RENDER STATE ──────────────────────────────────────────────────
+function renderState(state, prevState) {
+  if (!state) {
+    scoreboard.style.display = "none";
+    offlineMsg.classList.add("visible");
+    return;
+  }
+
+  offlineMsg.classList.remove("visible");
+  scoreboard.style.display = "";
+
+  // Names
+  el("p1-name").textContent = state.p1 || "Player 1";
+  el("p2-name").textContent = state.p2 || "Player 2";
+
+  // Sides
+  el("p1-side").textContent = state.p1Side || "";
+  el("p2-side").textContent = state.p2Side || "";
+
+  // Tournament + judge bar
+  el("tourney-name").textContent = state.tournamentName || "";
+  const judgeEl = el("judge-name");
+  if (state.judge) {
+    judgeEl.textContent = "🎤 " + state.judge;
+    judgeEl.style.display = "";
+  } else {
+    judgeEl.style.display = "none";
+  }
+
+  // Points — pop if changed
+  const p1pts = (state.pts || [0,0])[0];
+  const p2pts = (state.pts || [0,0])[1];
+  const prevP1 = prevState ? (prevState.pts || [0,0])[0] : p1pts;
+  const prevP2 = prevState ? (prevState.pts || [0,0])[1] : p2pts;
+  el("p1-pts").textContent = p1pts;
+  el("p2-pts").textContent = p2pts;
+  if (prevState && p1pts !== prevP1) p1PopTimer = popScore("p1-pts", p1PopTimer);
+  if (prevState && p2pts !== prevP2) p2PopTimer = popScore("p2-pts", p2PopTimer);
+
+  // Point limit label
+  const limit = state.pointLimit;
+  el("pts-limit").textContent = limit ? `First to ${limit} pts` : "";
+
+  // Sets
+  const setsNeeded = state.setsNeeded || 1;
+  const p1Sets = (state.sets || [0,0])[0];
+  const p2Sets = (state.sets || [0,0])[1];
+  const setsRow = el("sets-row");
+  if (setsNeeded > 1) {
+    setsRow.style.display = "";
+    renderDots("p1-dots", p1Sets, setsNeeded, "p1-dot");
+    renderDots("p2-dots", p2Sets, setsNeeded, "p2-dot");
+    el("set-label").textContent = `SET ${state.curSet || 1}`;
+  } else {
+    setsRow.style.display = "none";
+  }
+
+  // Combos
+  renderCombo("p1-parts", state.p1ActiveCombo, "p1");
+  renderCombo("p2-parts", state.p2ActiveCombo, "p2");
+
+  // Finish flash — trigger only when lastFinish changes
+  if (state.lastFinish && prevState) {
+    const same =
+      prevState.lastFinish &&
+      prevState.lastFinish.type === state.lastFinish.type &&
+      JSON.stringify(prevState.pts) === JSON.stringify(state.pts);
+    if (!same) {
+      const p1Color = getComputedStyle(document.documentElement)
+        .getPropertyValue("--p1-color").trim() || "#60A5FA";
+      const p2Color = getComputedStyle(document.documentElement)
+        .getPropertyValue("--p2-color").trim() || "#FB923C";
+      showFlash(
+        state.lastFinish.type,
+        state.lastFinish.scorerIdx,
+        state.p1, state.p2,
+        p1Color, p2Color
+      );
+    }
+  }
+
+  applyTransform();
+}
+
+// ── POLLING LOOP ──────────────────────────────────────────────────
+async function poll() {
+  while (true) {
+    try {
+      const url = lastEtag
+        ? `${WORKER}/overlay/poll?slot=${SLOT}&etag=${lastEtag}`
+        : `${WORKER}/overlay/state?slot=${SLOT}`;
+
+      const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (data.etag && data.etag !== lastEtag) {
+        const prev = lastState;
+        lastState = data.state;
+        lastEtag = data.etag;
+        renderState(data.state, prev);
+      } else if (!lastEtag) {
+        // First load with no data yet
+        renderState(null, null);
+      }
+    } catch (e) {
+      // Network error — show offline, retry in 3s
+      renderState(null, null);
+      await new Promise(r => setTimeout(r, 3000));
+    }
+
+    // Short pause between polls (long-poll already waited up to 25s server-side)
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
+// ── INIT ──────────────────────────────────────────────────────────
+widget.style.left = widgetPos.x + "px";
+widget.style.top  = widgetPos.y + "px";
+scaleWrap.style.transform = `scale(${widgetScale})`;
+widget.style.width = (860 * widgetScale) + "px";
+
+// Show slot number in brand if multiple slots
+if (SLOT > 1) {
+  el("brand-text").textContent = `NC BLAST · T${SLOT}`;
+}
+
+// Start polling
+renderState(null, null);
+poll();
+
+// ── KEYBOARD SHORTCUTS (for streamer convenience) ─────────────────
+// R = reset position to bottom-left
+// +/- = scale up/down
+document.addEventListener("keydown", e => {
+  if (e.key === "r" || e.key === "R") {
+    widgetPos = { x: 30, y: 880 };
+    localStorage.setItem("ncblast-pos", JSON.stringify(widgetPos));
+    applyTransform();
+  }
+  if (e.key === "=" || e.key === "+") {
+    widgetScale = Math.min(2.5, widgetScale + 0.05);
+    localStorage.setItem("ncblast-scale", String(widgetScale));
+    applyTransform();
+  }
+  if (e.key === "-") {
+    widgetScale = Math.max(0.4, widgetScale - 0.05);
+    localStorage.setItem("ncblast-scale", String(widgetScale));
+    applyTransform();
+  }
+});
+</script>
+</body>
+</html>
