@@ -41,21 +41,46 @@
     filter: drop-shadow(0 0 40px rgba(0,0,0,0.8));
   }
 
-  /* ── RESIZE HANDLE ─────────────────────────── */
-  #resize-handle {
+  /* ── RESIZE HANDLES ────────────────────────── */
+  .resize-handle {
     position: absolute;
-    bottom: -6px; right: -6px;
-    width: 18px; height: 18px;
-    cursor: se-resize;
     z-index: 100;
+    opacity: 0;
+    transition: opacity 0.2s;
   }
-  #resize-handle::after {
+  #widget:hover .resize-handle { opacity: 1; }
+
+  /* Corner — scale uniformly */
+  #rh-corner {
+    bottom: -5px; right: -5px;
+    width: 16px; height: 16px;
+    cursor: se-resize;
+    background: rgba(255,255,255,0.15);
+    border-radius: 3px;
+  }
+  #rh-corner::after {
     content: '';
     position: absolute;
-    bottom: 4px; right: 4px;
-    width: 10px; height: 10px;
-    border-right: 2px solid rgba(255,255,255,0.3);
-    border-bottom: 2px solid rgba(255,255,255,0.3);
+    bottom: 3px; right: 3px;
+    width: 8px; height: 8px;
+    border-right: 2px solid rgba(255,255,255,0.6);
+    border-bottom: 2px solid rgba(255,255,255,0.6);
+  }
+  /* Right edge — stretch width only */
+  #rh-right {
+    top: 20%; bottom: 20%; right: -5px;
+    width: 10px;
+    cursor: ew-resize;
+    background: rgba(255,255,255,0.08);
+    border-radius: 0 4px 4px 0;
+  }
+  /* Bottom edge — stretch height only */
+  #rh-bottom {
+    left: 20%; right: 20%; bottom: -5px;
+    height: 10px;
+    cursor: ns-resize;
+    background: rgba(255,255,255,0.08);
+    border-radius: 0 0 4px 4px;
   }
 
   /* ── MAIN CARD ─────────────────────────────── */
@@ -449,7 +474,9 @@
 
     </div><!-- .card -->
   </div><!-- #scale-wrap -->
-  <div id="resize-handle"></div>
+  <div class="resize-handle" id="rh-corner"></div>
+  <div class="resize-handle" id="rh-right"></div>
+  <div class="resize-handle" id="rh-bottom"></div>
 </div><!-- #widget -->
 
 <script>
@@ -484,10 +511,8 @@ function applyTransform() {
   widget.style.left = widgetPos.x + "px";
   widget.style.top  = widgetPos.y + "px";
   scaleWrap.style.transform = `scale(${widgetScale})`;
-  // Shrink widget container to match scaled content
-  const baseW = 860;
   const baseH = el("main-card").offsetHeight || 140;
-  widget.style.width  = (baseW * widgetScale) + "px";
+  widget.style.width  = (BASE_W * widgetScale) + "px";
   widget.style.height = (baseH * widgetScale) + "px";
 }
 
@@ -530,28 +555,89 @@ document.addEventListener("touchmove", onDrag, { passive: false });
 document.addEventListener("touchend", endDrag);
 
 // ── RESIZE ───────────────────────────────────────────────────────
-let resizing = false, resizeStartX, resizeStartScale;
+// Supports 3 handles: corner (uniform scale), right edge (width), bottom edge (height)
+const BASE_W = 860;
+const BASE_H = 160; // approximate natural card height at scale 1
 
-el("resize-handle").addEventListener("mousedown", e => {
-  resizing = true;
+let resizeMode = null; // null | "corner" | "right" | "bottom"
+let resizeStartX, resizeStartY, resizeStartScale, resizeStartW, resizeStartH;
+let widgetW = parseFloat(localStorage.getItem("ncblast-w") || String(BASE_W * widgetScale));
+let widgetH = parseFloat(localStorage.getItem("ncblast-h") || "0"); // 0 = auto
+
+function applySize() {
+  scaleWrap.style.transform = `scale(${widgetScale})`;
+  // Width: either explicit px override or scale-derived
+  const w = widgetW > 0 ? widgetW : BASE_W * widgetScale;
+  widget.style.width = w + "px";
+  // Height: explicit override or auto
+  if (widgetH > 0) {
+    widget.style.height = widgetH + "px";
+    scaleWrap.style.transformOrigin = "top left";
+    // Scale inner card to fill explicit height
+    const cardH = el("main-card").offsetHeight || BASE_H;
+    const hScale = widgetH / cardH;
+    const wScale = w / BASE_W;
+    const s = Math.min(hScale, wScale);
+    widgetScale = Math.max(0.3, Math.min(3.0, s));
+    scaleWrap.style.transform = `scale(${widgetScale})`;
+  } else {
+    widget.style.height = (el("main-card").offsetHeight * widgetScale) + "px";
+  }
+}
+
+function startResize(mode, e) {
+  resizeMode = mode;
   resizeStartX = e.clientX;
+  resizeStartY = e.clientY;
   resizeStartScale = widgetScale;
+  resizeStartW = widgetW || BASE_W * widgetScale;
+  resizeStartH = widgetH || (el("main-card").offsetHeight * widgetScale);
   e.preventDefault();
   e.stopPropagation();
-});
+}
+
+el("rh-corner").addEventListener("mousedown", e => startResize("corner", e));
+el("rh-right").addEventListener("mousedown",  e => startResize("right",  e));
+el("rh-bottom").addEventListener("mousedown", e => startResize("bottom", e));
 
 document.addEventListener("mousemove", e => {
-  if (!resizing) return;
+  if (!resizeMode) return;
   const dx = e.clientX - resizeStartX;
-  widgetScale = Math.max(0.4, Math.min(2.5, resizeStartScale + dx / 400));
-  scaleWrap.style.transform = `scale(${widgetScale})`;
-  widget.style.width  = (860 * widgetScale) + "px";
+  const dy = e.clientY - resizeStartY;
+
+  if (resizeMode === "corner") {
+    // Uniform scale from corner drag
+    widgetScale = Math.max(0.3, Math.min(3.0, resizeStartScale + dx / 500));
+    widgetW = 0; widgetH = 0; // let scale drive size
+    scaleWrap.style.transform = `scale(${widgetScale})`;
+    widget.style.width  = (BASE_W * widgetScale) + "px";
+    widget.style.height = ((el("main-card").offsetHeight || BASE_H) * widgetScale) + "px";
+  } else if (resizeMode === "right") {
+    // Width-only drag
+    widgetW = Math.max(200, resizeStartW + dx);
+    widgetH = 0;
+    widgetScale = widgetW / BASE_W;
+    scaleWrap.style.transform = `scale(${widgetScale})`;
+    widget.style.width  = widgetW + "px";
+    widget.style.height = ((el("main-card").offsetHeight || BASE_H) * widgetScale) + "px";
+  } else if (resizeMode === "bottom") {
+    // Height-only drag — scales to fit
+    widgetH = Math.max(60, resizeStartH + dy);
+    const cardH = el("main-card").offsetHeight || BASE_H;
+    widgetScale = widgetH / cardH;
+    widgetW = BASE_W * widgetScale;
+    scaleWrap.style.transform = `scale(${widgetScale})`;
+    widget.style.width  = widgetW + "px";
+    widget.style.height = widgetH + "px";
+  }
 });
 
 document.addEventListener("mouseup", () => {
-  if (!resizing) return;
-  resizing = false;
+  if (!resizeMode) return;
+  resizeMode = null;
   localStorage.setItem("ncblast-scale", String(widgetScale));
+  localStorage.setItem("ncblast-w", String(widgetW));
+  localStorage.setItem("ncblast-h", String(widgetH));
 });
 
 // ── RENDER COMBO ─────────────────────────────────────────────────
@@ -735,7 +821,7 @@ async function poll() {
 widget.style.left = widgetPos.x + "px";
 widget.style.top  = widgetPos.y + "px";
 scaleWrap.style.transform = `scale(${widgetScale})`;
-widget.style.width = (860 * widgetScale) + "px";
+widget.style.width = (BASE_W * widgetScale) + "px";
 
 // Show slot number in brand if multiple slots
 if (SLOT > 1) {
@@ -756,13 +842,19 @@ document.addEventListener("keydown", e => {
     applyTransform();
   }
   if (e.key === "=" || e.key === "+") {
-    widgetScale = Math.min(2.5, widgetScale + 0.05);
+    widgetScale = Math.min(3.0, widgetScale + 0.05);
+    widgetW = 0; widgetH = 0;
     localStorage.setItem("ncblast-scale", String(widgetScale));
+    localStorage.setItem("ncblast-w", "0");
+    localStorage.setItem("ncblast-h", "0");
     applyTransform();
   }
   if (e.key === "-") {
-    widgetScale = Math.max(0.4, widgetScale - 0.05);
+    widgetScale = Math.max(0.3, widgetScale - 0.05);
+    widgetW = 0; widgetH = 0;
     localStorage.setItem("ncblast-scale", String(widgetScale));
+    localStorage.setItem("ncblast-w", "0");
+    localStorage.setItem("ncblast-h", "0");
     applyTransform();
   }
 });
