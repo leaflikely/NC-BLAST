@@ -62,17 +62,18 @@ const { useState, useEffect, useRef } = React;
 ═══════════════════════════════════════ */
 function useScale() {
   const [scale, setScale] = useState(1);
+  const lastW = useRef(0);
   useEffect(() => {
     function update() {
       const w = window.innerWidth;
       const h = window.innerHeight;
-      // Base design width is 480px. Scale linearly but clamp generously.
-      // On narrow phones: scale down. On tablets/desktop: scale up to fill width.
+      // Only re-scale when width changes — height-only changes (mobile keyboard popup) are ignored.
+      // This prevents the virtual keyboard opening from triggering a re-render that blurs inputs.
+      if(w === lastW.current) return;
+      lastW.current = w;
       const wScale = Math.min(w / 480, 2.2);
-      // Also consider height -- do not let things get so tall they need scrolling on short screens
       const hScale = Math.min(h / 700, 2.0);
       const s = Math.min(wScale, hScale);
-      // Clamp: never go below 0.7 or above 2.0
       const clamped = Math.max(0.7, Math.min(2.0, s));
       setScale(clamped);
       document.documentElement.style.fontSize = (16 * clamped) + "px";
@@ -88,6 +89,7 @@ function useScale() {
    PERSISTENT STORAGE — localStorage
 ═══════════════════════════════════════ */
 const KEYS = { parts: "bx-library-v9", players: "bx-roster-v2", combos: "bx-combos-v1", matchLog: "bx-matchlog-v1", challongeMap: "bx-challonge-map-v1" };
+const BUILD_TIME = "2026-04-16 07:29 UTC";
 function sGet(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; } }
 function sSave(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
 
@@ -769,7 +771,7 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,marginTop:6}}>
           <button onClick={()=>setShowGuide(true)} style={{background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>Guide & Intro</button>
           <span style={{color:"var(--text-disabled)",fontSize:11}}>·</span>
-          <button onClick={()=>setShowChangelog(true)} style={{background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>v{CHANGELOG[CHANGELOG.length-1].v} — Changelog</button>
+          <span style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><button onClick={()=>setShowChangelog(true)} style={{background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>v{CHANGELOG[CHANGELOG.length-1].v} — Changelog</button><span style={{fontSize:9,color:"var(--text-disabled)",fontWeight:500,letterSpacing:0.3}}>{BUILD_TIME}</span></span>
         </div>
       </div>
       <button onClick={onOpenLib} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 14px",borderRadius:12,border:hasLib?"2px solid #15803D40":"2px dashed #EA580C",background:hasLib?"#15803D08":"#FFF7ED",cursor:"pointer",marginBottom:16,textAlign:"left"}}>
@@ -1363,7 +1365,7 @@ function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpen
                 <p style={{fontSize:13,color:"#64748B",textAlign:"center",marginBottom:20,lineHeight:1.5}}>This will permanently delete all <strong style={{color:"#EF4444"}}>{log.length} battle records</strong> from the log. This cannot be undone.</p>
                 <div style={{display:"flex",gap:10}}>
                   <button onClick={()=>setConfirmClear(false)}
-                    style={{flex:1,padding:"12px 0",borderRadius:10,border:"2px solid #E2E8F0",background:"#fff",color:"#475569",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                    style={{flex:1,padding:"12px 0",borderRadius:10,border:"2px solid var(--border)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
                     Cancel
                   </button>
                   <button onClick={()=>{onClearLog();setConfirmClear(false);}}
@@ -1375,13 +1377,13 @@ function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpen
             </div>
           )}
           {log.slice().reverse().map((e,i)=>(
-            <div key={i} style={{padding:"10px 12px",borderRadius:10,marginBottom:8,background:e.scorerIdx===0?"#EFF6FF":"#FEF2F2",borderLeft:`4px solid ${e.scorerIdx===0?"#2563EB":"#DC2626"}`}}>
+            <div key={i} style={{padding:"10px 12px",borderRadius:10,marginBottom:8,background:e.scorerIdx===0?"#EFF6FF22":"#FEF2F222",borderLeft:`4px solid ${e.scorerIdx===0?"#2563EB":"#DC2626"}`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
                 <span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626",fontSize:14}}>{e.scorer}</span>
                 <span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)"}}>R{log.length-i} · Set {e.set} · Shuf {e.shuffle}</span>
               </div>
               <div style={{fontSize:12,color:"var(--text-secondary)",marginBottom:2}}><span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626"}}>{e.typeName}</span> (+{e.points})</div>
-              <div style={{fontSize:11,color:"#64748B"}}>Won with: <span style={{fontWeight:600}}>{e.winnerCombo}</span></div>
+              <div style={{fontSize:11,color:"var(--text-muted)"}}>Won with: <span style={{fontWeight:600}}>{e.winnerCombo}</span></div>
               <div style={{fontSize:11,color:"var(--text-muted)",marginTop:1}}>vs {e.scorerIdx===0?comboStr(e.p2Combo):comboStr(e.p1Combo)}</div>
               {e.p1Side&&<div style={{fontSize:10,color:"var(--text-muted)",marginTop:1}}>{e.p1Name}: {e.p1Side} Side · {e.p2Name}: {e.p2Side} Side</div>}
               <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2,fontWeight:600}}>{e.p1Name} {e.p1Score} – {e.p2Score} {e.p2Name}</div>
@@ -1390,7 +1392,7 @@ function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpen
         </div>
       </div>
       {historyOpen&&<div onClick={()=>setHistoryOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.2)",zIndex:99}}/>}
-      <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",justifyContent:"center",padding:"10px 16px 20px",background:"linear-gradient(transparent 0%, #F0F4F8 40%)",zIndex:50}}>
+      <div style={{position:"fixed",bottom:0,left:0,right:0,display:"flex",justifyContent:"center",padding:"8px 16px 16px",background:"linear-gradient(transparent 0%, var(--bg-solid) 45%)",zIndex:50}}>
         <div style={{display:"flex",alignItems:"center",gap:2,background:"var(--surface)",borderRadius:20,padding:"5px 6px",boxShadow:"0 2px 12px rgba(0,0,0,0.15), 0 0 0 1px var(--border)"}}>
           <button onClick={()=>setHistoryOpen(true)} style={S.barBtn}>{IC.history}</button>
           <div style={S.barDiv}/>
@@ -2732,19 +2734,21 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const pending1 = pendingFinish?.pi===0 ? pendingFinish.fin : null;
   const pending2 = pendingFinish?.pi===1 ? pendingFinish.fin : null;
 
+  // Battle screen uses fixed viewport height — no scrolling ever
+  const BBAR = bp(56); // bottom bar height to reserve
   return (
-    <div style={{...S.page,paddingBottom:bp(80),display:"flex",flexDirection:"column"}}>
+    <div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",background:"var(--bg-solid)",padding:`${bp(8)}px ${bp(14)}px`,paddingBottom:BBAR,boxSizing:"border-box",overflow:"hidden"}}>
 
       {/* ── Back + context strip ── */}
-      <div style={{display:"flex",alignItems:"center",gap:bp(6),marginBottom:bp(8),flexWrap:"wrap"}}>
-        <button style={{...S.back,marginBottom:0}} onClick={goBack}>{IC.back} Back</button>
-        {config.bo>1&&<span style={{...S.pill}}>Set {curSet} of {config.bo}</span>}
-        <span style={{...S.pill}}>Battle {battlesInThisSet}</span>
-        {config.bo>1&&<span style={{...S.pill}}>Match: {sets[0]}–{sets[1]}</span>}
+      <div style={{display:"flex",alignItems:"center",gap:bp(6),marginBottom:bp(6),flexWrap:"nowrap",flexShrink:0,minWidth:0}}>
+        <button style={{...S.back,marginBottom:0,flexShrink:0}} onClick={goBack}>{IC.back} Back</button>
+        {config.bo>1&&<span style={{...S.pill,flexShrink:0}}>Set {curSet}/{config.bo}</span>}
+        <span style={{...S.pill,flexShrink:0}}>B{battlesInThisSet}</span>
+        {config.bo>1&&<span style={{...S.pill,flexShrink:0}}>{sets[0]}–{sets[1]}</span>}
         {currentSides.p1Side&&(
           <button type="button" onClick={()=>setSideSwapConfirm(true)}
-            style={{marginLeft:"auto",padding:`${bp(4)}px ${bp(8)}px`,borderRadius:bp(8),border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:bf(10),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-            ⇄ Swap Sides
+            style={{marginLeft:"auto",padding:`${bp(3)}px ${bp(7)}px`,borderRadius:bp(8),border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:bf(10),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",flexShrink:0}}>
+            ⇄ Swap
           </button>
         )}
       </div>
@@ -2780,7 +2784,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       )}
 
       {/* ── Score block ── */}
-      <div style={{background:"var(--surface)",borderRadius:bp(16),padding:`${bp(10)}px ${bp(14)}px ${bp(8)}px`,marginBottom:bp(6),boxShadow:"0 2px 12px rgba(0,0,0,0.08)",border:"1px solid var(--border)"}}>
+      <div style={{background:"var(--surface)",borderRadius:bp(12),padding:`${bp(8)}px ${bp(12)}px ${bp(6)}px`,marginBottom:bp(5),boxShadow:"0 2px 8px rgba(0,0,0,0.06)",border:"1px solid var(--border)",flexShrink:0}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:bp(6)}}>
           <span style={{fontSize:bf(p1&&p1.length>10?18:24),fontWeight:900,color:"#2563EB",fontFamily:"'Outfit',sans-serif",maxWidth:"38vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p1}{currentSides.p1Side?<span style={{fontSize:bf(10),fontWeight:600,color:"#93C5FD",marginLeft:bp(3)}}>{currentSides.p1Side}</span>:""}</span>
           <span style={{fontSize:bf(10),fontWeight:700,color:"var(--text-primary)"}}>{["First","Second","Third","Fourth","Fifth"][curSet-1]||`Set ${curSet}`} Set</span>
@@ -2788,20 +2792,20 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         </div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{flex:1,textAlign:"center"}}>
-            <span style={{fontSize:bf(64),fontWeight:900,color:"#2563EB",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[0]}</span>
+            <span style={{fontSize:bf(52),fontWeight:900,color:"#2563EB",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[0]}</span>
           </div>
           <div style={{textAlign:"center",minWidth:bp(40)}}>
-            <span style={{fontSize:bf(26),fontWeight:800,color:"var(--border2)"}}>–</span>
+            <span style={{fontSize:bf(22),fontWeight:800,color:"var(--border2)"}}>–</span>
             {config.pts>0&&<p style={{fontSize:bf(8),fontWeight:700,color:"var(--text-primary)",marginTop:bp(2),letterSpacing:1}}>TO {config.pts}</p>}
           </div>
           <div style={{flex:1,textAlign:"center"}}>
-            <span style={{fontSize:bf(64),fontWeight:900,color:"#DC2626",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[1]}</span>
+            <span style={{fontSize:bf(52),fontWeight:900,color:"#DC2626",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[1]}</span>
           </div>
         </div>
       </div>
 
       {/* ── Active combo display — updates live as combos are selected ── */}
-      <div style={{display:"flex",gap:bp(6),marginBottom:bp(6)}}>
+      <div style={{display:"flex",gap:bp(6),marginBottom:bp(5),flexShrink:0}}>
         {[{name:p1,deck:d1,ri:r1,cl:"#2563EB"},{name:p2,deck:d2,ri:r2,cl:"#DC2626"}].map((side,si)=>{
           const c = side.ri !== null ? comboOf(side.deck, side.ri) : null;
           const bladeText = c?.blade || "—";
@@ -2810,7 +2814,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           const rbFz = bf(rbText.length > 10 ? 11 : 13);
           const hasCombo = side.ri !== null;
           return (
-            <div key={si} style={{flex:1,borderRadius:bp(12),border:`2px solid ${hasCombo ? side.cl+"60" : "var(--border)"}`,background:hasCombo?`${side.cl}0D`:"var(--surface2)",padding:`${bp(8)}px ${bp(6)}px`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:bp(56),gap:bp(2)}}>
+            <div key={si} style={{flex:1,borderRadius:bp(12),border:`2px solid ${hasCombo ? side.cl+"60" : "var(--border)"}`,background:hasCombo?`${side.cl}0D`:"var(--surface2)",padding:`${bp(8)}px ${bp(6)}px`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:bp(44),gap:bp(2)}}>
               <span style={{fontSize:bladeFz,fontWeight:900,color:hasCombo?side.cl:"var(--text-muted)",textAlign:"center",lineHeight:1.15,fontFamily:"'Outfit',sans-serif"}}>{bladeText}</span>
               <span style={{fontSize:rbFz,fontWeight:600,color:hasCombo?side.cl:"var(--text-faint)",textAlign:"center",lineHeight:1.2,opacity:0.9,fontFamily:"'Outfit',sans-serif"}}>{rbText}</span>
             </div>
@@ -2819,7 +2823,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       </div>
 
       {/* ── Two-column scoring + combo picker ── */}
-      <div style={{display:"flex",gap:bp(6),flex:1,minHeight:0}}>
+      <div style={{display:"flex",gap:bp(6),flex:1,minHeight:0,overflow:"hidden"}}>
         {[{i:0,cl:"#2563EB",name:p1,dk:d1,sel:r1,setSel:setR1,used:used1,pending:pending1},
           {i:1,cl:"#DC2626",name:p2,dk:d2,sel:r2,setSel:setR2,used:used2,pending:pending2}].map(side=>{
           const canConfirm = side.sel !== null && side.pending;
@@ -2837,7 +2841,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     <button key={f.id} type="button"
                       disabled={!bothCombosSelected}
                       onClick={()=>{if(bothCombosSelected)setPendingFinish(isSel?null:{pi:side.i,fin:f});}}
-                      style={{height:bp(36),borderRadius:bp(8),border:`2px solid ${!bothCombosSelected?"var(--border)":isSel?side.cl:isFinish?`${side.cl}50`:"var(--border2)"}`,background:!bothCombosSelected?"var(--surface2)":isSel?side.cl:isFinish?`${side.cl}10`:"var(--surface2)",color:!bothCombosSelected?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:bothCombosSelected?"pointer":"not-allowed",display:"flex",flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:bp(4),padding:`0 ${bp(8)}px`,opacity:bothCombosSelected?1:0.45}}>
+                      style={{height:bp(30),borderRadius:bp(8),border:`2px solid ${!bothCombosSelected?"var(--border)":isSel?side.cl:isFinish?`${side.cl}50`:"var(--border2)"}`,background:!bothCombosSelected?"var(--surface2)":isSel?side.cl:isFinish?`${side.cl}10`:"var(--surface2)",color:!bothCombosSelected?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:bothCombosSelected?"pointer":"not-allowed",display:"flex",flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:bp(4),padding:`0 ${bp(8)}px`,opacity:bothCombosSelected?1:0.45}}>
                       <span style={{fontSize:bf(10),fontWeight:800,lineHeight:1.1}}>{label}</span>
                       <span style={{background:!bothCombosSelected?"var(--border2)":isSel?"rgba(255,255,255,0.3)":side.cl,color:"#fff",padding:`${bp(1)}px ${bp(5)}px`,borderRadius:bp(4),fontSize:bf(9),fontWeight:900,flexShrink:0}}>+{f.p}</span>
                     </button>
@@ -2856,7 +2860,22 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     onClick={()=>{
                       if(lerLocked) return;
                       if(!hasStrike){
-                        // First LER: add strike, do NOT score
+                        // First LER: log a strike entry (undoable) then add strike state
+                        const strikeEntry = {
+                          set:curSet,shuffle:shuf,round:log.slice(matchStartIdx).length+1,
+                          scorer:side.i===0?p1:p2,scorerIdx:side.i,judge:judge,penalty:true,
+                          type:"LER-STRIKE",typeName:"LER Strike",points:0,
+                          p1Score:pts[0],p2Score:pts[1],p1Name:p1,p2Name:p2,
+                          p1Combo:{...d1[r1]},p2Combo:{...d2[r2]},
+                          p1ComboIdx:r1,p2ComboIdx:r2,
+                          p1Side:currentSides.p1Side||"",p2Side:currentSides.p2Side||"",
+                          winnerCombo:"",time:new Date().toISOString(),
+                          _pp:[...pts],_ps:[...sets],_cs:curSet,
+                          _u1:[...used1],_u2:[...used2],_sh:shuf,_ls:[...lerStrikes],
+                          _lerStrikeFor:side.i,
+                        };
+                        const newLog=[...log,strikeEntry];
+                        setLog(newLog); sSave(KEYS.matchLog,newLog); setFuture([]);
                         setLerStrikes(s=>{const n=[...s];n[side.i]=1;return n;});
                       } else {
                         // Second LER: clear strike and score the point
@@ -2875,7 +2894,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               <button type="button"
                 disabled={!canConfirm}
                 onClick={()=>{ if(canConfirm){ doScore(side.i,side.pending); setPendingFinish(null); } }}
-                style={{display:"block",width:"100%",padding:`${bp(8)}px 0`,borderRadius:bp(8),border:"none",background:canConfirm?side.cl:"var(--surface3)",color:canConfirm?"#fff":"var(--text-disabled)",fontSize:bf(11),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:canConfirm?"pointer":"not-allowed",boxSizing:"border-box",transition:"background 0.15s"}}>
+                style={{display:"block",width:"100%",padding:`${bp(6)}px 0`,borderRadius:bp(8),border:"none",background:canConfirm?side.cl:"var(--surface3)",color:canConfirm?"#fff":"var(--text-disabled)",fontSize:bf(11),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:canConfirm?"pointer":"not-allowed",boxSizing:"border-box",transition:"background 0.15s"}}>
                 {canConfirm ? `Confirm ${side.pending.name} →` : side.pending ? "Pick combo ↓" : side.sel!==null ? "Pick finish ↑" : "Pick combo ↓"}
               </button>
 
@@ -2887,7 +2906,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   return (
                     <button key={i} type="button" disabled={isUsed}
                       onClick={()=>{ if(!isUsed) side.setSel(isSel?null:i); }}
-                      style={{flex:1,minHeight:bp(44),width:"100%",borderRadius:bp(8),position:"relative",border:`2px solid ${isUsed?"var(--border)":isSel?side.cl:"var(--border2)"}`,background:isUsed?"var(--surface2)":isSel?side.cl:"var(--surface)",color:isUsed?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:isUsed?"not-allowed":"pointer",opacity:isUsed?0.4:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:bp(2),padding:`${bp(4)}px ${bp(4)}px`,boxSizing:"border-box"}}>
+                      style={{flex:1,minHeight:0,width:"100%",borderRadius:bp(8),position:"relative",border:`2px solid ${isUsed?"var(--border)":isSel?side.cl:"var(--border2)"}`,background:isUsed?"var(--surface2)":isSel?side.cl:"var(--surface)",color:isUsed?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:isUsed?"not-allowed":"pointer",opacity:isUsed?0.4:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:bp(2),padding:`${bp(4)}px ${bp(4)}px`,boxSizing:"border-box"}}>
                       {isUsed&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><svg width="22" height="22" viewBox="0 0 40 40" fill="none" stroke="#DC2626" strokeWidth="4" strokeLinecap="round" opacity="0.5"><line x1="8" y1="8" x2="32" y2="32"/><line x1="32" y1="8" x2="8" y2="32"/></svg></div>}
                       <span style={{fontWeight:800,fontSize:bf(12),lineHeight:1.1,textAlign:"center"}}>{c.blade||"—"}</span>
                       <span style={{fontSize:bf(10),fontWeight:600,opacity:0.8,textAlign:"center"}}>{c.ratchet&&c.bit?`${c.ratchet} ${c.bit}`:"—"}</span>
@@ -2901,7 +2920,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         })}
       </div>
       <BottomBar log={log} future={future} undo={undo} redo={redo} historyOpen={historyOpen} setHistoryOpen={setHistoryOpen} p1={p1} p2={p2} onOpenLib={onOpenLib} onClearLog={()=>{setLog([]);sSave(KEYS.matchLog,[]);}} dark={dark} toggleDark={toggleDark} matchStartIdx={matchStartIdx}/>
-
     </div>
   );
 }
