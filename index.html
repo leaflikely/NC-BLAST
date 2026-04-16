@@ -1397,7 +1397,7 @@ function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpen
         <div style={{display:"flex",alignItems:"center",gap:2,background:"var(--surface)",borderRadius:20,padding:"5px 6px",boxShadow:"0 2px 12px rgba(0,0,0,0.15), 0 0 0 1px var(--border)"}}>
           <button onClick={()=>setHistoryOpen(true)} style={S.barBtn}>{IC.history}</button>
           <div style={S.barDiv}/>
-          <button onClick={undo} disabled={log.length<=matchStartIdx} style={{...S.barBtn,opacity:log.length>matchStartIdx?1:0.3}}>{IC.undo} <span style={S.barLbl}>Undo</span></button>
+          <button onClick={undo} disabled={log.length<=matchStartIdx&&log[log.length-1]?.type!=="LER-STRIKE"} style={{...S.barBtn,opacity:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?1:0.3}}>{IC.undo} <span style={S.barLbl}>Undo</span></button>
           <button onClick={redo} disabled={!future.length} style={{...S.barBtn,opacity:future.length?1:0.3,color:"#EA580C"}}><span style={{...S.barLbl,color:"#EA580C"}}>Redo</span> {IC.redo}</button>
           <div style={S.barDiv}/>
           <button onClick={toggleDark} style={{...S.barBtn,fontSize:16,lineHeight:1}} title="Toggle dark mode">{dark?"☀️":"🌙"}</button>
@@ -1563,7 +1563,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   };
 
   const undo = () => {
-    if(log.length<=matchStartIdx) return;
+    // Always allow undoing a LER-STRIKE, even across the matchStartIdx boundary
+    const lastIsStrike = log.length>0 && log[log.length-1]?.type==="LER-STRIKE";
+    if(log.length<=matchStartIdx && !lastIsStrike) return;
     const l=log[log.length-1];
     const undoLog = log.slice(0,-1); setFuture([l,...future]); setLog(undoLog); sSave(KEYS.matchLog, undoLog);
     setPts(l._pp); setSets(l._ps); setCurSet(l._cs);
@@ -2764,10 +2766,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0}}>Set {curSet}/{config.bo}</span>}
         <span style={{...S.pill,flexShrink:0,margin:0}}>B{battlesInThisSet}</span>
         {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0}}>{sets[0]}–{sets[1]}</span>}
+        {judge&&<span style={{...S.pill,flexShrink:0,margin:0,color:"#B45309",background:"#FEF3C7"}}>⚖️ {tn(judge)}</span>}
         {/* Mini action bar — history, undo, redo, dark, settings */}
         <div style={{display:"flex",alignItems:"center",gap:bp(2),marginLeft:"auto",flexShrink:0}}>
           <button onClick={()=>setHistoryOpen(true)} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.history}</button>
-          <button onClick={undo} disabled={log.length<=matchStartIdx} style={{background:"none",border:"none",color:log.length>matchStartIdx?"var(--text-muted)":"var(--text-disabled)",cursor:log.length>matchStartIdx?"pointer":"default",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.undo}</button>
+          <button onClick={undo} disabled={log.length<=matchStartIdx&&log[log.length-1]?.type!=="LER-STRIKE"} style={{background:"none",border:"none",color:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?"var(--text-muted)":"var(--text-disabled)",cursor:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?"pointer":"default",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.undo}</button>
           <button onClick={redo} disabled={!future.length} style={{background:"none",border:"none",color:future.length?"#EA580C":"var(--text-disabled)",cursor:future.length?"pointer":"default",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.redo}</button>
           <button onClick={toggleDark} style={{background:"none",border:"none",cursor:"pointer",padding:`${bp(3)}px ${bp(4)}px`,fontSize:bf(14),lineHeight:1}}>{dark?"☀️":"🌙"}</button>
           <button onClick={onOpenLib} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",padding:`${bp(3)}px ${bp(4)}px`,display:"flex",alignItems:"center"}}>{IC.gear}</button>
