@@ -1483,7 +1483,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [cxPicker,setCxPicker] = useState(null); // null | {step,who,slot,chip?,blade?,returnToReview?}
   const [deckReview,setDeckReview] = useState(false); // true = show review screen, false = in picker flow
   const [lerStrikes,setLerStrikes] = useState([0,0]); // launch error strike counter per player [p1,p2]
-  const [pickTab,setPickTab] = useState("roster"); // "roster" | "active"
+  const [pickTab,setPickTab] = useState(challongeSlug?"active":"roster"); // "roster" | "active"
   const [activeMatches,setActiveMatches] = useState(null); // null | "loading" | []
   const [challongeMatchId,setChallongeMatchId] = useState(null);
   const [challongeP1ParticipantId,setChallongeP1ParticipantId] = useState(null);
@@ -1503,6 +1503,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   // Portrait vs landscape for combo button layout — recomputed on each render via sc trigger
   const comboAreaRef = useRef(null); // kept for legacy ref safety, not used for measurement
 
+  // Auto-fetch active matches if we default to active tab
+  useEffect(()=>{ if(challongeSlug) fetchActiveMatches(); },[]);
   const need = Math.ceil(config.bo/2);
   const cReady = d1.every(comboReady)&&d2.every(comboReady);
 
@@ -1974,7 +1976,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const takenByOtherSlots=deck.map((c,i)=>i!==slot?c[cat]:null).filter(Boolean);
     const top10=TOP10[cat+"s"]||[];
     const allCxNames=[...CX_BLADES,...CXE_BLADES,...CX_ASSISTS,...CXE_OVER_BLADES];
-    const rest=list.filter(n=>!top10.includes(n)&&!CROSSOVER_BLADES.includes(n)&&!allCxNames.includes(n));
+    // Only filter CX names for blades; bits/ratchets with matching names should still show
+    const rest=list.filter(n=>!top10.includes(n)&&!CROSSOVER_BLADES.includes(n)&&(cat!=="blade"||!allCxNames.includes(n)));
 
     const searchLower=pickerSearch.toLowerCase();
     const filteredRest=pickerSearch
@@ -2024,7 +2027,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             opacity:taken?0.45:1,
             display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
             textAlign:"center",lineHeight:1.1,
-            position:"relative",minHeight:48,width:"100%",
+            position:"relative",minHeight:52,width:"100%",aspectRatio:"1/1",
             fontFamily:"'Outfit',sans-serif",
           }}>
           {sel&&<span style={{fontSize:9,marginBottom:1}}>{IC.check}</span>}
@@ -2142,7 +2145,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         {/* Top 10 group */}
         <div style={{marginBottom:12,background:cc+"0D",borderRadius:12,padding:"10px 10px 8px",border:`1px solid ${cc}30`}}>
           <p style={{fontSize:9,fontWeight:700,color:cc,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>★ Top 10</p>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(60px,1fr))",gap:6}}>
             {top10.map(name=><PartBtn key={name} name={name} isTop={true}/>)}
           </div>
         </div>
@@ -2170,7 +2173,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
         {/* Rest of parts */}
         {filteredRest.length>0?(
-          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(60px,1fr))",gap:6}}>
             {filteredRest.map(name=><PartBtn key={name} name={name}/>)}
           </div>
         ):(
@@ -2190,7 +2193,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             </button>
             {crossoverOpen&&(
               <div style={{marginTop:8,padding:"10px",background:"#F5F3FF",borderRadius:10,border:"1px solid #7C3AED30"}}>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(60px,1fr))",gap:6}}>
                   {CROSSOVER_BLADES.filter(n=>!pickerSearch||n.toLowerCase().includes(pickerSearch.toLowerCase())).map(name=>(
                     <PartBtn key={name} name={name}/>
                   ))}
@@ -2879,22 +2882,32 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             <button
               disabled={!swapStadium&&!swapPosition}
               onClick={()=>{
-                if(swapStadium){
-                  const newP1Side=currentSides.p1Side==="B"?"X":"B";
-                  const newP2Side=currentSides.p2Side==="B"?"X":"B";
-                  setCurrentSides({p1Side:newP1Side,p2Side:newP2Side});
-                  setSideAssign(a=>a?{...a,p1Side:newP1Side,p2Side:newP2Side}:a);
+                // Compute new sides first so we can apply both atomically
+                const origP1Side = currentSides.p1Side;
+                const origP2Side = currentSides.p2Side;
+                if(swapStadium && !swapPosition){
+                  // Stadium swap only: flip B↔X for each player
+                  const ns1=origP1Side==="B"?"X":"B"; const ns2=origP2Side==="B"?"X":"B";
+                  setCurrentSides({p1Side:ns1,p2Side:ns2});
+                  setSideAssign(a=>a?{...a,p1Side:ns1,p2Side:ns2}:a);
                 }
                 if(swapPosition){
-                  // Swap p1/p2 names, decks, combo selections, used lists, and sides
+                  // Position swap: p1↔p2 names, decks, combos, used lists
                   const tmpName=p1; setP1(p2); setP2(tmpName);
                   const tmpD=d1; setD1(d2); setD2(tmpD);
                   const tmpR=r1; setR1(r2); setR2(tmpR);
                   const tmpU=used1; setUsed1(used2); setUsed2(tmpU);
-                  if(!swapStadium){
-                    // sides stay physically the same but names swap, so re-assign
-                    setCurrentSides(s=>({p1Side:s.p2Side,p2Side:s.p1Side}));
-                    setSideAssign(a=>a?{...a,p1Side:a.p2Side,p2Side:a.p1Side}:a);
+                  if(swapStadium){
+                    // Both: physically players stay on their side, only app roles swap.
+                    // Net effect on sides: new p1 gets old p2's flipped side, etc.
+                    // Simplest: sides from each player's perspective don't change —
+                    // so just swap the side assignment without flipping B↔X.
+                    setCurrentSides({p1Side:origP2Side,p2Side:origP1Side});
+                    setSideAssign(a=>a?{...a,p1Side:origP2Side,p2Side:origP1Side}:a);
+                  } else {
+                    // Position swap only: side labels follow the players
+                    setCurrentSides({p1Side:origP2Side,p2Side:origP1Side});
+                    setSideAssign(a=>a?{...a,p1Side:origP2Side,p2Side:origP1Side}:a);
                   }
                 }
                 setSideSwapConfirm(false);
