@@ -1305,9 +1305,9 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
         </div>
         {players.length===0&&<p style={S.empty}>No players yet</p>}
         <div style={S.chs}>
-          {players.map((p,i)=>(
-            <span key={i} style={{...S.ptag,borderColor:"#1D4ED840",background:"#1D4ED80C",color:"#1D4ED8"}}>
-              {p}<button style={S.xBtn} onClick={()=>del(i)}>{IC.trash}</button>
+          {[...players].sort((a,b)=>a.localeCompare(b)).map((p,i)=>(
+            <span key={p} style={{...S.ptag,borderColor:"#1D4ED840",background:"#1D4ED80C",color:"#1D4ED8"}}>
+              {p}<button style={S.xBtn} onClick={()=>del(players.indexOf(p))}>{IC.trash}</button>
             </span>
           ))}
         </div>
@@ -2169,29 +2169,31 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const stepColor = step===1?"#2563EB":step===2?"#DC2626":step===3?"#B45309":"#15803D";
 
     const handleNameClick = (name) => {
-      if(step===1){ setP1(tn(name)); return; }
-      if(step===2){
-        if(name===p1||tn(name)===p1){ setP1(null); return; }
-        setP2(tn(name)); return;
-      }
-      if(step===3){
-        // Allow deselecting p1/p2 even at judge step (clears judge too)
-        if(name===p1||tn(name)===p1){ setP1(null); setJudge(""); return; }
-        if(name===p2||tn(name)===p2){ setP2(null); setJudge(""); return; }
-        setJudge(name); return;
-      }
-      // step==="done"
-      if(name===p1||tn(name)===p1){setP1(null);if(config.tm)setJudge("");}
-      else if(name===p2||tn(name)===p2){setP2(null);if(config.tm)setJudge("");}
-      else if(config.tm&&name===judge){setJudge("");setManualJudge(false);}
+      const tname = tn(name);
+      const isP1 = tname===p1 || name===p1;
+      const isP2 = tname===p2 || name===p2;
+      const isJudge = config.tm && (name===judge || tname===judge);
+
+      // Always deselect if already assigned — never affects other roles
+      if(isP1){ setP1(null); return; }
+      if(isP2){ setP2(null); return; }
+      if(isJudge){ setJudge(""); setManualJudge(false); return; }
+
+      // Unassigned name: fill first open slot in priority order p1 → p2 → judge
+      if(!p1){ setP1(tname); return; }
+      if(!p2){ setP2(tname); return; }
+      if(config.tm && !judge.trim()){ setJudge(tname); return; }
+      // All slots full — do nothing
     };
 
     const getButtonStyle = (name) => {
-      const isP1=p1===name||tn(name)===p1, isP2=p2===name||tn(name)===p2, isJudge=judge===name&&config.tm;
+      const tname = tn(name);
+      const isP1 = tname===p1 || name===p1;
+      const isP2 = tname===p2 || name===p2;
+      const isJudge = config.tm && (name===judge || tname===judge);
       if(isP1) return {border:"2px solid #2563EB",background:"#2563EB",color:"#fff"};
       if(isP2) return {border:"2px solid #DC2626",background:"#DC2626",color:"#fff"};
       if(isJudge) return {border:"2px solid #B45309",background:"#F59E0B",color:"#fff"};
-      if(step===3&&(name===p1||name===p2)) return {border:"2px solid var(--border)",background:"var(--surface3)",color:"var(--text-disabled)",opacity:0.4,cursor:"not-allowed"};
       return {border:"2px solid var(--border)",background:"var(--surface2)",color:"var(--text-primary)"};
     };
 
@@ -2247,12 +2249,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           <div style={S.card}>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
               {players.map(name=>{
-                const isDisabled = step===3&&(name===p1||name===p2);
                 const btnStyle = getButtonStyle(name);
-                const tag = (p1===name||tn(name)===p1)?"P1":(p2===name||tn(name)===p2)?"P2":(judge===name&&config.tm)?"Judge":null;
+                const tname = tn(name);
+                const tag = (p1===name||tname===p1)?"P1":(p2===name||tname===p2)?"P2":(judge===name&&config.tm)?"Judge":null;
                 return (
-                  <button key={name} disabled={isDisabled} onClick={()=>handleNameClick(name)}
-                    style={{padding:"12px 8px",borderRadius:10,fontSize:13,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:isDisabled?"not-allowed":"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,...btnStyle}}>
+                  <button key={name} onClick={()=>handleNameClick(name)}
+                    style={{padding:"12px 8px",borderRadius:10,fontSize:13,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,...btnStyle}}>
                     {tn(name)}
                     {tag&&<span style={{fontSize:9,fontWeight:800,letterSpacing:1,opacity:0.85}}>{tag}</span>}
                   </button>
