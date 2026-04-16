@@ -290,7 +290,7 @@ function LibraryManager({parts,setParts,onClose}) {
     <div style={{position:"fixed",inset:0,background:"var(--bg-solid)",zIndex:200,overflowY:"auto"}}>
       <div style={{maxWidth:S.page.maxWidth,margin:"0 auto",padding:`20px 16px 40px`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{color:"#EA580C"}}>{IC.db}</span><h1 style={{margin:0,fontSize:22,fontWeight:800,color:"#1E293B"}}>Parts Library</h1></div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{color:"#EA580C"}}>{IC.db}</span><h1 style={{margin:0,fontSize:22,fontWeight:800,color:"var(--text-primary)"}}>Parts Library</h1></div>
           <button onClick={onClose} style={{background:"#F1F5F9",border:"none",borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#64748B"}}>{IC.x}</button>
         </div>
         <div style={{background:"#EA580C10",border:"1px solid #EA580C30",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#9A3412",fontWeight:500,lineHeight:1.5}}>
@@ -782,7 +782,7 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
         <div style={{...S.row,marginTop:8}}><button style={{...S.chip,...(config.pts>7?S.chipOn:{})}} onClick={()=>{const n=prompt("Custom point limit:"); if(n&&!isNaN(+n)&&+n>0)setConfig({...config,pts:+n});}}>{config.pts>7?config.pts+" Pts.":"Custom"}</button></div>
         <h2 style={{...S.label,marginTop:24}}>Sets</h2>
         <div style={S.row}>{[1,3,5].map(v=>(<button key={v} style={{...S.chip,...S.chipW,...(config.bo===v?S.chipBl:{})}} onClick={()=>setConfig({...config,bo:v})}>{v===1?"Best-of-1":`Best-of-${v}`}</button>))}</div>
-        <h2 style={{...S.label,marginTop:24}}>Ranked Mode</h2>
+        <h2 style={{...S.label,marginTop:24}}>Tournament Mode</h2>
         <div style={S.row}>{[false,true].map(v=>(<button key={String(v)} style={{...S.chip,...(config.tm===v?(v?{background:"#7C3AED",borderColor:"#7C3AED",color:"#fff"}:S.chipOn):{})}} onClick={()=>setConfig({...config,tm:v})}>{v?"On":"Off"}</button>))}</div>
         {config.tm&&(
           <div style={{marginTop:12}}>
@@ -1347,7 +1347,7 @@ function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpen
       <div style={{position:"fixed",top:0,right:0,bottom:0,width:historyOpen?Math.min(340,window.innerWidth-40):0,background:"var(--surface)",boxShadow:historyOpen?"-4px 0 24px rgba(0,0,0,0.25)":"none",transition:"width 0.25s ease",overflow:"hidden",zIndex:100}}>
         <div style={{width:Math.min(340,window.innerWidth-40),padding:"20px 16px",overflowY:"auto",height:"100%"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <h2 style={{margin:0,fontSize:18,fontWeight:800,color:"#1E293B"}}>Match Log</h2>
+            <h2 style={{margin:0,fontSize:18,fontWeight:800,color:"var(--text-primary)"}}>Match Log</h2>
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
               {log.length>0&&<button onClick={()=>setConfirmClear(true)} style={{background:"none",border:"none",color:"#EF4444",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",opacity:0.7,padding:"4px 6px"}}>Clear</button>}
               <button onClick={()=>setHistoryOpen(false)} style={{background:"#F1F5F9",border:"none",borderRadius:8,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#64748B"}}>{IC.x}</button>
@@ -1378,13 +1378,13 @@ function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpen
             <div key={i} style={{padding:"10px 12px",borderRadius:10,marginBottom:8,background:e.scorerIdx===0?"#EFF6FF":"#FEF2F2",borderLeft:`4px solid ${e.scorerIdx===0?"#2563EB":"#DC2626"}`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
                 <span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626",fontSize:14}}>{e.scorer}</span>
-                <span style={{fontSize:11,fontWeight:600,color:"#94A3B8"}}>R{log.length-i} · Set {e.set} · Shuf {e.shuffle}</span>
+                <span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)"}}>R{log.length-i} · Set {e.set} · Shuf {e.shuffle}</span>
               </div>
-              <div style={{fontSize:12,color:"#475569",marginBottom:2}}><span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626"}}>{e.typeName}</span> (+{e.points})</div>
+              <div style={{fontSize:12,color:"var(--text-secondary)",marginBottom:2}}><span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626"}}>{e.typeName}</span> (+{e.points})</div>
               <div style={{fontSize:11,color:"#64748B"}}>Won with: <span style={{fontWeight:600}}>{e.winnerCombo}</span></div>
-              <div style={{fontSize:11,color:"#94A3B8",marginTop:1}}>vs {e.scorerIdx===0?comboStr(e.p2Combo):comboStr(e.p1Combo)}</div>
-              {e.p1Side&&<div style={{fontSize:10,color:"#94A3B8",marginTop:1}}>{e.p1Name}: {e.p1Side} Side · {e.p2Name}: {e.p2Side} Side</div>}
-              <div style={{fontSize:11,color:"#94A3B8",marginTop:2,fontWeight:600}}>{e.p1Name} {e.p1Score} – {e.p2Score} {e.p2Name}</div>
+              <div style={{fontSize:11,color:"var(--text-muted)",marginTop:1}}>vs {e.scorerIdx===0?comboStr(e.p2Combo):comboStr(e.p1Combo)}</div>
+              {e.p1Side&&<div style={{fontSize:10,color:"var(--text-muted)",marginTop:1}}>{e.p1Name}: {e.p1Side} Side · {e.p2Name}: {e.p2Side} Side</div>}
+              <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2,fontWeight:600}}>{e.p1Name} {e.p1Score} – {e.p2Score} {e.p2Name}</div>
             </div>
           ))}
         </div>
@@ -1466,6 +1466,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [challongeP2ParticipantId,setChallongeP2ParticipantId] = useState(null);
   const [challongeSubmitStatus,setChallongeSubmitStatus] = useState(null);
   const [pendingFinish,setPendingFinish] = useState(null); // {pi, fin} — selected but not yet confirmed
+  const [sideSwapConfirm,setSideSwapConfirm] = useState(false); // swap B/X sides modal
+  const [judgeEditMode,setJudgeEditMode] = useState(false); // judge name editable on over screen
 
   const need = Math.ceil(config.bo/2);
   const cReady = d1.every(comboReady)&&d2.every(comboReady);
@@ -1493,14 +1495,14 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       winnerCombo:comboStr(scoringPi===0?d1[r1]:d2[r2]),
       time:new Date().toISOString(),
       _pp:[...pts],_ps:[...sets],_cs:curSet,
-      _u1:[...used1],_u2:[...used2],_sh:shuf,
+      _u1:[...used1],_u2:[...used2],_sh:shuf,_ls:[...lerStrikes],
     };
     const newLog=[...log,entry];
     setLog(newLog); sSave(KEYS.matchLog, newLog); setFuture([]); setPts(np);
 
     const setWon = config.pts>0 && np[scoringPi]>=config.pts;
 
-    // LER = redo (no combo advance, stay on battle screen or go to selectRound if set won)
+    // LER — 1-strike system: first LER adds a strike, second converts to a point
     if(fin.id==="LER"){
       if(setWon){
         const ns=[sets[0],sets[1]]; ns[scoringPi]+=1; setSets(ns);
@@ -1509,12 +1511,15 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         else {
           if(config.tm){const loserPi=1-scoringPi;setSideAssign({pickPriority:loserPi});setSidePicker({priority:loserPi});}
           setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(s=>s+1);
+          setLerStrikes([0,0]);
         }
       }
-      // else stay on battle screen — same combos, immediate rematch
+      // stay on battle screen — combos do not advance
       return;
     }
 
+    // Any score change clears all LER strikes
+    setLerStrikes([0,0]);
     const nu1=[...used1,r1]; const nu2=[...used2,r2];
     setUsed1(nu1); setUsed2(nu2); setR1(null); setR2(null);
     if(setWon){
@@ -1537,8 +1542,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const undoLog = log.slice(0,-1); setFuture([l,...future]); setLog(undoLog); sSave(KEYS.matchLog, undoLog);
     setPts(l._pp); setSets(l._ps); setCurSet(l._cs);
     setUsed1(l._u1); setUsed2(l._u2); setShuf(l._sh);
+    if(l._ls) setLerStrikes(l._ls);
     setPendingFinish(null);
-    setR1(null); setR2(null);
+    // preserve r1/r2 — do not reset combo selection on undo
     setPhase("battle");
   };
 
@@ -1755,8 +1761,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   onClick={()=>setCxPicker({...cxPicker,step:"blade",chip:ch})}
                   style={{padding:"18px 20px",borderRadius:12,border:`2px solid ${isTaken?"#E2E8F0":"#0F766E40"}`,background:isTaken?"#F1F5F9":"#F0FDF9",color:isTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:16,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:isTaken?"not-allowed":"pointer",textAlign:"left",opacity:isTaken?0.45:1}}>
                   {ch}
-                  {ch==="Standard"&&<span style={{fontSize:11,fontWeight:500,color:"#475569",display:"block",marginTop:2}}>Multiple allowed per deck</span>}
-                  {isTaken&&<span style={{fontSize:11,fontWeight:600,color:"#94A3B8",display:"block",marginTop:2}}>Already used</span>}
+                  {ch==="Standard"&&<span style={{fontSize:11,fontWeight:500,color:"var(--text-secondary)",display:"block",marginTop:2}}>Multiple allowed per deck</span>}
+                  {isTaken&&<span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)",display:"block",marginTop:2}}>Already used</span>}
                 </button>
               );
             })}
@@ -1773,7 +1779,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 const blastTaken = usedCxParts.blades.includes("Blast");
                 return (
                   <button disabled={blastTaken} onClick={()=>!blastTaken&&setCxPicker({...cxPicker,step:"assist",blade:"Blast"})}
-                    style={{width:"100%",padding:"12px",borderRadius:9,border:"2px solid #0D9488",background:blastTaken?"#F1F5F9":"#0D948822",color:blastTaken?"#CBD5E1":"#1E293B",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:blastTaken?"not-allowed":"pointer",opacity:blastTaken?0.45:1}}>
+                    style={{width:"100%",padding:"12px",borderRadius:9,border:"2px solid #0D9488",background:blastTaken?"#F1F5F9":"#0D948822",color:blastTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:blastTaken?"not-allowed":"pointer",opacity:blastTaken?0.45:1}}>
                     Blast{blastTaken?" — IN USE":""}
                   </button>
                 );
@@ -1796,7 +1802,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                       }}
                       style={{padding:"8px 4px",borderRadius:8,border:`2px solid ${anyTaken?"#E2E8F0":"#0D948860"}`,background:anyTaken?"#F1F5F9":"#0D948818",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",opacity:anyTaken?0.45:1}}>
                       Blast {assist}
-                      {anyTaken&&<span style={{display:"block",fontSize:7,color:"#94A3B8"}}>IN USE</span>}
+                      {anyTaken&&<span style={{display:"block",fontSize:7,color:"var(--text-faint)"}}>IN USE</span>}
                     </button>
                   );
                 })}
@@ -1810,7 +1816,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   <button key={b} disabled={bladeTaken} onClick={()=>!bladeTaken&&setCxPicker({...cxPicker,step:"assist",blade:b})}
                     style={{padding:"10px 4px",borderRadius:9,border:`2px solid ${bladeTaken?"#E2E8F0":"#CBD5E1"}`,background:bladeTaken?"#F1F5F9":"#F8FAFC",color:bladeTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:bladeTaken?"not-allowed":"pointer",minHeight:40,textAlign:"center",opacity:bladeTaken?0.45:1}}>
                     {b}
-                    {bladeTaken&&<span style={{display:"block",fontSize:7,fontWeight:700,color:"#94A3B8",marginTop:2}}>IN USE</span>}
+                    {bladeTaken&&<span style={{display:"block",fontSize:7,fontWeight:700,color:"var(--text-faint)",marginTop:2}}>IN USE</span>}
                   </button>
                 );
               })}
@@ -1826,7 +1832,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                       onClick={()=>!bladeTaken&&setCxPicker({...cxPicker,step:"over_blade",blade:b,isCXE:true})}
                       style={{padding:"12px 4px",borderRadius:9,border:`2px solid ${bladeTaken?"#E2E8F0":"#7C3AED60"}`,background:bladeTaken?"#F1F5F9":"#F5F3FF",color:bladeTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:bladeTaken?"not-allowed":"pointer",minHeight:44,textAlign:"center",opacity:bladeTaken?0.45:1}}>
                       {b}
-                      {bladeTaken&&<span style={{display:"block",fontSize:7,fontWeight:700,color:"#94A3B8",marginTop:2}}>IN USE</span>}
+                      {bladeTaken&&<span style={{display:"block",fontSize:7,fontWeight:700,color:"var(--text-faint)",marginTop:2}}>IN USE</span>}
                     </button>
                   );
                 })}
@@ -1846,7 +1852,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     onClick={()=>!taken&&setCxPicker({...cxPicker,step:"assist",overBlade:ob})}
                     style={{padding:"16px 4px",borderRadius:12,border:`2px solid ${taken?"#E2E8F0":"#7C3AED60"}`,background:taken?"#F1F5F9":"#F5F3FF",color:taken?"var(--text-disabled)":"var(--text-primary)",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:taken?"not-allowed":"pointer",minHeight:56,textAlign:"center",opacity:taken?0.45:1}}>
                     {ob}
-                    {taken&&<span style={{display:"block",fontSize:7,fontWeight:700,color:"#94A3B8",marginTop:2}}>IN USE</span>}
+                    {taken&&<span style={{display:"block",fontSize:7,fontWeight:700,color:"var(--text-faint)",marginTop:2}}>IN USE</span>}
                   </button>
                 );
               })}
@@ -1867,7 +1873,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     <button key={a} disabled={taken} onClick={()=>!taken&&advance(finalName)}
                       style={{padding:"10px 4px",borderRadius:9,border:`2px solid ${taken?"#E2E8F0":"#0F766E"}`,background:taken?"#F1F5F9":"#0F766E18",color:taken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:taken?"not-allowed":"pointer",minHeight:40,textAlign:"center",position:"relative",opacity:taken?0.45:1}}>
                       {a}
-                      {taken&&<span style={{position:"absolute",bottom:2,fontSize:7,fontWeight:700,color:"#94A3B8",letterSpacing:0.3}}>IN USE</span>}
+                      {taken&&<span style={{position:"absolute",bottom:2,fontSize:7,fontWeight:700,color:"var(--text-faint)",letterSpacing:0.3}}>IN USE</span>}
                     </button>
                   );
                 })}
@@ -1882,7 +1888,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   <button key={a} disabled={taken} onClick={()=>!taken&&advance(finalName)}
                     style={{padding:"10px 4px",borderRadius:9,border:`2px solid ${taken?"#E2E8F0":"#CBD5E1"}`,background:taken?"#F1F5F9":"#F8FAFC",color:taken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:taken?"not-allowed":"pointer",minHeight:40,textAlign:"center",position:"relative",opacity:taken?0.45:1}}>
                     {a}
-                    {taken&&<span style={{position:"absolute",bottom:2,fontSize:7,fontWeight:700,color:"#94A3B8",letterSpacing:0.3}}>IN USE</span>}
+                    {taken&&<span style={{position:"absolute",bottom:2,fontSize:7,fontWeight:700,color:"var(--text-faint)",letterSpacing:0.3}}>IN USE</span>}
                   </button>
                 );
               })}
@@ -1957,7 +1963,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           }}>
           {sel&&<span style={{fontSize:9,marginBottom:1}}>{IC.check}</span>}
           <PartLabel name={name} size={splitPartName(name,cat!=="bit").length>1?12:13} keepDash={cat!=="bit"}/>
-          {taken&&<span style={{position:"absolute",bottom:2,fontSize:7,fontWeight:700,color:"#94A3B8",letterSpacing:0.3}}>IN USE</span>}
+          {taken&&<span style={{position:"absolute",bottom:2,fontSize:7,fontWeight:700,color:"var(--text-faint)",letterSpacing:0.3}}>IN USE</span>}
         </button>
       );
     };
@@ -2023,7 +2029,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                       style={{padding:"8px 4px",borderRadius:9,border:`2px solid ${anyTaken?"#E2E8F0":bladeColor+"50"}`,background:anyTaken?"#F1F5F9":bladeColor+"10",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2}}>
                       <span style={{fontSize:13,fontWeight:800}}>{c.blade}</span>
                       <span style={{fontSize:11,opacity:0.65}}>{c.ratchet} · {c.bit}</span>
-                      {anyTaken&&<span style={{fontSize:9,color:"#94A3B8"}}>IN USE</span>}
+                      {anyTaken&&<span style={{fontSize:9,color:"var(--text-faint)"}}>IN USE</span>}
                     </button>
                   );
                 })}
@@ -2059,7 +2065,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     style={{padding:"8px 4px",borderRadius:9,border:`2px solid ${anyTaken?"#E2E8F0":bladeColor+"60"}`,background:anyTaken?"#F1F5F9":bladeColor+"12",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:52,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2}}>
                     <span style={{fontSize:13,fontWeight:800}}>{qc.blade}</span>
                     <span style={{fontSize:11,opacity:0.7}}>{qc.ratchet} · {qc.bit}</span>
-                    {anyTaken&&<span style={{fontSize:9,color:"#94A3B8"}}>IN USE</span>}
+                    {anyTaken&&<span style={{fontSize:9,color:"var(--text-faint)"}}>IN USE</span>}
                   </button>
                 );
               })}
@@ -2144,9 +2150,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         setP2(tn(name)); return;
       }
       if(step===3){
-        if(name===p1||name===p2||tn(name)===p1||tn(name)===p2){ return; }
+        // Allow deselecting p1/p2 even at judge step (clears judge too)
+        if(name===p1||tn(name)===p1){ setP1(null); setJudge(""); return; }
+        if(name===p2||tn(name)===p2){ setP2(null); setJudge(""); return; }
         setJudge(name); return;
       }
+      // step==="done"
       if(name===p1||tn(name)===p1){setP1(null);if(config.tm)setJudge("");}
       else if(name===p2||tn(name)===p2){setP2(null);if(config.tm)setJudge("");}
       else if(config.tm&&name===judge){setJudge("");setManualJudge(false);}
@@ -2386,7 +2395,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             <p style={{fontSize:13,fontWeight:800,color:pl.cl,marginBottom:8}}>{pl.name}</p>
             {[0,1,2].map(slot=>(
               <div key={slot} style={{marginBottom:slot<2?8:0}}>
-                <p style={{fontSize:10,fontWeight:700,color:"#94A3B8",letterSpacing:1,marginBottom:4}}>{comboNames[slot].toUpperCase()} COMBO</p>
+                <p style={{fontSize:10,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,marginBottom:4}}>{comboNames[slot].toUpperCase()} COMBO</p>
                 <div style={{display:"flex",gap:6}}>
                   {["blade","ratchet","bit"].map(cat=>{
                     const cc={blade:"#EA580C",ratchet:"#1D4ED8",bit:"#15803D"}[cat];
@@ -2422,7 +2431,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     return (
       <div style={{...S.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"85vh",gap:0}}>
         <div style={{textAlign:"center",marginBottom:36}}>
-          <p style={{fontSize:13,fontWeight:700,letterSpacing:2,color:"#94A3B8",textTransform:"uppercase",marginBottom:12}}>Set {curSet} · Assign Sides</p>
+          <p style={{fontSize:13,fontWeight:700,letterSpacing:2,color:"var(--text-muted)",textTransform:"uppercase",marginBottom:12}}>Set {curSet} · Assign Sides</p>
           <h1 style={{fontSize:38,fontWeight:900,color:"var(--text-primary)",margin:"0 0 10px",lineHeight:1}}>
             {priorityKnown ? "Pick a Side" : "Who Has Priority?"}
           </h1>
@@ -2510,12 +2519,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         )}
         {overBackConfirm&&(
           <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
-            <div style={{background:"#fff",borderRadius:18,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
-              <p style={{fontSize:16,fontWeight:800,color:"#1E293B",marginBottom:8,textAlign:"center"}}>Go Back?</p>
-              <p style={{fontSize:13,color:"#64748B",textAlign:"center",marginBottom:6,lineHeight:1.5}}>
+            <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
+              <p style={{fontSize:16,fontWeight:800,color:"var(--text-primary)",marginBottom:8,textAlign:"center"}}>Go Back?</p>
+              <p style={{fontSize:13,color:"var(--text-secondary)",textAlign:"center",marginBottom:6,lineHeight:1.5}}>
                 This will undo the last battle and return to the Pick Combo screen for the deciding set.
               </p>
-              <p style={{fontSize:12,color:"#94A3B8",textAlign:"center",marginBottom:20,lineHeight:1.4}}>
+              <p style={{fontSize:12,color:"var(--text-muted)",textAlign:"center",marginBottom:20,lineHeight:1.4}}>
                 The match result will be reversed. Use this only if a scoring error was made.
               </p>
               <div style={{display:"flex",gap:10}}>
@@ -2546,16 +2555,16 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         {/* ── Match score ── */}
         {config.bo>1&&(
           <div style={{...S.card,padding:"16px 20px",marginBottom:12}}>
-            <p style={{fontSize:9,fontWeight:700,letterSpacing:2,color:"#94A3B8",textAlign:"center",marginBottom:12,textTransform:"uppercase"}}>Match Score</p>
+            <p style={{fontSize:9,fontWeight:700,letterSpacing:2,color:"var(--text-muted)",textAlign:"center",marginBottom:12,textTransform:"uppercase"}}>Match Score</p>
             <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
               <div style={{flex:1,textAlign:"center"}}>
                 <p style={{fontSize:20,fontWeight:900,color:"#2563EB",marginBottom:4}}>{p1}{winner===p1?" 🏆":""}</p>
-                <p style={{fontSize:52,fontWeight:900,color:winner===p1?"#2563EB":"#94A3B8",lineHeight:1}}>{sets[0]}</p>
+                <p style={{fontSize:52,fontWeight:900,color:winner===p1?"#2563EB":"var(--text-faint)",lineHeight:1}}>{sets[0]}</p>
               </div>
-              <p style={{fontSize:22,fontWeight:800,color:"#E2E8F0",minWidth:32,textAlign:"center"}}>–</p>
+              <p style={{fontSize:22,fontWeight:800,color:"var(--border2)",minWidth:32,textAlign:"center"}}>–</p>
               <div style={{flex:1,textAlign:"center"}}>
                 <p style={{fontSize:20,fontWeight:900,color:"#DC2626",marginBottom:4}}>{winner===p2?"🏆 ":""}{p2}</p>
-                <p style={{fontSize:52,fontWeight:900,color:winner===p2?"#DC2626":"#94A3B8",lineHeight:1}}>{sets[1]}</p>
+                <p style={{fontSize:52,fontWeight:900,color:winner===p2?"#DC2626":"var(--text-faint)",lineHeight:1}}>{sets[1]}</p>
               </div>
             </div>
             {setScores.length>0&&(
@@ -2566,9 +2575,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     <div key={i} style={{textAlign:"center",background:p1w?"#EFF6FF":"#FEF2F2",borderRadius:10,padding:"8px 14px",border:`1px solid ${p1w?"#BFDBFE":"#FECACA"}`}}>
                       <p style={{fontSize:8,fontWeight:700,color:p1w?"#3B82F6":"#EF4444",letterSpacing:1,marginBottom:4}}>SET {i+1}</p>
                       <p style={{fontSize:18,fontWeight:900,lineHeight:1}}>
-                        <span style={{color:p1w?"#2563EB":"#94A3B8"}}>{ss.p1}</span>
+                        <span style={{color:p1w?"#2563EB":"var(--text-faint)"}}>{ss.p1}</span>
                         <span style={{color:"#CBD5E1",margin:"0 4px",fontSize:14}}>–</span>
-                        <span style={{color:!p1w?"#DC2626":"#94A3B8"}}>{ss.p2}</span>
+                        <span style={{color:!p1w?"#DC2626":"var(--text-faint)"}}>{ss.p2}</span>
                       </p>
                     </div>
                   );
@@ -2580,22 +2589,38 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
         {/* ── Stats row ── */}
         <div style={{display:"flex",gap:8,marginBottom:12}}>
-          {[{label:"Battles",val:log.length},{label:"Shuffles",val:shuf},{label:"Judge",val:judge||"—"}].map((s,i)=>(
-            <div key={i} style={{flex:1,background:"#F8FAFC",borderRadius:12,padding:"10px 8px",textAlign:"center",border:"1px solid #E2E8F0"}}>
-              <p style={{fontSize:9,fontWeight:700,color:"#94A3B8",letterSpacing:1,marginBottom:3,textTransform:"uppercase"}}>{s.label}</p>
-              <p style={{fontSize:14,fontWeight:800,color:"#475569"}}>{s.val}</p>
+          {[{label:"Battles",val:log.length},{label:"Shuffles",val:shuf}].map((s,i)=>(
+            <div key={i} style={{flex:1,background:"var(--surface2)",borderRadius:12,padding:"10px 8px",textAlign:"center",border:"1px solid var(--border)"}}>
+              <p style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,marginBottom:3,textTransform:"uppercase"}}>{s.label}</p>
+              <p style={{fontSize:14,fontWeight:800,color:"var(--text-secondary)"}}>{s.val}</p>
             </div>
           ))}
+          <div style={{flex:2,background:"var(--surface2)",borderRadius:12,padding:"8px",border:"1px solid var(--border)",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+            <p style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,textTransform:"uppercase"}}>Judge</p>
+            {judgeEditMode ? (
+              <div style={{display:"flex",gap:4,width:"100%"}}>
+                <input autoFocus value={judge} onChange={e=>setJudge(e.target.value)}
+                  style={{...S.inp,flex:1,fontSize:12,padding:"3px 6px",borderRadius:6,minWidth:0}}/>
+                <button onClick={()=>setJudgeEditMode(false)}
+                  style={{padding:"3px 8px",borderRadius:6,border:"none",background:"#2563EB",color:"#fff",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>✓</button>
+              </div>
+            ) : (
+              <button onClick={()=>!submitted&&setJudgeEditMode(true)}
+                style={{fontSize:13,fontWeight:800,color:"var(--text-secondary)",background:"none",border:"none",cursor:submitted?"default":"pointer",fontFamily:"'Outfit',sans-serif",padding:0,textDecoration:submitted?"none":"underline dotted"}}>
+                {judge||"—"}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* ── Match history ── */}
         <div style={{...S.card,marginBottom:12}}>
-          <p style={{fontSize:12,fontWeight:700,color:"#334155",marginBottom:8}}>Match History</p>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--text-primary)",marginBottom:8}}>Match History</p>
           {log.slice(matchStartIdx).map((e,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:i<log.slice(matchStartIdx).length-1?"1px solid #F1F5F9":"none"}}>
-              <span style={{fontSize:11,color:"#64748B"}}>B{e.round} · Set {e.set}{e.p1Side?` · ${e.p1Side}/${e.p2Side}`:""}</span>
+              <span style={{fontSize:11,color:"var(--text-muted)"}}>B{e.round} · Set {e.set}{e.p1Side?` · ${e.p1Side}/${e.p2Side}`:""}</span>
               <span style={{fontSize:11,fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626"}}>{e.scorer} — {e.typeName} +{e.points}{e.penalty?" (pen)":""}</span>
-              <span style={{fontSize:11,color:"#94A3B8"}}>{e.p1Score}–{e.p2Score}</span>
+              <span style={{fontSize:11,color:"var(--text-muted)"}}>{e.p1Score}–{e.p2Score}</span>
             </div>
           ))}
         </div>
@@ -2716,7 +2741,43 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         {config.bo>1&&<span style={{...S.pill}}>Set {curSet} of {config.bo}</span>}
         <span style={{...S.pill}}>Battle {battlesInThisSet}</span>
         {config.bo>1&&<span style={{...S.pill}}>Match: {sets[0]}–{sets[1]}</span>}
+        {currentSides.p1Side&&(
+          <button type="button" onClick={()=>setSideSwapConfirm(true)}
+            style={{marginLeft:"auto",padding:`${bp(4)}px ${bp(8)}px`,borderRadius:bp(8),border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:bf(10),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+            ⇄ Swap Sides
+          </button>
+        )}
       </div>
+
+      {/* ── Side swap confirmation modal ── */}
+      {sideSwapConfirm&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+          <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",border:"1px solid var(--border)"}}>
+            <p style={{fontSize:16,fontWeight:800,color:"var(--text-primary)",marginBottom:8,textAlign:"center"}}>Swap Sides?</p>
+            <p style={{fontSize:13,color:"var(--text-secondary)",textAlign:"center",marginBottom:4,lineHeight:1.5}}>
+              <strong style={{color:"#2563EB"}}>{p1}</strong> → <strong>{currentSides.p1Side==="B"?"X":"B"} Side</strong>
+            </p>
+            <p style={{fontSize:13,color:"var(--text-secondary)",textAlign:"center",marginBottom:20,lineHeight:1.5}}>
+              <strong style={{color:"#DC2626"}}>{p2}</strong> → <strong>{currentSides.p2Side==="B"?"X":"B"} Side</strong>
+            </p>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setSideSwapConfirm(false)}
+                style={{flex:1,padding:"12px 0",borderRadius:10,border:"2px solid var(--border)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                Cancel
+              </button>
+              <button onClick={()=>{
+                const newP1Side=currentSides.p1Side==="B"?"X":"B";
+                const newP2Side=currentSides.p2Side==="B"?"X":"B";
+                setCurrentSides({p1Side:newP1Side,p2Side:newP2Side});
+                setSideAssign(a=>a?{...a,p1Side:newP1Side,p2Side:newP2Side}:a);
+                setSideSwapConfirm(false);
+              }} style={{flex:1,padding:"12px 0",borderRadius:10,border:"none",background:"#2563EB",color:"#fff",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                Confirm Swap
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Score block ── */}
       <div style={{background:"var(--surface)",borderRadius:bp(16),padding:`${bp(10)}px ${bp(14)}px ${bp(8)}px`,marginBottom:bp(6),boxShadow:"0 2px 12px rgba(0,0,0,0.08)",border:"1px solid var(--border)"}}>
@@ -2766,31 +2827,49 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             <div key={side.i} style={{flex:1,display:"flex",flexDirection:"column",gap:bp(3)}}>
               <p style={{textAlign:"center",fontSize:bf(10),fontWeight:800,color:side.cl,marginBottom:bp(1),letterSpacing:0.5,textTransform:"uppercase",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{side.name}</p>
 
-              {/* Finish type grid: XTR, OVR, BST, SPF, OF×2, OF×3 */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:bp(3)}}>
+              {/* Finish type buttons: 7 rows of 1 */}
+              <div style={{display:"flex",flexDirection:"column",gap:bp(3)}}>
                 {[...FINISH,...PENALTY.filter(f=>f.id!=="LER")].map(f=>{
                   const isSel = side.pending?.id===f.id;
                   const isFinish = !f.penalty;
-                  const label = f.id==="OF2"?"Own ×2":f.id==="OF3"?"Own ×3":f.name;
+                  const label = f.id==="OF2"?"Own Finish ×2":f.id==="OF3"?"Own Finish ×3":f.name;
                   return (
                     <button key={f.id} type="button"
                       disabled={!bothCombosSelected}
                       onClick={()=>{if(bothCombosSelected)setPendingFinish(isSel?null:{pi:side.i,fin:f});}}
-                      style={{height:bp(46),borderRadius:bp(8),border:`2px solid ${!bothCombosSelected?"var(--border)":isSel?side.cl:isFinish?`${side.cl}50`:"var(--border2)"}`,background:!bothCombosSelected?"var(--surface2)":isSel?side.cl:isFinish?`${side.cl}10`:"var(--surface2)",color:!bothCombosSelected?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:bothCombosSelected?"pointer":"not-allowed",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:bp(2),padding:`0 ${bp(2)}px`,opacity:bothCombosSelected?1:0.45}}>
-                      <span style={{fontSize:bf(9),fontWeight:800,textAlign:"center",lineHeight:1.1,wordBreak:"break-word"}}>{label}</span>
-                      <span style={{background:!bothCombosSelected?"var(--border2)":isSel?"rgba(255,255,255,0.3)":side.cl,color:"#fff",padding:`${bp(1)}px ${bp(3)}px`,borderRadius:bp(4),fontSize:bf(8),fontWeight:900}}>+{f.p}</span>
+                      style={{height:bp(36),borderRadius:bp(8),border:`2px solid ${!bothCombosSelected?"var(--border)":isSel?side.cl:isFinish?`${side.cl}50`:"var(--border2)"}`,background:!bothCombosSelected?"var(--surface2)":isSel?side.cl:isFinish?`${side.cl}10`:"var(--surface2)",color:!bothCombosSelected?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:bothCombosSelected?"pointer":"not-allowed",display:"flex",flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:bp(4),padding:`0 ${bp(8)}px`,opacity:bothCombosSelected?1:0.45}}>
+                      <span style={{fontSize:bf(10),fontWeight:800,lineHeight:1.1}}>{label}</span>
+                      <span style={{background:!bothCombosSelected?"var(--border2)":isSel?"rgba(255,255,255,0.3)":side.cl,color:"#fff",padding:`${bp(1)}px ${bp(5)}px`,borderRadius:bp(4),fontSize:bf(9),fontWeight:900,flexShrink:0}}>+{f.p}</span>
                     </button>
                   );
                 })}
               </div>
 
-              {/* LER */}
-              <button type="button" onClick={()=>{if(side.sel!==null)doScore(side.i,PENALTY.find(f=>f.id==="LER"));}}
-                disabled={side.sel===null}
-                style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:`${bp(5)}px ${bp(8)}px`,borderRadius:bp(8),border:"1px dashed var(--border2)",background:"var(--surface2)",color:side.sel===null?"var(--text-disabled)":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:side.sel===null?"not-allowed":"pointer",boxSizing:"border-box",opacity:side.sel===null?0.5:1}}>
-                <span style={{fontSize:bf(10),fontWeight:700}}>Launch Error</span>
-                <span style={{background:"var(--surface3)",color:"var(--text-secondary)",padding:`${bp(2)}px ${bp(5)}px`,borderRadius:bp(4),fontSize:bf(9),fontWeight:800}}>LER</span>
-              </button>
+              {/* LER — strike system */}
+              {(()=>{
+                const lerLocked = !bothCombosSelected;
+                const hasStrike = lerStrikes[side.i]===1;
+                const lerFin = PENALTY.find(f=>f.id==="LER");
+                return (
+                  <button type="button"
+                    disabled={lerLocked}
+                    onClick={()=>{
+                      if(lerLocked) return;
+                      if(!hasStrike){
+                        // First LER: add strike, do NOT score
+                        setLerStrikes(s=>{const n=[...s];n[side.i]=1;return n;});
+                      } else {
+                        // Second LER: clear strike and score the point
+                        setLerStrikes([0,0]);
+                        doScore(side.i,lerFin);
+                      }
+                    }}
+                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:`${bp(5)}px ${bp(8)}px`,borderRadius:bp(8),border:hasStrike?`2px solid #F59E0B`:"1px dashed var(--border2)",background:hasStrike?"#FEF9C3":"var(--surface2)",color:lerLocked?"var(--text-disabled)":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:lerLocked?"not-allowed":"pointer",boxSizing:"border-box",opacity:lerLocked?0.5:1}}>
+                    <span style={{fontSize:bf(10),fontWeight:700,color:hasStrike?"#B45309":"inherit"}}>{hasStrike?"⚠️ LER Strike — tap again":"Launch Error"}</span>
+                    <span style={{background:hasStrike?"#F59E0B":"var(--surface3)",color:"#fff",padding:`${bp(2)}px ${bp(5)}px`,borderRadius:bp(4),fontSize:bf(9),fontWeight:800}}>LER</span>
+                  </button>
+                );
+              })()}
 
               {/* Confirm button */}
               <button type="button"
