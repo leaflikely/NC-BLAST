@@ -2844,40 +2844,37 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         })}
       </div>
 
-      {/* ── Two-column scoring (fill remaining space above combo row) ── */}
-      <div style={{display:"flex",gap:bp(6),flex:1,minHeight:0,padding:`${bp(6)}px ${bp(10)}px 0`,overflow:"hidden"}}>
+      {/* ── Two-column scoring (fills remaining space; buttons scale to fit) ── */}
+      <div style={{display:"flex",gap:bp(6),flex:1,minHeight:0,padding:`${bp(4)}px ${bp(10)}px 0`}}>
         {[{i:0,cl:"#2563EB",name:p1,dk:d1,sel:r1,setSel:setR1,used:used1,pending:pending1},
           {i:1,cl:"#DC2626",name:p2,dk:d2,sel:r2,setSel:setR2,used:used2,pending:pending2}].map(side=>{
           const canConfirm = side.sel !== null && side.pending;
           return (
-            <div key={side.i} style={{flex:1,display:"flex",flexDirection:"column",gap:bp(3),overflow:"hidden"}}>
-              <p style={{textAlign:"center",fontSize:bf(10),fontWeight:800,color:side.cl,flexShrink:0,letterSpacing:0.5,textTransform:"uppercase",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{side.name}</p>
+            <div key={side.i} style={{flex:1,display:"flex",flexDirection:"column",gap:bp(2),minHeight:0}}>
 
-              {/* Finish type buttons: 6 rows of 1, fixed height each */}
-              <div style={{display:"flex",flexDirection:"column",gap:bp(2),flexShrink:0}}>
-                {[...FINISH,...PENALTY.filter(f=>f.id!=="LER")].map(f=>{
-                  const isSel = side.pending?.id===f.id;
-                  const isFinish = !f.penalty;
-                  const label = f.id==="OF2"?"Own ×2":f.id==="OF3"?"Own ×3":f.id==="Spin Finish"?"SPF":f.name;
-                  return (
-                    <button key={f.id} type="button"
-                      disabled={!bothCombosSelected}
-                      onClick={()=>{if(bothCombosSelected)setPendingFinish(isSel?null:{pi:side.i,fin:f});}}
-                      style={{height:bp(28),borderRadius:bp(7),border:`2px solid ${!bothCombosSelected?"var(--border)":isSel?side.cl:isFinish?`${side.cl}50`:"var(--border2)"}`,background:!bothCombosSelected?"var(--surface2)":isSel?side.cl:isFinish?`${side.cl}10`:"var(--surface2)",color:!bothCombosSelected?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:bothCombosSelected?"pointer":"not-allowed",display:"flex",flexDirection:"row",alignItems:"center",justifyContent:"space-between",padding:`0 ${bp(7)}px`,opacity:bothCombosSelected?1:0.45,flexShrink:0}}>
-                      <span style={{fontSize:bf(9),fontWeight:800,lineHeight:1}}>{label}</span>
-                      <span style={{background:!bothCombosSelected?"var(--border2)":isSel?"rgba(255,255,255,0.3)":side.cl,color:"#fff",padding:`${bp(1)}px ${bp(4)}px`,borderRadius:bp(3),fontSize:bf(8),fontWeight:900,flexShrink:0}}>+{f.p}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              {/* Finish buttons + LER + Confirm — each flex:1 so they share available height equally */}
+              {[...FINISH,...PENALTY.filter(f=>f.id!=="LER")].map(f=>{
+                const isSel = side.pending?.id===f.id;
+                const isFinish = !f.penalty;
+                const label = f.id==="OF2"?"Own ×2":f.id==="OF3"?"Own ×3":f.name;
+                return (
+                  <button key={f.id} type="button"
+                    disabled={!bothCombosSelected}
+                    onClick={()=>{if(bothCombosSelected)setPendingFinish(isSel?null:{pi:side.i,fin:f});}}
+                    style={{flex:1,minHeight:0,borderRadius:bp(7),border:`2px solid ${!bothCombosSelected?"var(--border)":isSel?side.cl:isFinish?`${side.cl}50`:"var(--border2)"}`,background:!bothCombosSelected?"var(--surface2)":isSel?side.cl:isFinish?`${side.cl}10`:"var(--surface2)",color:!bothCombosSelected?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:bothCombosSelected?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"space-between",padding:`0 ${bp(7)}px`,opacity:bothCombosSelected?1:0.45}}>
+                    <span style={{fontSize:bf(9),fontWeight:800,lineHeight:1}}>{label}</span>
+                    <span style={{background:!bothCombosSelected?"var(--border2)":isSel?"rgba(255,255,255,0.3)":side.cl,color:"#fff",padding:`${bp(1)}px ${bp(4)}px`,borderRadius:bp(3),fontSize:bf(8),fontWeight:900,flexShrink:0}}>+{f.p}</span>
+                  </button>
+                );
+              })}
 
-              {/* LER — strike system */}
+              {/* LER — strike system, flex:1 like the other buttons */}
               {(()=>{
                 const lerLocked = !bothCombosSelected;
                 const hasStrike = lerStrikes[side.i]===1;
                 const lerFin = PENALTY.find(f=>f.id==="LER");
                 return (
-                  <button type="button" disabled={lerLocked} flexShrink={0}
+                  <button type="button" disabled={lerLocked}
                     onClick={()=>{
                       if(lerLocked) return;
                       if(!hasStrike){
@@ -2902,17 +2899,17 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                         doScore(side.i,lerFin);
                       }
                     }}
-                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",height:bp(28),padding:`0 ${bp(7)}px`,borderRadius:bp(7),border:hasStrike?`2px solid #F59E0B`:"1px dashed var(--border2)",background:hasStrike?"#FEF9C3":"var(--surface2)",color:lerLocked?"var(--text-disabled)":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:lerLocked?"not-allowed":"pointer",boxSizing:"border-box",opacity:lerLocked?0.5:1,flexShrink:0}}>
+                    style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:`0 ${bp(7)}px`,borderRadius:bp(7),border:hasStrike?`2px solid #F59E0B`:"1px dashed var(--border2)",background:hasStrike?"#FEF9C3":"var(--surface2)",color:lerLocked?"var(--text-disabled)":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:lerLocked?"not-allowed":"pointer",boxSizing:"border-box",opacity:lerLocked?0.5:1}}>
                     <span style={{fontSize:bf(9),fontWeight:700,color:hasStrike?"#B45309":"inherit"}}>{hasStrike?"⚠️ Strike — tap again":"Launch Error"}</span>
                     <span style={{background:hasStrike?"#F59E0B":"var(--surface3)",color:"#fff",padding:`${bp(1)}px ${bp(4)}px`,borderRadius:bp(3),fontSize:bf(8),fontWeight:800}}>LER</span>
                   </button>
                 );
               })()}
 
-              {/* Confirm button */}
+              {/* Confirm button — flex:1, slightly more weight visually */}
               <button type="button" disabled={!canConfirm}
                 onClick={()=>{ if(canConfirm){ doScore(side.i,side.pending); setPendingFinish(null); } }}
-                style={{display:"block",width:"100%",height:bp(32),borderRadius:bp(7),border:"none",background:canConfirm?side.cl:"var(--surface3)",color:canConfirm?"#fff":"var(--text-disabled)",fontSize:bf(11),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:canConfirm?"pointer":"not-allowed",boxSizing:"border-box",transition:"background 0.15s",flexShrink:0}}>
+                style={{flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",width:"100%",borderRadius:bp(7),border:"none",background:canConfirm?side.cl:"var(--surface3)",color:canConfirm?"#fff":"var(--text-disabled)",fontSize:bf(10),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:canConfirm?"pointer":"not-allowed",boxSizing:"border-box",transition:"background 0.15s"}}>
                 {canConfirm ? `Confirm ${side.pending.name} →` : side.pending ? "Pick combo ↓" : side.sel!==null ? "Pick finish ↑" : "Pick combo ↓"}
               </button>
             </div>
