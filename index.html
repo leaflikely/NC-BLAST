@@ -62,25 +62,30 @@ const { useState, useEffect, useRef } = React;
 ═══════════════════════════════════════ */
 function useScale() {
   const [scale, setScale] = useState(1);
-  const lastW = useRef(0);
   useEffect(() => {
+    // Use layout width/height only — never the visual viewport (which shrinks when keyboard opens).
+    // This means we only ever scale based on the true screen dimensions, not the keyboard-adjusted view.
     function update() {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      // Only re-scale when width changes — height-only changes (mobile keyboard popup) are ignored.
-      // This prevents the virtual keyboard opening from triggering a re-render that blurs inputs.
-      if(w === lastW.current) return;
-      lastW.current = w;
-      const wScale = Math.min(w / 480, 2.2);
-      const hScale = Math.min(h / 700, 2.0);
+      const w = window.screen.width;
+      const h = window.screen.height;
+      // Use the smaller screen dimension as width (handles landscape correctly)
+      const sw = Math.min(w, h);
+      const sh = Math.max(w, h);
+      const wScale = Math.min(sw / 480, 2.2);
+      const hScale = Math.min(sh / 700, 2.0);
       const s = Math.min(wScale, hScale);
       const clamped = Math.max(0.7, Math.min(2.0, s));
       setScale(clamped);
       document.documentElement.style.fontSize = (16 * clamped) + "px";
     }
     update();
+    // screen dimensions only change on orientation change, not keyboard open
+    window.addEventListener("orientationchange", update);
     window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+    return () => {
+      window.removeEventListener("orientationchange", update);
+      window.removeEventListener("resize", update);
+    };
   }, []);
   return scale;
 }
@@ -89,7 +94,7 @@ function useScale() {
    PERSISTENT STORAGE — localStorage
 ═══════════════════════════════════════ */
 const KEYS = { parts: "bx-library-v9", players: "bx-roster-v2", combos: "bx-combos-v1", matchLog: "bx-matchlog-v1", challongeMap: "bx-challonge-map-v1" };
-const BUILD_TIME = "2026-04-16 12:29 AM PDT";
+const BUILD_TIME = "2026-04-16 1:03 PM PDT";
 function sGet(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; } }
 function sSave(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
 
@@ -1470,6 +1475,20 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [pendingFinish,setPendingFinish] = useState(null); // {pi, fin} — selected but not yet confirmed
   const [sideSwapConfirm,setSideSwapConfirm] = useState(false); // swap B/X sides modal
   const [judgeEditMode,setJudgeEditMode] = useState(false); // judge name editable on over screen
+  const [comboLayout, setComboLayout] = useState("column"); // "column" = 3 rows of 1, "row" = 1 row of 3
+  const comboAreaRef = useRef(null);
+  useEffect(() => {
+    const el = comboAreaRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        setComboLayout(height > width ? "column" : "row");
+      }
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   const need = Math.ceil(config.bo/2);
   const cReady = d1.every(comboReady)&&d2.every(comboReady);
@@ -2243,7 +2262,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     Name not present — enter manually
                   </button>
                 ):(
-                  <input style={{...S.inp,width:"100%",borderColor:"#F59E0B60",color:"var(--text-primary)"}} placeholder="Enter judge name..." value={judge} autoFocus
+                  <input style={{...S.inp,width:"100%",borderColor:"#F59E0B60",color:"var(--text-primary)"}} placeholder="Enter judge name..." value={judge}
+                    ref={el=>{if(el&&document.activeElement!==el)setTimeout(()=>el.focus(),50);}}
                     onChange={e=>setJudge(e.target.value)}
                     onKeyDown={e=>e.key==="Enter"&&judge.trim()&&setManualJudge(false)}/>
                 )}
@@ -2286,7 +2306,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   </div>
                 ) : (
                   <div style={{display:"flex",gap:8}}>
-                    <input style={{...S.inp,flex:1,borderColor:"#F59E0B60",color:"var(--text-primary)"}} placeholder="Enter judge name..." value={judge} autoFocus
+                    <input style={{...S.inp,flex:1,borderColor:"#F59E0B60",color:"var(--text-primary)"}} placeholder="Enter judge name..." value={judge}
+                      ref={el=>{if(el&&document.activeElement!==el)setTimeout(()=>el.focus(),50);}}
                       onChange={e=>setJudge(e.target.value)}
                       onKeyDown={e=>e.key==="Enter"&&judge.trim()&&setManualJudge(false)}/>
                     <button type="button" onClick={()=>{setManualJudge(false);setJudge("");}}
@@ -2601,7 +2622,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             <p style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,textTransform:"uppercase"}}>Judge</p>
             {judgeEditMode ? (
               <div style={{display:"flex",gap:4,width:"100%"}}>
-                <input autoFocus value={judge} onChange={e=>setJudge(e.target.value)}
+                <input value={judge} onChange={e=>setJudge(e.target.value)}
+                  ref={el=>{if(el&&document.activeElement!==el)setTimeout(()=>el.focus(),50);}}
                   style={{...S.inp,flex:1,fontSize:12,padding:"3px 6px",borderRadius:6,minWidth:0}}/>
                 <button onClick={()=>setJudgeEditMode(false)}
                   style={{padding:"3px 8px",borderRadius:6,border:"none",background:"#2563EB",color:"#fff",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>✓</button>
@@ -2733,22 +2755,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const bothCombosSelected = r1 !== null && r2 !== null;
   const pending1 = pendingFinish?.pi===0 ? pendingFinish.fin : null;
   const pending2 = pendingFinish?.pi===1 ? pendingFinish.fin : null;
-
-  // Measure remaining space below confirm button to decide combo button orientation
-  const [comboLayout, setComboLayout] = useState("column"); // "column" = 3×1, "row" = 1×3
-  const comboAreaRef = useRef(null);
-  useEffect(() => {
-    const el = comboAreaRef.current;
-    if (!el) return;
-    const obs = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        setComboLayout(height > width ? "column" : "row");
-      }
-    });
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
 
   // Battle screen uses fixed viewport height — no scrolling ever
   const BBAR = bp(56); // bottom bar height to reserve
