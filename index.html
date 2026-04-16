@@ -233,18 +233,18 @@ function makeS(sc) {
   const f = (n) => Math.round(n * sc); // scale font
   const r = (n) => Math.round(n * sc); // scale radius
   return {
-  page:{maxWidth:p(480),margin:"0 auto",padding:`${p(20)}px ${p(16)}px ${p(100)}px`,minHeight:"100vh"},
+  page:{maxWidth:p(480),margin:"0 auto",padding:`${p(14)}px ${p(14)}px ${p(80)}px`,minHeight:"100dvh",maxHeight:"100dvh",overflowY:"auto",boxSizing:"border-box"},
   logo:{fontSize:f(30),fontWeight:900,color:"var(--text-primary)",margin:0,letterSpacing:-1},
   title:{fontSize:f(22),fontWeight:800,color:"var(--text-primary)",textAlign:"center",margin:`0 0 ${p(4)}px`},
   sub:{textAlign:"center",color:"var(--text-muted)",fontSize:f(13),marginBottom:p(20),fontWeight:500},
-  label:{fontSize:f(14),fontWeight:700,color:"var(--text-primary)",margin:`0 0 ${p(10)}px`},
-  card:{background:"var(--surface)",borderRadius:r(14),padding:`${p(16)}px ${p(14)}px`,boxShadow:"0 1px 4px var(--shadow),0 4px 14px var(--shadow)",marginBottom:p(16)},
+  label:{fontSize:f(14),fontWeight:700,color:"var(--text-primary)",margin:`0 0 ${p(7)}px`},
+  card:{background:"var(--surface)",borderRadius:r(14),padding:`${p(12)}px ${p(12)}px`,boxShadow:"0 1px 4px var(--shadow),0 4px 14px var(--shadow)",marginBottom:p(12)},
   row:{display:"flex",gap:p(8),flexWrap:"wrap"},
-  chip:{padding:`${p(10)}px ${p(18)}px`,borderRadius:r(10),border:"2px solid var(--border)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:f(13),fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer"},
+  chip:{padding:`${p(8)}px ${p(14)}px`,borderRadius:r(10),border:"2px solid var(--border)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:f(13),fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer"},
   chipOn:{background:"#EA580C",borderColor:"#EA580C",color:"#fff"},
   chipBl:{background:"#1D4ED8",borderColor:"#1D4ED8",color:"#fff"},
   chipW:{flex:1,textAlign:"center"},
-  pri:{display:"block",width:"100%",padding:`${p(15)}px 0`,borderRadius:r(12),border:"none",background:"linear-gradient(135deg,#1D4ED8,#2563EB)",color:"#fff",fontSize:f(15),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",boxShadow:"0 4px 12px rgba(37,99,235,0.3)",marginBottom:p(8)},
+  pri:{display:"block",width:"100%",padding:`${p(11)}px 0`,borderRadius:r(12),border:"none",background:"linear-gradient(135deg,#1D4ED8,#2563EB)",color:"#fff",fontSize:f(15),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",boxShadow:"0 4px 12px rgba(37,99,235,0.3)",marginBottom:p(8)},
   sec:{display:"inline-flex",alignItems:"center",gap:p(6),padding:`${p(11)}px ${p(18)}px`,borderRadius:r(10),border:"2px solid var(--border)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:f(13),fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer"},
   back:{display:"inline-flex",alignItems:"center",gap:p(4),background:"none",border:"none",color:"var(--text-muted)",fontSize:f(13),fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:p(14),padding:0},
   tBar:{display:"flex",borderBottom:"2px solid #F1F5F9",marginBottom:p(14)},
@@ -769,8 +769,8 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
       </div>
     )}
     <div style={S.page}>
-      <div style={{textAlign:"center",marginBottom:24}}>
-        <div style={{fontSize:40,marginBottom:4}}>⚔️</div>
+      <div style={{textAlign:"center",marginBottom:12}}>
+        <div style={{fontSize:28,marginBottom:2}}>⚔️</div>
         <h1 style={S.logo}>NC <span style={{color:"#EA580C"}}>BLAST</span></h1>
         <p style={S.sub}>NorCal Battle Log and Stat Tracker</p>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,marginTop:6}}>
@@ -787,9 +787,9 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
         <h2 style={S.label}>Match Type</h2>
         <div style={S.row}>{[[4,"4 Pts."],[5,"5 Pts."],[7,"7 Pts."],[0,"No Limit"]].map(([v,l])=>(<button key={v} style={{...S.chip,...(config.pts===v?S.chipOn:{})}} onClick={()=>setConfig({...config,pts:v})}>{l}</button>))}</div>
         <div style={{...S.row,marginTop:8}}><button style={{...S.chip,...(config.pts>7?S.chipOn:{})}} onClick={()=>{const n=prompt("Custom point limit:"); if(n&&!isNaN(+n)&&+n>0)setConfig({...config,pts:+n});}}>{config.pts>7?config.pts+" Pts.":"Custom"}</button></div>
-        <h2 style={{...S.label,marginTop:24}}>Sets</h2>
+        <h2 style={{...S.label,marginTop:14}}>Sets</h2>
         <div style={S.row}>{[1,3,5].map(v=>(<button key={v} style={{...S.chip,...S.chipW,...(config.bo===v?S.chipBl:{})}} onClick={()=>setConfig({...config,bo:v})}>{v===1?"Best-of-1":`Best-of-${v}`}</button>))}</div>
-        <h2 style={{...S.label,marginTop:24}}>Tournament Mode</h2>
+        <h2 style={{...S.label,marginTop:14}}>Tournament Mode</h2>
         <div style={S.row}>{[false,true].map(v=>(<button key={String(v)} style={{...S.chip,...(config.tm===v?(v?{background:"#7C3AED",borderColor:"#7C3AED",color:"#fff"}:S.chipOn):{})}} onClick={()=>setConfig({...config,tm:v})}>{v?"On":"Off"}</button>))}</div>
         {config.tm&&(
           <div style={{marginTop:12}}>
@@ -804,7 +804,7 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
         )}
 
       </div>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
         <span style={{fontSize:13,fontWeight:600,color:"var(--text-muted)"}}>Dark Mode</span>
         <button onClick={toggleDark} style={{width:48,height:26,borderRadius:13,border:"none",background:dark?"#2563EB":"var(--border2)",cursor:"pointer",position:"relative",transition:"background 0.2s"}}>
           <span style={{position:"absolute",top:3,left:dark?24:3,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}/>
@@ -1475,20 +1475,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [pendingFinish,setPendingFinish] = useState(null); // {pi, fin} — selected but not yet confirmed
   const [sideSwapConfirm,setSideSwapConfirm] = useState(false); // swap B/X sides modal
   const [judgeEditMode,setJudgeEditMode] = useState(false); // judge name editable on over screen
-  const [comboLayout, setComboLayout] = useState("column"); // "column" = 3 rows of 1, "row" = 1 row of 3
-  const comboAreaRef = useRef(null);
-  useEffect(() => {
-    const el = comboAreaRef.current;
-    if (!el) return;
-    const obs = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        setComboLayout(height > width ? "column" : "row");
-      }
-    });
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
+  // Portrait vs landscape for combo button layout — recomputed on each render via sc trigger
+  const comboAreaRef = useRef(null); // kept for legacy ref safety, not used for measurement
 
   const need = Math.ceil(config.bo/2);
   const cReady = d1.every(comboReady)&&d2.every(comboReady);
@@ -1682,7 +1670,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   // ── Abandon confirm overlay — rendered first so it always shows instantly ──
   if(abandonConfirm){
     return (
-      <div style={{...S.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"60vh"}}>
+      <div style={{...S.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
         <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:340,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",border:"2px solid var(--border)"}}>
           <p style={{fontSize:16,fontWeight:800,color:"var(--text-primary)",marginBottom:8,textAlign:"center"}}>Abandon Match?</p>
           <p style={{fontSize:13,color:"var(--text-secondary)",textAlign:"center",marginBottom:6,lineHeight:1.5}}>
@@ -2452,7 +2440,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const otherName = priorityKnown ? (sidePicker.priority===0?p2:p1) : null;
 
     return (
-      <div style={{...S.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"85vh",gap:0}}>
+      <div style={{...S.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:0}}>
         <div style={{textAlign:"center",marginBottom:36}}>
           <p style={{fontSize:13,fontWeight:700,letterSpacing:2,color:"var(--text-muted)",textTransform:"uppercase",marginBottom:12}}>Set {curSet} · Assign Sides</p>
           <h1 style={{fontSize:38,fontWeight:900,color:"var(--text-primary)",margin:"0 0 10px",lineHeight:1}}>
@@ -2534,7 +2522,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     };
 
     return (
-      <div style={{...S.page,paddingBottom:60}}>
+      <div style={{...S.page,paddingBottom:80,maxHeight:"100dvh",overflowY:"auto"}}>
 
         {/* ── Back button + confirm modal ── */}
         {!submitted&&(
@@ -2752,6 +2740,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const bp = (n) => Math.round(n * sc2);
   const bf = (n) => Math.round(n * sc2);
 
+  // Portrait = taller than wide → stack combos vertically; landscape → side by side
+  const comboLayout = window.innerHeight > window.innerWidth ? "column" : "row";
+
   const bothCombosSelected = r1 !== null && r2 !== null;
   const pending1 = pendingFinish?.pi===0 ? pendingFinish.fin : null;
   const pending2 = pendingFinish?.pi===1 ? pendingFinish.fin : null;
@@ -2921,7 +2912,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               </button>
 
               {/* Combo buttons — layout switches based on available space */}
-              <div ref={side.i===0?comboAreaRef:null} style={{display:"flex",flexDirection:comboLayout,gap:bp(3),flex:1,minHeight:0,overflow:"hidden"}}>
+              <div ref={side.i===0?comboAreaRef:null} style={{display:"flex",flexDirection:comboLayout,gap:bp(3),flex:1,minHeight:bp(comboLayout==="column"?120:44)}}>
                 {side.dk.map((c,i)=>{
                   const isUsed = side.used.includes(i);
                   const isSel = side.sel===i;
