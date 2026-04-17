@@ -2158,10 +2158,17 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         </div>
       );
 
+      // Single stable layout: header fixed, search bar always visible,
+      // grid below always scrollable. No branch switch on search so the
+      // input never remounts and the keyboard never dismisses.
+      const displayRows = searchItems ? searchRows : null;
+      const ROW_H = 52; // fixed px height per button row — never changes
+
       return (
-        <div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",background:"var(--bg-solid)",boxSizing:"border-box",overflow:"hidden"}}>
-          {/* Header strip */}
-          <div style={{flexShrink:0,padding:"6px 14px 4px",background:"var(--bg-solid)",zIndex:2}}>
+        <div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",background:"var(--bg-solid)",boxSizing:"border-box"}}>
+
+          {/* ── Header strip — always fixed height, never reflowed ── */}
+          <div style={{flexShrink:0,padding:"6px 14px 4px",background:"var(--bg-solid)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
               <button style={{...S.back,marginBottom:0}} onClick={goBack}>{IC.back} Back</button>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -2179,39 +2186,110 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             </div>
           </div>
 
-          {/* Body: top10 section + search divider + rest section, all flex to fill height */}
-          <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",padding:"4px 10px 6px",overflowY:pickerSearch?"auto":"hidden"}}>
-            {searchItems ? (
-              // Search results: scrollable grid (avoids keyboard collapsing fixed layout)
-              <>
-                <div style={{display:"flex",flexDirection:"column",gap:4,paddingBottom:8}}>
-                  {searchRows.map((row,ri)=><PartRow key={ri} row={row} isTopGroup={false}/>)}
+          {/* ── Top 10 block — always rendered, always fixed height ── */}
+          {!pickerSearch&&(
+            <div style={{flexShrink:0,background:cc+"0D",borderRadius:10,border:`1px solid ${cc}30`,
+              padding:"4px 6px",margin:"4px 10px 0",
+              display:"flex",flexDirection:"column",gap:4}}>
+              <p style={{fontSize:8,fontWeight:700,color:cc,letterSpacing:1.5,textTransform:"uppercase",flexShrink:0,margin:"0 0 2px 2px"}}>★ Top 10</p>
+              {top10Rows.map((row,ri)=>(
+                <div key={ri} style={{height:ROW_H,display:"flex",gap:4}}>
+                  {row.map(name=>{
+                    const sel=current===name;
+                    const taken=takenByOtherSlots.includes(name)&&!sel;
+                    return (
+                      <button key={name} disabled={taken}
+                        onClick={()=>{
+                          if(taken)return;
+                          const nd=[...deck];nd[slot]={...nd[slot],[cat]:name};setDeck(nd);
+                          if(picker.returnToReview){setPicker(null);setDeckReview(true);return;}
+                          const cats=["blade","ratchet","bit"];
+                          const catIdx=cats.indexOf(cat);
+                          if(catIdx<2){openPicker({who,slot,cat:cats[catIdx+1]});}
+                          else if(slot<2){openPicker({who,slot:slot+1,cat:"blade"});}
+                          else if(who===1){openPicker({who:2,slot:0,cat:"blade"});}
+                          else{setPicker(null);setDeckReview(true);}
+                        }}
+                        style={{flex:1,minWidth:0,height:"100%",borderRadius:9,
+                          border:sel?`2px solid ${cc}`:taken?"2px solid var(--border)":`2px solid ${cc}50`,
+                          background:sel?cc:taken?"var(--surface2)":cc+"14",
+                          color:sel?"#fff":taken?"var(--text-disabled)":"var(--text-primary)",
+                          cursor:taken?"not-allowed":"pointer",opacity:taken?0.45:1,
+                          display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                          textAlign:"center",lineHeight:1.05,position:"relative",
+                          fontFamily:"'Outfit',sans-serif",padding:"2px",fontSize:13,fontWeight:800,
+                        }}>
+                        {sel&&<span style={{fontSize:9,marginBottom:1}}>{IC.check}</span>}
+                        <PartLabel name={name} size={null} keepDash={cat!=="bit"}/>
+                        {taken&&<span style={{position:"absolute",bottom:2,fontSize:8,fontWeight:700,color:"var(--text-faint)",letterSpacing:0.3}}>IN USE</span>}
+                      </button>
+                    );
+                  })}
+                  {row.length<COLS&&Array.from({length:COLS-row.length}).map((_,ei)=><div key={ei} style={{flex:1}}/>)}
                 </div>
-                {searchItems.length===0&&<p style={{textAlign:"center",color:"var(--text-muted)",fontSize:13,padding:"20px 0"}}>No matches for "{pickerSearch}"</p>}
-              </>
-            ) : (
-              <>
-                {/* Top 10 — colored bubble, rows flex:1 within their share */}
-                <div style={{background:cc+"0D",borderRadius:10,border:`1px solid ${cc}30`,padding:"4px 6px 4px",marginBottom:4,
-                  flex:top10Rows.length, minHeight:0, display:"flex",flexDirection:"column",gap:4}}>
-                  <p style={{fontSize:8,fontWeight:700,color:cc,letterSpacing:1.5,textTransform:"uppercase",flexShrink:0,margin:"0 0 2px 2px"}}>★ Top 10</p>
-                  {top10Rows.map((row,ri)=><PartRow key={ri} row={row} isTopGroup={true}/>)}
-                </div>
-                {/* Search bar as divider */}
-                <div style={{flexShrink:0,padding:"3px 0",position:"relative"}}>
-                  <input style={{...S.inp,width:"100%",paddingLeft:28,fontSize:12,borderColor:cc+"40"}}
-                    placeholder={`Search ${catLabels[cat].toLowerCase()}s…`}
-                    value={pickerSearch} onChange={e=>setPickerSearch(e.target.value)} autoComplete="off"/>
-                  <svg style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",opacity:0.35}} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={cc} strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                  {pickerSearch&&<button onClick={()=>setPickerSearch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#94A3B8",cursor:"pointer",fontSize:13,lineHeight:1}}>✕</button>}
-                </div>
-                {/* Rest — fills remaining space */}
-                <div style={{flex:restRows.length,minHeight:0,display:"flex",flexDirection:"column",gap:4,marginTop:4}}>
-                  {restRows.map((row,ri)=><PartRow key={ri} row={row} isTopGroup={false}/>)}
-                </div>
-              </>
-            )}
+              ))}
+            </div>
+          )}
+
+          {/* ── Search bar — always present, always same position ── */}
+          <div style={{flexShrink:0,padding:"6px 10px 4px",position:"relative"}}>
+            <input
+              style={{...S.inp,width:"100%",paddingLeft:28,fontSize:12,borderColor:cc+"40"}}
+              placeholder={`Search ${catLabels[cat].toLowerCase()}s…`}
+              value={pickerSearch}
+              onChange={e=>setPickerSearch(e.target.value)}
+              autoComplete="off"
+            />
+            <svg style={{position:"absolute",left:18,top:"50%",transform:"translateY(-50%)",opacity:0.35}} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={cc} strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            {pickerSearch&&<button onClick={()=>setPickerSearch("")} style={{position:"absolute",right:18,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#94A3B8",cursor:"pointer",fontSize:13,lineHeight:1}}>✕</button>}
           </div>
+
+          {/* ── Scrollable rest grid — always overflowY:auto, fixed-height rows ── */}
+          <div style={{flex:1,overflowY:"auto",padding:"0 10px 8px"}}>
+            {pickerSearch&&searchItems&&searchItems.length===0&&(
+              <p style={{textAlign:"center",color:"var(--text-muted)",fontSize:13,padding:"20px 0"}}>No matches for "{pickerSearch}"</p>
+            )}
+            <div style={{display:"flex",flexDirection:"column",gap:4,paddingTop:4}}>
+              {(displayRows || restRows).map((row,ri)=>(
+                <div key={ri} style={{height:ROW_H,display:"flex",gap:4}}>
+                  {row.map(name=>{
+                    const sel=current===name;
+                    const taken=takenByOtherSlots.includes(name)&&!sel;
+                    const isTop=!pickerSearch&&top10.includes(name);
+                    return (
+                      <button key={name} disabled={taken}
+                        onClick={()=>{
+                          if(taken)return;
+                          const nd=[...deck];nd[slot]={...nd[slot],[cat]:name};setDeck(nd);
+                          if(picker.returnToReview){setPicker(null);setDeckReview(true);return;}
+                          const cats=["blade","ratchet","bit"];
+                          const catIdx=cats.indexOf(cat);
+                          if(catIdx<2){openPicker({who,slot,cat:cats[catIdx+1]});}
+                          else if(slot<2){openPicker({who,slot:slot+1,cat:"blade"});}
+                          else if(who===1){openPicker({who:2,slot:0,cat:"blade"});}
+                          else{setPicker(null);setDeckReview(true);}
+                        }}
+                        style={{flex:1,minWidth:0,height:"100%",borderRadius:9,
+                          border:sel?`2px solid ${cc}`:taken?"2px solid var(--border)":"2px solid var(--border2)",
+                          background:sel?cc:taken?"var(--surface2)":"var(--surface2)",
+                          color:sel?"#fff":taken?"var(--text-disabled)":"var(--text-primary)",
+                          cursor:taken?"not-allowed":"pointer",opacity:taken?0.45:1,
+                          display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                          textAlign:"center",lineHeight:1.05,position:"relative",
+                          fontFamily:"'Outfit',sans-serif",padding:"2px",fontSize:13,fontWeight:800,
+                        }}>
+                        {sel&&<span style={{fontSize:9,marginBottom:1}}>{IC.check}</span>}
+                        <PartLabel name={name} size={null} keepDash={cat!=="bit"}/>
+                        {taken&&<span style={{position:"absolute",bottom:2,fontSize:8,fontWeight:700,color:"var(--text-faint)",letterSpacing:0.3}}>IN USE</span>}
+                      </button>
+                    );
+                  })}
+                  {row.length<COLS&&Array.from({length:COLS-row.length}).map((_,ei)=><div key={ei} style={{flex:1}}/>)}
+                </div>
+              ))}
+            </div>
+          </div>
+
         </div>
       );
     }
