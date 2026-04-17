@@ -38,7 +38,7 @@
     width: var(--widget-w);
     cursor: move;
     user-select: none;
-    filter: drop-shadow(0 0 40px rgba(0,0,0,0.8));
+
   }
 
   /* ── RESIZE HANDLES ────────────────────────── */
@@ -89,7 +89,7 @@
     border: 1px solid var(--border-bright);
     border-radius: 6px;
     overflow: hidden;
-    backdrop-filter: blur(12px);
+
     position: relative;
   }
 
@@ -270,11 +270,11 @@
     line-height: 1;
     min-width: 44px;
     text-align: center;
-    transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), color 0.15s;
+    transition: color 0.1s;
   }
-  .pts-num.p1-pts { color: var(--p1-color); text-shadow: 0 0 30px var(--p1-glow); }
-  .pts-num.p2-pts { color: var(--p2-color); text-shadow: 0 0 30px var(--p2-glow); }
-  .pts-num.pop { transform: scale(1.35); }
+  .pts-num.p1-pts { color: var(--p1-color); text-shadow: 0 0 20px var(--p1-glow); }
+  .pts-num.p2-pts { color: var(--p2-color); text-shadow: 0 0 20px var(--p2-glow); }
+  .pts-num.pop { color: #fff; }
 
   .pts-divider {
     font-family: 'Barlow Condensed', sans-serif;
@@ -308,7 +308,7 @@
     width: 8px; height: 8px;
     border-radius: 50%;
     border: 1.5px solid var(--border-bright);
-    transition: background 0.2s, border-color 0.2s, transform 0.2s;
+    transition: background 0.1s;
   }
   .dot.won { transform: scale(1.15); }
   .dot.p1-dot.won { background: var(--p1-color); border-color: var(--p1-color); box-shadow: 0 0 8px var(--p1-glow); }
@@ -327,20 +327,18 @@
   #finish-flash {
     position: absolute;
     inset: 0;
-    display: flex;
+    display: none;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s;
     z-index: 50;
     border-radius: 6px;
     overflow: hidden;
   }
-  #finish-flash.visible { opacity: 1; }
-  #finish-flash.p1-win { background: radial-gradient(ellipse at center, rgba(59,130,246,0.35) 0%, rgba(8,12,22,0.7) 70%); }
-  #finish-flash.p2-win { background: radial-gradient(ellipse at center, rgba(249,115,22,0.35) 0%, rgba(8,12,22,0.7) 70%); }
+  #finish-flash.visible { display: flex; }
+  #finish-flash.p1-win { background: rgba(59,130,246,0.25); }
+  #finish-flash.p2-win { background: rgba(249,115,22,0.25); }
 
   .flash-type {
     font-family: 'Barlow Condensed', sans-serif;
@@ -348,7 +346,6 @@
     font-weight: 900;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    animation: flashPulse 0.3s ease-out;
   }
   .flash-winner {
     font-family: 'Barlow Condensed', sans-serif;
@@ -360,11 +357,7 @@
     margin-top: 4px;
   }
 
-  @keyframes flashPulse {
-    0% { transform: scale(1.4); opacity: 0; }
-    60% { transform: scale(0.95); }
-    100% { transform: scale(1); opacity: 1; }
-  }
+
 
   /* ── OFFLINE STATE ─────────────────────────── */
   #offline-msg {
@@ -406,6 +399,17 @@
 </style>
 </head>
 <body>
+
+<button id="reset-btn" onclick="resetOverlay()" style="
+  position: fixed; top: 12px; right: 12px;
+  background: rgba(220,38,38,0.85); color: #fff;
+  border: none; border-radius: 8px;
+  padding: 8px 16px; font-size: 14px; font-weight: 700;
+  font-family: 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  cursor: pointer; z-index: 9999;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+">⟳ Reset Overlay</button>
 
 <div id="widget">
   <div id="scale-wrap">
@@ -666,12 +670,12 @@ function renderDots(containerId, won, needed, playerClass) {
   container.innerHTML = html;
 }
 
-// ── POP ANIMATION ─────────────────────────────────────────────────
+// ── POP ANIMATION (simple color flash, no scale) ───────────────────
 function popScore(elId, timerRef) {
   const node = el(elId);
   node.classList.add("pop");
   clearTimeout(timerRef);
-  return setTimeout(() => node.classList.remove("pop"), 350);
+  return setTimeout(() => node.classList.remove("pop"), 200);
 }
 
 // ── FINISH FLASH ──────────────────────────────────────────────────
@@ -826,6 +830,32 @@ widget.style.width = (BASE_W * widgetScale) + "px";
 // Show slot number in brand if multiple slots
 if (SLOT > 1) {
   el("brand-text").textContent = `NC BLAST · T${SLOT}`;
+}
+
+// ── RESET ────────────────────────────────────────────────────────────
+function resetOverlay() {
+  lastEtag = null;
+  lastState = null;
+  clearTimeout(flashTimer);
+  clearTimeout(p1PopTimer);
+  clearTimeout(p2PopTimer);
+  flashEl.className = "";
+  el("p1-name").textContent = "—";
+  el("p2-name").textContent = "—";
+  el("p1-side").textContent = "";
+  el("p2-side").textContent = "";
+  el("p1-pts").textContent = "0";
+  el("p2-pts").textContent = "0";
+  el("pts-limit").textContent = "";
+  el("tourney-name").textContent = "";
+  el("judge-label").style.display = "none";
+  el("p1-parts").innerHTML = "";
+  el("p2-parts").innerHTML = "";
+  el("p1-parts").closest(".combo-display").style.display = "none";
+  el("p2-parts").closest(".combo-display").style.display = "none";
+  el("sets-row").style.display = "none";
+  scoreboard.style.display = "none";
+  offlineMsg.classList.add("visible");
 }
 
 // Start polling
