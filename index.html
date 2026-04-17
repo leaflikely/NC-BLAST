@@ -91,6 +91,36 @@ function useScale() {
 ═══════════════════════════════════════ */
 const KEYS = { parts: "bx-library-v9", players: "bx-roster-v2", combos: "bx-combos-v1", matchLog: "bx-matchlog-v1", challongeMap: "bx-challonge-map-v1", overlaySlot: "bx-overlay-slot-v1" };
 const OVERLAY_WORKER = "https://challonge-proxy.danny61734.workers.dev";
+const COMBO_CACHE_TTL = 60 * 60 * 1000; // 1 hour in ms
+
+// Push a player's combos to the Worker KV so other devices can load them
+async function pushComboCacheToWorker(playerName, combos) {
+  if(!playerName || !combos?.length) return;
+  try {
+    await fetch(`${OVERLAY_WORKER}/combos/push`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ player: playerName, combos, updatedAt: Date.now() }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch(_) {}
+}
+
+// Fetch a player's combos from the Worker KV (returns [] on miss/error)
+async function fetchComboCacheFromWorker(playerName) {
+  if(!playerName) return [];
+  try {
+    const res = await fetch(`${OVERLAY_WORKER}/combos/get?player=${encodeURIComponent(playerName)}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if(!res.ok) return [];
+    const data = await res.json();
+    if(!Array.isArray(data.combos)) return [];
+    // Respect TTL client-side too
+    if(data.updatedAt && Date.now() - data.updatedAt > COMBO_CACHE_TTL) return [];
+    return data.combos.filter(c=>c?.blade&&c?.ratchet&&c?.bit);
+  } catch(_) { return []; }
+}
 function sGet(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; } }
 function sSave(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
 
@@ -1491,6 +1521,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [challongeSubmitStatus,setChallongeSubmitStatus] = useState(null);
   const [pendingFinish,setPendingFinish] = useState(null); // {pi, fin} — selected but not yet confirmed
   const [overlaySlot,setOverlaySlot] = useState(()=>{ try{return parseInt(localStorage.getItem(KEYS.overlaySlot)||"0",10)||0;}catch{return 0;} }); // 0 = disabled, 1-4 = slot number
+  const [workerCombos,setWorkerCombos] = useState({}); // { playerName: [combo,...] } loaded from Worker KV
   const [overlayStatus,setOverlayStatus] = useState(null); // null | "ok" | "error"
   const [sideSwapConfirm,setSideSwapConfirm] = useState(false); // swap B/X sides modal
   const [swapStadium,setSwapStadium] = useState(true);   // checkbox: swap B/X sides
@@ -1505,6 +1536,21 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
   // Auto-fetch active matches if we default to active tab
   useEffect(()=>{ if(challongeSlug) fetchActiveMatches(); },[]);
+
+  // Load combos from Worker KV when player names are known (cross-device cache)
+  useEffect(()=>{
+    let cancelled = false;
+    async function load() {
+      const results = {};
+      await Promise.all([p1, p2].filter(Boolean).map(async name => {
+        const combos = await fetchComboCacheFromWorker(name);
+        if(combos.length) results[name] = combos;
+      }));
+      if(!cancelled) setWorkerCombos(prev => ({...prev, ...results}));
+    }
+    if(p1 || p2) load();
+    return () => { cancelled = true; };
+  }, [p1, p2]);
   const need = Math.ceil(config.bo/2);
   const cReady = d1.every(comboReady)&&d2.every(comboReady);
 
@@ -1603,18 +1649,26 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   };
 
   const saveCombosToStorage = () => {
-    // Save combos for all modes
     const saved = sGet(KEYS.combos, {});
-    // Save each player 3 combos (only complete ones)
     [[p1, d1],[p2, d2]].forEach(([name, deck])=>{
       if(!name) return;
       const prev = saved[name] || [];
+      // Add new complete combos, refresh updatedAt for ones already seen
       deck.forEach(combo=>{
         if(!comboReady(combo)) return;
         const str = comboStr(combo);
-        if(!prev.some(c=>comboStr(c)===str)) prev.push({...combo});
+        const existing = prev.findIndex(c=>comboStr(c)===str);
+        if(existing >= 0) {
+          prev[existing] = {...combo, updatedAt: Date.now()};
+        } else {
+          prev.push({...combo, updatedAt: Date.now()});
+        }
       });
-      saved[name] = prev;
+      // Expire combos older than 1hr
+      const fresh = prev.filter(c=>!c.updatedAt||(Date.now()-c.updatedAt)<COMBO_CACHE_TTL);
+      saved[name] = fresh;
+      // Push fresh list to Worker KV for cross-device access
+      pushComboCacheToWorker(name, fresh);
     });
     sSave(KEYS.combos, saved);
   };
@@ -1738,7 +1792,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:340,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",border:"2px solid var(--border)"}}>
           <p style={{fontSize:16,fontWeight:800,color:"var(--text-primary)",marginBottom:8,textAlign:"center"}}>Abandon Match?</p>
           <p style={{fontSize:13,color:"var(--text-secondary)",textAlign:"center",marginBottom:6,lineHeight:1.5}}>
-            This match has <strong style={{color:"#EF4444"}}>{log.slice(matchStartIdx).length} battle{log.slice(matchStartIdx).length!==1?"s":""}</strong> in progress.
+            This match has <strong style={{color:"#EF4444"}}>{log.slice(matchStartIdx).filter(e=>e.type!=="LER-STRIKE").length} battle{log.slice(matchStartIdx).filter(e=>e.type!=="LER-STRIKE").length!==1?"s":""}</strong> in progress.
           </p>
           <p style={{fontSize:12,color:"var(--text-faint)",textAlign:"center",marginBottom:20,lineHeight:1.4}}>
             Abandoning will void all battles from this match and return to player selection.
@@ -2107,7 +2161,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       return (
         <div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",background:"var(--bg-solid)",boxSizing:"border-box",overflow:"hidden"}}>
           {/* Header strip */}
-          <div style={{flexShrink:0,padding:"6px 14px 4px"}}>
+          <div style={{flexShrink:0,padding:"6px 14px 4px",background:"var(--bg-solid)",zIndex:2}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
               <button style={{...S.back,marginBottom:0}} onClick={goBack}>{IC.back} Back</button>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -2126,11 +2180,13 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           </div>
 
           {/* Body: top10 section + search divider + rest section, all flex to fill height */}
-          <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",padding:"4px 10px 6px"}}>
+          <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",padding:"4px 10px 6px",overflowY:pickerSearch?"auto":"hidden"}}>
             {searchItems ? (
-              // Search results: flat rows filling all space
+              // Search results: scrollable grid (avoids keyboard collapsing fixed layout)
               <>
-                {searchRows.map((row,ri)=><PartRow key={ri} row={row} isTopGroup={false}/>)}
+                <div style={{display:"flex",flexDirection:"column",gap:4,paddingBottom:8}}>
+                  {searchRows.map((row,ri)=><PartRow key={ri} row={row} isTopGroup={false}/>)}
+                </div>
                 {searchItems.length===0&&<p style={{textAlign:"center",color:"var(--text-muted)",fontSize:13,padding:"20px 0"}}>No matches for "{pickerSearch}"</p>}
               </>
             ) : (
@@ -2182,10 +2238,18 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           <h1 style={{...S.title,color:cc,textAlign:"left",margin:0}}>Select {catLabels[cat]}</h1>
         </div>
 
-        {/* Previous Combos — blade screen only, tournament mode */}
+        {/* Previous Combos — blade screen only, merged from localStorage + Worker KV */}
         {cat==="blade"&&(()=>{
+          const playerName = who===1?p1:p2;
           const savedAll = sGet(KEYS.combos, {});
-          const prevCombos = (savedAll[who===1?p1:p2] || []).filter(c=>comboReady(c));
+          const localCombos = (savedAll[playerName] || []).filter(c=>comboReady(c));
+          const remoteCombos = (workerCombos[playerName] || []).filter(c=>comboReady(c));
+          // Merge: prefer local, add any remote ones not already in local
+          const seen = new Set(localCombos.map(c=>comboStr(c)));
+          const merged = [...localCombos, ...remoteCombos.filter(c=>!seen.has(comboStr(c)))];
+          // Sort newest first by updatedAt
+          merged.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+          const prevCombos = merged.filter(c=>comboReady(c));
           if(!prevCombos.length) return null;
           return (
             <div style={{marginBottom:12}}>
@@ -2921,7 +2985,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
   // Battle screen (merged: combo pick + scoring in one view)
   const comboOf = (deck, idx) => deck[idx] || {};
-  const battlesInThisSet = log.slice(matchStartIdx).filter(e=>e.set===curSet).length + 1;
+  const battlesInThisSet = log.slice(matchStartIdx).filter(e=>e.set===curSet&&e.type!=="LER-STRIKE").length + 1;
   const sc2 = S.page.maxWidth / 480;
   const bp = (n) => Math.round(n * sc2);
   const bf = (n) => Math.round(n * sc2);
