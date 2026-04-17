@@ -1690,7 +1690,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     }
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length); };
+  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
 
   // Navigation helpers
   // Unified back navigation — context-aware, no stale closure issues
@@ -2859,17 +2859,17 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 {sheetsStatus==="success"&&<p style={{fontSize:11,color:"#15803D",fontWeight:600,textAlign:"center",marginBottom:6}}>✓ Sheets submitted</p>}
                 {sheetsStatus==="error"&&<p style={{fontSize:11,color:"#DC2626",fontWeight:600,textAlign:"center",marginBottom:6}}>✕ Sheets failed — CSV downloaded</p>}
                 <button disabled={challongeSubmitStatus==="loading"}
-                  onClick={async()=>{
+                  onClick={()=>{
+                    setJudgeSubmitModal(false);
                     setConfirmState({...cs,judgeok:true});
                     if(submitSheetsCheck){
-                      await onSendSheets(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf});
+                      onSendSheets(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf});
                     } else {
                       onDownloadCSV(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf});
                     }
                     if(submitChallongeCheck&&hasChallonge){
                       submitChallongeScore(challongeMatchId,p1FinalScore,p2FinalScore,winnerId);
                     }
-                    setJudgeSubmitModal(false);
                   }}
                   style={{display:"block",width:"100%",padding:"13px 0",borderRadius:11,border:"none",background:"linear-gradient(135deg,#7C3AED,#6D28D9)",color:"#fff",fontSize:14,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginTop:4}}>
                   {challongeSubmitStatus==="loading"?"Submitting…":"Submit"}
@@ -2937,28 +2937,32 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       {/* ── Top strip: Back · pills · mini action bar · Swap ── */}
       <div style={{height:STRIP_H,display:"flex",alignItems:"center",gap:bp(5),padding:`0 ${bp(10)}px`,flexShrink:0,borderBottom:"1px solid var(--border)"}}>
         <button style={{...S.back,marginBottom:0,flexShrink:0,fontSize:bf(12)}} onClick={goBack}>{IC.back}</button>
-        {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0}}>Set {curSet}/{config.bo}</span>}
-        <span style={{...S.pill,flexShrink:0,margin:0}}>B{battlesInThisSet}</span>
-        {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0}}>{sets[0]}–{sets[1]}</span>}
-        {judge&&<span style={{...S.pill,flexShrink:0,margin:0,color:"#B45309",background:"#FEF3C7"}}>⚖️ {tn(judge)}</span>}
+        {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9)}}>Set {curSet}/{config.bo}</span>}
+        <span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9)}}>B{battlesInThisSet}</span>
+        {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9)}}>{sets[0]}–{sets[1]}</span>}
+        {judge&&<span style={{...S.pill,margin:0,color:"#B45309",background:"#FEF3C7",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"22vw",minWidth:0,flexShrink:1}}>⚖️ {tn(judge)}</span>}
         {/* Mini action bar — history, undo, redo, dark, settings */}
         <div style={{display:"flex",alignItems:"center",gap:bp(2),marginLeft:"auto",flexShrink:0}}>
-          {/* Stream slot indicator — tap to cycle 0=off,1,2,3,4 */}
+          {/* Stream overlay: cycle button + connect button */}
           <button type="button" onClick={()=>{
             const next=(overlaySlot+1)%(4+1);
             setOverlaySlot(next);
+            setOverlayStatus(null);
             try{localStorage.setItem(KEYS.overlaySlot,String(next));}catch{}
-            if(next>0) setTimeout(()=>pushOverlay(),100);
-          }} style={{background:overlaySlot>0?"#EA580C":"none",border:overlaySlot>0?"none":"1px solid var(--border2)",color:overlaySlot>0?"#fff":"var(--text-muted)",borderRadius:bp(6),padding:`${bp(2)}px ${bp(6)}px`,fontSize:bf(9),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",flexShrink:0}} title="Stream overlay slot (0=off)">
+          }} style={{background:overlaySlot>0?"#1D4ED8":"none",border:overlaySlot>0?"none":"1px solid var(--border2)",color:overlaySlot>0?"#fff":"var(--text-muted)",borderRadius:bp(6),padding:`${bp(2)}px ${bp(6)}px`,fontSize:bf(9),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",flexShrink:0}} title="Stream overlay slot (0=off)">
             {overlaySlot>0?`📡 T${overlaySlot}`:"📡"}
           </button>
+          {overlaySlot>0&&(
+            <button type="button" onClick={()=>{ pushOverlay(); }} style={{background:overlayStatus==="ok"?"#15803D":"#EA580C",border:"none",color:"#fff",borderRadius:bp(6),padding:`${bp(2)}px ${bp(6)}px`,fontSize:bf(9),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",flexShrink:0}} title="Connect overlay / push live state">
+              {overlayStatus==="ok"?"🟢 LIVE":"▶ Connect"}
+            </button>
+          )}
           <button onClick={()=>setHistoryOpen(true)} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.history}</button>
           <button onClick={undo} disabled={log.length<=matchStartIdx&&log[log.length-1]?.type!=="LER-STRIKE"} style={{background:"none",border:"none",color:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?"var(--text-muted)":"var(--text-disabled)",cursor:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?"pointer":"default",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.undo}</button>
           <button onClick={redo} disabled={!future.length} style={{background:"none",border:"none",color:future.length?"#EA580C":"var(--text-disabled)",cursor:future.length?"pointer":"default",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.redo}</button>
           <button onClick={toggleDark} style={{background:"none",border:"none",cursor:"pointer",padding:`${bp(3)}px ${bp(4)}px`,fontSize:bf(14),lineHeight:1}}>{dark?"☀️":"🌙"}</button>
-          <button onClick={onOpenLib} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",padding:`${bp(3)}px ${bp(4)}px`,display:"flex",alignItems:"center"}}>{IC.gear}</button>
           {currentSides.p1Side&&(
-            <button type="button" onClick={()=>setSideSwapConfirm(true)}
+            <button type="button" onClick={()=>{setSwapStadium(true);setSwapPosition(false);setSideSwapConfirm(true);}}
               style={{padding:`${bp(2)}px ${bp(6)}px`,borderRadius:bp(6),border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:bf(9),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginLeft:bp(2)}}>
               ⇄
             </button>
@@ -3031,10 +3035,10 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
       {/* ── Score block ── */}
       <div style={{background:"var(--surface)",borderRadius:bp(12),padding:`${bp(8)}px ${bp(12)}px ${bp(6)}px`,marginBottom:bp(5),boxShadow:"0 2px 8px rgba(0,0,0,0.06)",border:"1px solid var(--border)",flexShrink:0}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:bp(6)}}>
-          <span style={{fontSize:bf(p1&&p1.length>10?18:24),fontWeight:900,color:"#2563EB",fontFamily:"'Outfit',sans-serif",maxWidth:"38vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p1}{currentSides.p1Side?<span style={{fontSize:bf(10),fontWeight:600,color:"#93C5FD",marginLeft:bp(3)}}>{currentSides.p1Side}</span>:""}</span>
-          <span style={{fontSize:bf(10),fontWeight:700,color:"var(--text-primary)"}}>{["First","Second","Third","Fourth","Fifth"][curSet-1]||`Set ${curSet}`} Set</span>
-          <span style={{fontSize:bf(p2&&p2.length>10?18:24),fontWeight:900,color:"#DC2626",fontFamily:"'Outfit',sans-serif",maxWidth:"38vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"right"}}>{p2}{currentSides.p2Side?<span style={{fontSize:bf(10),fontWeight:600,color:"#FCA5A5",marginLeft:bp(3)}}>{currentSides.p2Side}</span>:""}</span>
+        <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",marginBottom:bp(6),gap:bp(4)}}>
+          <span style={{fontSize:bf(p1&&p1.length>10?15:20),fontWeight:900,color:"#2563EB",fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{p1}{currentSides.p1Side?<span style={{fontSize:bf(9),fontWeight:600,color:"#93C5FD",marginLeft:bp(2)}}>{currentSides.p1Side}</span>:""}</span>
+          <span style={{fontSize:bf(9),fontWeight:700,color:"var(--text-primary)",whiteSpace:"nowrap",textAlign:"center",flexShrink:0}}>{["First","Second","Third","Fourth","Fifth"][curSet-1]||`Set ${curSet}`} Set</span>
+          <span style={{fontSize:bf(p2&&p2.length>10?15:20),fontWeight:900,color:"#DC2626",fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"right",minWidth:0}}>{p2}{currentSides.p2Side?<span style={{fontSize:bf(9),fontWeight:600,color:"#FCA5A5",marginLeft:bp(2)}}>{currentSides.p2Side}</span>:""}</span>
         </div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{flex:1,textAlign:"center"}}>
