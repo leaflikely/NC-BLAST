@@ -2626,7 +2626,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     {config.tm ? "2. Select Match" : "Select Match"}
                   </p>
                   <button type="button" onClick={fetchActiveMatches}
-                    style={{fontSize:11,fontWeight:700,color:"#1D4ED8",background:"none",border:"none",cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                    style={{fontSize:12,fontWeight:700,color:"#1D4ED8",background:"#EFF6FF",border:"2px solid #BFDBFE",borderRadius:10,padding:"7px 14px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",display:"flex",alignItems:"center",gap:5}}>
                     ↻ Refresh
                   </button>
                 </div>
@@ -3109,83 +3109,37 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           <button onClick={redo} disabled={!future.length} style={{background:"none",border:"none",color:future.length?"#EA580C":"var(--text-disabled)",cursor:future.length?"pointer":"default",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.redo}</button>
           <button onClick={toggleDark} style={{background:"none",border:"none",cursor:"pointer",padding:`${bp(3)}px ${bp(4)}px`,fontSize:bf(14),lineHeight:1}}>{dark?"☀️":"🌙"}</button>
           {currentSides.p1Side&&(
-            <button type="button" onClick={()=>{setSwapStadium(true);setSwapPosition(false);setSideSwapConfirm(true);}}
+            <button type="button" onClick={()=>{
+              // Instantly swap player positions — side labels follow the players
+              const origP1Side=currentSides.p1Side; const origP2Side=currentSides.p2Side;
+              const tmpName=p1; setP1(p2); setP2(tmpName);
+              const tmpD=d1; setD1(d2); setD2(tmpD);
+              const tmpR=r1; setR1(r2); setR2(tmpR);
+              const tmpU=used1; setUsed1(used2); setUsed2(tmpU);
+              setCurrentSides({p1Side:origP2Side,p2Side:origP1Side});
+              setSideAssign(a=>a?{...a,p1Side:origP2Side,p2Side:origP1Side}:a);
+            }}
               style={{padding:`${bp(2)}px ${bp(6)}px`,borderRadius:bp(6),border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:bf(9),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginLeft:bp(2)}}>
-              ⇄
+              ⇄ Swap
             </button>
           )}
         </div>
       </div>
 
-      {/* ── Swap modal: checkboxes for stadium side and/or player position ── */}
-      {sideSwapConfirm&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.6)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
-          <div style={{background:"var(--surface)",borderRadius:18,padding:"22px 20px",maxWidth:320,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",border:"1px solid var(--border)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <p style={{fontSize:16,fontWeight:800,color:"var(--text-primary)",margin:0}}>Swap Options</p>
-              <button onClick={()=>setSideSwapConfirm(false)} style={{background:"var(--surface3)",border:"none",borderRadius:8,width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"var(--text-muted)",fontSize:16}}>{IC.x}</button>
-            </div>
-            {[
-              {val:swapStadium,set:setSwapStadium,label:"Swap Stadium Side",desc:`${p1}: ${currentSides.p1Side||"?"}→${currentSides.p1Side==="B"?"X":"B"} · ${p2}: ${currentSides.p2Side||"?"}→${currentSides.p2Side==="B"?"X":"B"}`},
-              {val:swapPosition,set:setSwapPosition,label:"Swap Player Position in App",desc:`${p1} ↔ ${p2} (P1/P2 roles swap)`},
-            ].map((opt,oi)=>(
-              <button key={oi} type="button" onClick={()=>opt.set(v=>!v)}
-                style={{display:"flex",alignItems:"flex-start",gap:12,width:"100%",padding:"12px 14px",borderRadius:12,border:`2px solid ${opt.val?"#2563EB":"var(--border)"}`,background:opt.val?"#EFF6FF":"var(--surface2)",cursor:"pointer",marginBottom:10,textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
-                <div style={{width:20,height:20,borderRadius:6,border:`2px solid ${opt.val?"#2563EB":"var(--border2)"}`,background:opt.val?"#2563EB":"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginTop:1}}>
-                  {opt.val&&<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-                </div>
-                <div>
-                  <p style={{fontSize:13,fontWeight:700,color:"var(--text-primary)",margin:"0 0 2px"}}>{opt.label}</p>
-                  <p style={{fontSize:11,color:"var(--text-muted)",margin:0,lineHeight:1.4}}>{opt.desc}</p>
-                </div>
-              </button>
-            ))}
-            <button
-              disabled={!swapStadium&&!swapPosition}
-              onClick={()=>{
-                // Compute new sides first so we can apply both atomically
-                const origP1Side = currentSides.p1Side;
-                const origP2Side = currentSides.p2Side;
-                if(swapStadium && !swapPosition){
-                  // Stadium swap only: flip B↔X for each player
-                  const ns1=origP1Side==="B"?"X":"B"; const ns2=origP2Side==="B"?"X":"B";
-                  setCurrentSides({p1Side:ns1,p2Side:ns2});
-                  setSideAssign(a=>a?{...a,p1Side:ns1,p2Side:ns2}:a);
-                }
-                if(swapPosition){
-                  // Position swap: p1↔p2 names, decks, combos, used lists
-                  const tmpName=p1; setP1(p2); setP2(tmpName);
-                  const tmpD=d1; setD1(d2); setD2(tmpD);
-                  const tmpR=r1; setR1(r2); setR2(tmpR);
-                  const tmpU=used1; setUsed1(used2); setUsed2(tmpU);
-                  if(swapStadium){
-                    // Both: physically players stay on their side, only app roles swap.
-                    // Net effect on sides: new p1 gets old p2's flipped side, etc.
-                    // Simplest: sides from each player's perspective don't change —
-                    // so just swap the side assignment without flipping B↔X.
-                    setCurrentSides({p1Side:origP2Side,p2Side:origP1Side});
-                    setSideAssign(a=>a?{...a,p1Side:origP2Side,p2Side:origP1Side}:a);
-                  } else {
-                    // Position swap only: side labels follow the players
-                    setCurrentSides({p1Side:origP2Side,p2Side:origP1Side});
-                    setSideAssign(a=>a?{...a,p1Side:origP2Side,p2Side:origP1Side}:a);
-                  }
-                }
-                setSideSwapConfirm(false);
-              }}
-              style={{display:"block",width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:(swapStadium||swapPosition)?"#2563EB":"var(--surface3)",color:(swapStadium||swapPosition)?"#fff":"var(--text-disabled)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:(swapStadium||swapPosition)?"pointer":"not-allowed"}}>
-              Apply Changes
-            </button>
-          </div>
-        </div>
-      )}
+
 
       {/* ── Score block ── */}
       <div style={{background:"var(--surface)",borderRadius:bp(12),padding:`${bp(8)}px ${bp(12)}px ${bp(6)}px`,marginBottom:bp(5),boxShadow:"0 2px 8px rgba(0,0,0,0.06)",border:"1px solid var(--border)",flexShrink:0}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",marginBottom:bp(6),gap:bp(4)}}>
-          <span style={{fontSize:bf(p1&&p1.length>10?15:20),fontWeight:900,color:"#2563EB",fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{p1}{currentSides.p1Side?<span style={{fontSize:bf(9),fontWeight:600,color:"#93C5FD",marginLeft:bp(2)}}>{currentSides.p1Side}</span>:""}</span>
+          <div style={{display:"flex",flexDirection:"column",minWidth:0}}>
+            <span style={{fontSize:bf(p1&&p1.length>10?15:20),fontWeight:900,color:"#2563EB",fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p1}</span>
+            {currentSides.p1Side&&<span style={{fontSize:bf(9),fontWeight:700,color:"#93C5FD",lineHeight:1.2}}>{currentSides.p1Side} Side</span>}
+          </div>
           <span style={{fontSize:bf(9),fontWeight:700,color:"var(--text-primary)",whiteSpace:"nowrap",textAlign:"center",flexShrink:0}}>{["First","Second","Third","Fourth","Fifth"][curSet-1]||`Set ${curSet}`} Set</span>
-          <span style={{fontSize:bf(p2&&p2.length>10?15:20),fontWeight:900,color:"#DC2626",fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"right",minWidth:0}}>{p2}{currentSides.p2Side?<span style={{fontSize:bf(9),fontWeight:600,color:"#FCA5A5",marginLeft:bp(2)}}>{currentSides.p2Side}</span>:""}</span>
+          <div style={{display:"flex",flexDirection:"column",minWidth:0,alignItems:"flex-end"}}>
+            <span style={{fontSize:bf(p2&&p2.length>10?15:20),fontWeight:900,color:"#DC2626",fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"right"}}>{p2}</span>
+            {currentSides.p2Side&&<span style={{fontSize:bf(9),fontWeight:700,color:"#FCA5A5",lineHeight:1.2,textAlign:"right"}}>{currentSides.p2Side} Side</span>}
+          </div>
         </div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{flex:1,textAlign:"center"}}>
