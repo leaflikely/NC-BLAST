@@ -3063,7 +3063,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
   // Battle screen (merged: combo pick + scoring in one view)
   const comboOf = (deck, idx) => deck[idx] || {};
-  const battlesInThisSet = log.slice(matchStartIdx).filter(e=>e.set===curSet&&e.type!=="LER-STRIKE").length + 1;
+  const battlesInThisSet = log.slice(matchStartIdx).filter(e=>e.set===curSet&&e.type!=="LER-STRIKE"&&e.type!=="LER").length + 1;
   const sc2 = S.page.maxWidth / 480;
   const bp = (n) => Math.round(n * sc2);
   const bf = (n) => Math.round(n * sc2);
