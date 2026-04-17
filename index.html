@@ -1536,7 +1536,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const newLog=[...log,entry];
     setLog(newLog); sSave(KEYS.matchLog, newLog); setFuture([]); setPts(np);
     // Push to stream overlay (fire and forget)
-    setTimeout(()=>pushOverlay({lastFinish:{type:fin.id,scorerIdx:scoringPi},pts:np}),0);
+    pushOverlay({lastFinish:{type:fin.id,scorerIdx:scoringPi},pts:np});
 
     const setWon = config.pts>0 && np[scoringPi]>=config.pts;
 
@@ -1641,6 +1641,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       const c = idx !== null ? deck[idx] : null;
       return c?.blade ? {blade:c.blade,ratchet:c.ratchet,bit:c.bit} : null;
     };
+    // extraState can supply p1ComboIdx / p2ComboIdx to override stale r1/r2
+    // (React setState is async so r1/r2 may not reflect the tap that just happened)
+    const r1eff = "p1ComboIdx" in extraState ? extraState.p1ComboIdx : r1;
+    const r2eff = "p2ComboIdx" in extraState ? extraState.p2ComboIdx : r2;
+    const { p1ComboIdx, p2ComboIdx, ...rest } = extraState;
     const state = {
       p1, p2,
       p1Side: currentSides.p1Side||"",
@@ -1652,9 +1657,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       pointLimit: config.pts,
       tournamentName: config.tournamentName||"",
       judge,
-      p1ActiveCombo: activeComboOf(d1, r1),
-      p2ActiveCombo: activeComboOf(d2, r2),
-      ...extraState,
+      p1ActiveCombo: activeComboOf(d1, r1eff),
+      p2ActiveCombo: activeComboOf(d2, r2eff),
+      ...rest,
     };
     fetch(`${OVERLAY_WORKER}/overlay/push`, {
       method: "POST",
@@ -3122,7 +3127,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                         const newLog=[...log,strikeEntry];
                         setLog(newLog); sSave(KEYS.matchLog,newLog); setFuture([]);
                         setLerStrikes(s=>{const n=[...s];n[side.i]=1;return n;});
-                        setTimeout(()=>pushOverlay({lastFinish:{type:"LER-STRIKE",scorerIdx:side.i}}),0);
+                        pushOverlay({lastFinish:{type:"LER-STRIKE",scorerIdx:side.i}});
                       } else {
                         setLerStrikes([0,0]);
                         doScore(side.i,lerFin);
@@ -3156,7 +3161,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               const isSel = side.sel===i;
               return (
                 <button key={i} type="button" disabled={isUsed}
-                  onClick={()=>{ if(!isUsed){ side.setSel(isSel?null:i); setTimeout(()=>pushOverlay(),0); } }}
+                  onClick={()=>{ if(!isUsed){ const newIdx=isSel?null:i; side.setSel(newIdx); if(side.i===0) pushOverlay({p1ComboIdx:newIdx}); else pushOverlay({p2ComboIdx:newIdx}); } }}
                   style={{flex:1,height:"100%",borderRadius:bp(7),position:"relative",border:`2px solid ${isUsed?"var(--border)":isSel?side.cl:"var(--border2)"}`,background:isUsed?"var(--surface2)":isSel?side.cl:"var(--surface)",color:isUsed?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:isUsed?"not-allowed":"pointer",opacity:isUsed?0.4:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:bp(1),padding:`${bp(2)}px`,boxSizing:"border-box"}}>
                   {isUsed&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><svg width="18" height="18" viewBox="0 0 40 40" fill="none" stroke="#DC2626" strokeWidth="4" strokeLinecap="round" opacity="0.5"><line x1="8" y1="8" x2="32" y2="32"/><line x1="32" y1="8" x2="8" y2="32"/></svg></div>}
                   <span style={{fontWeight:800,fontSize:bf(10),lineHeight:1.1,textAlign:"center"}}>{c.blade||"—"}</span>
