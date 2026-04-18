@@ -1,3 +1,5 @@
+import { DEFAULT_PARTS } from '../data/parts'
+
 export const KEYS = { parts: "bx-library-v9", players: "bx-roster-v2", combos: "bx-combos-v1", matchLog: "bx-matchlog-v1", challongeMap: "bx-challonge-map-v1", overlaySlot: "bx-overlay-slot-v1" };
 export function sGet(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; } }
 export function sSave(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
