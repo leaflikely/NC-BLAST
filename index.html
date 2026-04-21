@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
 <title>NC BLAST</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -10,7 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  html{font-size:16px}
+  html{font-size:16px;overscroll-behavior:none;overscroll-behavior-y:none}
+  body{overscroll-behavior:none;overscroll-behavior-y:none}
   :root{
     --bg:linear-gradient(180deg,#F8FAFC 0%,#EFF6FF 100%);
     --bg-solid:#F8FAFC;
@@ -61,46 +64,16 @@ const { useState, useEffect, useRef } = React;
 function useRefreshGuard(isActive) {
   useEffect(() => {
     if (!isActive) return;
-
-    // Standard desktop browsers
+    // beforeunload — works on desktop and Android Chrome
     const beforeUnloadHandler = (e) => {
       e.preventDefault();
       e.returnValue = "You have a match in progress. Are you sure you want to leave?";
       return e.returnValue;
     };
-
-    // iOS Safari: fires pagehide instead of beforeunload on swipe-close
-    // We can't prevent it but we can warn via a sync confirm on visibilitychange
-    const visibilityHandler = () => {
-      // Only fire when tab/app is being hidden (not just switching away briefly)
-      if (document.visibilityState === "hidden") {
-        // Store a flag — if they come back, we know a hide happened
-        try { sessionStorage.setItem("ncblast-was-hidden", "1"); } catch(_) {}
-      }
-    };
-
-    // iOS pull-to-refresh: block touchmove when at top of page
-    let touchStartY = 0;
-    const touchStartHandler = (e) => { touchStartY = e.touches[0].clientY; };
-    const touchMoveHandler = (e) => {
-      const dy = e.touches[0].clientY - touchStartY;
-      // Pulling down from top = potential refresh gesture
-      if (dy > 0 && window.scrollY === 0) {
-        e.preventDefault();
-      }
-    };
-
     window.addEventListener("beforeunload", beforeUnloadHandler);
-    document.addEventListener("visibilitychange", visibilityHandler);
-    document.addEventListener("touchstart", touchStartHandler, { passive: true });
-    document.addEventListener("touchmove", touchMoveHandler, { passive: false });
-
-    return () => {
-      window.removeEventListener("beforeunload", beforeUnloadHandler);
-      document.removeEventListener("visibilitychange", visibilityHandler);
-      document.removeEventListener("touchstart", touchStartHandler);
-      document.removeEventListener("touchmove", touchMoveHandler);
-    };
+    return () => window.removeEventListener("beforeunload", beforeUnloadHandler);
+    // Pull-to-refresh on iOS Safari is blocked via CSS overscroll-behavior:none
+    // on html and body — JS cannot reliably intercept it.
   }, [isActive]);
 }
 
@@ -1671,7 +1644,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     if(fin.id==="LER"){
       if(setWon){
         const ns=[sets[0],sets[1]]; ns[scoringPi]+=1; setSets(ns);
-        setSetScores(ss=>[...ss,{p1:np[0],p2:np[1]}]);
+        setSetScores(ss=>[...ss,{[p1]:np[0],[p2]:np[1]}]);
         if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
         else {
           if(config.tm){const loserPi=1-scoringPi;setSideAssign({pickPriority:loserPi});setSidePicker({priority:loserPi});}
@@ -1689,7 +1662,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     setUsed1(nu1); setUsed2(nu2); setR1(null); setR2(null);
     if(setWon){
       const ns=[sets[0],sets[1]]; ns[scoringPi]+=1; setSets(ns);
-      setSetScores(ss=>[...ss,{p1:np[0],p2:np[1]}]);
+      setSetScores(ss=>[...ss,{[p1]:np[0],[p2]:np[1]}]);
       if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
       else {
         if(config.tm){ const loserPi=1-scoringPi; setSideAssign({pickPriority:loserPi}); setSidePicker({priority:loserPi}); }
@@ -1810,7 +1783,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     if(!challongeSlug || !matchId) return;
     setChallongeSubmitStatus("loading");
     const scoresCsv = setScores.length > 0
-      ? setScores.map(s=>`${s.p1}-${s.p2}`).join(",")
+      ? setScores.map(s=>`${s[p1]??0}-${s[p2]??0}`).join(",")
       : `${p1Score}-${p2Score}`;
     try {
       const res = await fetch(`https://challonge-proxy.danny61734.workers.dev/submit`, {
@@ -2981,36 +2954,42 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           <div style={{...S.card,padding:"16px 20px",marginBottom:12}}>
             <p style={{fontSize:9,fontWeight:700,letterSpacing:2,color:"var(--text-muted)",textAlign:"center",marginBottom:12,textTransform:"uppercase"}}>Match Score</p>
             <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <div style={{flex:1,textAlign:"center"}}>
-                <p style={{fontSize:20,fontWeight:900,color:colorOf(winner),marginBottom:4}}>{winner} 🏆</p>
-                <p style={{fontSize:52,fontWeight:900,color:colorOf(winner),lineHeight:1}}>{winner===p1?sets[0]:sets[1]}</p>
-              </div>
-              <p style={{fontSize:22,fontWeight:800,color:"var(--border2)",minWidth:32,textAlign:"center"}}>–</p>
-              <div style={{flex:1,textAlign:"center"}}>
-                <p style={{fontSize:20,fontWeight:900,color:colorOf(loserName),marginBottom:4}}>{loserName}</p>
-                <p style={{fontSize:52,fontWeight:900,color:"var(--text-faint)",lineHeight:1}}>{loserName===p1?sets[0]:sets[1]}</p>
-              </div>
+              {(()=>{
+                // Count sets won by name from setScores — immune to position swaps
+                const winnerSets = setScores.filter(ss=>(ss[winner]??0)>(ss[loserName]??0)).length;
+                const loserSets  = setScores.filter(ss=>(ss[loserName]??0)>(ss[winner]??0)).length;
+                return (<>
+                  <div style={{flex:1,textAlign:"center"}}>
+                    <p style={{fontSize:20,fontWeight:900,color:colorOf(winner),marginBottom:4}}>{winner} 🏆</p>
+                    <p style={{fontSize:52,fontWeight:900,color:colorOf(winner),lineHeight:1}}>{winnerSets}</p>
+                  </div>
+                  <p style={{fontSize:22,fontWeight:800,color:"var(--border2)",minWidth:32,textAlign:"center"}}>–</p>
+                  <div style={{flex:1,textAlign:"center"}}>
+                    <p style={{fontSize:20,fontWeight:900,color:colorOf(loserName),marginBottom:4}}>{loserName}</p>
+                    <p style={{fontSize:52,fontWeight:900,color:"var(--text-faint)",lineHeight:1}}>{loserSets}</p>
+                  </div>
+                </>);
+              })()}
             </div>
             {setScores.length>0&&(
               <div style={{display:"flex",gap:8,marginTop:14,justifyContent:"center",flexWrap:"wrap"}}>
                 {setScores.map((ss,i)=>{
-                  // Determine set winner by score, then by their color
-                  const p1w = ss.p1 > ss.p2;
-                  const setWinnerColor = p1w ? p1Color : p2Color;
-                  const setLoserColor = p1w ? p2Color : p1Color;
-                  const setWinnerName = p1w ? p1 : p2;
-                  const setLoserName  = p1w ? p2 : p1;
-                  const setWinnerScore = p1w ? ss.p1 : ss.p2;
-                  const setLoserScore  = p1w ? ss.p2 : ss.p1;
+                  // Scores keyed by player name — immune to swaps
+                  const wScore = ss[winner] ?? 0;
+                  const lScore = ss[loserName] ?? 0;
+                  const wColor = colorOf(winner);
+                  const lColor = colorOf(loserName);
+                  const setWon = wScore > lScore;
+                  const bubbleColor = setWon ? wColor : lColor;
                   return(
-                    <div key={i} style={{textAlign:"center",background:setWinnerColor+"18",borderRadius:10,padding:"8px 14px",border:`1px solid ${setWinnerColor}50`}}>
-                      <p style={{fontSize:8,fontWeight:700,color:setWinnerColor,letterSpacing:1,marginBottom:4}}>SET {i+1}</p>
+                    <div key={i} style={{textAlign:"center",background:bubbleColor+"18",borderRadius:10,padding:"8px 14px",border:`1px solid ${bubbleColor}50`}}>
+                      <p style={{fontSize:8,fontWeight:700,color:bubbleColor,letterSpacing:1,marginBottom:4}}>SET {i+1}</p>
                       <p style={{fontSize:18,fontWeight:900,lineHeight:1,display:"flex",alignItems:"baseline",justifyContent:"center",gap:2}}>
-                        <span style={{color:setWinnerColor}}>{setWinnerScore}</span>
+                        <span style={{color:wColor}}>{wScore}</span>
                         <span style={{color:"#CBD5E1",margin:"0 3px",fontSize:14}}>–</span>
-                        <span style={{color:"var(--text-faint)"}}>{setLoserScore}</span>
+                        <span style={{color:"var(--text-faint)"}}>{lScore}</span>
                       </p>
-                      <p style={{fontSize:7,color:setWinnerColor,fontWeight:700,marginTop:3,letterSpacing:0.5}}>{tn(setWinnerName)}</p>
+                      <p style={{fontSize:7,color:bubbleColor,fontWeight:700,marginTop:3,letterSpacing:0.5}}>{tn(winner)}</p>
                     </div>
                   );
                 })}
