@@ -57,6 +57,20 @@
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
 
+// Block accidental page refresh/close when match is in progress
+function useRefreshGuard(isActive) {
+  useEffect(() => {
+    if (!isActive) return;
+    const handler = (e) => {
+      e.preventDefault();
+      e.returnValue = "You have a match in progress. Are you sure you want to leave?";
+      return e.returnValue;
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isActive]);
+}
+
 /* ═══════════════════════════════════════
    VIEWPORT SCALE
 ═══════════════════════════════════════ */
@@ -89,7 +103,23 @@ function useScale() {
 /* ═══════════════════════════════════════
    PERSISTENT STORAGE — localStorage
 ═══════════════════════════════════════ */
-const KEYS = { parts: "bx-library-v9", players: "bx-roster-v2", combos: "bx-combos-v1", matchLog: "bx-matchlog-v1", challongeMap: "bx-challonge-map-v1", overlaySlot: "bx-overlay-slot-v1" };
+const KEYS = { parts: "bx-library-v9", players: "bx-roster-v2", combos: "bx-combos-v1", matchLog: "bx-matchlog-v1", challongeMap: "bx-challonge-map-v1", overlaySlot: "bx-overlay-slot-v1", submitQueue: "bx-submit-queue-v1" };
+
+// Offline submission queue — store failed posts, retry when back online
+function enqueueSubmission(type, payload) {
+  try {
+    const q = JSON.parse(localStorage.getItem(KEYS.submitQueue) || "[]");
+    q.push({ type, payload, queuedAt: Date.now() });
+    localStorage.setItem(KEYS.submitQueue, JSON.stringify(q));
+  } catch(_) {}
+}
+function dequeueAll() {
+  try {
+    const q = JSON.parse(localStorage.getItem(KEYS.submitQueue) || "[]");
+    localStorage.setItem(KEYS.submitQueue, JSON.stringify([]));
+    return q;
+  } catch(_) { return []; }
+}
 const OVERLAY_WORKER = "https://challonge-proxy.danny61734.workers.dev";
 const COMBO_CACHE_TTL = 60 * 60 * 1000; // 1 hour in ms
 
@@ -846,7 +876,16 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
 /* ═══════════════════════════════════════
    SCREEN 2 — PLAYERS
 ═══════════════════════════════════════ */
-function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
+function TournamentBadge({config}) {
+  if (!config?.tm) return null;
+  return (
+    <div style={{display:"inline-flex",alignItems:"center",gap:5,background:"#7C3AED",color:"#fff",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:800,letterSpacing:0.5,fontFamily:"'Outfit',sans-serif"}}>
+      🏆 Tournament Mode
+    </div>
+  );
+}
+
+function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,config}) {
   const [inp,setInp] = useState("");
   const [challongeUrl,setChallongeUrl] = useState("");
   const [challongeStatus,setChallongeStatus] = useState(null); // null | "loading" | "ok" | "error"
@@ -954,8 +993,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
       const participants = data.participants || [];
       const names = participants.map(p=>(p.participant?.display_name||p.participant?.name||"").trim()).filter(Boolean);
       if(!names.length) throw new Error("No participants found in cache");
-      const merged = [...new Set([...players,...names])];
-      setPlayers(merged); sSave(KEYS.players, merged);
+      // Replace roster entirely — don't merge with previous session's players
+      setPlayers(names); sSave(KEYS.players, names);
       const participantMap = {};
       participants.forEach(p => {
         const name = (p.participant?.display_name||p.participant?.name||"").trim();
@@ -1029,8 +1068,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
     // Device cache hit — zero network calls
     const lcHit = lcGet(slug);
     if(lcHit) {
-      const merged = [...new Set([...players,...lcHit])];
-      setPlayers(merged); sSave(KEYS.players, merged);
+      // Replace roster entirely on cache hit
+      setPlayers(lcHit); sSave(KEYS.players, lcHit);
       setChallongeStatus("ok");
       setChallongeSource("cached");
       setChallongeMsg(`✓ ${lcHit.length} players loaded from NC BLAST cache for "${slug}"`);
@@ -1098,8 +1137,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
         const { data, fromServerCache } = parseResponse(text, proxy.raw);
         const names = data.map(p=>(p.participant?.display_name||p.participant?.name||"").trim()).filter(Boolean);
         if(!names.length) throw new Error("No participants found — is this tournament public with entrants added?");
-        const merged = [...new Set([...players,...names])];
-        setPlayers(merged); sSave(KEYS.players, merged);
+        // Replace roster entirely — don't carry over names from a previous event
+        setPlayers(names); sSave(KEYS.players, names);
         lcSet(slug, names);
         // Build participant ID map — store both full name and truncated name as keys
         const participantMap = {};
@@ -1159,7 +1198,10 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
 
   return (
     <div style={{...S.page,height:"100dvh",overflowY:"auto"}}>
-      <button style={S.back} onClick={onBack}>{IC.back} Format</button>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+        <button style={{...S.back,marginBottom:0}} onClick={onBack}>{IC.back} Format</button>
+        <TournamentBadge config={config}/>
+      </div>
       <h1 style={S.title}>Player Roster</h1>
       <p style={S.sub}>Players are saved between sessions</p>
 
@@ -1530,6 +1572,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [judgeSubmitModal,setJudgeSubmitModal] = useState(false);
   const [submitChallongeCheck,setSubmitChallongeCheck] = useState(true);
   const [submitSheetsCheck,setSubmitSheetsCheck] = useState(true); // clear log confirmation in battle screen history panel
+  const [sheetsComment,setSheetsComment] = useState(""); // comment when sheets submission is flagged
   const [judgeEditMode,setJudgeEditMode] = useState(false); // judge name editable on over screen
   // Portrait vs landscape for combo button layout — recomputed on each render via sc trigger
   const comboAreaRef = useRef(null); // kept for legacy ref safety, not used for measurement
@@ -2137,6 +2180,22 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   else if(slot<2){openPicker({who,slot:slot+1,cat:"blade"});}
                   else if(who===1){openPicker({who:2,slot:0,cat:"blade"});}
                   else{setPicker(null);setDeckReview(true);}
+                  // Push complete combos to Worker KV immediately when bit is selected
+                  if(cat==="bit"){
+                    const nd2=[...deck]; nd2[slot]={...nd2[slot],[cat]:name};
+                    const freshCombo=nd2[slot];
+                    if(freshCombo.blade&&freshCombo.ratchet&&freshCombo.bit){
+                      const playerName=who===1?p1:p2;
+                      const saved=sGet(KEYS.combos,{});
+                      const prev=saved[playerName]||[];
+                      const str=comboStr(freshCombo);
+                      const existing=prev.findIndex(co=>comboStr(co)===str);
+                      if(existing>=0){prev[existing]={...freshCombo,updatedAt:Date.now()};}
+                      else{prev.push({...freshCombo,updatedAt:Date.now()});}
+                      saved[playerName]=prev; sSave(KEYS.combos,saved);
+                      pushComboCacheToWorker(playerName,prev);
+                    }
+                  }
                 }}
                 style={{flex:1,minWidth:0,borderRadius:9,
                   border:sel?`2px solid ${cc}`:taken?"2px solid var(--border)":isTopGroup?`2px solid ${cc}50`:"2px solid var(--border2)",
@@ -2990,7 +3049,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   <strong style={{color:"var(--text-primary)"}}>{winner}</strong> defeats {loserName} · {p1FinalScore}–{p2FinalScore}
                 </p>
                 {[
-                  {val:submitSheetsCheck,set:setSubmitSheetsCheck,label:"Submit to Sheets Database",desc:"Sends match data to the NC BLAST stat tracker",disabled:false},
+                  {val:submitSheetsCheck,set:(v)=>{setSubmitSheetsCheck(v);if(v)setSheetsComment("");},label:"Submit to Sheets Database",desc:submitSheetsCheck?"Sends match data to the NC BLAST stat tracker":"Will post with red flag — add a reason below",disabled:false},
                   {val:submitChallongeCheck,set:setSubmitChallongeCheck,label:"Submit to Challonge",desc:hasChallonge?"Reports result to the active bracket match":"No bracket match selected",disabled:!hasChallonge},
                 ].map((opt,oi)=>(
                   <button key={oi} type="button" disabled={opt.disabled} onClick={()=>!opt.disabled&&opt.set(v=>!v)}
@@ -3001,17 +3060,29 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     <div><p style={{fontSize:13,fontWeight:700,color:"var(--text-primary)",margin:"0 0 2px"}}>{opt.label}</p><p style={{fontSize:11,color:"var(--text-muted)",margin:0,lineHeight:1.4}}>{opt.desc}</p></div>
                   </button>
                 ))}
+                {!submitSheetsCheck&&(
+                  <div style={{marginBottom:8}}>
+                    <p style={{fontSize:11,fontWeight:700,color:"#DC2626",marginBottom:4}}>Reason for excluding from active data:</p>
+                    <textarea
+                      value={sheetsComment}
+                      onChange={e=>setSheetsComment(e.target.value)}
+                      placeholder="e.g. disputed result, test match, re-do..."
+                      style={{width:"100%",minHeight:56,borderRadius:8,border:"1px solid #FCA5A5",background:"#FEF2F2",padding:"8px 10px",fontSize:12,fontFamily:"'Outfit',sans-serif",color:"var(--text-primary)",resize:"vertical"}}
+                    />
+                  </div>
+                )}
                 {challongeSubmitStatus==="ok"&&<p style={{fontSize:11,color:"#15803D",fontWeight:600,textAlign:"center",marginBottom:6}}>✓ Challonge submitted</p>}
                 {challongeSubmitStatus&&challongeSubmitStatus!=="ok"&&challongeSubmitStatus!=="loading"&&<p style={{fontSize:11,color:"#DC2626",fontWeight:600,textAlign:"center",marginBottom:6}}>✕ Challonge: {challongeSubmitStatus}</p>}
                 {sheetsStatus==="success"&&<p style={{fontSize:11,color:"#15803D",fontWeight:600,textAlign:"center",marginBottom:6}}>✓ Sheets submitted</p>}
                 {sheetsStatus==="error"&&<p style={{fontSize:11,color:"#DC2626",fontWeight:600,textAlign:"center",marginBottom:6}}>✕ Sheets failed — CSV downloaded</p>}
+                {sheetsStatus==="queued"&&<p style={{fontSize:11,color:"#D97706",fontWeight:600,textAlign:"center",marginBottom:6}}>📶 Offline — will submit when reconnected</p>}
                 <button disabled={challongeSubmitStatus==="loading"}
                   onClick={()=>{
                     setJudgeSubmitModal(false);
                     setConfirmState({...cs,judgeok:true});
-                    if(submitSheetsCheck){
-                      onSendSheets(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf});
-                    } else {
+                    // Always post to sheets — flagged:true + comment when unchecked
+                    onSendSheets(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf,flagged:!submitSheetsCheck,comment:sheetsComment});
+                    if(!submitSheetsCheck){
                       onDownloadCSV(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf});
                     }
                     if(submitChallongeCheck&&hasChallonge){
@@ -3088,6 +3159,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         <span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9)}}>B{battlesInThisSet}</span>
         {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9)}}>{sets[0]}–{sets[1]}</span>}
         {judge&&<span style={{...S.pill,margin:0,color:"#B45309",background:"#FEF3C7",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"22vw",minWidth:0,flexShrink:1}}>⚖️ {tn(judge)}</span>}
+        {config.tm&&<span style={{...S.pill,margin:0,color:"#fff",background:"#7C3AED",flexShrink:0,fontSize:bf(8)}}>🏆 TM</span>}
         {/* Mini action bar — history, undo, redo, dark, settings */}
         <div style={{display:"flex",alignItems:"center",gap:bp(2),marginLeft:"auto",flexShrink:0}}>
           {/* Stream overlay: cycle button + connect button */}
@@ -3110,14 +3182,21 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           <button onClick={toggleDark} style={{background:"none",border:"none",cursor:"pointer",padding:`${bp(3)}px ${bp(4)}px`,fontSize:bf(14),lineHeight:1}}>{dark?"☀️":"🌙"}</button>
           {currentSides.p1Side&&(
             <button type="button" onClick={()=>{
-              // Instantly swap player positions — side labels follow the players
-              const origP1Side=currentSides.p1Side; const origP2Side=currentSides.p2Side;
-              const tmpName=p1; setP1(p2); setP2(tmpName);
-              const tmpD=d1; setD1(d2); setD2(tmpD);
-              const tmpR=r1; setR1(r2); setR2(tmpR);
-              const tmpU=used1; setUsed1(used2); setUsed2(tmpU);
-              setCurrentSides({p1Side:origP2Side,p2Side:origP1Side});
-              setSideAssign(a=>a?{...a,p1Side:origP2Side,p2Side:origP1Side}:a);
+              // Capture all current values before any setState call
+              const snapP1=p1, snapP2=p2;
+              const snapD1=d1, snapD2=d2;
+              const snapR1=r1, snapR2=r2;
+              const snapU1=used1, snapU2=used2;
+              const snapS1=currentSides.p1Side, snapS2=currentSides.p2Side;
+              // Apply all swaps atomically using captured values
+              setP1(snapP2); setP2(snapP1);
+              setD1(snapD2); setD2(snapD1);
+              setR1(snapR2); setR2(snapR1);
+              setUsed1(snapU2); setUsed2(snapU1);
+              setCurrentSides({p1Side:snapS2,p2Side:snapS1});
+              setSideAssign(a=>a?{...a,p1Side:snapS2,p2Side:snapS1}:a);
+              // Push overlay with swapped state explicitly (bypass stale closure)
+              setTimeout(()=>pushOverlay({p1ComboIdx:snapR2,p2ComboIdx:snapR1}),0);
             }}
               style={{padding:`${bp(2)}px ${bp(6)}px`,borderRadius:bp(6),border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:bf(9),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginLeft:bp(2)}}>
               ⇄ Swap
@@ -3339,6 +3418,9 @@ function BeyJudgeApp() {
   const [parts,setParts] = useState({blades:[],ratchets:[],bits:[]});
   const [players,setPlayers] = useState([]);
   const [libOpen,setLibOpen] = useState(false);
+  // Block refresh when a match is actively in progress
+  const matchLog = sGet(KEYS.matchLog, []);
+  useRefreshGuard(screen === "match");
   const [judge,setJudge] = useState("");
   const [sheetsStatus,setSheetsStatus] = useState(null); // null | "success" | "error"
   const [challongeSlug,setChallongeSlug] = useState("");
@@ -3367,6 +3449,8 @@ function BeyJudgeApp() {
 
   // Send to Google Sheets only — no CSV download
   const handleSendSheets = async (roundLog,meta) => {
+    const flagged = meta.flagged || false;
+    const comment = meta.comment || "";
     // Sheet 1: existing summary rows
     const rows = roundLog.map(r=>[
       r.time,
@@ -3423,21 +3507,47 @@ function BeyJudgeApp() {
     try {
       const resp = await fetch(SHEETS_URL, {
         method:"POST",
-        body: JSON.stringify({rows, battleRows}),
+        body: JSON.stringify({rows, battleRows, flagged, comment}),
       });
       const result = await resp.json();
       setSheetsStatus(result.status==="ok"?"success":"error");
     } catch(err) {
-      setSheetsStatus("error");
+      // Queue for retry when back online
+      enqueueSubmission("sheets", {rows, battleRows});
+      setSheetsStatus("queued");
     }
   };
+
+  // Retry queued submissions when network reconnects
+  useEffect(() => {
+    const flush = async () => {
+      const queue = dequeueAll();
+      if (!queue.length) return;
+      for (const item of queue) {
+        if (item.type === "sheets") {
+          try {
+            const resp = await fetch(SHEETS_URL, {
+              method: "POST",
+              body: JSON.stringify(item.payload),
+            });
+            const result = await resp.json();
+            if (result.status !== "ok") enqueueSubmission(item.type, item.payload);
+          } catch(_) {
+            enqueueSubmission(item.type, item.payload);
+          }
+        }
+      }
+    };
+    window.addEventListener("online", flush);
+    return () => window.removeEventListener("online", flush);
+  }, []);
 
 
   return (
     <div style={{background:"var(--bg)",minHeight:"100vh",fontFamily:"'Outfit',sans-serif"}}>
       {libOpen&&<LibraryManager parts={parts} setParts={setParts} onClose={()=>setLibOpen(false)}/>}
       {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark}/>}
-      {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}}/>}
+      {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} config={config} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}}/>}
       {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
     </div>
   );
