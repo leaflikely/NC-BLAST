@@ -4,8 +4,6 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-<meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="mobile-web-app-capable" content="yes"/>
 <title>NC BLAST</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -13,8 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  html{font-size:16px;overscroll-behavior:none;overscroll-behavior-y:none}
-  body{overscroll-behavior:none;overscroll-behavior-y:none}
+  html{font-size:16px}
   :root{
     --bg:linear-gradient(180deg,#F8FAFC 0%,#EFF6FF 100%);
     --bg-solid:#F8FAFC;
@@ -61,23 +58,6 @@
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
 
-// Block accidental page refresh/close when match is in progress
-function useRefreshGuard(isActive) {
-useEffect(() => {
-if (!isActive) return;
-// beforeunload — works on desktop and Android Chrome
-const beforeUnloadHandler = (e) => {
-e.preventDefault();
-e.returnValue = “You have a match in progress. Are you sure you want to leave?”;
-return e.returnValue;
-};
-window.addEventListener(“beforeunload”, beforeUnloadHandler);
-return () => window.removeEventListener(“beforeunload”, beforeUnloadHandler);
-// Pull-to-refresh on iOS Safari is blocked via CSS overscroll-behavior:none
-// on html and body — JS cannot reliably intercept it.
-}, [isActive]);
-}
-
 /* ═══════════════════════════════════════
 VIEWPORT SCALE
 ═══════════════════════════════════════ */
@@ -110,23 +90,7 @@ return scale;
 /* ═══════════════════════════════════════
 PERSISTENT STORAGE — localStorage
 ═══════════════════════════════════════ */
-const KEYS = { parts: “bx-library-v9”, players: “bx-roster-v2”, combos: “bx-combos-v1”, matchLog: “bx-matchlog-v1”, challongeMap: “bx-challonge-map-v1”, overlaySlot: “bx-overlay-slot-v1”, submitQueue: “bx-submit-queue-v1” };
-
-// Offline submission queue — store failed posts, retry when back online
-function enqueueSubmission(type, payload) {
-try {
-const q = JSON.parse(localStorage.getItem(KEYS.submitQueue) || “[]”);
-q.push({ type, payload, queuedAt: Date.now() });
-localStorage.setItem(KEYS.submitQueue, JSON.stringify(q));
-} catch(*) {}
-}
-function dequeueAll() {
-try {
-const q = JSON.parse(localStorage.getItem(KEYS.submitQueue) || “[]”);
-localStorage.setItem(KEYS.submitQueue, JSON.stringify([]));
-return q;
-} catch(*) { return []; }
-}
+const KEYS = { parts: “bx-library-v9”, players: “bx-roster-v2”, combos: “bx-combos-v1”, matchLog: “bx-matchlog-v1”, challongeMap: “bx-challonge-map-v1”, overlaySlot: “bx-overlay-slot-v1” };
 const OVERLAY_WORKER = “https://challonge-proxy.danny61734.workers.dev”;
 const COMBO_CACHE_TTL = 60 * 60 * 1000; // 1 hour in ms
 
@@ -885,16 +849,7 @@ onChange={e=>setConfig({…config,tournamentName:e.target.value})}
 /* ═══════════════════════════════════════
 SCREEN 2 — PLAYERS
 ═══════════════════════════════════════ */
-function TournamentBadge({config}) {
-if (!config?.tm) return null;
-return (
-<div style={{display:“inline-flex”,alignItems:“center”,gap:5,background:”#7C3AED”,color:”#fff”,borderRadius:20,padding:“3px 10px”,fontSize:11,fontWeight:800,letterSpacing:0.5,fontFamily:”‘Outfit’,sans-serif”}}>
-🏆 Tournament Mode
-</div>
-);
-}
-
-function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,config}) {
+function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
 const [inp,setInp] = useState(””);
 const [challongeUrl,setChallongeUrl] = useState(””);
 const [challongeStatus,setChallongeStatus] = useState(null); // null | “loading” | “ok” | “error”
@@ -1002,8 +957,8 @@ if(data.errors) throw new Error(data.errors[0]);
 const participants = data.participants || [];
 const names = participants.map(p=>(p.participant?.display_name||p.participant?.name||””).trim()).filter(Boolean);
 if(!names.length) throw new Error(“No participants found in cache”);
-// Replace roster entirely — don’t merge with previous session’s players
-setPlayers(names); sSave(KEYS.players, names);
+const merged = […new Set([…players,…names])];
+setPlayers(merged); sSave(KEYS.players, merged);
 const participantMap = {};
 participants.forEach(p => {
 const name = (p.participant?.display_name||p.participant?.name||””).trim();
@@ -1078,8 +1033,8 @@ const lcSet = (s, names) => {
 // Device cache hit — zero network calls
 const lcHit = lcGet(slug);
 if(lcHit) {
-  // Replace roster entirely on cache hit
-  setPlayers(lcHit); sSave(KEYS.players, lcHit);
+  const merged = [...new Set([...players,...lcHit])];
+  setPlayers(merged); sSave(KEYS.players, merged);
   setChallongeStatus("ok");
   setChallongeSource("cached");
   setChallongeMsg(`✓ ${lcHit.length} players loaded from NC BLAST cache for "${slug}"`);
@@ -1147,8 +1102,8 @@ for(const proxy of proxyConfigs){
     const { data, fromServerCache } = parseResponse(text, proxy.raw);
     const names = data.map(p=>(p.participant?.display_name||p.participant?.name||"").trim()).filter(Boolean);
     if(!names.length) throw new Error("No participants found — is this tournament public with entrants added?");
-    // Replace roster entirely — don't carry over names from a previous event
-    setPlayers(names); sSave(KEYS.players, names);
+    const merged = [...new Set([...players,...names])];
+    setPlayers(merged); sSave(KEYS.players, merged);
     lcSet(slug, names);
     // Build participant ID map — store both full name and truncated name as keys
     const participantMap = {};
@@ -1210,10 +1165,7 @@ e.target.value = “”;
 
 return (
 <div style={{…S.page,height:“100dvh”,overflowY:“auto”}}>
-<div style={{display:“flex”,alignItems:“center”,justifyContent:“space-between”,marginBottom:4}}>
-<button style={{...S.back,marginBottom:0}} onClick={onBack}>{IC.back} Format</button>
-<TournamentBadge config={config}/>
-</div>
+<button style={S.back} onClick={onBack}>{IC.back} Format</button>
 <h1 style={S.title}>Player Roster</h1>
 <p style={S.sub}>Players are saved between sessions</p>
 
@@ -1466,12 +1418,12 @@ return (
         </div>
       )}
       {log.slice().reverse().map((e,i)=>(
-        <div key={i} style={{padding:"10px 12px",borderRadius:10,marginBottom:8,background:colorOf(e.scorer)+"22",borderLeft:`4px solid ${colorOf(e.scorer)}`}}>
+        <div key={i} style={{padding:"10px 12px",borderRadius:10,marginBottom:8,background:e.scorerIdx===0?"#EFF6FF22":"#FEF2F222",borderLeft:`4px solid ${e.scorerIdx===0?"#2563EB":"#DC2626"}`}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-            <span style={{fontWeight:700,color:colorOf(e.scorer),fontSize:14}}>{e.scorer}</span>
+            <span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626",fontSize:14}}>{e.scorer}</span>
             <span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)"}}>R{log.length-i} · Set {e.set} · Shuf {e.shuffle}</span>
           </div>
-          <div style={{fontSize:12,color:"var(--text-secondary)",marginBottom:2}}><span style={{fontWeight:700,color:colorOf(e.scorer)}}>{e.typeName}</span> (+{e.points})</div>
+          <div style={{fontSize:12,color:"var(--text-secondary)",marginBottom:2}}><span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626"}}>{e.typeName}</span> (+{e.points})</div>
           <div style={{fontSize:11,color:"var(--text-muted)"}}>Won with: <span style={{fontWeight:600}}>{e.winnerCombo}</span></div>
           <div style={{fontSize:11,color:"var(--text-muted)",marginTop:1}}>vs {e.scorerIdx===0?comboStr(e.p2Combo):comboStr(e.p1Combo)}</div>
           {e.p1Side&&<div style={{fontSize:10,color:"var(--text-muted)",marginTop:1}}>{e.p1Name}: {e.p1Side} Side · {e.p2Name}: {e.p2Side} Side</div>}
@@ -1485,7 +1437,7 @@ return (
     <div style={{display:"flex",alignItems:"center",gap:2,background:"var(--surface)",borderRadius:20,padding:"5px 6px",boxShadow:"0 2px 12px rgba(0,0,0,0.15), 0 0 0 1px var(--border)"}}>
       <button onClick={()=>setHistoryOpen(true)} style={S.barBtn}>{IC.history}</button>
       <div style={S.barDiv}/>
-      <button onClick={undo} disabled={log.length<=matchStartIdx&&lerStrikes[0]===0&&lerStrikes[1]===0} style={{...S.barBtn,opacity:(log.length>matchStartIdx||lerStrikes[0]===1||lerStrikes[1]===1)?1:0.3}}>{IC.undo} <span style={S.barLbl}>Undo</span></button>
+      <button onClick={undo} disabled={log.length<=matchStartIdx&&log[log.length-1]?.type!=="LER-STRIKE"} style={{...S.barBtn,opacity:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?1:0.3}}>{IC.undo} <span style={S.barLbl}>Undo</span></button>
       <button onClick={redo} disabled={!future.length} style={{...S.barBtn,opacity:future.length?1:0.3,color:"#EA580C"}}><span style={{...S.barLbl,color:"#EA580C"}}>Redo</span> {IC.redo}</button>
       <div style={S.barDiv}/>
       <button onClick={toggleDark} style={{...S.barBtn,fontSize:16,lineHeight:1}} title="Toggle dark mode">{dark?"☀️":"🌙"}</button>
@@ -1528,11 +1480,6 @@ const [abandonConfirm,setAbandonConfirm] = useState(false);
 const [overBackConfirm,setOverBackConfirm] = useState(false);
 const [p1,setP1] = useState(null);
 const [p2,setP2] = useState(null);
-// Colors assigned at match start and stay with the player name through swaps
-const [p1Color,setP1Color] = useState(”#2563EB”);
-const [p2Color,setP2Color] = useState(”#DC2626”);
-// Returns the color originally assigned to a player name
-const colorOf = (name) => name===p1?p1Color:name===p2?p2Color:”#64748B”;
 const [d1,setD1] = useState([emptyCombo(),emptyCombo(),emptyCombo()]);
 const [d2,setD2] = useState([emptyCombo(),emptyCombo(),emptyCombo()]);
 const [r1,setR1] = useState(null);
@@ -1594,7 +1541,6 @@ const [historyConfirmClear,setHistoryConfirmClear] = useState(false);
 const [judgeSubmitModal,setJudgeSubmitModal] = useState(false);
 const [submitChallongeCheck,setSubmitChallongeCheck] = useState(true);
 const [submitSheetsCheck,setSubmitSheetsCheck] = useState(true); // clear log confirmation in battle screen history panel
-const [sheetsComment,setSheetsComment] = useState(””); // comment when sheets submission is flagged
 const [judgeEditMode,setJudgeEditMode] = useState(false); // judge name editable on over screen
 // Portrait vs landscape for combo button layout — recomputed on each render via sc trigger
 const comboAreaRef = useRef(null); // kept for legacy ref safety, not used for measurement
@@ -1656,7 +1602,7 @@ const setWon = config.pts>0 && np[scoringPi]>=config.pts;
 if(fin.id==="LER"){
   if(setWon){
     const ns=[sets[0],sets[1]]; ns[scoringPi]+=1; setSets(ns);
-    setSetScores(ss=>[...ss,{[p1]:np[0],[p2]:np[1]}]);
+    setSetScores(ss=>[...ss,{p1:np[0],p2:np[1]}]);
     if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
     else {
       if(config.tm){const loserPi=1-scoringPi;setSideAssign({pickPriority:loserPi});setSidePicker({priority:loserPi});}
@@ -1674,7 +1620,7 @@ const nu1=[...used1,r1]; const nu2=[...used2,r2];
 setUsed1(nu1); setUsed2(nu2); setR1(null); setR2(null);
 if(setWon){
   const ns=[sets[0],sets[1]]; ns[scoringPi]+=1; setSets(ns);
-  setSetScores(ss=>[...ss,{[p1]:np[0],[p2]:np[1]}]);
+  setSetScores(ss=>[...ss,{p1:np[0],p2:np[1]}]);
   if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
   else {
     if(config.tm){ const loserPi=1-scoringPi; setSideAssign({pickPriority:loserPi}); setSidePicker({priority:loserPi}); }
@@ -1689,12 +1635,9 @@ if(setWon){
 };
 
 const undo = () => {
-// Allow undoing a pending LER-STRIKE (in-memory only, not in log)
-const lastIsStrike = lerStrikes[0]===1 || lerStrikes[1]===1;
+// Always allow undoing a LER-STRIKE, even across the matchStartIdx boundary
+const lastIsStrike = log.length>0 && log[log.length-1]?.type===“LER-STRIKE”;
 if(log.length<=matchStartIdx && !lastIsStrike) return;
-// If a strike is pending, just clear it — no log entry to remove
-if(lastIsStrike && log.length<=matchStartIdx){ setLerStrikes([0,0]); return; }
-if(lastIsStrike && log[log.length-1]?.type!==“LER-STRIKE”){ setLerStrikes([0,0]); return; }
 const l=log[log.length-1];
 const undoLog = log.slice(0,-1); setFuture([l,…future]); setLog(undoLog); sSave(KEYS.matchLog, undoLog);
 setPts(l._pp); setSets(l._ps); setCurSet(l._cs);
@@ -1797,7 +1740,7 @@ const submitChallongeScore = async (matchId, p1Score, p2Score, winnerChallongeId
 if(!challongeSlug || !matchId) return;
 setChallongeSubmitStatus(“loading”);
 const scoresCsv = setScores.length > 0
-? setScores.map(s=>`${s[p1]??0}-${s[p2]??0}`).join(”,”)
+? setScores.map(s=>`${s.p1}-${s.p2}`).join(”,”)
 : `${p1Score}-${p2Score}`;
 try {
 const res = await fetch(`https://challonge-proxy.danny61734.workers.dev/submit`, {
@@ -1820,7 +1763,7 @@ setChallongeSubmitStatus(err.message || “error”);
 }
 };
 
-const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase(“pick”);setSheetsStatus(null);setConfirmState(null);setJudge(””);setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:””,p2Side:””});setPickerSearch(””);setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);try{localStorage.setItem(KEYS.overlaySlot,“0”);}catch{} setP1Color(”#2563EB”); setP2Color(”#DC2626”);; };
+const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase(“pick”);setSheetsStatus(null);setConfirmState(null);setJudge(””);setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:””,p2Side:””});setPickerSearch(””);setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);try{localStorage.setItem(KEYS.overlaySlot,“0”);}catch{}; };
 
 // Navigation helpers
 // Unified back navigation — context-aware, no stale closure issues
@@ -1862,7 +1805,7 @@ return (
 <div style={{background:“var(–surface)”,borderRadius:18,padding:“24px 20px”,maxWidth:340,width:“100%”,boxShadow:“0 20px 60px rgba(0,0,0,0.25)”,border:“2px solid var(–border)”}}>
 <p style={{fontSize:16,fontWeight:800,color:“var(–text-primary)”,marginBottom:8,textAlign:“center”}}>Abandon Match?</p>
 <p style={{fontSize:13,color:“var(–text-secondary)”,textAlign:“center”,marginBottom:6,lineHeight:1.5}}>
-This match has <strong style={{color:”#EF4444”}}>{log.slice(matchStartIdx).length} battle{log.slice(matchStartIdx).length!==1?“s”:””}</strong> in progress.
+This match has <strong style={{color:”#EF4444”}}>{log.slice(matchStartIdx).filter(e=>e.type!==“LER-STRIKE”).length} battle{log.slice(matchStartIdx).filter(e=>e.type!==“LER-STRIKE”).length!==1?“s”:””}</strong> in progress.
 </p>
 <p style={{fontSize:12,color:“var(–text-faint)”,textAlign:“center”,marginBottom:20,lineHeight:1.4}}>
 Abandoning will void all battles from this match and return to player selection.
@@ -2211,22 +2154,6 @@ if(cat==="ratchet"||cat==="bit"){
               else if(slot<2){openPicker({who,slot:slot+1,cat:"blade"});}
               else if(who===1){openPicker({who:2,slot:0,cat:"blade"});}
               else{setPicker(null);setDeckReview(true);}
-              // Push complete combos to Worker KV immediately when bit is selected
-              if(cat==="bit"){
-                const nd2=[...deck]; nd2[slot]={...nd2[slot],[cat]:name};
-                const freshCombo=nd2[slot];
-                if(freshCombo.blade&&freshCombo.ratchet&&freshCombo.bit){
-                  const playerName=who===1?p1:p2;
-                  const saved=sGet(KEYS.combos,{});
-                  const prev=saved[playerName]||[];
-                  const str=comboStr(freshCombo);
-                  const existing=prev.findIndex(co=>comboStr(co)===str);
-                  if(existing>=0){prev[existing]={...freshCombo,updatedAt:Date.now()};}
-                  else{prev.push({...freshCombo,updatedAt:Date.now()});}
-                  saved[playerName]=prev; sSave(KEYS.combos,saved);
-                  pushComboCacheToWorker(playerName,prev);
-                }
-              }
             }}
             style={{flex:1,minWidth:0,borderRadius:9,
               border:sel?`2px solid ${cc}`:taken?"2px solid var(--border)":isTopGroup?`2px solid ${cc}50`:"2px solid var(--border2)",
@@ -2573,8 +2500,8 @@ const handleNameClick = (name) => {
   if(isJudge){ setJudge(""); setManualJudge(false); return; }
 
   // Unassigned name: fill first open slot in priority order p1 → p2 → judge
-  if(!p1){ setP1(tname); setP1Color("#2563EB"); return; }
-  if(!p2){ setP2(tname); setP2Color("#DC2626"); return; }
+  if(!p1){ setP1(tname); return; }
+  if(!p2){ setP2(tname); return; }
   if(config.tm && !judge.trim()){ setJudge(tname); return; }
   // All slots full — do nothing
 };
@@ -2600,8 +2527,8 @@ const selectActivePairing = (match) => {
   Object.entries(idMap).forEach(([name,id])=>{ reverseMap[String(id)]=name; });
   const name1 = match.player1_name || reverseMap[String(match.player1_id)] || `ID:${match.player1_id}`;
   const name2 = match.player2_name || reverseMap[String(match.player2_id)] || `ID:${match.player2_id}`;
-  setP1(tn(name1)); setP1Color("#2563EB");
-  setP2(tn(name2)); setP2Color("#DC2626");
+  setP1(tn(name1));
+  setP2(tn(name2));
   setChallongeMatchId(match.id);
   // For group stage tournaments, winner_id must be player1_id/player2_id (the group player IDs),
   // NOT the real participant.id — Challonge validates winner_id against the match's player IDs directly.
@@ -2618,9 +2545,9 @@ return (
       <div style={{width:8,height:8,borderRadius:"50%",background:stepColor,flexShrink:0}}/>
       <span style={{fontSize:13,fontWeight:700,color:stepColor}}>{stepLabel}</span>
       {step!==1&&<span style={{fontSize:11,color:"var(--text-muted)",marginLeft:"auto"}}>
-        {p1&&<span style={{color:p1Color,fontWeight:600}}>{p1} </span>}
+        {p1&&<span style={{color:"#2563EB",fontWeight:600}}>{p1} </span>}
         {p1&&p2&&<span style={{color:"var(--text-muted)"}}>vs </span>}
-        {p2&&<span style={{color:p2Color,fontWeight:600}}>{p2}</span>}
+        {p2&&<span style={{color:"#DC2626",fontWeight:600}}>{p2}</span>}
         {config.tm&&judge&&<span style={{color:"#B45309",fontWeight:600}}> · ⚖️{judge}</span>}
       </span>}
     </div>
@@ -2810,7 +2737,7 @@ return (
     <button style={S.back} onClick={goBack}>{IC.back} Back</button>
     <h1 style={S.title}>Deck Review</h1>
     <p style={S.sub}>Tap any part to change it</p>
-    {[{who:1,name:p1,deck:d1,setDeck:setD1,cl:p1Color},{who:2,name:p2,deck:d2,setDeck:setD2,cl:p2Color}].map(pl=>(
+    {[{who:1,name:p1,deck:d1,setDeck:setD1,cl:"#2563EB"},{who:2,name:p2,deck:d2,setDeck:setD2,cl:"#DC2626"}].map(pl=>(
       <div key={pl.who} style={{...S.card,borderLeft:`4px solid ${pl.cl}`,marginBottom:12}}>
         <p style={{fontSize:13,fontWeight:800,color:pl.cl,marginBottom:8}}>{pl.name}</p>
         {[0,1,2].map(slot=>(
@@ -2866,7 +2793,7 @@ return (
     {!priorityKnown&&(
       <div style={{width:"100%",marginBottom:16}}>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          {[{name:p1,pi:0,cl:p1Color},{name:p2,pi:1,cl:p2Color}].map(pl=>(
+          {[{name:p1,pi:0,cl:"#2563EB"},{name:p2,pi:1,cl:"#DC2626"}].map(pl=>(
             <button key={pl.pi} onClick={()=>setSidePicker({priority:pl.pi})}
               style={{width:"100%",padding:"28px 0",borderRadius:20,border:`3px solid ${pl.cl}40`,background:`${pl.cl}0D`,color:pl.cl,fontSize:26,fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
               {pl.name}
@@ -2967,7 +2894,7 @@ return (
     )}
 
     {/* ── Winner hero ── */}
-    <div style={{background:`linear-gradient(135deg,${colorOf(winner)}CC,${colorOf(winner)})`,borderRadius:20,padding:"28px 20px 24px",textAlign:"center",marginBottom:12,boxShadow:`0 8px 24px ${colorOf(winner)}55`}}>
+    <div style={{background:"linear-gradient(135deg,#1D4ED8 0%,#2563EB 100%)",borderRadius:20,padding:"28px 20px 24px",textAlign:"center",marginBottom:12,boxShadow:"0 8px 24px rgba(37,99,235,0.35)"}}>
       {config.tm&&config.tournamentName&&(
         <p style={{fontSize:10,fontWeight:700,letterSpacing:2,color:"rgba(255,255,255,0.55)",marginBottom:10,textTransform:"uppercase"}}>{config.tournamentName}</p>
       )}
@@ -2982,42 +2909,28 @@ return (
       <div style={{...S.card,padding:"16px 20px",marginBottom:12}}>
         <p style={{fontSize:9,fontWeight:700,letterSpacing:2,color:"var(--text-muted)",textAlign:"center",marginBottom:12,textTransform:"uppercase"}}>Match Score</p>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
-          {(()=>{
-            // Count sets won by name from setScores — immune to position swaps
-            const winnerSets = setScores.filter(ss=>(ss[winner]??0)>(ss[loserName]??0)).length;
-            const loserSets  = setScores.filter(ss=>(ss[loserName]??0)>(ss[winner]??0)).length;
-            return (<>
-              <div style={{flex:1,textAlign:"center"}}>
-                <p style={{fontSize:20,fontWeight:900,color:colorOf(winner),marginBottom:4}}>{winner} 🏆</p>
-                <p style={{fontSize:52,fontWeight:900,color:colorOf(winner),lineHeight:1}}>{winnerSets}</p>
-              </div>
-              <p style={{fontSize:22,fontWeight:800,color:"var(--border2)",minWidth:32,textAlign:"center"}}>–</p>
-              <div style={{flex:1,textAlign:"center"}}>
-                <p style={{fontSize:20,fontWeight:900,color:colorOf(loserName),marginBottom:4}}>{loserName}</p>
-                <p style={{fontSize:52,fontWeight:900,color:"var(--text-faint)",lineHeight:1}}>{loserSets}</p>
-              </div>
-            </>);
-          })()}
+          <div style={{flex:1,textAlign:"center"}}>
+            <p style={{fontSize:20,fontWeight:900,color:"#2563EB",marginBottom:4}}>{p1}{winner===p1?" 🏆":""}</p>
+            <p style={{fontSize:52,fontWeight:900,color:winner===p1?"#2563EB":"var(--text-faint)",lineHeight:1}}>{sets[0]}</p>
+          </div>
+          <p style={{fontSize:22,fontWeight:800,color:"var(--border2)",minWidth:32,textAlign:"center"}}>–</p>
+          <div style={{flex:1,textAlign:"center"}}>
+            <p style={{fontSize:20,fontWeight:900,color:"#DC2626",marginBottom:4}}>{winner===p2?"🏆 ":""}{p2}</p>
+            <p style={{fontSize:52,fontWeight:900,color:winner===p2?"#DC2626":"var(--text-faint)",lineHeight:1}}>{sets[1]}</p>
+          </div>
         </div>
         {setScores.length>0&&(
           <div style={{display:"flex",gap:8,marginTop:14,justifyContent:"center",flexWrap:"wrap"}}>
             {setScores.map((ss,i)=>{
-              // Scores keyed by player name — immune to swaps
-              const wScore = ss[winner] ?? 0;
-              const lScore = ss[loserName] ?? 0;
-              const wColor = colorOf(winner);
-              const lColor = colorOf(loserName);
-              const setWon = wScore > lScore;
-              const bubbleColor = setWon ? wColor : lColor;
+              const p1w=ss.p1>ss.p2;
               return(
-                <div key={i} style={{textAlign:"center",background:bubbleColor+"18",borderRadius:10,padding:"8px 14px",border:`1px solid ${bubbleColor}50`}}>
-                  <p style={{fontSize:8,fontWeight:700,color:bubbleColor,letterSpacing:1,marginBottom:4}}>SET {i+1}</p>
-                  <p style={{fontSize:18,fontWeight:900,lineHeight:1,display:"flex",alignItems:"baseline",justifyContent:"center",gap:2}}>
-                    <span style={{color:wColor}}>{wScore}</span>
-                    <span style={{color:"#CBD5E1",margin:"0 3px",fontSize:14}}>–</span>
-                    <span style={{color:"var(--text-faint)"}}>{lScore}</span>
+                <div key={i} style={{textAlign:"center",background:p1w?"#EFF6FF":"#FEF2F2",borderRadius:10,padding:"8px 14px",border:`1px solid ${p1w?"#BFDBFE":"#FECACA"}`}}>
+                  <p style={{fontSize:8,fontWeight:700,color:p1w?"#3B82F6":"#EF4444",letterSpacing:1,marginBottom:4}}>SET {i+1}</p>
+                  <p style={{fontSize:18,fontWeight:900,lineHeight:1}}>
+                    <span style={{color:p1w?"#2563EB":"var(--text-faint)"}}>{ss.p1}</span>
+                    <span style={{color:"#CBD5E1",margin:"0 4px",fontSize:14}}>–</span>
+                    <span style={{color:!p1w?"#DC2626":"var(--text-faint)"}}>{ss.p2}</span>
                   </p>
-                  <p style={{fontSize:7,color:bubbleColor,fontWeight:700,marginTop:3,letterSpacing:0.5}}>{tn(winner)}</p>
                 </div>
               );
             })}
@@ -3057,7 +2970,7 @@ return (
       {log.slice(matchStartIdx).map((e,i)=>(
         <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:i<log.slice(matchStartIdx).length-1?"1px solid #F1F5F9":"none"}}>
           <span style={{fontSize:11,color:"var(--text-muted)"}}>B{e.round} · Set {e.set}{e.p1Side?` · ${e.p1Side}/${e.p2Side}`:""}</span>
-          <span style={{fontSize:11,fontWeight:700,color:colorOf(e.scorer)}}>{e.scorer} — {e.typeName} +{e.points}{e.penalty?" (pen)":""}</span>
+          <span style={{fontSize:11,fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626"}}>{e.scorer} — {e.typeName} +{e.points}{e.penalty?" (pen)":""}</span>
           <span style={{fontSize:11,color:"var(--text-muted)"}}>{e.p1Score}–{e.p2Score}</span>
         </div>
       ))}
@@ -3070,11 +2983,11 @@ return (
         <p style={{fontSize:11,color:"#64748B",textAlign:"center",marginBottom:12}}>Both players confirm, then the judge submits.</p>
         <div style={{display:"flex",gap:8,marginBottom:8}}>
           <button onClick={()=>setConfirmState({...cs,p1ok:true})} disabled={cs.p1ok}
-            style={{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:cs.p1ok?"#15803D":p1Color,color:"#fff",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:cs.p1ok?"default":"pointer",opacity:cs.p1ok?0.75:1}}>
+            style={{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:cs.p1ok?"#15803D":"#2563EB",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:cs.p1ok?"default":"pointer",opacity:cs.p1ok?0.75:1}}>
             {cs.p1ok?"✓ "+p1:p1+" — Confirm"}
           </button>
           <button onClick={()=>setConfirmState({...cs,p2ok:true})} disabled={cs.p2ok}
-            style={{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:cs.p2ok?"#15803D":p2Color,color:"#fff",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:cs.p2ok?"default":"pointer",opacity:cs.p2ok?0.75:1}}>
+            style={{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:cs.p2ok?"#15803D":"#DC2626",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:cs.p2ok?"default":"pointer",opacity:cs.p2ok?0.75:1}}>
             {cs.p2ok?"✓ "+p2:p2+" — Confirm"}
           </button>
         </div>
@@ -3105,7 +3018,7 @@ return (
               <strong style={{color:"var(--text-primary)"}}>{winner}</strong> defeats {loserName} · {p1FinalScore}–{p2FinalScore}
             </p>
             {[
-              {val:submitSheetsCheck,set:(v)=>{setSubmitSheetsCheck(v);if(v)setSheetsComment("");},label:"Submit to Sheets Database",desc:submitSheetsCheck?"Sends match data to the NC BLAST stat tracker":"Will post with red flag — add a reason below",disabled:false},
+              {val:submitSheetsCheck,set:setSubmitSheetsCheck,label:"Submit to Sheets Database",desc:"Sends match data to the NC BLAST stat tracker",disabled:false},
               {val:submitChallongeCheck,set:setSubmitChallongeCheck,label:"Submit to Challonge",desc:hasChallonge?"Reports result to the active bracket match":"No bracket match selected",disabled:!hasChallonge},
             ].map((opt,oi)=>(
               <button key={oi} type="button" disabled={opt.disabled} onClick={()=>!opt.disabled&&opt.set(v=>!v)}
@@ -3116,29 +3029,17 @@ return (
                 <div><p style={{fontSize:13,fontWeight:700,color:"var(--text-primary)",margin:"0 0 2px"}}>{opt.label}</p><p style={{fontSize:11,color:"var(--text-muted)",margin:0,lineHeight:1.4}}>{opt.desc}</p></div>
               </button>
             ))}
-            {!submitSheetsCheck&&(
-              <div style={{marginBottom:8}}>
-                <p style={{fontSize:11,fontWeight:700,color:"#DC2626",marginBottom:4}}>Reason for excluding from active data:</p>
-                <textarea
-                  value={sheetsComment}
-                  onChange={e=>setSheetsComment(e.target.value)}
-                  placeholder="e.g. disputed result, test match, re-do..."
-                  style={{width:"100%",minHeight:56,borderRadius:8,border:"1px solid #FCA5A5",background:"#FEF2F2",padding:"8px 10px",fontSize:12,fontFamily:"'Outfit',sans-serif",color:"var(--text-primary)",resize:"vertical"}}
-                />
-              </div>
-            )}
             {challongeSubmitStatus==="ok"&&<p style={{fontSize:11,color:"#15803D",fontWeight:600,textAlign:"center",marginBottom:6}}>✓ Challonge submitted</p>}
             {challongeSubmitStatus&&challongeSubmitStatus!=="ok"&&challongeSubmitStatus!=="loading"&&<p style={{fontSize:11,color:"#DC2626",fontWeight:600,textAlign:"center",marginBottom:6}}>✕ Challonge: {challongeSubmitStatus}</p>}
             {sheetsStatus==="success"&&<p style={{fontSize:11,color:"#15803D",fontWeight:600,textAlign:"center",marginBottom:6}}>✓ Sheets submitted</p>}
             {sheetsStatus==="error"&&<p style={{fontSize:11,color:"#DC2626",fontWeight:600,textAlign:"center",marginBottom:6}}>✕ Sheets failed — CSV downloaded</p>}
-            {sheetsStatus==="queued"&&<p style={{fontSize:11,color:"#D97706",fontWeight:600,textAlign:"center",marginBottom:6}}>📶 Offline — will submit when reconnected</p>}
             <button disabled={challongeSubmitStatus==="loading"}
               onClick={()=>{
                 setJudgeSubmitModal(false);
                 setConfirmState({...cs,judgeok:true});
-                // Always post to sheets — flagged:true + comment when unchecked
-                onSendSheets(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf,flagged:!submitSheetsCheck,comment:sheetsComment});
-                if(!submitSheetsCheck){
+                if(submitSheetsCheck){
+                  onSendSheets(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf});
+                } else {
                   onDownloadCSV(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf});
                 }
                 if(submitChallongeCheck&&hasChallonge){
@@ -3212,11 +3113,12 @@ return (
 
 ```
   {/* ── Top strip: Back · pills · mini action bar · Swap ── */}
-  <div style={{height:STRIP_H,display:"flex",alignItems:"center",gap:bp(5),padding:`0 ${bp(10)}px`,flexShrink:0,borderBottom:`1px solid ${config.tm?"#6D28D9":"var(--border)"}`,background:config.tm?"#4C1D95":"var(--surface)"}}>
-    <button style={{...S.back,marginBottom:0,flexShrink:0,fontSize:bf(12),color:config.tm?"#E9D5FF":"var(--text-secondary)"}} onClick={goBack}>{IC.back}</button>
-    {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),background:config.tm?"rgba(255,255,255,0.15)":"var(--pill-bg)",color:config.tm?"#E9D5FF":"var(--text-secondary)",border:config.tm?"1px solid rgba(255,255,255,0.2)":"1px solid var(--border2)"}}>Set {curSet}/{config.bo}</span>}
-    <span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),background:config.tm?"rgba(255,255,255,0.15)":"var(--pill-bg)",color:config.tm?"#E9D5FF":"var(--text-secondary)",border:config.tm?"1px solid rgba(255,255,255,0.2)":"1px solid var(--border2)"}}>B{battlesInThisSet}</span>
-    {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),background:config.tm?"rgba(255,255,255,0.15)":"var(--pill-bg)",color:config.tm?"#E9D5FF":"var(--text-secondary)",border:config.tm?"1px solid rgba(255,255,255,0.2)":"1px solid var(--border2)"}}>{sets[0]}–{sets[1]}</span>}
+  <div style={{height:STRIP_H,display:"flex",alignItems:"center",gap:bp(5),padding:`0 ${bp(10)}px`,flexShrink:0,borderBottom:"1px solid var(--border)"}}>
+    <button style={{...S.back,marginBottom:0,flexShrink:0,fontSize:bf(12)}} onClick={goBack}>{IC.back}</button>
+    {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9)}}>Set {curSet}/{config.bo}</span>}
+    <span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9)}}>B{battlesInThisSet}</span>
+    {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9)}}>{sets[0]}–{sets[1]}</span>}
+    {judge&&<span style={{...S.pill,margin:0,color:"#B45309",background:"#FEF3C7",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"22vw",minWidth:0,flexShrink:1}}>⚖️ {tn(judge)}</span>}
     {/* Mini action bar — history, undo, redo, dark, settings */}
     <div style={{display:"flex",alignItems:"center",gap:bp(2),marginLeft:"auto",flexShrink:0}}>
       {/* Stream overlay: cycle button + connect button */}
@@ -3234,37 +3136,19 @@ return (
         </button>
       )}
       <button onClick={()=>setHistoryOpen(true)} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.history}</button>
-      <button onClick={undo} disabled={log.length<=matchStartIdx&&lerStrikes[0]===0&&lerStrikes[1]===0} style={{background:"none",border:"none",color:(log.length>matchStartIdx||lerStrikes[0]===1||lerStrikes[1]===1)?"var(--text-muted)":"var(--text-disabled)",cursor:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?"pointer":"default",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.undo}</button>
+      <button onClick={undo} disabled={log.length<=matchStartIdx&&log[log.length-1]?.type!=="LER-STRIKE"} style={{background:"none",border:"none",color:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?"var(--text-muted)":"var(--text-disabled)",cursor:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?"pointer":"default",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.undo}</button>
       <button onClick={redo} disabled={!future.length} style={{background:"none",border:"none",color:future.length?"#EA580C":"var(--text-disabled)",cursor:future.length?"pointer":"default",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.redo}</button>
       <button onClick={toggleDark} style={{background:"none",border:"none",cursor:"pointer",padding:`${bp(3)}px ${bp(4)}px`,fontSize:bf(14),lineHeight:1}}>{dark?"☀️":"🌙"}</button>
       {currentSides.p1Side&&(
         <button type="button" onClick={()=>{
-          // Capture ALL current values before any setState call
-          const snapP1=p1, snapP2=p2;
-          const snapD1=d1, snapD2=d2;
-          const snapR1=r1, snapR2=r2;
-          const snapU1=used1, snapU2=used2;
-          const snapS1=currentSides.p1Side, snapS2=currentSides.p2Side;
-          const snapC1=p1Color, snapC2=p2Color;
-          const snapPts0=pts[0], snapPts1=pts[1];
-          const snapSets0=sets[0], snapSets1=sets[1];
-          const snapLer0=lerStrikes[0], snapLer1=lerStrikes[1];
-          const snapCId1=challongeP1ParticipantId, snapCId2=challongeP2ParticipantId;
-          // Apply all swaps atomically
-          setP1(snapP2); setP2(snapP1);
-          setD1(snapD2); setD2(snapD1);
-          setR1(snapR2); setR2(snapR1);
-          setUsed1(snapU2); setUsed2(snapU1);
-          setCurrentSides({p1Side:snapS2,p2Side:snapS1});
-          setSideAssign(a=>a?{...a,p1Side:snapS2,p2Side:snapS1}:a);
-          setP1Color(snapC2); setP2Color(snapC1);
-          setPts([snapPts1, snapPts0]);
-          setSets([snapSets1, snapSets0]);
-          setLerStrikes([snapLer1, snapLer0]);
-          setChallongeP1ParticipantId(snapCId2);
-          setChallongeP2ParticipantId(snapCId1);
-          // Push overlay with swapped state explicitly
-          setTimeout(()=>pushOverlay({p1ComboIdx:snapR2,p2ComboIdx:snapR1,pts:[snapPts1,snapPts0],sets:[snapSets1,snapSets0]}),0);
+          // Instantly swap player positions — side labels follow the players
+          const origP1Side=currentSides.p1Side; const origP2Side=currentSides.p2Side;
+          const tmpName=p1; setP1(p2); setP2(tmpName);
+          const tmpD=d1; setD1(d2); setD2(tmpD);
+          const tmpR=r1; setR1(r2); setR2(tmpR);
+          const tmpU=used1; setUsed1(used2); setUsed2(tmpU);
+          setCurrentSides({p1Side:origP2Side,p2Side:origP1Side});
+          setSideAssign(a=>a?{...a,p1Side:origP2Side,p2Side:origP1Side}:a);
         }}
           style={{padding:`${bp(2)}px ${bp(6)}px`,borderRadius:bp(6),border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:bf(9),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginLeft:bp(2)}}>
           ⇄ Swap
@@ -3277,39 +3161,34 @@ return (
 
   {/* ── Score block ── */}
   <div style={{background:"var(--surface)",borderRadius:bp(12),padding:`${bp(8)}px ${bp(12)}px ${bp(6)}px`,marginBottom:bp(5),boxShadow:"0 2px 8px rgba(0,0,0,0.06)",border:"1px solid var(--border)",flexShrink:0}}>
-    {/* Set label centered above score row */}
-    <div style={{textAlign:"center",marginBottom:bp(3)}}>
-      <span style={{fontSize:bf(9),fontWeight:700,color:"var(--text-muted)",whiteSpace:"nowrap"}}>{["First","Second","Third","Fourth","Fifth"][curSet-1]||`Set ${curSet}`} Set</span>
-    </div>
-    {/* Names centered directly above their scores */}
-    <div style={{display:"flex",alignItems:"flex-end",marginBottom:bp(2)}}>
-      <div style={{flex:1,textAlign:"center",minWidth:0,paddingRight:bp(20)}}>
-        <span style={{fontSize:bf(p1&&p1.length>10?13:17),fontWeight:900,color:p1Color,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{p1}</span>
-        {currentSides.p1Side&&<span style={{fontSize:bf(8),fontWeight:700,color:p1Color+"CC",lineHeight:1.2,display:"block"}}>{currentSides.p1Side} Side</span>}
+    <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",marginBottom:bp(6),gap:bp(4)}}>
+      <div style={{display:"flex",flexDirection:"column",minWidth:0}}>
+        <span style={{fontSize:bf(p1&&p1.length>10?15:20),fontWeight:900,color:"#2563EB",fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p1}</span>
+        {currentSides.p1Side&&<span style={{fontSize:bf(9),fontWeight:700,color:"#93C5FD",lineHeight:1.2}}>{currentSides.p1Side} Side</span>}
       </div>
-      <div style={{flex:1,textAlign:"center",minWidth:0,paddingLeft:bp(20)}}>
-        <span style={{fontSize:bf(p2&&p2.length>10?13:17),fontWeight:900,color:p2Color,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{p2}</span>
-        {currentSides.p2Side&&<span style={{fontSize:bf(8),fontWeight:700,color:p2Color+"CC",lineHeight:1.2,display:"block"}}>{currentSides.p2Side} Side</span>}
+      <span style={{fontSize:bf(9),fontWeight:700,color:"var(--text-primary)",whiteSpace:"nowrap",textAlign:"center",flexShrink:0}}>{["First","Second","Third","Fourth","Fifth"][curSet-1]||`Set ${curSet}`} Set</span>
+      <div style={{display:"flex",flexDirection:"column",minWidth:0,alignItems:"flex-end"}}>
+        <span style={{fontSize:bf(p2&&p2.length>10?15:20),fontWeight:900,color:"#DC2626",fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"right"}}>{p2}</span>
+        {currentSides.p2Side&&<span style={{fontSize:bf(9),fontWeight:700,color:"#FCA5A5",lineHeight:1.2,textAlign:"right"}}>{currentSides.p2Side} Side</span>}
       </div>
     </div>
-    {/* Scores centered under names */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{flex:1,textAlign:"center"}}>
-        <span style={{fontSize:bf(52),fontWeight:900,color:p1Color,lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[0]}</span>
+        <span style={{fontSize:bf(52),fontWeight:900,color:"#2563EB",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[0]}</span>
       </div>
       <div style={{textAlign:"center",minWidth:bp(40)}}>
         <span style={{fontSize:bf(22),fontWeight:800,color:"var(--border2)"}}>–</span>
         {config.pts>0&&<p style={{fontSize:bf(8),fontWeight:700,color:"var(--text-primary)",marginTop:bp(2),letterSpacing:1}}>TO {config.pts}</p>}
       </div>
       <div style={{flex:1,textAlign:"center"}}>
-        <span style={{fontSize:bf(52),fontWeight:900,color:p2Color,lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[1]}</span>
+        <span style={{fontSize:bf(52),fontWeight:900,color:"#DC2626",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[1]}</span>
       </div>
     </div>
   </div>
 
   {/* ── Active combo display — updates live as combos are selected ── */}
   <div style={{display:"flex",gap:bp(6),marginBottom:bp(5),flexShrink:0}}>
-    {[{name:p1,deck:d1,ri:r1,cl:p1Color},{name:p2,deck:d2,ri:r2,cl:p2Color}].map((side,si)=>{
+    {[{name:p1,deck:d1,ri:r1,cl:"#2563EB"},{name:p2,deck:d2,ri:r2,cl:"#DC2626"}].map((side,si)=>{
       const c = side.ri !== null ? comboOf(side.deck, side.ri) : null;
       const bladeText = c?.blade || "—";
       const rbText = c?.ratchet && c?.bit ? `${c.ratchet} ${c.bit}` : c ? "—" : "Pick combo ↑";
@@ -3327,10 +3206,10 @@ return (
 
   {/* ── Combo picker row — between combo display and finish buttons ── */}
   <div style={{height:COMBO_ROW_H,display:"flex",gap:bp(6),padding:`0 ${bp(10)}px`,flexShrink:0,marginBottom:bp(4)}}>
-    {[{i:0,cl:p1Color,dk:d1,sel:r1,setSel:setR1,used:used1},
-      {i:1,cl:p2Color,dk:d2,sel:r2,setSel:setR2,used:used2}].map(side=>(
+    {[{i:0,cl:"#2563EB",dk:d1,sel:r1,setSel:setR1,used:used1},
+      {i:1,cl:"#DC2626",dk:d2,sel:r2,setSel:setR2,used:used2}].map(side=>(
       <div key={side.i} style={{flex:1,display:"flex",gap:bp(4)}}>
-        {side.dk.map((c,i)=>{
+        {side.dk.map((combo,i)=>{
           const isUsed = side.used.includes(i);
           const isSel = side.sel===i;
           return (
@@ -3338,8 +3217,8 @@ return (
               onClick={()=>{ if(!isUsed){ const newIdx=isSel?null:i; side.setSel(newIdx); if(side.i===0) pushOverlay({p1ComboIdx:newIdx}); else pushOverlay({p2ComboIdx:newIdx}); } }}
               style={{flex:1,height:"100%",borderRadius:bp(7),position:"relative",border:`2px solid ${isUsed?"var(--border)":isSel?side.cl:"var(--border2)"}`,background:isUsed?"var(--surface2)":isSel?side.cl:"var(--surface)",color:isUsed?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:isUsed?"not-allowed":"pointer",opacity:isUsed?0.4:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:bp(1),padding:`${bp(2)}px`,boxSizing:"border-box"}}>
               {isUsed&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><svg width="18" height="18" viewBox="0 0 40 40" fill="none" stroke="#DC2626" strokeWidth="4" strokeLinecap="round" opacity="0.5"><line x1="8" y1="8" x2="32" y2="32"/><line x1="32" y1="8" x2="8" y2="32"/></svg></div>}
-              <span style={{fontWeight:800,fontSize:bf(10),lineHeight:1.1,textAlign:"center"}}>{c.blade||"—"}</span>
-              <span style={{fontSize:bf(8),fontWeight:600,opacity:0.8,textAlign:"center"}}>{c.ratchet&&c.bit?`${c.ratchet} ${c.bit}`:"—"}</span>
+              <span style={{fontWeight:800,fontSize:bf(10),lineHeight:1.1,textAlign:"center"}}>{combo.blade||"—"}</span>
+              <span style={{fontSize:bf(8),fontWeight:600,opacity:0.8,textAlign:"center"}}>{combo.ratchet&&combo.bit?`${combo.ratchet} ${combo.bit}`:"—"}</span>
             </button>
           );
         })}
@@ -3349,8 +3228,8 @@ return (
 
   {/* ── Two-column scoring (fills remaining space; buttons scale to fit) ── */}
   <div style={{display:"flex",gap:bp(6),flex:1,minHeight:0,padding:`${bp(4)}px ${bp(10)}px 0`}}>
-    {[{i:0,cl:p1Color,name:p1,dk:d1,sel:r1,setSel:setR1,used:used1,pending:pending1},
-      {i:1,cl:p2Color,name:p2,dk:d2,sel:r2,setSel:setR2,used:used2,pending:pending2}].map(side=>{
+    {[{i:0,cl:"#2563EB",name:p1,dk:d1,sel:r1,setSel:setR1,used:used1,pending:pending1},
+      {i:1,cl:"#DC2626",name:p2,dk:d2,sel:r2,setSel:setR2,used:used2,pending:pending2}].map(side=>{
       const canConfirm = side.sel !== null && side.pending;
       return (
         <div key={side.i} style={{flex:1,display:"flex",flexDirection:"column",gap:bp(2),minHeight:0}}>
@@ -3381,8 +3260,21 @@ return (
                 onClick={()=>{
                   if(lerLocked) return;
                   if(!hasStrike){
-                    // LER-STRIKE: warn only — not logged to match history or data
-                    // Undo is handled by setLerStrikes alone (no log entry needed)
+                    const strikeEntry = {
+                      set:curSet,shuffle:shuf,round:log.slice(matchStartIdx).length+1,
+                      scorer:side.i===0?p1:p2,scorerIdx:side.i,judge:judge,penalty:true,
+                      type:"LER-STRIKE",typeName:"LER Strike",points:0,
+                      p1Score:pts[0],p2Score:pts[1],p1Name:p1,p2Name:p2,
+                      p1Combo:{...d1[r1]},p2Combo:{...d2[r2]},
+                      p1ComboIdx:r1,p2ComboIdx:r2,
+                      p1Side:currentSides.p1Side||"",p2Side:currentSides.p2Side||"",
+                      winnerCombo:"",time:new Date().toISOString(),
+                      _pp:[...pts],_ps:[...sets],_cs:curSet,
+                      _u1:[...used1],_u2:[...used2],_sh:shuf,_ls:[...lerStrikes],
+                      _lerStrikeFor:side.i,
+                    };
+                    const newLog=[...log,strikeEntry];
+                    setLog(newLog); sSave(KEYS.matchLog,newLog); setFuture([]);
                     setLerStrikes(s=>{const n=[...s];n[side.i]=1;return n;});
                     pushOverlay({lastFinish:{type:"LER-STRIKE",scorerIdx:side.i}});
                   } else {
@@ -3407,8 +3299,6 @@ return (
       );
     })}
   </div>
-
-
 
   {/* Match history slide-over (kept from BottomBar, triggered by strip button) */}
   <div style={{position:"fixed",top:0,right:0,bottom:0,width:historyOpen?Math.min(340,window.innerWidth-40):0,background:"var(--surface)",boxShadow:historyOpen?"-4px 0 24px rgba(0,0,0,0.25)":"none",transition:"width 0.25s ease",overflow:"hidden",zIndex:100}}>
@@ -3440,12 +3330,12 @@ return (
       )}
       {log.length===0&&<p style={{color:"var(--text-disabled)",fontSize:13,fontStyle:"italic"}}>No battles yet</p>}
       {log.slice().reverse().map((e,i)=>(
-        <div key={i} style={{padding:"10px 12px",borderRadius:10,marginBottom:8,background:colorOf(e.scorer)+"22",borderLeft:`4px solid ${colorOf(e.scorer)}`}}>
+        <div key={i} style={{padding:"10px 12px",borderRadius:10,marginBottom:8,background:e.scorerIdx===0?"#EFF6FF22":"#FEF2F222",borderLeft:`4px solid ${e.scorerIdx===0?"#2563EB":"#DC2626"}`}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-            <span style={{fontWeight:700,color:colorOf(e.scorer),fontSize:14}}>{e.scorer}</span>
+            <span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626",fontSize:14}}>{e.scorer}</span>
             <span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)"}}>R{log.length-i} · Set {e.set}</span>
           </div>
-          <div style={{fontSize:12,color:"var(--text-secondary)",marginBottom:2}}><span style={{fontWeight:700,color:colorOf(e.scorer)}}>{e.typeName}</span> (+{e.points})</div>
+          <div style={{fontSize:12,color:"var(--text-secondary)",marginBottom:2}}><span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626"}}>{e.typeName}</span> (+{e.points})</div>
           <div style={{fontSize:11,color:"var(--text-muted)"}}>Won with: <span style={{fontWeight:600}}>{e.winnerCombo}</span></div>
           <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2,fontWeight:600}}>{e.p1Name} {e.p1Score}–{e.p2Score} {e.p2Name}</div>
         </div>
@@ -3482,9 +3372,6 @@ const [config,setConfig] = useState({pts:4,bo:3,tm:false,tournamentName:””})
 const [parts,setParts] = useState({blades:[],ratchets:[],bits:[]});
 const [players,setPlayers] = useState([]);
 const [libOpen,setLibOpen] = useState(false);
-// Block refresh when a match is actively in progress
-const matchLog = sGet(KEYS.matchLog, []);
-useRefreshGuard(screen === “match”);
 const [judge,setJudge] = useState(””);
 const [sheetsStatus,setSheetsStatus] = useState(null); // null | “success” | “error”
 const [challongeSlug,setChallongeSlug] = useState(””);
@@ -3513,8 +3400,6 @@ const a=document.createElement(“a”); a.href=url; a.download=`ncblast_${meta.
 
 // Send to Google Sheets only — no CSV download
 const handleSendSheets = async (roundLog,meta) => {
-const flagged = meta.flagged || false;
-const comment = meta.comment || “”;
 // Sheet 1: existing summary rows
 const rows = roundLog.map(r=>[
 r.time,
@@ -3572,48 +3457,22 @@ const battleRows = roundLog.map(r=>{
 try {
   const resp = await fetch(SHEETS_URL, {
     method:"POST",
-    body: JSON.stringify({rows, battleRows, flagged, comment}),
+    body: JSON.stringify({rows, battleRows}),
   });
   const result = await resp.json();
   setSheetsStatus(result.status==="ok"?"success":"error");
 } catch(err) {
-  // Queue for retry when back online
-  enqueueSubmission("sheets", {rows, battleRows});
-  setSheetsStatus("queued");
+  setSheetsStatus("error");
 }
 ```
 
 };
 
-// Retry queued submissions when network reconnects
-useEffect(() => {
-const flush = async () => {
-const queue = dequeueAll();
-if (!queue.length) return;
-for (const item of queue) {
-if (item.type === “sheets”) {
-try {
-const resp = await fetch(SHEETS_URL, {
-method: “POST”,
-body: JSON.stringify(item.payload),
-});
-const result = await resp.json();
-if (result.status !== “ok”) enqueueSubmission(item.type, item.payload);
-} catch(_) {
-enqueueSubmission(item.type, item.payload);
-}
-}
-}
-};
-window.addEventListener(“online”, flush);
-return () => window.removeEventListener(“online”, flush);
-}, []);
-
 return (
 <div style={{background:“var(–bg)”,minHeight:“100vh”,fontFamily:”‘Outfit’,sans-serif”}}>
 {libOpen&&<LibraryManager parts={parts} setParts={setParts} onClose={()=>setLibOpen(false)}/>}
 {screen===“format”&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen(“players”)} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark}/>}
-{screen===“players”&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen(“match”)} onBack={()=>setScreen(“format”)} toggleDark={toggleDark} dark={dark} config={config} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}}/>}
+{screen===“players”&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen(“match”)} onBack={()=>setScreen(“format”)} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}}/>}
 {screen===“match”&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen(“players”)} onMainMenu={()=>setScreen(“format”)} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
 </div>
 );
