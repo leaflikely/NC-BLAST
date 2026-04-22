@@ -20,7 +20,7 @@ export function useScale(): number {
       const s = Math.min(wScale, hScale);
       const clamped = Math.max(0.7, Math.min(2.0, s));
       setScale(clamped);
-      document.documentElement.style.fontSize = (16 * clamped) + "px";
+      document.documentElement.style.fontSize = 16 * clamped + "px";
     }
     update();
     // Only re-scale on orientation change — resize fires on keyboard open and causes input blur

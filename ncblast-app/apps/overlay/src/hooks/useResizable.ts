@@ -27,9 +27,16 @@ export interface UseResizableArgs {
 
 export function useResizable(args: UseResizableArgs): void {
   const {
-    cornerRef, rightRef, bottomRef,
-    baseW, baseH, getCardHeight,
-    scaleRef, wRef, hRef, onChange,
+    cornerRef,
+    rightRef,
+    bottomRef,
+    baseW,
+    baseH,
+    getCardHeight,
+    scaleRef,
+    wRef,
+    hRef,
+    onChange,
   } = args;
 
   const modeRef = useRef<ResizeMode | null>(null);
@@ -43,7 +50,7 @@ export function useResizable(args: UseResizableArgs): void {
         y: e.clientY,
         scale: scaleRef.current,
         w: wRef.current || baseW * scaleRef.current,
-        h: hRef.current || (getCardHeight() * scaleRef.current),
+        h: hRef.current || getCardHeight() * scaleRef.current,
       };
       e.preventDefault();
       e.stopPropagation();
@@ -64,8 +71,12 @@ export function useResizable(args: UseResizableArgs): void {
 
       if (mode === "corner") {
         // Uniform scale from corner drag
-        scaleRef.current = Math.max(0.3, Math.min(3.0, startRef.current.scale + dx / 500));
-        wRef.current = 0; hRef.current = 0; // let scale drive size
+        scaleRef.current = Math.max(
+          0.3,
+          Math.min(3.0, startRef.current.scale + dx / 500),
+        );
+        wRef.current = 0;
+        hRef.current = 0; // let scale drive size
       } else if (mode === "right") {
         // Width-only drag
         wRef.current = Math.max(200, startRef.current.w + dx);
@@ -99,5 +110,16 @@ export function useResizable(args: UseResizableArgs): void {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
-  }, [cornerRef, rightRef, bottomRef, baseW, baseH, getCardHeight, onChange, scaleRef, wRef, hRef]);
+  }, [
+    cornerRef,
+    rightRef,
+    bottomRef,
+    baseW,
+    baseH,
+    getCardHeight,
+    onChange,
+    scaleRef,
+    wRef,
+    hRef,
+  ]);
 }

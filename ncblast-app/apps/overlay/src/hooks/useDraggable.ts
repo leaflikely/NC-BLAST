@@ -6,12 +6,15 @@ import { STORAGE_KEYS } from "@ncblast/shared";
  * Persists position to localStorage under `ncblast-pos` so refresh restores it.
  * Exposes a ref-based position so the consumer can render left/top.
  */
-export interface DragPos { x: number; y: number; }
+export interface DragPos {
+  x: number;
+  y: number;
+}
 
 export function useDraggable(
   handleRef: React.RefObject<HTMLElement>,
   initial: DragPos,
-  onChange: (p: DragPos) => void
+  onChange: (p: DragPos) => void,
 ) {
   const posRef = useRef<DragPos>(initial);
   const draggingRef = useRef(false);
@@ -52,7 +55,10 @@ export function useDraggable(
     function endDrag() {
       if (!draggingRef.current) return;
       draggingRef.current = false;
-      localStorage.setItem(STORAGE_KEYS.overlayPos, JSON.stringify(posRef.current));
+      localStorage.setItem(
+        STORAGE_KEYS.overlayPos,
+        JSON.stringify(posRef.current),
+      );
     }
 
     handle.addEventListener("mousedown", startDrag);

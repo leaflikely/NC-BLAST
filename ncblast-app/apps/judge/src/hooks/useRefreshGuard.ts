@@ -11,10 +11,12 @@ export function useRefreshGuard(isActive: boolean): void {
     if (!isActive) return;
     const beforeUnloadHandler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
-      e.returnValue = "You have a match in progress. Are you sure you want to leave?";
+      e.returnValue =
+        "You have a match in progress. Are you sure you want to leave?";
       return e.returnValue;
     };
     window.addEventListener("beforeunload", beforeUnloadHandler);
-    return () => window.removeEventListener("beforeunload", beforeUnloadHandler);
+    return () =>
+      window.removeEventListener("beforeunload", beforeUnloadHandler);
   }, [isActive]);
 }

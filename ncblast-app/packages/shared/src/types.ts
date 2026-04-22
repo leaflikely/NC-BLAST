@@ -34,8 +34,16 @@ export interface OverlayState {
   pointLimit: number;
   tournamentName: string;
   judge: string;
-  p1ActiveCombo: { blade: string | null; ratchet: string | null; bit: string | null } | null;
-  p2ActiveCombo: { blade: string | null; ratchet: string | null; bit: string | null } | null;
+  p1ActiveCombo: {
+    blade: string | null;
+    ratchet: string | null;
+    bit: string | null;
+  } | null;
+  p2ActiveCombo: {
+    blade: string | null;
+    ratchet: string | null;
+    bit: string | null;
+  } | null;
   lastFinish?: { type: string; scorerIdx: 0 | 1 };
 }
 

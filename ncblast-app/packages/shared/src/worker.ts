@@ -3,14 +3,22 @@
  * All `fetch` response bodies are treated as `unknown` and narrowed.
  */
 import { WORKER_BASE_URL, COMBO_CACHE_TTL, SHEETS_URL } from "./constants";
-import type { Combo, OverlayState, CachedTournament, ChallongeMatch } from "./types";
+import type {
+  Combo,
+  OverlayState,
+  CachedTournament,
+  ChallongeMatch,
+} from "./types";
 
 function hasKey<K extends string>(o: unknown, k: K): o is Record<K, unknown> {
   return typeof o === "object" && o !== null && k in o;
 }
 
 /** POST overlay state to Worker KV so the overlay page can long-poll it. */
-export async function pushOverlay(slot: number, state: OverlayState): Promise<void> {
+export async function pushOverlay(
+  slot: number,
+  state: OverlayState,
+): Promise<void> {
   await fetch(`${WORKER_BASE_URL}/overlay/push`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -24,7 +32,10 @@ export interface PollResult {
 }
 
 /** Long-poll the Worker for a state change; returns when etag differs. */
-export async function pollOverlay(slot: number, etag: string | null): Promise<PollResult> {
+export async function pollOverlay(
+  slot: number,
+  etag: string | null,
+): Promise<PollResult> {
   const url = etag
     ? `${WORKER_BASE_URL}/overlay/poll?slot=${slot}&etag=${etag}`
     : `${WORKER_BASE_URL}/overlay/state?slot=${slot}`;
@@ -32,8 +43,10 @@ export async function pollOverlay(slot: number, etag: string | null): Promise<Po
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data: unknown = await res.json();
   const out: PollResult = { etag: null, state: null };
-  if (hasKey(data, "etag") && typeof data.etag === "string") out.etag = data.etag;
-  if (hasKey(data, "state")) out.state = (data.state as OverlayState | null) ?? null;
+  if (hasKey(data, "etag") && typeof data.etag === "string")
+    out.etag = data.etag;
+  if (hasKey(data, "state"))
+    out.state = (data.state as OverlayState | null) ?? null;
   return out;
 }
 
@@ -44,7 +57,9 @@ export async function getOverlayState(slot: number): Promise<PollResult> {
 
 /** GET the cached-tournaments list for the import dropdown. */
 export async function listCachedTournaments(): Promise<CachedTournament[]> {
-  const res = await fetch(`${WORKER_BASE_URL}/list`, { signal: AbortSignal.timeout(8000) });
+  const res = await fetch(`${WORKER_BASE_URL}/list`, {
+    signal: AbortSignal.timeout(8000),
+  });
   if (!res.ok) throw new Error("Failed");
   const data: unknown = await res.json();
   if (hasKey(data, "tournaments") && Array.isArray(data.tournaments)) {
@@ -70,7 +85,11 @@ export async function listMatches(slug: string): Promise<ChallongeMatch[]> {
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data: unknown = await res.json();
-  if (hasKey(data, "errors") && Array.isArray(data.errors) && data.errors.length) {
+  if (
+    hasKey(data, "errors") &&
+    Array.isArray(data.errors) &&
+    data.errors.length
+  ) {
     throw new Error(String(data.errors[0]));
   }
   if (hasKey(data, "matches") && Array.isArray(data.matches)) {
@@ -96,24 +115,36 @@ export async function submitMatch(payload: SubmitMatchPayload): Promise<void> {
   });
   const data: unknown = await res.json();
   if (!res.ok) {
-    const msg = hasKey(data, "errors") && Array.isArray(data.errors) && data.errors.length
-      ? String(data.errors[0])
-      : `HTTP ${res.status}`;
+    const msg =
+      hasKey(data, "errors") && Array.isArray(data.errors) && data.errors.length
+        ? String(data.errors[0])
+        : `HTTP ${res.status}`;
     throw new Error(msg);
   }
-  if (hasKey(data, "errors") && Array.isArray(data.errors) && data.errors.length) {
+  if (
+    hasKey(data, "errors") &&
+    Array.isArray(data.errors) &&
+    data.errors.length
+  ) {
     throw new Error(String(data.errors[0]));
   }
 }
 
 // Push a player's combos to the Worker KV so other devices can load them
-export async function pushCombos(playerName: string, combos: Combo[]): Promise<void> {
+export async function pushCombos(
+  playerName: string,
+  combos: Combo[],
+): Promise<void> {
   if (!playerName || !combos?.length) return;
   try {
     await fetch(`${WORKER_BASE_URL}/combos/push`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ player: playerName, combos, updatedAt: Date.now() }),
+      body: JSON.stringify({
+        player: playerName,
+        combos,
+        updatedAt: Date.now(),
+      }),
       signal: AbortSignal.timeout(5000),
     });
   } catch {
@@ -127,18 +158,21 @@ export async function getCombos(playerName: string): Promise<Combo[]> {
   try {
     const res = await fetch(
       `${WORKER_BASE_URL}/combos/get?player=${encodeURIComponent(playerName)}`,
-      { signal: AbortSignal.timeout(5000) }
+      { signal: AbortSignal.timeout(5000) },
     );
     if (!res.ok) return [];
     const data: unknown = await res.json();
     if (!hasKey(data, "combos") || !Array.isArray(data.combos)) return [];
     // Respect TTL client-side too
-    if (hasKey(data, "updatedAt") && typeof data.updatedAt === "number" &&
-        Date.now() - data.updatedAt > COMBO_CACHE_TTL) {
+    if (
+      hasKey(data, "updatedAt") &&
+      typeof data.updatedAt === "number" &&
+      Date.now() - data.updatedAt > COMBO_CACHE_TTL
+    ) {
       return [];
     }
     return (data.combos as Combo[]).filter(
-      (c) => c?.blade && c?.ratchet && c?.bit
+      (c) => c?.blade && c?.ratchet && c?.bit,
     );
   } catch {
     return [];
@@ -153,7 +187,9 @@ export interface SheetsPayload {
   comment?: string;
 }
 
-export async function submitSheets(payload: SheetsPayload): Promise<"ok" | "error"> {
+export async function submitSheets(
+  payload: SheetsPayload,
+): Promise<"ok" | "error"> {
   const resp = await fetch(SHEETS_URL, {
     method: "POST",
     body: JSON.stringify(payload),

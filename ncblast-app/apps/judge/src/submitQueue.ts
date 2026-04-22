@@ -23,21 +23,31 @@ function readRaw(): SubmissionQueueItem[] {
 function writeRaw(items: SubmissionQueueItem[]): void {
   try {
     localStorage.setItem(STORAGE_KEYS.submitQueue, JSON.stringify(items));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Backfill ids on any legacy items (written by the old catch-only queue). */
-function normalize(items: SubmissionQueueItem[]): { items: SubmissionQueueItem[]; changed: boolean } {
+function normalize(items: SubmissionQueueItem[]): {
+  items: SubmissionQueueItem[];
+  changed: boolean;
+} {
   let changed = false;
-  const out = items.map(it => {
-    if (!it.id) { changed = true; return { ...it, id: genId() }; }
+  const out = items.map((it) => {
+    if (!it.id) {
+      changed = true;
+      return { ...it, id: genId() };
+    }
     return it;
   });
   return { items: out, changed };
 }
 
 /** Adds an item to the queue and returns its id. */
-export function enqueue(item: Omit<SubmissionQueueItem, "id" | "queuedAt"> & { queuedAt?: number }): string {
+export function enqueue(
+  item: Omit<SubmissionQueueItem, "id" | "queuedAt"> & { queuedAt?: number },
+): string {
   const id = genId();
   const full: SubmissionQueueItem = {
     id,
@@ -55,7 +65,7 @@ export function enqueue(item: Omit<SubmissionQueueItem, "id" | "queuedAt"> & { q
 /** Removes a single item by id (no-op if already gone). */
 export function remove(id: string): void {
   const { items } = normalize(readRaw());
-  const filtered = items.filter(it => it.id !== id);
+  const filtered = items.filter((it) => it.id !== id);
   writeRaw(filtered);
 }
 

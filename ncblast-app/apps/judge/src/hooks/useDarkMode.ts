@@ -7,12 +7,20 @@ import { STORAGE_KEYS } from "@ncblast/shared";
  */
 export function useDarkMode(): [boolean, () => void] {
   const [dark, setDark] = useState<boolean>(() => {
-    try { return localStorage.getItem(STORAGE_KEYS.dark) === "1"; } catch { return false; }
+    try {
+      return localStorage.getItem(STORAGE_KEYS.dark) === "1";
+    } catch {
+      return false;
+    }
   });
   const toggle = useCallback(() => {
     setDark((d) => {
       const next = !d;
-      try { localStorage.setItem(STORAGE_KEYS.dark, next ? "1" : "0"); } catch { /* ignore */ }
+      try {
+        localStorage.setItem(STORAGE_KEYS.dark, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
       return next;
     });
   }, []);

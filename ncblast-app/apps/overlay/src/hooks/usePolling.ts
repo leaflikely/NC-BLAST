@@ -9,7 +9,7 @@ import { pollOverlay } from "@ncblast/shared";
  */
 export function usePolling(
   slot: number,
-  onState: (state: OverlayState | null, prev: OverlayState | null) => void
+  onState: (state: OverlayState | null, prev: OverlayState | null) => void,
 ): { reset: () => void } {
   const lastEtagRef = useRef<string | null>(null);
   const lastStateRef = useRef<OverlayState | null>(null);

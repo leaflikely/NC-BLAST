@@ -1,7 +1,11 @@
 import type { Combo, Finish } from "@ncblast/shared";
 export { FINISH, PENALTY } from "@ncblast/shared";
 
-export const emptyCombo = (): Combo => ({ blade: null, ratchet: null, bit: null });
+export const emptyCombo = (): Combo => ({
+  blade: null,
+  ratchet: null,
+  bit: null,
+});
 
 export const comboStr = (c: Combo | null | undefined): string =>
   c?.blade && c?.ratchet && c?.bit ? `${c.blade} ${c.ratchet} ${c.bit}` : "—";
@@ -11,7 +15,7 @@ export const comboReady = (c: Combo | null | undefined): boolean =>
 
 /** Truncate display names longer than 15 chars to 12 + ellipsis */
 export const tn = (name: string | null | undefined): string =>
-  name && name.length > 15 ? name.slice(0, 12) + "…" : (name || "");
+  name && name.length > 15 ? name.slice(0, 12) + "…" : name || "";
 
 /**
  * Split a part name into display lines for buttons.

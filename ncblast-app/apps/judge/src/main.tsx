@@ -9,6 +9,6 @@ if (rootEl) {
   ReactDOM.createRoot(rootEl).render(
     <ErrorBoundary variant="judge">
       <BeyJudgeApp />
-    </ErrorBoundary>
+    </ErrorBoundary>,
   );
 }
