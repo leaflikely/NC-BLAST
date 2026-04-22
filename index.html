@@ -3181,13 +3181,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     <div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",background:"var(--bg-solid)",boxSizing:"border-box",overflow:"hidden"}}>
 
       {/* ── Top strip: Back · pills · mini action bar · Swap ── */}
-      <div style={{height:STRIP_H,display:"flex",alignItems:"center",gap:bp(5),padding:`0 ${bp(10)}px`,flexShrink:0,borderBottom:"1px solid var(--border)"}}>
-        <button style={{...S.back,marginBottom:0,flexShrink:0,fontSize:bf(12)}} onClick={goBack}>{IC.back}</button>
-        {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9)}}>Set {curSet}/{config.bo}</span>}
-        <span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9)}}>B{battlesInThisSet}</span>
-        {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9)}}>{sets[0]}–{sets[1]}</span>}
-        {judge&&<span style={{...S.pill,margin:0,color:"#B45309",background:"#FEF3C7",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"22vw",minWidth:0,flexShrink:1}}>⚖️ {tn(judge)}</span>}
-        {config.tm&&<span style={{...S.pill,margin:0,color:"#fff",background:"#7C3AED",flexShrink:0,fontSize:bf(8)}}>🏆 TM</span>}
+      <div style={{height:STRIP_H,display:"flex",alignItems:"center",gap:bp(5),padding:`0 ${bp(10)}px`,flexShrink:0,borderBottom:`1px solid ${config.tm?"#6D28D9":"var(--border)"}`,background:config.tm?"#4C1D95":"var(--surface)"}}>
+        <button style={{...S.back,marginBottom:0,flexShrink:0,fontSize:bf(12),color:config.tm?"#E9D5FF":"var(--text-secondary)"}} onClick={goBack}>{IC.back}</button>
+        {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),background:config.tm?"rgba(255,255,255,0.15)":"var(--pill-bg)",color:config.tm?"#E9D5FF":"var(--text-secondary)",border:config.tm?"1px solid rgba(255,255,255,0.2)":"1px solid var(--border2)"}}>Set {curSet}/{config.bo}</span>}
+        <span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),background:config.tm?"rgba(255,255,255,0.15)":"var(--pill-bg)",color:config.tm?"#E9D5FF":"var(--text-secondary)",border:config.tm?"1px solid rgba(255,255,255,0.2)":"1px solid var(--border2)"}}>B{battlesInThisSet}</span>
+        {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),background:config.tm?"rgba(255,255,255,0.15)":"var(--pill-bg)",color:config.tm?"#E9D5FF":"var(--text-secondary)",border:config.tm?"1px solid rgba(255,255,255,0.2)":"1px solid var(--border2)"}}>{sets[0]}–{sets[1]}</span>}
         {/* Mini action bar — history, undo, redo, dark, settings */}
         <div style={{display:"flex",alignItems:"center",gap:bp(2),marginLeft:"auto",flexShrink:0}}>
           {/* Stream overlay: cycle button + connect button */}
@@ -3248,17 +3246,22 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
       {/* ── Score block ── */}
       <div style={{background:"var(--surface)",borderRadius:bp(12),padding:`${bp(8)}px ${bp(12)}px ${bp(6)}px`,marginBottom:bp(5),boxShadow:"0 2px 8px rgba(0,0,0,0.06)",border:"1px solid var(--border)",flexShrink:0}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",marginBottom:bp(6),gap:bp(4)}}>
-          <div style={{display:"flex",flexDirection:"column",minWidth:0}}>
-            <span style={{fontSize:bf(p1&&p1.length>10?15:20),fontWeight:900,color:p1Color,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p1}</span>
-            {currentSides.p1Side&&<span style={{fontSize:bf(9),fontWeight:700,color:p1Color+"CC",lineHeight:1.2}}>{currentSides.p1Side} Side</span>}
+        {/* Set label centered above score row */}
+        <div style={{textAlign:"center",marginBottom:bp(3)}}>
+          <span style={{fontSize:bf(9),fontWeight:700,color:"var(--text-muted)",whiteSpace:"nowrap"}}>{["First","Second","Third","Fourth","Fifth"][curSet-1]||`Set ${curSet}`} Set</span>
+        </div>
+        {/* Names centered directly above their scores */}
+        <div style={{display:"flex",alignItems:"flex-end",marginBottom:bp(2)}}>
+          <div style={{flex:1,textAlign:"center",minWidth:0,paddingRight:bp(20)}}>
+            <span style={{fontSize:bf(p1&&p1.length>10?13:17),fontWeight:900,color:p1Color,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{p1}</span>
+            {currentSides.p1Side&&<span style={{fontSize:bf(8),fontWeight:700,color:p1Color+"CC",lineHeight:1.2,display:"block"}}>{currentSides.p1Side} Side</span>}
           </div>
-          <span style={{fontSize:bf(9),fontWeight:700,color:"var(--text-primary)",whiteSpace:"nowrap",textAlign:"center",flexShrink:0}}>{["First","Second","Third","Fourth","Fifth"][curSet-1]||`Set ${curSet}`} Set</span>
-          <div style={{display:"flex",flexDirection:"column",minWidth:0,alignItems:"flex-end"}}>
-            <span style={{fontSize:bf(p2&&p2.length>10?15:20),fontWeight:900,color:p2Color,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"right"}}>{p2}</span>
-            {currentSides.p2Side&&<span style={{fontSize:bf(9),fontWeight:700,color:p2Color+"CC",lineHeight:1.2,textAlign:"right"}}>{currentSides.p2Side} Side</span>}
+          <div style={{flex:1,textAlign:"center",minWidth:0,paddingLeft:bp(20)}}>
+            <span style={{fontSize:bf(p2&&p2.length>10?13:17),fontWeight:900,color:p2Color,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{p2}</span>
+            {currentSides.p2Side&&<span style={{fontSize:bf(8),fontWeight:700,color:p2Color+"CC",lineHeight:1.2,display:"block"}}>{currentSides.p2Side} Side</span>}
           </div>
         </div>
+        {/* Scores centered under names */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{flex:1,textAlign:"center"}}>
             <span style={{fontSize:bf(52),fontWeight:900,color:p1Color,lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[0]}</span>
