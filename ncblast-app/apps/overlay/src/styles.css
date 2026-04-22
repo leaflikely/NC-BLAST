@@ -1,0 +1,390 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 1920px; height: 1080px;
+  background: transparent;
+  overflow: hidden;
+  font-family: 'Barlow', sans-serif;
+}
+
+/* ── CSS VARIABLES ─────────────────────────── */
+:root {
+  --p1-hue: 210; /* blue */
+  --p2-hue: 15;  /* orange */
+  --p1-color: hsl(var(--p1-hue), 90%, 58%);
+  --p2-color: hsl(var(--p2-hue), 90%, 58%);
+  --p1-glow: hsl(var(--p1-hue), 90%, 58%);
+  --p2-glow: hsl(var(--p2-hue), 90%, 58%);
+  --gold: #FFD700;
+  --dark: #080C14;
+  --panel: rgba(8, 12, 22, 0.92);
+  --border-bright: rgba(255,255,255,0.12);
+  --text: #F0F4FF;
+  --muted: rgba(240,244,255,0.5);
+  --widget-w: 860px;
+}
+
+/* ── DRAGGABLE CONTAINER ───────────────────── */
+#widget {
+  position: absolute;
+  top: 880px; left: 30px;
+  width: var(--widget-w);
+  cursor: move;
+  user-select: none;
+
+}
+
+/* ── RESIZE HANDLES ────────────────────────── */
+.resize-handle {
+  position: absolute;
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+#widget:hover .resize-handle { opacity: 1; }
+
+/* Corner — scale uniformly */
+#rh-corner {
+  bottom: -5px; right: -5px;
+  width: 16px; height: 16px;
+  cursor: se-resize;
+  background: rgba(255,255,255,0.15);
+  border-radius: 3px;
+}
+#rh-corner::after {
+  content: '';
+  position: absolute;
+  bottom: 3px; right: 3px;
+  width: 8px; height: 8px;
+  border-right: 2px solid rgba(255,255,255,0.6);
+  border-bottom: 2px solid rgba(255,255,255,0.6);
+}
+/* Right edge — stretch width only */
+#rh-right {
+  top: 20%; bottom: 20%; right: -5px;
+  width: 10px;
+  cursor: ew-resize;
+  background: rgba(255,255,255,0.08);
+  border-radius: 0 4px 4px 0;
+}
+/* Bottom edge — stretch height only */
+#rh-bottom {
+  left: 20%; right: 20%; bottom: -5px;
+  height: 10px;
+  cursor: ns-resize;
+  background: rgba(255,255,255,0.08);
+  border-radius: 0 0 4px 4px;
+}
+
+/* ── MAIN CARD ─────────────────────────────── */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  overflow: hidden;
+
+  position: relative;
+}
+
+/* Animated gradient border on top */
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg,
+    var(--p1-color) 0%,
+    transparent 45%,
+    transparent 55%,
+    var(--p2-color) 100%
+  );
+  z-index: 10;
+}
+
+/* ── TOURNAMENT BAR ────────────────────────── */
+.tourney-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  padding: 5px 12px;
+  background: rgba(255,255,255,0.04);
+  border-bottom: 1px solid var(--border-bright);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  gap: 8px;
+}
+.tourney-bar .brand {
+  color: var(--gold);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.tourney-bar .tourney-center {
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(240,244,255,0.8);
+  font-size: 13px;
+}
+.tourney-bar .judge-label {
+  text-align: right;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tourney-bar .judge-label strong {
+  color: rgba(240,244,255,0.9);
+  font-weight: 700;
+}
+
+/* ── SCOREBOARD ROW ────────────────────────── */
+.scoreboard {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 10px 14px 8px;
+  gap: 10px;
+}
+
+/* Player block */
+.player {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.player.right {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.player-name {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: clamp(22px, 3.2vw, 34px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+.p1 .player-name { color: var(--p1-color); text-shadow: 0 0 20px var(--p1-glow); }
+.p2 .player-name { color: var(--p2-color); text-shadow: 0 0 20px var(--p2-glow); }
+
+.player-side {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Combo display under name */
+.combo-display {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.player.right .combo-display { align-items: flex-end; }
+
+.combo-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.combo-parts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.player.right .combo-parts { justify-content: flex-end; }
+
+.combo-part {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+.p1 .combo-part {
+  background: rgba(59, 130, 246, 0.22);
+  color: #93C5FD;
+  border: 1px solid rgba(147,197,253,0.45);
+  text-shadow: 0 0 10px rgba(147,197,253,0.5);
+}
+.p2 .combo-part {
+  background: rgba(249, 115, 22, 0.22);
+  color: #FCA97A;
+  border: 1px solid rgba(252,169,122,0.45);
+  text-shadow: 0 0 10px rgba(252,169,122,0.5);
+}
+.combo-dot {
+  color: rgba(240,244,255,0.35);
+  font-size: 10px;
+}
+
+/* ── CENTER SCORE ──────────────────────────── */
+.center-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.pts-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pts-num {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: clamp(40px, 6vw, 64px);
+  font-weight: 900;
+  line-height: 1;
+  min-width: 44px;
+  text-align: center;
+  transition: color 0.1s;
+}
+.pts-num.p1-pts { color: var(--p1-color); text-shadow: 0 0 20px var(--p1-glow); }
+.pts-num.p2-pts { color: var(--p2-color); text-shadow: 0 0 20px var(--p2-glow); }
+.pts-num.pop { color: #fff; }
+
+.pts-divider {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 28px;
+  font-weight: 400;
+  color: var(--muted);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+/* Point limit label */
+.pts-limit {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* Set win dots */
+.sets-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.set-dots {
+  display: flex;
+  gap: 4px;
+}
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-bright);
+  transition: background 0.1s;
+}
+.dot.won { transform: scale(1.15); }
+.dot.p1-dot.won { background: var(--p1-color); border-color: var(--p1-color); box-shadow: 0 0 8px var(--p1-glow); }
+.dot.p2-dot.won { background: var(--p2-color); border-color: var(--p2-color); box-shadow: 0 0 8px var(--p2-glow); }
+.dot.empty { background: transparent; }
+.sets-label {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* ── FINISH FLASH BANNER ───────────────────── */
+#finish-flash {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 50;
+  border-radius: 6px;
+  overflow: hidden;
+}
+#finish-flash.visible { display: flex; }
+#finish-flash.p1-win { background: rgba(59,130,246,0.25); }
+#finish-flash.p2-win { background: rgba(249,115,22,0.25); }
+
+.flash-type {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 52px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.flash-winner {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.7);
+  margin-top: 4px;
+}
+
+
+
+/* ── OFFLINE STATE ─────────────────────────── */
+#offline-msg {
+  padding: 18px 24px;
+  text-align: center;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: none;
+}
+#offline-msg.visible { display: block; }
+
+/* ── DRAG HANDLE INDICATOR (top of card) ───── */
+.drag-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 3px 0 1px;
+  gap: 3px;
+  cursor: move;
+  opacity: 0.2;
+  transition: opacity 0.2s;
+}
+.drag-indicator:hover { opacity: 0.5; }
+.drag-indicator span {
+  width: 24px; height: 2px;
+  background: var(--text);
+  border-radius: 2px;
+}
+
+/* ── SCALE WRAPPER ─────────────────────────── */
+#scale-wrap {
+  transform-origin: top left;
+}
