@@ -1,0 +1,18 @@
+{
+  "name": "ncblast-app",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev:judge": "npm run dev --workspace=@ncblast/judge",
+    "dev:overlay": "npm run dev --workspace=@ncblast/overlay",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}
