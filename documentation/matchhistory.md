@@ -25,6 +25,7 @@ erDiagram
     Battles {
         int BattleId PK
         int MatchId FK
+        datetime TimeStamp
         int MatchSet
         int SetBattle
         int Player1Side
