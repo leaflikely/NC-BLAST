@@ -8,5 +8,13 @@
 	"observability": {
 		"enabled": true
 	},
-	"upload_source_maps": true
+	"upload_source_maps": true,
+	"d1_databases": [
+		{
+			"binding": "nc_blast_db",
+			"database_name": "nc_blast_db",
+			"database_id": "37f44087-5420-4bbd-aef5-f443500fe174",
+			"remote": true
+		}
+	]
 }
