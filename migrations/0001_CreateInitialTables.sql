@@ -1,0 +1,40 @@
+-- Migration number: 0001 	 2026-04-23T04:46:06.000Z
+CREATE TABLE IF NOT EXISTS Tournaments (
+    TournamentId INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    TimeStamp DATETIME NOT NULL,
+    TournamentName TEXT NOT NULL,
+    TournamentSlug TEXT NOT NULL,
+    TournamentType INTEGER NOT NULL,
+    Host TEXT NOT NULL,
+    Location TEXT NOT NULL,
+    StartDate DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Matches (
+    MatchId INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    TournamentId INTEGER NOT NULL,
+    TimeStamp DATETIME NOT NULL,
+    MatchRound INTEGER NOT NULL,
+    Judge TEXT NOT NULL,
+    Player1 TEXT NOT NULL,
+    Player2 TEXT NOT NULL,
+    Player1SetsWon INTEGER NOT NULL,
+    Player2SetsWon INTEGER NOT NULL,
+    MatchWinner INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Battles (
+    BattleId INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    MatchId INTEGER NOT NULL,
+    TimeStamp DATETIME NOT NULL,
+    MatchSet INTEGER NOT NULL,
+    SetBattle INTEGER NOT NULL,
+    Player1Side TEXT NOT NULL,
+    Player1Combo TEXT NOT NULL,
+    Player2Combo TEXT NOT NULL,
+    FinishType INTEGER NOT NULL,
+    Penalty INTEGER NOT NULL,
+    P1Score INTEGER NOT NULL,
+    P2Score INTEGER NOT NULL,
+    BattleWinner INTEGER NOT NULL
+);
