@@ -10,10 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  html{font-size:16px;overscroll-behavior:none;}
-  /* Blocks pull-to-refresh on mobile (Chrome/Android, Safari iOS 16+).
-     The page will still scroll internally — it just won't bounce or trigger a reload
-     when the user swipes down from the very top. */
+  html{font-size:16px}
   :root{
     --bg:linear-gradient(180deg,#F8FAFC 0%,#EFF6FF 100%);
     --bg-solid:#F8FAFC;
@@ -48,7 +45,7 @@
     --pill-bg:#334155;
     --input-bg:#1E293B;
   }
-  body{background:var(--bg);min-height:100vh;font-family:'Outfit',sans-serif;color:var(--text-primary);overscroll-behavior:none;}
+  body{background:var(--bg);min-height:100vh;font-family:'Outfit',sans-serif;color:var(--text-primary)}
   input,textarea{color:var(--text-primary);background:var(--input-bg);}
   input::placeholder{color:var(--text-faint);}
   /* Bottom bar always uses surface color */
@@ -1753,23 +1750,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   },[]);
   // Portrait vs landscape for combo button layout — recomputed on each render via sc trigger
   const comboAreaRef = useRef(null); // kept for legacy ref safety, not used for measurement
-
-  // ── beforeunload: warn desktop users before they accidentally refresh/close
-  //    while a match is in progress (battles logged but match not yet finished/submitted).
-  //    On mobile the pull-to-refresh gesture is blocked via CSS overscroll-behavior:none,
-  //    so this hook primarily fires for keyboard shortcuts (F5, Cmd+R) and browser chrome.
-  useEffect(()=>{
-    const handler = (e) => {
-      const battlesLogged = log.slice(matchStartIdx).filter(en=>en.type!=="LER-STRIKE").length;
-      const matchActive = phase==="battle" && battlesLogged > 0;
-      if(!matchActive) return; // no data at risk — let the refresh through silently
-      // This triggers the browser's built-in "Leave site?" confirmation dialog.
-      e.preventDefault();
-      e.returnValue = ""; // required for Chrome/Edge — the string shown is browser-controlled
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [log, matchStartIdx, phase]);
 
   // Auto-fetch active matches if we default to active tab
   useEffect(()=>{ if(challongeSlug) fetchActiveMatches(); },[]);
@@ -3569,7 +3549,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   <ScaledBtn key="ler"
                     disabled={lerLocked}
                     onClick={lerClick}
-                    baseStyle={{flex:1,minHeight:0,width:"100%",padding:`0 ${bp(4)}px`,borderRadius:bp(7),border:hasStrike?`2px solid #F59E0B`:"1px dashed var(--border2)",background:hasStrike?"#FEF9C3":"var(--surface2)",color:lerLocked?"var(--text-disabled)":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:lerLocked?"not-allowed":"pointer",boxSizing:"border-box",opacity:lerLocked?0.5:1,display:"flex",alignItems:"center",justifyContent:"space-between",overflow:"hidden"}}
+                    baseStyle={{flex:1,minHeight:0,width:"100%",padding:`0 ${bp(4)}px`,borderRadius:bp(7),border:hasStrike?`2px solid #F59E0B`:"2px dashed var(--border2)",background:hasStrike?"#FEF9C3":"var(--surface2)",color:lerLocked?"var(--text-disabled)":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:lerLocked?"not-allowed":"pointer",boxSizing:"border-box",opacity:lerLocked?0.5:1,display:"flex",alignItems:"center",justifyContent:"space-between",overflow:"hidden"}}
                     renderContent={frac=>(
                       <>
                         <div style={{flex:1,minWidth:0,height:"100%",display:"flex",alignItems:"center",overflow:"hidden"}}>
@@ -3584,16 +3564,27 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 );
               })()}
 
-              {/* Confirm button — flex:1, text scales with height */}
+              {/* Confirm button — flex:1, text scales with height.
+                  All label variants are rendered as absolute layers so the button
+                  never changes size when the visible label switches. */}
               <ScaledBtn key="confirm"
                 disabled={layoutEditMode||!canConfirm}
                 onClick={()=>{ if(!layoutEditMode&&canConfirm){ doScore(side.i,side.pending); setPendingFinish(null); } }}
-                baseStyle={{flex:1,minHeight:0,width:"100%",borderRadius:bp(7),border:"none",background:canConfirm?side.cl:"var(--surface3)",color:canConfirm?"#fff":"var(--text-disabled)",fontFamily:"'Outfit',sans-serif",cursor:canConfirm?"pointer":"not-allowed",boxSizing:"border-box",transition:"background 0.15s",display:"flex",alignItems:"center",justifyContent:"center",padding:`0 ${bp(4)}px`,overflow:"hidden"}}
+                baseStyle={{flex:1,minHeight:0,width:"100%",borderRadius:bp(7),border:"2px solid transparent",background:canConfirm?side.cl:"var(--surface3)",color:canConfirm?"#fff":"var(--text-disabled)",fontFamily:"'Outfit',sans-serif",cursor:canConfirm?"pointer":"not-allowed",boxSizing:"border-box",transition:"background 0.15s",display:"flex",alignItems:"center",justifyContent:"center",padding:`0 ${bp(4)}px`,overflow:"hidden",position:"relative"}}
                 renderContent={frac=>(
-                  <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
-                    <FitText ratio={0.40} style={{fontWeight:900}}>
-                      {canConfirm ? `Confirm ${side.pending.name} →` : side.pending ? "Pick combo ↑" : side.sel!==null ? "Pick finish ↑" : "Pick combo ↑"}
-                    </FitText>
+                  <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+                    {/* Inactive placeholder — always occupies space, invisible when confirm is active */}
+                    <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:canConfirm?0:1,transition:"opacity 0.1s",pointerEvents:"none"}}>
+                      <FitText ratio={0.40} style={{fontWeight:900}}>
+                        {side.pending ? "Pick combo ↑" : side.sel!==null ? "Pick finish ↑" : "Pick combo ↑"}
+                      </FitText>
+                    </div>
+                    {/* Active confirm label — sits on top, invisible when no finish is pending */}
+                    <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:canConfirm?1:0,transition:"opacity 0.1s",pointerEvents:"none"}}>
+                      <FitText ratio={0.40} style={{fontWeight:900}}>
+                        {`Confirm ${side.pending?.name||""} →`}
+                      </FitText>
+                    </div>
                   </div>
                 )}
               />
