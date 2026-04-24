@@ -10,7 +10,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  html{font-size:16px}
+  html{font-size:16px;overscroll-behavior:none;}
+  /* Blocks pull-to-refresh on mobile — page still scrolls normally, just won't bounce/reload on swipe-down */
   :root{
     --bg:linear-gradient(180deg,#F8FAFC 0%,#EFF6FF 100%);
     --bg-solid:#F8FAFC;
@@ -45,7 +46,7 @@
     --pill-bg:#334155;
     --input-bg:#1E293B;
   }
-  body{background:var(--bg);min-height:100vh;font-family:'Outfit',sans-serif;color:var(--text-primary)}
+  body{background:var(--bg);min-height:100vh;font-family:'Outfit',sans-serif;color:var(--text-primary);overscroll-behavior:none;}
   input,textarea{color:var(--text-primary);background:var(--input-bg);}
   input::placeholder{color:var(--text-faint);}
   /* Bottom bar always uses surface color */
@@ -1750,6 +1751,20 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   },[]);
   // Portrait vs landscape for combo button layout — recomputed on each render via sc trigger
   const comboAreaRef = useRef(null); // kept for legacy ref safety, not used for measurement
+
+  // ── beforeunload: warn desktop users before they accidentally refresh/close
+  //    while a match is in progress. On mobile, pull-to-refresh is blocked via
+  //    CSS overscroll-behavior:none, so this mainly covers F5/Cmd+R/browser chrome.
+  useEffect(()=>{
+    const handler = (e) => {
+      const battlesLogged = log.slice(matchStartIdx).filter(en=>en.type!=="LER-STRIKE").length;
+      if(phase!=="battle" || battlesLogged === 0) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [log, matchStartIdx, phase]);
 
   // Auto-fetch active matches if we default to active tab
   useEffect(()=>{ if(challongeSlug) fetchActiveMatches(); },[]);
@@ -3553,7 +3568,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     renderContent={frac=>(
                       <>
                         <div style={{flex:1,minWidth:0,height:"100%",display:"flex",alignItems:"center",overflow:"hidden"}}>
-                          <FitText ratio={0.35} style={{fontWeight:700,color:hasStrike?"#B45309":"inherit",textAlign:"left",justifyContent:"flex-start"}}>{hasStrike?"⚠️ Strike — tap again":"Launch Error"}</FitText>
+                          <FitText ratio={0.35} style={{fontWeight:700,color:hasStrike?"#B45309":"inherit",textAlign:"left",justifyContent:"flex-start"}}>Launch Error</FitText>
                         </div>
                         <div style={{flexShrink:0,height:"60%",minWidth:"20%",marginLeft:Math.round(bp(2)*frac),background:hasStrike?"#F59E0B":"var(--surface3)",borderRadius:bp(3),display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
                           <FitText ratio={0.55} style={{color:"#fff",fontWeight:800}}>LER</FitText>
@@ -3564,30 +3579,30 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 );
               })()}
 
-              {/* Confirm button — flex:1, text scales with height.
-                  All label variants are rendered as absolute layers so the button
-                  never changes size when the visible label switches. */}
-              <ScaledBtn key="confirm"
-                disabled={layoutEditMode||!canConfirm}
-                onClick={()=>{ if(!layoutEditMode&&canConfirm){ doScore(side.i,side.pending); setPendingFinish(null); } }}
-                baseStyle={{flex:1,minHeight:0,width:"100%",borderRadius:bp(7),border:"2px solid transparent",background:canConfirm?side.cl:"var(--surface3)",color:canConfirm?"#fff":"var(--text-disabled)",fontFamily:"'Outfit',sans-serif",cursor:canConfirm?"pointer":"not-allowed",boxSizing:"border-box",transition:"background 0.15s",display:"flex",alignItems:"center",justifyContent:"center",padding:`0 ${bp(4)}px`,overflow:"hidden",position:"relative"}}
-                renderContent={frac=>(
-                  <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
-                    {/* Inactive placeholder — always occupies space, invisible when confirm is active */}
-                    <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:canConfirm?0:1,transition:"opacity 0.1s",pointerEvents:"none"}}>
-                      <FitText ratio={0.40} style={{fontWeight:900}}>
-                        {side.pending ? "Pick combo ↑" : side.sel!==null ? "Pick finish ↑" : "Pick combo ↑"}
-                      </FitText>
-                    </div>
-                    {/* Active confirm label — sits on top, invisible when no finish is pending */}
-                    <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:canConfirm?1:0,transition:"opacity 0.1s",pointerEvents:"none"}}>
-                      <FitText ratio={0.40} style={{fontWeight:900}}>
-                        {`Confirm ${side.pending?.name||""} →`}
-                      </FitText>
-                    </div>
-                  </div>
-                )}
-              />
+              {/* Confirm button — layered absolute text so button never resizes when label changes.
+                  Label strips trailing " Finish" to keep text short: "Confirm Burst" not "Confirm Burst Finish" */}
+              {(()=>{
+                const confirmLabel = canConfirm
+                  ? `Confirm ${(side.pending.name||"").replace(/ Finish$/,"").replace(/ Error$/,"")}`
+                  : side.sel!==null ? "Pick finish ↑" : "Pick combo ↑";
+                return (
+                  <ScaledBtn key="confirm"
+                    disabled={layoutEditMode||!canConfirm}
+                    onClick={()=>{ if(!layoutEditMode&&canConfirm){ doScore(side.i,side.pending); setPendingFinish(null); } }}
+                    baseStyle={{flex:1,minHeight:0,width:"100%",borderRadius:bp(7),border:"2px solid transparent",background:canConfirm?side.cl:"var(--surface3)",color:canConfirm?"#fff":"var(--text-disabled)",fontFamily:"'Outfit',sans-serif",cursor:canConfirm?"pointer":"not-allowed",boxSizing:"border-box",transition:"background 0.15s",overflow:"hidden",position:"relative"}}
+                    renderContent={frac=>(
+                      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+                        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:canConfirm?0:1,pointerEvents:"none"}}>
+                          <FitText ratio={0.40} style={{fontWeight:900}}>{side.sel!==null?"Pick finish ↑":"Pick combo ↑"}</FitText>
+                        </div>
+                        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:canConfirm?1:0,pointerEvents:"none"}}>
+                          <FitText ratio={0.40} style={{fontWeight:900}}>{`Confirm ${(side.pending?.name||"").replace(/ Finish$/,"").replace(/ Error$/,"")}`}</FitText>
+                        </div>
+                      </div>
+                    )}
+                  />
+                );
+              })()}
             </div>
           );
         })}
