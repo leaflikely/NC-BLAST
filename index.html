@@ -1717,6 +1717,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [overlaySlot,setOverlaySlot] = useState(()=>{ try{return parseInt(localStorage.getItem(KEYS.overlaySlot)||"0",10)||0;}catch{return 0;} }); // 0 = disabled, 1-4 = slot number
   const [workerCombos,setWorkerCombos] = useState({}); // { playerName: [combo,...] } loaded from Worker KV
   const [overlayStatus,setOverlayStatus] = useState(null); // null | "ok" | "error"
+  // swapped: purely a display-order flip. When true, p2 is shown on the left (blue side) and p1 on right (red side).
+  // sets[], pts[], setScores[] always use canonical index 0=p1 1=p2 regardless of swap.
+  const [swapped,setSwapped] = useState(false);
   const [sideSwapConfirm,setSideSwapConfirm] = useState(false); // swap B/X sides modal
   const [swapStadium,setSwapStadium] = useState(true);   // checkbox: swap B/X sides
   const [swapPosition,setSwapPosition] = useState(false); // checkbox: swap p1/p2 in app
@@ -1983,7 +1986,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     }
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
+  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
 
   // Navigation helpers
   // Unified back navigation — context-aware, no stale closure issues
@@ -3101,16 +3104,23 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           </div>
         )}
 
-        {/* ── Winner hero ── */}
-        <div style={{background:"linear-gradient(135deg,#1D4ED8 0%,#2563EB 100%)",borderRadius:20,padding:"28px 20px 24px",textAlign:"center",marginBottom:12,boxShadow:"0 8px 24px rgba(37,99,235,0.35)"}}>
-          {config.tm&&config.tournamentName&&(
-            <p style={{fontSize:10,fontWeight:700,letterSpacing:2,color:"rgba(255,255,255,0.55)",marginBottom:10,textTransform:"uppercase"}}>{config.tournamentName}</p>
-          )}
-          <p style={{fontSize:10,fontWeight:700,letterSpacing:3,color:"rgba(255,255,255,0.6)",marginBottom:8,textTransform:"uppercase"}}>Winner</p>
-          <p style={{fontSize:winner&&winner.length>10?48:72,fontWeight:900,color:"#fff",lineHeight:1,margin:"0 0 10px",fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",padding:"0 8px"}}>{winner}</p>
-          <p style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.5)",marginBottom:4,letterSpacing:1,textTransform:"uppercase"}}>defeats</p>
-          <p style={{fontSize:loserName&&loserName.length>10?28:42,fontWeight:900,color:"rgba(255,255,255,0.75)",lineHeight:1,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",padding:"0 8px"}}>{loserName}</p>
-        </div>
+        {/* ── Winner hero — gradient color matches the winner's canonical player color ── */}
+        {(()=>{
+          const winnerIsP1 = winner===p1;
+          const winnerColor = winnerIsP1 ? {g:"linear-gradient(135deg,#1D4ED8 0%,#2563EB 100%)",shadow:"rgba(37,99,235,0.35)"}
+                                         : {g:"linear-gradient(135deg,#B91C1C 0%,#DC2626 100%)",shadow:"rgba(220,38,38,0.35)"};
+          return (
+            <div style={{background:winnerColor.g,borderRadius:20,padding:"28px 20px 24px",textAlign:"center",marginBottom:12,boxShadow:`0 8px 24px ${winnerColor.shadow}`}}>
+              {config.tm&&config.tournamentName&&(
+                <p style={{fontSize:10,fontWeight:700,letterSpacing:2,color:"rgba(255,255,255,0.55)",marginBottom:10,textTransform:"uppercase"}}>{config.tournamentName}</p>
+              )}
+              <p style={{fontSize:10,fontWeight:700,letterSpacing:3,color:"rgba(255,255,255,0.6)",marginBottom:8,textTransform:"uppercase"}}>Winner</p>
+              <p style={{fontSize:winner&&winner.length>10?48:72,fontWeight:900,color:"#fff",lineHeight:1,margin:"0 0 10px",fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",padding:"0 8px"}}>{winner}</p>
+              <p style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.5)",marginBottom:4,letterSpacing:1,textTransform:"uppercase"}}>defeats</p>
+              <p style={{fontSize:loserName&&loserName.length>10?28:42,fontWeight:900,color:"rgba(255,255,255,0.75)",lineHeight:1,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",padding:"0 8px"}}>{loserName}</p>
+            </div>
+          );
+        })()}
 
         {/* ── Match score ── */}
         {config.bo>1&&(
@@ -3307,6 +3317,14 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   // Portrait = taller than wide → stack combos vertically; landscape → side by side
   const comboLayout = window.innerHeight > window.innerWidth ? "column" : "row";
 
+  // Display-order mapping: when swapped, left slot = p2 (canonical), right = p1.
+  // Colors ALWAYS stay with the canonical player: p1=blue, p2=red.
+  // All scoring state (pts, sets, setScores, scorerIdx) uses canonical indices 0=p1, 1=p2.
+  const dA = swapped ? {name:p2,deck:d2,ri:r2,setRi:setR2,used:used2,setUsed:setUsed2,ci:1,cl:"#DC2626",pts:pts[1],sets:sets[1],pending:pendingFinish?.pi===1?pendingFinish.fin:null}
+                     : {name:p1,deck:d1,ri:r1,setRi:setR1,used:used1,setUsed:setUsed1,ci:0,cl:"#2563EB",pts:pts[0],sets:sets[0],pending:pendingFinish?.pi===0?pendingFinish.fin:null};
+  const dB = swapped ? {name:p1,deck:d1,ri:r1,setRi:setR1,used:used1,setUsed:setUsed1,ci:0,cl:"#2563EB",pts:pts[0],sets:sets[0],pending:pendingFinish?.pi===0?pendingFinish.fin:null}
+                     : {name:p2,deck:d2,ri:r2,setRi:setR2,used:used2,setUsed:setUsed2,ci:1,cl:"#DC2626",pts:pts[1],sets:sets[1],pending:pendingFinish?.pi===1?pendingFinish.fin:null};
+
   const bothCombosSelected = r1 !== null && r2 !== null;
   const pending1 = pendingFinish?.pi===0 ? pendingFinish.fin : null;
   const pending2 = pendingFinish?.pi===1 ? pendingFinish.fin : null;
@@ -3323,7 +3341,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         <button style={{...S.back,marginBottom:0,flexShrink:0,fontSize:bf(12),color:config.tm?"#E9D5FF":undefined}} onClick={goBack}>{IC.back}</button>
         {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),...(config.tm?{background:"rgba(255,255,255,0.18)",color:"#E9D5FF",border:"1px solid rgba(255,255,255,0.2)"}:{})}}>Set {curSet}/{config.bo}</span>}
         <span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),...(config.tm?{background:"rgba(255,255,255,0.18)",color:"#E9D5FF",border:"1px solid rgba(255,255,255,0.2)"}:{})}}>B{battlesInThisSet}</span>
-        {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),...(config.tm?{background:"rgba(255,255,255,0.18)",color:"#E9D5FF",border:"1px solid rgba(255,255,255,0.2)"}:{})}}>{sets[0]}–{sets[1]}</span>}
+        {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),...(config.tm?{background:"rgba(255,255,255,0.18)",color:"#E9D5FF",border:"1px solid rgba(255,255,255,0.2)"}:{})}}>{dA.sets}–{dB.sets}</span>}
 
         {/* Centre: 📡 + ⠿ — flex:1 so they fill the gap between pills and icon buttons */}
         <div style={{flex:1,display:"flex",alignItems:"center",gap:bp(4),minWidth:0}}>
@@ -3349,13 +3367,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           <button onClick={toggleDark} style={{background:"none",border:"none",cursor:"pointer",padding:`${bp(3)}px ${bp(3)}px`,fontSize:bf(14),lineHeight:1}}>{dark?"☀️":"🌙"}</button>
           {currentSides.p1Side&&(
             <button type="button" onClick={()=>{
-              const origP1Side=currentSides.p1Side; const origP2Side=currentSides.p2Side;
-              const tmpName=p1; setP1(p2); setP2(tmpName);
-              const tmpD=d1; setD1(d2); setD2(tmpD);
-              const tmpR=r1; setR1(r2); setR2(tmpR);
-              const tmpU=used1; setUsed1(used2); setUsed2(tmpU);
-              setCurrentSides({p1Side:origP2Side,p2Side:origP1Side});
-              setSideAssign(a=>a?{...a,p1Side:origP2Side,p2Side:origP1Side}:a);
+              // Toggle display order only — canonical p1/p2, sets[], pts[], setScores[] are untouched.
+              // Sides follow the display: after swap, left slot shows p2's side label and vice versa.
+              setSwapped(s=>!s);
+              setCurrentSides(cs=>({p1Side:cs.p2Side,p2Side:cs.p1Side}));
+              setSideAssign(a=>a?{...a,p1Side:a.p2Side||"",p2Side:a.p1Side||""}:a);
             }}
               style={{padding:`${bp(2)}px ${bp(5)}px`,borderRadius:bp(6),border:config.tm?"1px solid rgba(255,255,255,0.3)":"1px solid var(--border2)",background:config.tm?"rgba(255,255,255,0.15)":"var(--surface)",color:config.tm?"#E9D5FF":"var(--text-secondary)",fontSize:bf(9),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
               ⇄ Swap
@@ -3371,26 +3387,26 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         {/* Names row — each name centered directly over its score number */}
         <div style={{display:"flex",alignItems:"flex-end",marginBottom:bp(1)}}>
           <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",minWidth:0}}>
-            <span style={{fontSize:Math.round(bf(p1&&p1.length>10?13:17)*scoreBlockFrac),fontWeight:900,color:"#2563EB",fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%",textAlign:"center",lineHeight:1}}>{p1}</span>
+            <span style={{fontSize:Math.round(bf(dA.name&&dA.name.length>10?13:17)*scoreBlockFrac),fontWeight:900,color:dA.cl,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%",textAlign:"center",lineHeight:1}}>{dA.name}</span>
           </div>
-          {/* Center: side labels */}
+          {/* Center: side labels — left side label uses dA's color, right uses dB's */}
           <div style={{textAlign:"center",minWidth:Math.round(bp(56)*scoreBlockFrac),display:"flex",flexDirection:"column",alignItems:"center"}}>
             {(currentSides.p1Side||currentSides.p2Side)&&(
               <span style={{fontSize:Math.round(bf(7)*scoreBlockFrac),fontWeight:700,color:"var(--text-muted)",whiteSpace:"nowrap",lineHeight:1.2}}>
-                <span style={{color:"#93C5FD"}}>{currentSides.p1Side||"—"}</span>
+                <span style={{color:dA.cl==="#2563EB"?"#93C5FD":"#FCA5A5"}}>{currentSides.p1Side||"—"}</span>
                 <span style={{color:"var(--text-faint)"}}> · </span>
-                <span style={{color:"#FCA5A5"}}>{currentSides.p2Side||"—"}</span>
+                <span style={{color:dB.cl==="#DC2626"?"#FCA5A5":"#93C5FD"}}>{currentSides.p2Side||"—"}</span>
               </span>
             )}
           </div>
           <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",minWidth:0}}>
-            <span style={{fontSize:Math.round(bf(p2&&p2.length>10?13:17)*scoreBlockFrac),fontWeight:900,color:"#DC2626",fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%",textAlign:"center",lineHeight:1}}>{p2}</span>
+            <span style={{fontSize:Math.round(bf(dB.name&&dB.name.length>10?13:17)*scoreBlockFrac),fontWeight:900,color:dB.cl,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%",textAlign:"center",lineHeight:1}}>{dB.name}</span>
           </div>
         </div>
         {/* Big score numbers */}
         <div style={{display:"flex",alignItems:"center"}}>
           <div style={{flex:1,textAlign:"center"}}>
-            <span style={{fontSize:Math.round(bf(48)*scoreBlockFrac),fontWeight:900,color:"#2563EB",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[0]}</span>
+            <span style={{fontSize:Math.round(bf(48)*scoreBlockFrac),fontWeight:900,color:dA.cl,lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{dA.pts}</span>
           </div>
           {/* Center: dash + TO X + Set label stacked */}
           <div style={{textAlign:"center",minWidth:Math.round(bp(56)*scoreBlockFrac),display:"flex",flexDirection:"column",alignItems:"center",gap:0}}>
@@ -3399,7 +3415,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             <span style={{fontSize:Math.round(bf(7)*scoreBlockFrac),fontWeight:700,color:"var(--text-muted)",whiteSpace:"nowrap",lineHeight:1.3}}>{["First","Second","Third","Fourth","Fifth"][curSet-1]||`Set ${curSet}`} Set</span>
           </div>
           <div style={{flex:1,textAlign:"center"}}>
-            <span style={{fontSize:Math.round(bf(48)*scoreBlockFrac),fontWeight:900,color:"#DC2626",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{pts[1]}</span>
+            <span style={{fontSize:Math.round(bf(48)*scoreBlockFrac),fontWeight:900,color:dB.cl,lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{dB.pts}</span>
           </div>
         </div>
       </div>
@@ -3433,17 +3449,15 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
       {/* ── Active combo display — updates live as combos are selected ── */}
       <div ref={comboDisplaySectionRef} style={{display:"flex",gap:bp(6),marginBottom:0,flexShrink:0,...(sectionH.combo?{height:sectionH.combo}:{minHeight:bp(44)}),overflow:"hidden"}}>
-        {[{name:p1,deck:d1,ri:r1,cl:"#2563EB"},{name:p2,deck:d2,ri:r2,cl:"#DC2626"}].map((side,si)=>{
+        {[dA,dB].map((side,si)=>{
           const c = side.ri !== null ? comboOf(side.deck, side.ri) : null;
-          const bladeText = c?.blade || "—";
-          const rbText = c?.ratchet && c?.bit ? `${c.ratchet} ${c.bit}` : c ? "—" : "Pick combo ↑";
           const hasCombo = side.ri !== null;
           return (
             <div key={si} style={{flex:1,minWidth:0,borderRadius:bp(12),border:`2px solid ${hasCombo?side.cl+"60":"var(--border)"}`,background:hasCombo?`${side.cl}0D`:"var(--surface2)",overflow:"hidden"}}>
               <ComboLabel
-                blade={hasCombo?bladeText:null}
-                ratchet={hasCombo?c.ratchet:null}
-                bit={hasCombo?c.bit:null}
+                blade={hasCombo?c?.blade||"—":null}
+                ratchet={hasCombo?c?.ratchet||null:null}
+                bit={hasCombo?c?.bit||null:null}
                 color={hasCombo?side.cl:"var(--text-muted)"}
                 color2={hasCombo?side.cl:"var(--text-faint)"}
                 empty={!hasCombo}
@@ -3482,20 +3496,17 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       {!layoutEditMode&&<div style={{height:bp(5),flexShrink:0}}/>}
 
       {/* ── Combo picker row — between combo display and finish buttons ── */}
-      {/* Each half is flex:1 width-only; buttons inside have fixed width:33.33% so height resize never affects width */}
       <div ref={comboPickerSectionRef} style={{height:sectionH.picker||COMBO_ROW_H,display:"flex",gap:bp(6),padding:`0 ${bp(10)}px`,flexShrink:0,marginBottom:0}}>
-        {[{i:0,cl:"#2563EB",dk:d1,sel:r1,setSel:setR1,used:used1},
-          {i:1,cl:"#DC2626",dk:d2,sel:r2,setSel:setR2,used:used2}].map(side=>(
-          <div key={side.i} style={{flex:1,display:"flex",gap:bp(4),minWidth:0}}>
-            {side.dk.map((combo,i)=>{
+        {[dA,dB].map(side=>(
+          <div key={side.ci} style={{flex:1,display:"flex",gap:bp(4),minWidth:0}}>
+            {side.deck.map((combo,i)=>{
               const isUsed = side.used.includes(i);
-              const isSel = side.sel===i;
+              const isSel = side.ri===i;
               return (
-                /* width:calc(33.33% - gap) is set on the wrapper so height changes never affect width */
                 <div key={i} style={{flex:"1 1 0",minWidth:0,height:"100%",position:"relative"}}>
                   <ScaledBtn
                     disabled={isUsed}
-                    onClick={()=>{ if(!isUsed){ const newIdx=isSel?null:i; side.setSel(newIdx); if(side.i===0) pushOverlay({p1ComboIdx:newIdx}); else pushOverlay({p2ComboIdx:newIdx}); } }}
+                    onClick={()=>{ if(!isUsed){ const newIdx=isSel?null:i; side.setRi(newIdx); if(side.ci===0) pushOverlay({p1ComboIdx:newIdx}); else pushOverlay({p2ComboIdx:newIdx}); } }}
                     baseStyle={{position:"absolute",inset:0,borderRadius:bp(7),border:`2px solid ${isUsed?"var(--border)":isSel?side.cl:"var(--border2)"}`,background:isUsed?"var(--surface2)":isSel?side.cl:"var(--surface)",color:isUsed?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:isUsed?"not-allowed":"pointer",opacity:isUsed?0.4:1,display:"flex",flexDirection:"column",overflow:"hidden",width:"100%",height:"100%",boxSizing:"border-box"}}
                     renderContent={frac=>(
                       <>
@@ -3550,11 +3561,10 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
       {/* ── Two-column scoring (fills remaining space normally; pinned height during edit mode) ── */}
       <div ref={finishSectionRef} style={{display:"flex",gap:bp(6),padding:`0 ${bp(10)}px 0`,...(sectionH.finish?{height:sectionH.finish,flexShrink:0}:{flex:1,minHeight:0})}}>
-        {[{i:0,cl:"#2563EB",name:p1,dk:d1,sel:r1,setSel:setR1,used:used1,pending:pending1},
-          {i:1,cl:"#DC2626",name:p2,dk:d2,sel:r2,setSel:setR2,used:used2,pending:pending2}].map(side=>{
-          const canConfirm = side.sel !== null && side.pending;
+        {[dA,dB].map(side=>{
+          const canConfirm = side.ri !== null && side.pending;
           return (
-            <div key={side.i} style={{flex:1,display:"flex",flexDirection:"column",gap:bp(2),minHeight:0}}>
+            <div key={side.ci} style={{flex:1,display:"flex",flexDirection:"column",gap:bp(2),minHeight:0}}>
 
               {/* Finish buttons + LER + Confirm — each flex:1, text scales with button height */}
               {[...FINISH,...PENALTY.filter(f=>f.id!=="LER")].map(f=>{
@@ -3565,7 +3575,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 return (
                   <ScaledBtn key={f.id}
                     disabled={layoutEditMode||!bothCombosSelected}
-                    onClick={()=>{if(active)setPendingFinish(isSel?null:{pi:side.i,fin:f});}}
+                    onClick={()=>{if(active)setPendingFinish(isSel?null:{pi:side.ci,fin:f});}}
                     baseStyle={{flex:1,minHeight:0,borderRadius:bp(7),border:`2px solid ${!active?"var(--border)":isSel?side.cl:isFinish?`${side.cl}50`:"var(--border2)"}`,background:!active?"var(--surface2)":isSel?side.cl:isFinish?`${side.cl}10`:"var(--surface2)",color:!active?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:active?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"space-between",padding:`0 ${bp(4)}px`,opacity:active?1:0.45,overflow:"hidden",boxSizing:"border-box"}}
                     renderContent={frac=>(
                       <>
@@ -3585,14 +3595,14 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               {/* LER — strike system, flex:1 */}
               {(()=>{
                 const lerLocked = layoutEditMode||!bothCombosSelected;
-                const hasStrike = lerStrikes[side.i]===1;
+                const hasStrike = lerStrikes[side.ci]===1;
                 const lerFin = PENALTY.find(f=>f.id==="LER");
                 const lerClick = ()=>{
                   if(lerLocked) return;
                   if(!hasStrike){
                     const strikeEntry = {
                       set:curSet,shuffle:shuf,round:log.slice(matchStartIdx).length+1,
-                      scorer:side.i===0?p1:p2,scorerIdx:side.i,judge:judge,penalty:true,
+                      scorer:side.ci===0?p1:p2,scorerIdx:side.ci,judge:judge,penalty:true,
                       type:"LER-STRIKE",typeName:"LER Strike",points:0,
                       p1Score:pts[0],p2Score:pts[1],p1Name:p1,p2Name:p2,
                       p1Combo:{...d1[r1]},p2Combo:{...d2[r2]},
@@ -3601,15 +3611,15 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                       winnerCombo:"",time:new Date().toISOString(),
                       _pp:[...pts],_ps:[...sets],_cs:curSet,
                       _u1:[...used1],_u2:[...used2],_sh:shuf,_ls:[...lerStrikes],
-                      _lerStrikeFor:side.i,
+                      _lerStrikeFor:side.ci,
                     };
                     const newLog=[...log,strikeEntry];
                     setLog(newLog); sSave(KEYS.matchLog,newLog); setFuture([]);
-                    setLerStrikes(s=>{const n=[...s];n[side.i]=1;return n;});
-                    pushOverlay({lastFinish:{type:"LER-STRIKE",scorerIdx:side.i}});
+                    setLerStrikes(s=>{const n=[...s];n[side.ci]=1;return n;});
+                    pushOverlay({lastFinish:{type:"LER-STRIKE",scorerIdx:side.ci}});
                   } else {
                     setLerStrikes([0,0]);
-                    doScore(side.i,lerFin);
+                    doScore(side.ci,lerFin);
                   }
                 };
                 return (
@@ -3634,18 +3644,16 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               {/* Confirm button — layered absolute text so button never resizes when label changes.
                   Label strips trailing " Finish" to keep text short: "Confirm Burst" not "Confirm Burst Finish" */}
               {(()=>{
-                const confirmLabel = canConfirm
-                  ? `Confirm ${(side.pending.name||"").replace(/ Finish$/,"").replace(/ Error$/,"")}`
-                  : side.sel!==null ? "Pick finish ↑" : "Pick combo ↑";
+                const canConfirm = side.ri !== null && side.pending;
                 return (
                   <ScaledBtn key="confirm"
                     disabled={layoutEditMode||!canConfirm}
-                    onClick={()=>{ if(!layoutEditMode&&canConfirm){ doScore(side.i,side.pending); setPendingFinish(null); } }}
+                    onClick={()=>{ if(!layoutEditMode&&canConfirm){ doScore(side.ci,side.pending); setPendingFinish(null); } }}
                     baseStyle={{flex:1,minHeight:0,width:"100%",borderRadius:bp(7),border:"2px solid transparent",background:canConfirm?side.cl:"var(--surface3)",color:canConfirm?"#fff":"var(--text-disabled)",fontFamily:"'Outfit',sans-serif",cursor:canConfirm?"pointer":"not-allowed",boxSizing:"border-box",transition:"background 0.15s",overflow:"hidden",position:"relative"}}
                     renderContent={frac=>(
                       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
                         <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:canConfirm?0:1,pointerEvents:"none"}}>
-                          <FitText ratio={0.40} style={{fontWeight:900}}>{side.sel!==null?"Pick finish ↑":"Pick combo ↑"}</FitText>
+                          <FitText ratio={0.40} style={{fontWeight:900}}>{side.ri!==null?"Pick finish ↑":"Pick combo ↑"}</FitText>
                         </div>
                         <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:canConfirm?1:0,pointerEvents:"none"}}>
                           <FitText ratio={0.40} style={{fontWeight:900}}>{`Confirm ${(side.pending?.name||"").replace(/ Finish$/,"").replace(/ Error$/,"")}`}</FitText>
