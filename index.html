@@ -3316,34 +3316,38 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   return (
     <ErrorBoundary><div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",background:"var(--bg-solid)",boxSizing:"border-box",overflow:"hidden"}}>
 
-      {/* ── Top strip: Back · pills · mini action bar · Swap ── purple bg when tournament mode ── */}
-      <div style={{height:STRIP_H,display:"flex",alignItems:"center",gap:bp(5),padding:`0 ${bp(10)}px`,flexShrink:0,borderBottom:"1px solid var(--border)",background:config.tm?"#6D28D9":"var(--surface)"}}>
+      {/* ── Top strip: Back · pills │ 📡 ⠿ (expand) │ history · undo · redo · dark · swap ── */}
+      <div style={{height:STRIP_H,display:"flex",alignItems:"center",gap:bp(4),padding:`0 ${bp(8)}px`,flexShrink:0,borderBottom:"1px solid var(--border)",background:config.tm?"#6D28D9":"var(--surface)"}}>
+        {/* Left: back + set pills */}
         <button style={{...S.back,marginBottom:0,flexShrink:0,fontSize:bf(12),color:config.tm?"#E9D5FF":undefined}} onClick={goBack}>{IC.back}</button>
         {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),...(config.tm?{background:"rgba(255,255,255,0.18)",color:"#E9D5FF",border:"1px solid rgba(255,255,255,0.2)"}:{})}}>Set {curSet}/{config.bo}</span>}
         <span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),...(config.tm?{background:"rgba(255,255,255,0.18)",color:"#E9D5FF",border:"1px solid rgba(255,255,255,0.2)"}:{})}}>B{battlesInThisSet}</span>
         {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),...(config.tm?{background:"rgba(255,255,255,0.18)",color:"#E9D5FF",border:"1px solid rgba(255,255,255,0.2)"}:{})}}>{sets[0]}–{sets[1]}</span>}
-        {/* Mini action bar — history, undo, redo, dark, settings */}
-        <div style={{display:"flex",alignItems:"center",gap:bp(2),marginLeft:"auto",flexShrink:0}}>
-          {/* Stream overlay: icon opens slot-picker modal */}
-          <button type="button" onClick={()=>setOverlayModal(true)}
-            style={{background:overlaySlot>0?"#1D4ED8":"none",border:overlaySlot>0?"none":"1px solid var(--border2)",color:overlaySlot>0?"#fff":"var(--text-muted)",borderRadius:bp(6),padding:`${bp(2)}px ${bp(5)}px`,fontSize:bf(overlaySlot>0?8:13),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",flexShrink:0,lineHeight:1}}
-            title="Stream overlay">
-            {overlaySlot>0?`📡${overlaySlot}`:"📡"}
-          </button>
 
-          {/* Layout edit mode toggle — always above the edit blocker overlay */}
+        {/* Centre: 📡 + ⠿ — flex:1 so they fill the gap between pills and icon buttons */}
+        <div style={{flex:1,display:"flex",alignItems:"center",gap:bp(4),minWidth:0}}>
+          {/* Stream overlay button */}
+          <button type="button" onClick={()=>setOverlayModal(true)}
+            style={{flex:1,height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",background:overlaySlot>0?"#1D4ED8":"none",border:overlaySlot>0?"none":`1px solid ${config.tm?"rgba(255,255,255,0.3)":"var(--border2)"}`,color:overlaySlot>0?"#fff":config.tm?"#E9D5FF":"var(--text-muted)",borderRadius:bp(6),fontSize:bf(overlaySlot>0?9:13),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",lineHeight:1,minWidth:0}}
+            title="Stream overlay">
+            {overlaySlot>0?`📡 ${overlaySlot}`:"📡"}
+          </button>
+          {/* Layout edit mode toggle */}
           <button type="button" onClick={()=>setLayoutEditMode(m=>!m)}
-            style={{background:layoutEditMode?"#7C3AED":"none",border:layoutEditMode?"none":"1px solid var(--border2)",color:layoutEditMode?"#fff":"var(--text-muted)",borderRadius:bp(6),padding:`${bp(2)}px ${bp(5)}px`,fontSize:bf(13),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",flexShrink:0,lineHeight:1,position:"relative",zIndex:160}}
+            style={{flex:1,height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",background:layoutEditMode?"#7C3AED":"none",border:layoutEditMode?"none":`1px solid ${config.tm?"rgba(255,255,255,0.3)":"var(--border2)"}`,color:layoutEditMode?"#fff":config.tm?"#E9D5FF":"var(--text-muted)",borderRadius:bp(6),fontSize:bf(13),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",lineHeight:1,position:"relative",zIndex:160,minWidth:0}}
             title={layoutEditMode?"Exit layout edit":"Adjust layout heights"}>
             ⠿
           </button>
-          <button onClick={()=>setHistoryOpen(true)} style={{background:"none",border:"none",color:config.tm?"#C4B5FD":"var(--text-muted)",cursor:"pointer",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.history}</button>
-          <button onClick={undo} disabled={log.length<=matchStartIdx&&log[log.length-1]?.type!=="LER-STRIKE"} style={{background:"none",border:"none",color:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?(config.tm?"#C4B5FD":"var(--text-muted)"):"var(--text-disabled)",cursor:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?"pointer":"default",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.undo}</button>
-          <button onClick={redo} disabled={!future.length} style={{background:"none",border:"none",color:future.length?"#EA580C":"var(--text-disabled)",cursor:future.length?"pointer":"default",padding:`${bp(3)}px ${bp(5)}px`,display:"flex",alignItems:"center"}}>{IC.redo}</button>
-          <button onClick={toggleDark} style={{background:"none",border:"none",cursor:"pointer",padding:`${bp(3)}px ${bp(4)}px`,fontSize:bf(14),lineHeight:1}}>{dark?"☀️":"🌙"}</button>
+        </div>
+
+        {/* Right: history · undo · redo · dark · swap */}
+        <div style={{display:"flex",alignItems:"center",gap:bp(1),flexShrink:0}}>
+          <button onClick={()=>setHistoryOpen(true)} style={{background:"none",border:"none",color:config.tm?"#C4B5FD":"var(--text-muted)",cursor:"pointer",padding:`${bp(3)}px ${bp(4)}px`,display:"flex",alignItems:"center"}}>{IC.history}</button>
+          <button onClick={undo} disabled={log.length<=matchStartIdx&&log[log.length-1]?.type!=="LER-STRIKE"} style={{background:"none",border:"none",color:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?(config.tm?"#C4B5FD":"var(--text-muted)"):"var(--text-disabled)",cursor:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?"pointer":"default",padding:`${bp(3)}px ${bp(4)}px`,display:"flex",alignItems:"center"}}>{IC.undo}</button>
+          <button onClick={redo} disabled={!future.length} style={{background:"none",border:"none",color:future.length?"#EA580C":"var(--text-disabled)",cursor:future.length?"pointer":"default",padding:`${bp(3)}px ${bp(4)}px`,display:"flex",alignItems:"center"}}>{IC.redo}</button>
+          <button onClick={toggleDark} style={{background:"none",border:"none",cursor:"pointer",padding:`${bp(3)}px ${bp(3)}px`,fontSize:bf(14),lineHeight:1}}>{dark?"☀️":"🌙"}</button>
           {currentSides.p1Side&&(
             <button type="button" onClick={()=>{
-              // Instantly swap player positions — side labels follow the players
               const origP1Side=currentSides.p1Side; const origP2Side=currentSides.p2Side;
               const tmpName=p1; setP1(p2); setP2(tmpName);
               const tmpD=d1; setD1(d2); setD2(tmpD);
@@ -3352,7 +3356,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               setCurrentSides({p1Side:origP2Side,p2Side:origP1Side});
               setSideAssign(a=>a?{...a,p1Side:origP2Side,p2Side:origP1Side}:a);
             }}
-              style={{padding:`${bp(2)}px ${bp(6)}px`,borderRadius:bp(6),border:config.tm?"1px solid rgba(255,255,255,0.3)":"1px solid var(--border2)",background:config.tm?"rgba(255,255,255,0.15)":"var(--surface)",color:config.tm?"#E9D5FF":"var(--text-secondary)",fontSize:bf(9),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginLeft:bp(2)}}>
+              style={{padding:`${bp(2)}px ${bp(5)}px`,borderRadius:bp(6),border:config.tm?"1px solid rgba(255,255,255,0.3)":"1px solid var(--border2)",background:config.tm?"rgba(255,255,255,0.15)":"var(--surface)",color:config.tm?"#E9D5FF":"var(--text-secondary)",fontSize:bf(9),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
               ⇄ Swap
             </button>
           )}
@@ -3409,10 +3413,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           }}
           onPointerMove={e=>{
             if(!dragRef.current||dragRef.current.section!=="score")return;
-            const delta=e.clientY-dragRef.current.startY;
-            const nextScore=Math.max(44,Math.min(400,dragRef.current.startH+delta));
-            const nextCombo=Math.max(24,Math.min(300,dragRef.current.startH2-delta));
-            setSectionH(h=>({...h,score:nextScore,combo:nextCombo}));
+            const rawDelta=e.clientY-dragRef.current.startY;
+            // Clamp delta so neither section exceeds its own min/max
+            const clampedByScore=Math.max(44-dragRef.current.startH, Math.min(400-dragRef.current.startH, rawDelta));
+            const clampedByCombo=Math.max(dragRef.current.startH2-300, Math.min(dragRef.current.startH2-24, rawDelta));
+            const delta=Math.max(clampedByScore, Math.min(clampedByCombo, rawDelta));
+            setSectionH(h=>({...h,score:dragRef.current.startH+delta,combo:dragRef.current.startH2-delta}));
           }}
           onPointerUp={()=>{dragRef.current=null;}}
           onPointerCancel={()=>{dragRef.current=null;}}
@@ -3455,10 +3461,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           }}
           onPointerMove={e=>{
             if(!dragRef.current||dragRef.current.section!=="combo")return;
-            const delta=e.clientY-dragRef.current.startY;
-            const nextCombo=Math.max(24,Math.min(300,dragRef.current.startH+delta));
-            const nextPicker=Math.max(30,Math.min(250,dragRef.current.startH2-delta));
-            setSectionH(h=>({...h,combo:nextCombo,picker:nextPicker}));
+            const rawDelta=e.clientY-dragRef.current.startY;
+            const clampedByCombo=Math.max(24-dragRef.current.startH, Math.min(300-dragRef.current.startH, rawDelta));
+            const clampedByPicker=Math.max(dragRef.current.startH2-250, Math.min(dragRef.current.startH2-30, rawDelta));
+            const delta=Math.max(clampedByCombo, Math.min(clampedByPicker, rawDelta));
+            setSectionH(h=>({...h,combo:dragRef.current.startH+delta,picker:dragRef.current.startH2-delta}));
           }}
           onPointerUp={()=>{dragRef.current=null;}}
           onPointerCancel={()=>{dragRef.current=null;}}
@@ -3517,10 +3524,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           }}
           onPointerMove={e=>{
             if(!dragRef.current||dragRef.current.section!=="picker")return;
-            const delta=e.clientY-dragRef.current.startY;
-            const nextPicker=Math.max(30,Math.min(250,dragRef.current.startH+delta));
-            const nextFinish=Math.max(80,Math.min(600,dragRef.current.startH2-delta));
-            setSectionH(h=>({...h,picker:nextPicker,finish:nextFinish}));
+            const rawDelta=e.clientY-dragRef.current.startY;
+            const clampedByPicker=Math.max(30-dragRef.current.startH, Math.min(250-dragRef.current.startH, rawDelta));
+            const clampedByFinish=Math.max(dragRef.current.startH2-600, Math.min(dragRef.current.startH2-80, rawDelta));
+            const delta=Math.max(clampedByPicker, Math.min(clampedByFinish, rawDelta));
+            setSectionH(h=>({...h,picker:dragRef.current.startH+delta,finish:dragRef.current.startH2-delta}));
           }}
           onPointerUp={()=>{dragRef.current=null;}}
           onPointerCancel={()=>{dragRef.current=null;}}
@@ -3552,10 +3560,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     baseStyle={{flex:1,minHeight:0,borderRadius:bp(7),border:`2px solid ${!active?"var(--border)":isSel?side.cl:isFinish?`${side.cl}50`:"var(--border2)"}`,background:!active?"var(--surface2)":isSel?side.cl:isFinish?`${side.cl}10`:"var(--surface2)",color:!active?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:active?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"space-between",padding:`0 ${bp(4)}px`,opacity:active?1:0.45,overflow:"hidden",boxSizing:"border-box"}}
                     renderContent={frac=>(
                       <>
-                        <div style={{flex:1,minWidth:0,height:"100%",display:"flex",alignItems:"center",overflow:"hidden"}}>
-                          <FitText ratio={0.38} style={{fontWeight:800,textAlign:"left",justifyContent:"flex-start"}}>{label}</FitText>
+                        {/* Label: capped to 72% of button width so it never overlaps the score badge */}
+                        <div style={{width:"72%",minWidth:0,height:"100%",display:"flex",alignItems:"center",overflow:"hidden"}}>
+                          <FitText ratio={0.38} wrap={true} style={{fontWeight:800,textAlign:"left",justifyContent:"flex-start"}}>{label}</FitText>
                         </div>
-                        <div style={{flexShrink:0,height:"60%",minWidth:"24%",marginLeft:Math.round(bp(2)*frac),background:!active?"var(--border2)":isSel?"rgba(255,255,255,0.3)":side.cl,borderRadius:bp(3),display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+                        <div style={{flexShrink:0,height:"60%",width:"24%",marginLeft:Math.round(bp(2)*frac),background:!active?"var(--border2)":isSel?"rgba(255,255,255,0.3)":side.cl,borderRadius:bp(3),display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
                           <FitText ratio={0.55} style={{color:"#fff",fontWeight:900}}>+{f.p}</FitText>
                         </div>
                       </>
