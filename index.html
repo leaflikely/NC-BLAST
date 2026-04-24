@@ -1728,12 +1728,13 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [layoutEditMode,setLayoutEditMode] = useState(false); // height adjustment mode
   const [overlayModal,setOverlayModal] = useState(false); // stream slot picker modal
   // Section heights in px — null = auto/flex
-  const [sectionH,setSectionH] = useState({score:null,combo:null,picker:null});
+  const [sectionH,setSectionH] = useState({score:null,combo:null,picker:null,finish:null});
   // Drag state for height sliders
-  const dragRef = useRef(null); // {section, startY, startH}
+  const dragRef = useRef(null); // {section, startY, startH, startH2} — startH2 = neighbour below
   const scoreBlockSectionRef = useRef(null);   // for reliable height read on drag start
   const comboDisplaySectionRef = useRef(null);
   const comboPickerSectionRef = useRef(null);
+  const finishSectionRef = useRef(null);
   const scoreBlockRef = useRef(null);
   const [scoreBlockFrac, setScoreBlockFrac] = useState(1);
   const scoreNaturalH = useRef(null);
@@ -3397,11 +3398,22 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           </div>
         </div>
       </div>
-      {/* ── Height slider: below score block ── */}
+      {/* ── Height slider: below score block — resizes score ↕ combo display only ── */}
       {layoutEditMode&&(
         <div
-          onPointerDown={e=>{try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){} const h=scoreBlockSectionRef.current?.offsetHeight||sectionH.score||80; dragRef.current={section:"score",startY:e.clientY,startH:h};}}
-          onPointerMove={e=>{if(!dragRef.current||dragRef.current.section!=="score")return; const delta=e.clientY-dragRef.current.startY; const next=Math.max(44,Math.min(400,dragRef.current.startH+delta)); setSectionH(h=>({...h,score:next}));}}
+          onPointerDown={e=>{
+            try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}
+            const hScore = scoreBlockSectionRef.current?.offsetHeight || sectionH.score || 80;
+            const hCombo = comboDisplaySectionRef.current?.offsetHeight || sectionH.combo || 44;
+            dragRef.current={section:"score",startY:e.clientY,startH:hScore,startH2:hCombo};
+          }}
+          onPointerMove={e=>{
+            if(!dragRef.current||dragRef.current.section!=="score")return;
+            const delta=e.clientY-dragRef.current.startY;
+            const nextScore=Math.max(44,Math.min(400,dragRef.current.startH+delta));
+            const nextCombo=Math.max(24,Math.min(300,dragRef.current.startH2-delta));
+            setSectionH(h=>({...h,score:nextScore,combo:nextCombo}));
+          }}
           onPointerUp={()=>{dragRef.current=null;}}
           onPointerCancel={()=>{dragRef.current=null;}}
           style={{height:14,display:"flex",alignItems:"center",justifyContent:"center",cursor:"ns-resize",flexShrink:0,touchAction:"none",userSelect:"none",position:"relative",zIndex:160}}>
@@ -3411,7 +3423,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       {!layoutEditMode&&<div style={{height:bp(5),flexShrink:0}}/>}
 
       {/* ── Active combo display — updates live as combos are selected ── */}
-      <div ref={comboDisplaySectionRef} style={{display:"flex",gap:bp(6),marginBottom:0,flexShrink:0,...(sectionH.combo?{height:sectionH.combo}:{minHeight:bp(44)})}}>
+      <div ref={comboDisplaySectionRef} style={{display:"flex",gap:bp(6),marginBottom:0,flexShrink:0,...(sectionH.combo?{height:sectionH.combo}:{minHeight:bp(44)}),overflow:"hidden"}}>
         {[{name:p1,deck:d1,ri:r1,cl:"#2563EB"},{name:p2,deck:d2,ri:r2,cl:"#DC2626"}].map((side,si)=>{
           const c = side.ri !== null ? comboOf(side.deck, side.ri) : null;
           const bladeText = c?.blade || "—";
@@ -3432,11 +3444,22 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           );
         })}
       </div>
-      {/* ── Height slider: below combo display ── */}
+      {/* ── Height slider: below combo display — resizes combo display ↕ combo picker only ── */}
       {layoutEditMode&&(
         <div
-          onPointerDown={e=>{try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){} const h=comboDisplaySectionRef.current?.offsetHeight||sectionH.combo||44; dragRef.current={section:"combo",startY:e.clientY,startH:h};}}
-          onPointerMove={e=>{if(!dragRef.current||dragRef.current.section!=="combo")return; const delta=e.clientY-dragRef.current.startY; const next=Math.max(30,Math.min(300,dragRef.current.startH+delta)); setSectionH(h=>({...h,combo:next}));}}
+          onPointerDown={e=>{
+            try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}
+            const hCombo = comboDisplaySectionRef.current?.offsetHeight || sectionH.combo || 44;
+            const hPicker = comboPickerSectionRef.current?.offsetHeight || sectionH.picker || COMBO_ROW_H;
+            dragRef.current={section:"combo",startY:e.clientY,startH:hCombo,startH2:hPicker};
+          }}
+          onPointerMove={e=>{
+            if(!dragRef.current||dragRef.current.section!=="combo")return;
+            const delta=e.clientY-dragRef.current.startY;
+            const nextCombo=Math.max(24,Math.min(300,dragRef.current.startH+delta));
+            const nextPicker=Math.max(30,Math.min(250,dragRef.current.startH2-delta));
+            setSectionH(h=>({...h,combo:nextCombo,picker:nextPicker}));
+          }}
           onPointerUp={()=>{dragRef.current=null;}}
           onPointerCancel={()=>{dragRef.current=null;}}
           style={{height:14,display:"flex",alignItems:"center",justifyContent:"center",cursor:"ns-resize",flexShrink:0,touchAction:"none",userSelect:"none",position:"relative",zIndex:160}}>
@@ -3483,11 +3506,22 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         ))}
       </div>
 
-      {/* ── Height slider: below combo picker ── */}
+      {/* ── Height slider: below combo picker — resizes combo picker ↕ finish buttons only ── */}
       {layoutEditMode&&(
         <div
-          onPointerDown={e=>{try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){} const h=comboPickerSectionRef.current?.offsetHeight||sectionH.picker||COMBO_ROW_H; dragRef.current={section:"picker",startY:e.clientY,startH:h};}}
-          onPointerMove={e=>{if(!dragRef.current||dragRef.current.section!=="picker")return; const delta=e.clientY-dragRef.current.startY; const next=Math.max(30,Math.min(250,dragRef.current.startH+delta)); setSectionH(h=>({...h,picker:next}));}}
+          onPointerDown={e=>{
+            try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}
+            const hPicker = comboPickerSectionRef.current?.offsetHeight || sectionH.picker || COMBO_ROW_H;
+            const hFinish = finishSectionRef.current?.offsetHeight || sectionH.finish || 200;
+            dragRef.current={section:"picker",startY:e.clientY,startH:hPicker,startH2:hFinish};
+          }}
+          onPointerMove={e=>{
+            if(!dragRef.current||dragRef.current.section!=="picker")return;
+            const delta=e.clientY-dragRef.current.startY;
+            const nextPicker=Math.max(30,Math.min(250,dragRef.current.startH+delta));
+            const nextFinish=Math.max(80,Math.min(600,dragRef.current.startH2-delta));
+            setSectionH(h=>({...h,picker:nextPicker,finish:nextFinish}));
+          }}
           onPointerUp={()=>{dragRef.current=null;}}
           onPointerCancel={()=>{dragRef.current=null;}}
           style={{height:14,display:"flex",alignItems:"center",justifyContent:"center",cursor:"ns-resize",flexShrink:0,touchAction:"none",userSelect:"none",position:"relative",zIndex:160}}>
@@ -3497,8 +3531,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       {/* ── Divider between combo picker and finish buttons ── */}
       <div style={{height:1,background:layoutEditMode?"#7C3AED":"var(--border)",margin:`${layoutEditMode?bp(0):bp(5)}px ${bp(10)}px`,flexShrink:0}}/>
 
-      {/* ── Two-column scoring (fills remaining space; buttons scale to fit) ── */}
-      <div style={{display:"flex",gap:bp(6),flex:1,minHeight:0,padding:`0 ${bp(10)}px 0`}}>
+      {/* ── Two-column scoring (fills remaining space normally; pinned height during edit mode) ── */}
+      <div ref={finishSectionRef} style={{display:"flex",gap:bp(6),padding:`0 ${bp(10)}px 0`,...(sectionH.finish?{height:sectionH.finish,flexShrink:0}:{flex:1,minHeight:0})}}>
         {[{i:0,cl:"#2563EB",name:p1,dk:d1,sel:r1,setSel:setR1,used:used1,pending:pending1},
           {i:1,cl:"#DC2626",name:p2,dk:d2,sel:r2,setSel:setR2,used:used2,pending:pending2}].map(side=>{
           const canConfirm = side.sel !== null && side.pending;
