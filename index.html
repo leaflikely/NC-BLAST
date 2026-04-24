@@ -1731,6 +1731,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [sectionH,setSectionH] = useState({score:null,combo:null,picker:null,finish:null});
   // Drag state for height sliders
   const dragRef = useRef(null); // {section, startY, startH, startH2} — startH2 = neighbour below
+  const rafRef = useRef(null); // requestAnimationFrame handle for drag throttling
   const scoreBlockSectionRef = useRef(null);   // for reliable height read on drag start
   const comboDisplaySectionRef = useRef(null);
   const comboPickerSectionRef = useRef(null);
@@ -3413,15 +3414,17 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           }}
           onPointerMove={e=>{
             if(!dragRef.current||dragRef.current.section!=="score")return;
-            const rawDelta=e.clientY-dragRef.current.startY;
-            // Clamp delta so neither section exceeds its own min/max
-            const clampedByScore=Math.max(44-dragRef.current.startH, Math.min(400-dragRef.current.startH, rawDelta));
-            const clampedByCombo=Math.max(dragRef.current.startH2-300, Math.min(dragRef.current.startH2-24, rawDelta));
-            const delta=Math.max(clampedByScore, Math.min(clampedByCombo, rawDelta));
-            setSectionH(h=>({...h,score:dragRef.current.startH+delta,combo:dragRef.current.startH2-delta}));
+            const raw=e.clientY-dragRef.current.startY;
+            const {startH:sH,startH2:cH}=dragRef.current;
+            if(rafRef.current) cancelAnimationFrame(rafRef.current);
+            rafRef.current=requestAnimationFrame(()=>{
+              const d=Math.min(Math.max(raw, 44-sH, cH-300), 400-sH, cH-24);
+              if(!isFinite(d)) return;
+              setSectionH(h=>({...h,score:sH+d,combo:cH-d}));
+            });
           }}
-          onPointerUp={()=>{dragRef.current=null;}}
-          onPointerCancel={()=>{dragRef.current=null;}}
+          onPointerUp={()=>{if(rafRef.current)cancelAnimationFrame(rafRef.current);dragRef.current=null;}}
+          onPointerCancel={()=>{if(rafRef.current)cancelAnimationFrame(rafRef.current);dragRef.current=null;}}
           style={{height:14,display:"flex",alignItems:"center",justifyContent:"center",cursor:"ns-resize",flexShrink:0,touchAction:"none",userSelect:"none",position:"relative",zIndex:160}}>
           <div style={{width:"40%",height:4,borderRadius:2,background:"#7C3AED",opacity:0.7}}/>
         </div>
@@ -3461,14 +3464,17 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           }}
           onPointerMove={e=>{
             if(!dragRef.current||dragRef.current.section!=="combo")return;
-            const rawDelta=e.clientY-dragRef.current.startY;
-            const clampedByCombo=Math.max(24-dragRef.current.startH, Math.min(300-dragRef.current.startH, rawDelta));
-            const clampedByPicker=Math.max(dragRef.current.startH2-250, Math.min(dragRef.current.startH2-30, rawDelta));
-            const delta=Math.max(clampedByCombo, Math.min(clampedByPicker, rawDelta));
-            setSectionH(h=>({...h,combo:dragRef.current.startH+delta,picker:dragRef.current.startH2-delta}));
+            const raw=e.clientY-dragRef.current.startY;
+            const {startH:cH,startH2:pH}=dragRef.current;
+            if(rafRef.current) cancelAnimationFrame(rafRef.current);
+            rafRef.current=requestAnimationFrame(()=>{
+              const d=Math.min(Math.max(raw, 24-cH, pH-250), 300-cH, pH-30);
+              if(!isFinite(d)) return;
+              setSectionH(h=>({...h,combo:cH+d,picker:pH-d}));
+            });
           }}
-          onPointerUp={()=>{dragRef.current=null;}}
-          onPointerCancel={()=>{dragRef.current=null;}}
+          onPointerUp={()=>{if(rafRef.current)cancelAnimationFrame(rafRef.current);dragRef.current=null;}}
+          onPointerCancel={()=>{if(rafRef.current)cancelAnimationFrame(rafRef.current);dragRef.current=null;}}
           style={{height:14,display:"flex",alignItems:"center",justifyContent:"center",cursor:"ns-resize",flexShrink:0,touchAction:"none",userSelect:"none",position:"relative",zIndex:160}}>
           <div style={{width:"40%",height:4,borderRadius:2,background:"#7C3AED",opacity:0.7}}/>
         </div>
@@ -3524,14 +3530,17 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           }}
           onPointerMove={e=>{
             if(!dragRef.current||dragRef.current.section!=="picker")return;
-            const rawDelta=e.clientY-dragRef.current.startY;
-            const clampedByPicker=Math.max(30-dragRef.current.startH, Math.min(250-dragRef.current.startH, rawDelta));
-            const clampedByFinish=Math.max(dragRef.current.startH2-600, Math.min(dragRef.current.startH2-80, rawDelta));
-            const delta=Math.max(clampedByPicker, Math.min(clampedByFinish, rawDelta));
-            setSectionH(h=>({...h,picker:dragRef.current.startH+delta,finish:dragRef.current.startH2-delta}));
+            const raw=e.clientY-dragRef.current.startY;
+            const {startH:pH,startH2:fH}=dragRef.current;
+            if(rafRef.current) cancelAnimationFrame(rafRef.current);
+            rafRef.current=requestAnimationFrame(()=>{
+              const d=Math.min(Math.max(raw, 30-pH, fH-600), 250-pH, fH-80);
+              if(!isFinite(d)) return;
+              setSectionH(h=>({...h,picker:pH+d,finish:fH-d}));
+            });
           }}
-          onPointerUp={()=>{dragRef.current=null;}}
-          onPointerCancel={()=>{dragRef.current=null;}}
+          onPointerUp={()=>{if(rafRef.current)cancelAnimationFrame(rafRef.current);dragRef.current=null;}}
+          onPointerCancel={()=>{if(rafRef.current)cancelAnimationFrame(rafRef.current);dragRef.current=null;}}
           style={{height:14,display:"flex",alignItems:"center",justifyContent:"center",cursor:"ns-resize",flexShrink:0,touchAction:"none",userSelect:"none",position:"relative",zIndex:160}}>
           <div style={{width:"40%",height:4,borderRadius:2,background:"#7C3AED",opacity:0.7}}/>
         </div>
