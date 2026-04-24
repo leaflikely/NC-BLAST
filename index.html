@@ -10,7 +10,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  html{font-size:16px}
+  html{font-size:16px;overscroll-behavior:none;}
+  /* Blocks pull-to-refresh on mobile (Chrome/Android, Safari iOS 16+).
+     The page will still scroll internally — it just won't bounce or trigger a reload
+     when the user swipes down from the very top. */
   :root{
     --bg:linear-gradient(180deg,#F8FAFC 0%,#EFF6FF 100%);
     --bg-solid:#F8FAFC;
@@ -45,7 +48,7 @@
     --pill-bg:#334155;
     --input-bg:#1E293B;
   }
-  body{background:var(--bg);min-height:100vh;font-family:'Outfit',sans-serif;color:var(--text-primary)}
+  body{background:var(--bg);min-height:100vh;font-family:'Outfit',sans-serif;color:var(--text-primary);overscroll-behavior:none;}
   input,textarea{color:var(--text-primary);background:var(--input-bg);}
   input::placeholder{color:var(--text-faint);}
   /* Bottom bar always uses surface color */
@@ -1750,6 +1753,23 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   },[]);
   // Portrait vs landscape for combo button layout — recomputed on each render via sc trigger
   const comboAreaRef = useRef(null); // kept for legacy ref safety, not used for measurement
+
+  // ── beforeunload: warn desktop users before they accidentally refresh/close
+  //    while a match is in progress (battles logged but match not yet finished/submitted).
+  //    On mobile the pull-to-refresh gesture is blocked via CSS overscroll-behavior:none,
+  //    so this hook primarily fires for keyboard shortcuts (F5, Cmd+R) and browser chrome.
+  useEffect(()=>{
+    const handler = (e) => {
+      const battlesLogged = log.slice(matchStartIdx).filter(en=>en.type!=="LER-STRIKE").length;
+      const matchActive = phase==="battle" && battlesLogged > 0;
+      if(!matchActive) return; // no data at risk — let the refresh through silently
+      // This triggers the browser's built-in "Leave site?" confirmation dialog.
+      e.preventDefault();
+      e.returnValue = ""; // required for Chrome/Edge — the string shown is browser-controlled
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [log, matchStartIdx, phase]);
 
   // Auto-fetch active matches if we default to active tab
   useEffect(()=>{ if(challongeSlug) fetchActiveMatches(); },[]);
