@@ -3648,7 +3648,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 return (
                   <ScaledBtn key="confirm"
                     disabled={layoutEditMode||!canConfirm}
-                    onClick={()=>{ if(!layoutEditMode&&canConfirm){ doScore(side.ci,side.pending); setPendingFinish(null); } }}
+                    onClick={()=>{ if(!layoutEditMode&&canConfirm){ const fin=pendingFinish; setPendingFinish(null); doScore(fin.pi,fin.fin); } }}
                     baseStyle={{flex:1,minHeight:0,width:"100%",borderRadius:bp(7),border:"2px solid transparent",background:canConfirm?side.cl:"var(--surface3)",color:canConfirm?"#fff":"var(--text-disabled)",fontFamily:"'Outfit',sans-serif",cursor:canConfirm?"pointer":"not-allowed",boxSizing:"border-box",transition:"background 0.15s",overflow:"hidden",position:"relative"}}
                     renderContent={frac=>(
                       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
