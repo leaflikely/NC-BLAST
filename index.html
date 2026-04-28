@@ -1741,33 +1741,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const comboPickerSectionRef = useRef(null);
   const finishSectionRef = useRef(null);
   const scoreBlockRef = useRef(null);
-  const [scoreBlockFrac, setScoreBlockFrac] = useState(1);
-  const scoreNaturalH = useRef(null);
-  const [comboFrac, setComboFrac] = useState(1);
-  const comboNaturalH = useRef(null);
-  useEffect(()=>{
-    const el = comboDisplaySectionRef.current;
-    if(!el) return;
-    const ro = new ResizeObserver(()=>{
-      const h = el.offsetHeight;
-      if(h <= 0) return;
-      if(comboNaturalH.current === null) { comboNaturalH.current = h; return; }
-      setComboFrac(Math.max(0.2, Math.min(4.0, h / comboNaturalH.current)));
-    });
-    ro.observe(el);
-    return ()=>ro.disconnect();
-  },[]);
-  useEffect(()=>{
-    const el = scoreBlockRef.current;
-    if(!el) return;
-    const ro = new ResizeObserver(()=>{
-      const h = el.offsetHeight;
-      if(h <= 0) return;
-      if(scoreNaturalH.current === null) { scoreNaturalH.current = h; return; } // first paint = baseline
-      setScoreBlockFrac(Math.max(0.2, Math.min(3.0, h / scoreNaturalH.current)));
-    });
-    ro.observe(el);
-    return ()=>ro.disconnect();
+  const scoreBlockCbRef = React.useCallback((el)=>{
+    scoreBlockRef.current = el;
+    scoreBlockSectionRef.current = el;
   },[]);
   // Portrait vs landscape for combo button layout — recomputed on each render via sc trigger
   const comboAreaRef = useRef(null); // kept for legacy ref safety, not used for measurement
@@ -3330,6 +3306,13 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const sc2 = S.page.maxWidth / 480;
   const bp = (n) => Math.round(n * sc2);
   const bf = (n) => Math.round(n * sc2);
+  // Font scale multipliers — derived directly from sectionH pixel values so text
+  // always matches the current bubble size. Natural heights are the defaults when
+  // sectionH is null (score ~90px, combo ~44px at base scale).
+  const SCORE_NATURAL_H = bp(90);
+  const COMBO_NATURAL_H = bp(44);
+  const scoreFrac = sectionH.score ? Math.max(0.2, Math.min(4.0, sectionH.score / SCORE_NATURAL_H)) : 1;
+  const comboFrac = sectionH.combo ? Math.max(0.2, Math.min(4.0, sectionH.combo / COMBO_NATURAL_H)) : 1;
 
   // Portrait = taller than wide → stack combos vertically; landscape → side by side
   const comboLayout = window.innerHeight > window.innerWidth ? "column" : "row";
@@ -3400,16 +3383,16 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
 
       {/* ── Score block ── */}
-      <div ref={el=>{scoreBlockRef.current=el;scoreBlockSectionRef.current=el;}} style={{background:"var(--surface)",borderRadius:bp(12),padding:`${bp(4)}px ${bp(12)}px`,marginBottom:0,boxShadow:"0 2px 8px rgba(0,0,0,0.06)",border:"1px solid var(--border)",flexShrink:0,overflow:"hidden",display:"flex",flexDirection:"column",justifyContent:"center",...(sectionH.score?{height:sectionH.score}:{})}}>
+      <div ref={scoreBlockCbRef} style={{background:"var(--surface)",borderRadius:bp(12),padding:`${bp(4)}px ${bp(12)}px`,marginBottom:0,boxShadow:"0 2px 8px rgba(0,0,0,0.06)",border:"1px solid var(--border)",flexShrink:0,overflow:"hidden",display:"flex",flexDirection:"column",justifyContent:"center",...(sectionH.score?{height:sectionH.score}:{})}}>
         {/* Names row — each name centered directly over its score number */}
         <div style={{display:"flex",alignItems:"flex-end",marginBottom:bp(1)}}>
           <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",minWidth:0}}>
-            <span style={{fontSize:Math.round(bf(dA.name&&dA.name.length>10?13:17)*scoreBlockFrac),fontWeight:900,color:dA.cl,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%",textAlign:"center",lineHeight:1}}>{dA.name}</span>
+            <span style={{fontSize:Math.round(bf(dA.name&&dA.name.length>10?13:17)*scoreFrac),fontWeight:900,color:dA.cl,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%",textAlign:"center",lineHeight:1}}>{dA.name}</span>
           </div>
           {/* Center: side labels — left side label uses dA's color, right uses dB's */}
-          <div style={{textAlign:"center",minWidth:Math.round(bp(56)*scoreBlockFrac),display:"flex",flexDirection:"column",alignItems:"center"}}>
+          <div style={{textAlign:"center",minWidth:Math.round(bp(56)*scoreFrac),display:"flex",flexDirection:"column",alignItems:"center"}}>
             {(currentSides.p1Side||currentSides.p2Side)&&(
-              <span style={{fontSize:Math.round(bf(7)*scoreBlockFrac),fontWeight:700,color:"var(--text-muted)",whiteSpace:"nowrap",lineHeight:1.2}}>
+              <span style={{fontSize:Math.round(bf(7)*scoreFrac),fontWeight:700,color:"var(--text-muted)",whiteSpace:"nowrap",lineHeight:1.2}}>
                 <span style={{color:dA.cl==="#2563EB"?"#93C5FD":"#FCA5A5"}}>{currentSides.p1Side||"—"}</span>
                 <span style={{color:"var(--text-faint)"}}> · </span>
                 <span style={{color:dB.cl==="#DC2626"?"#FCA5A5":"#93C5FD"}}>{currentSides.p2Side||"—"}</span>
@@ -3417,22 +3400,22 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             )}
           </div>
           <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",minWidth:0}}>
-            <span style={{fontSize:Math.round(bf(dB.name&&dB.name.length>10?13:17)*scoreBlockFrac),fontWeight:900,color:dB.cl,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%",textAlign:"center",lineHeight:1}}>{dB.name}</span>
+            <span style={{fontSize:Math.round(bf(dB.name&&dB.name.length>10?13:17)*scoreFrac),fontWeight:900,color:dB.cl,fontFamily:"'Outfit',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%",textAlign:"center",lineHeight:1}}>{dB.name}</span>
           </div>
         </div>
         {/* Big score numbers */}
         <div style={{display:"flex",alignItems:"center"}}>
           <div style={{flex:1,textAlign:"center"}}>
-            <span style={{fontSize:Math.round(bf(48)*scoreBlockFrac),fontWeight:900,color:dA.cl,lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{dA.pts}</span>
+            <span style={{fontSize:Math.round(bf(48)*scoreFrac),fontWeight:900,color:dA.cl,lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{dA.pts}</span>
           </div>
           {/* Center: dash + TO X + Set label stacked */}
-          <div style={{textAlign:"center",minWidth:Math.round(bp(56)*scoreBlockFrac),display:"flex",flexDirection:"column",alignItems:"center",gap:0}}>
-            <span style={{fontSize:Math.round(bf(22)*scoreBlockFrac),fontWeight:800,color:"var(--border2)",lineHeight:1}}>–</span>
-            {config.pts>0&&<span style={{fontSize:Math.round(bf(8)*scoreBlockFrac),fontWeight:700,color:"var(--text-primary)",letterSpacing:1,lineHeight:1}}>TO {config.pts}</span>}
-            <span style={{fontSize:Math.round(bf(7)*scoreBlockFrac),fontWeight:700,color:"var(--text-muted)",whiteSpace:"nowrap",lineHeight:1.3}}>{["First","Second","Third","Fourth","Fifth"][curSet-1]||`Set ${curSet}`} Set</span>
+          <div style={{textAlign:"center",minWidth:Math.round(bp(56)*scoreFrac),display:"flex",flexDirection:"column",alignItems:"center",gap:0}}>
+            <span style={{fontSize:Math.round(bf(22)*scoreFrac),fontWeight:800,color:"var(--border2)",lineHeight:1}}>–</span>
+            {config.pts>0&&<span style={{fontSize:Math.round(bf(8)*scoreFrac),fontWeight:700,color:"var(--text-primary)",letterSpacing:1,lineHeight:1}}>TO {config.pts}</span>}
+            <span style={{fontSize:Math.round(bf(7)*scoreFrac),fontWeight:700,color:"var(--text-muted)",whiteSpace:"nowrap",lineHeight:1.3}}>{["First","Second","Third","Fourth","Fifth"][curSet-1]||`Set ${curSet}`} Set</span>
           </div>
           <div style={{flex:1,textAlign:"center"}}>
-            <span style={{fontSize:Math.round(bf(48)*scoreBlockFrac),fontWeight:900,color:dB.cl,lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{dB.pts}</span>
+            <span style={{fontSize:Math.round(bf(48)*scoreFrac),fontWeight:900,color:dB.cl,lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>{dB.pts}</span>
           </div>
         </div>
       </div>
