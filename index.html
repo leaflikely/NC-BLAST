@@ -1598,47 +1598,48 @@ function comboMeasureWord(word, fontPx, weight) {
 function ComboLabel({blade, ratchet, bit, color, color2, empty, emptyText}) {
   const ref = useRef(null);
   const [sizes, setSizes] = useState(null);
+
+  // Pure measurement function — reads DOM dimensions, calculates font sizes
+  const computeSizes = React.useCallback((el) => {
+    if(!el) return;
+    const h = el.offsetHeight;
+    const w = el.offsetWidth;
+    if(h <= 0 || w <= 0) return;
+    const pad = 8;
+    const availW = w - pad;
+    const lineH = 1.15;
+    const bladeWords = (blade||"\u2014").split(/\s+/).filter(Boolean);
+    let lo = 7, hi = h * 0.5, bestBlade = lo;
+    for(let i=0;i<16;i++){
+      const mid=(lo+hi)/2;
+      const maxW=Math.max(...bladeWords.map(wd=>comboMeasureWord(wd,mid,"900")));
+      if(maxW<=availW){bestBlade=mid;lo=mid;}else{hi=mid;}
+    }
+    let sub = bestBlade * 0.72;
+    const bladeLines = bladeWords.length > 1 &&
+      comboMeasureWord(bladeWords.join(" "), bestBlade, "900") > availW ? 2 : 1;
+    const bitWords = (bit||"").split(/\s+/).filter(Boolean);
+    const bitLines = bitWords.length > 1 &&
+      comboMeasureWord(bitWords.join(" "), sub, "600") > availW ? 2 : 1;
+    const totalLines = bladeLines + (ratchet ? 1 : 0) + bitLines;
+    if(bestBlade * totalLines * lineH > h - pad) {
+      bestBlade = Math.max(7, (h - pad) / (totalLines * lineH));
+      sub = bestBlade * 0.72;
+    }
+    setSizes({blade: Math.max(7, bestBlade), sub: Math.max(7, sub)});
+  }, [blade, ratchet, bit]);
+
+  // Fires synchronously before the browser paints — eliminates visible resize flash on combo select
+  React.useLayoutEffect(()=>{ computeSizes(ref.current); }, [computeSizes]);
+
+  // Also watch container resize for drag-handle and orientation changes
   useEffect(()=>{
     const el = ref.current;
     if(!el) return;
-    function compute() {
-      const h = el.offsetHeight;
-      const w = el.offsetWidth;
-      if(h <= 0 || w <= 0) return;
-      const pad = 8; // 4px each side
-      const availW = w - pad;
-      const lineH = 1.15;
-      // Step 1: binary-search largest blade size where longest blade word fits in width
-      const bladeWords = (blade||"—").split(/\s+/).filter(Boolean);
-      let lo = 7, hi = h * 0.5, bestBlade = lo;
-      for(let i=0;i<16;i++){
-        const mid=(lo+hi)/2;
-        const maxW=Math.max(...bladeWords.map(wd=>comboMeasureWord(wd,mid,"900")));
-        if(maxW<=availW){bestBlade=mid;lo=mid;}else{hi=mid;}
-      }
-      // Step 2: sub at 72% of blade
-      let sub = bestBlade * 0.72;
-      // Step 3: cap so all 3 lines fit in height with lineH
-      // blade can wrap — estimate 1 or 2 lines based on whether a single word fits full width
-      const bladeLines = bladeWords.length > 1 &&
-        comboMeasureWord(bladeWords.join(" "), bestBlade, "900") > availW ? 2 : 1;
-      // bit can wrap too
-      const bitWords = (bit||"").split(/\s+/).filter(Boolean);
-      const bitLines = bitWords.length > 1 &&
-        comboMeasureWord(bitWords.join(" "), sub, "600") > availW ? 2 : 1;
-      const totalLines = bladeLines + (ratchet ? 1 : 0) + bitLines;
-      const maxFromH = (h - pad) / (totalLines * lineH);
-      // Re-derive blade and sub from height cap
-      if(bestBlade * totalLines * lineH > h - pad) {
-        bestBlade = Math.max(7, maxFromH);
-        sub = bestBlade * 0.72;
-      }
-      setSizes({blade: Math.max(7, bestBlade), sub: Math.max(7, sub)});
-    }
-    const ro = new ResizeObserver(compute);
+    const ro = new ResizeObserver(()=>computeSizes(el));
     ro.observe(el);
     return ()=>ro.disconnect();
-  },[blade, ratchet, bit]);
+  },[computeSizes]);
 
   const fs = sizes || {blade:14, sub:10};
   const lineH = 1.15;
@@ -1742,6 +1743,20 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const scoreBlockRef = useRef(null);
   const [scoreBlockFrac, setScoreBlockFrac] = useState(1);
   const scoreNaturalH = useRef(null);
+  const [comboFrac, setComboFrac] = useState(1);
+  const comboNaturalH = useRef(null);
+  useEffect(()=>{
+    const el = comboDisplaySectionRef.current;
+    if(!el) return;
+    const ro = new ResizeObserver(()=>{
+      const h = el.offsetHeight;
+      if(h <= 0) return;
+      if(comboNaturalH.current === null) { comboNaturalH.current = h; return; }
+      setComboFrac(Math.max(0.2, Math.min(4.0, h / comboNaturalH.current)));
+    });
+    ro.observe(el);
+    return ()=>ro.disconnect();
+  },[]);
   useEffect(()=>{
     const el = scoreBlockRef.current;
     if(!el) return;
@@ -3449,22 +3464,22 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       )}
       {!layoutEditMode&&<div style={{height:bp(5),flexShrink:0}}/>}
 
-      {/* ── Active combo display — updates live as combos are selected ── */}
+      {/* ── Active combo display — static font sizes, no auto-scaling ── */}
       <div ref={comboDisplaySectionRef} style={{display:"flex",gap:bp(6),marginBottom:0,flexShrink:0,...(sectionH.combo?{height:sectionH.combo}:{minHeight:bp(44)}),overflow:"hidden"}}>
         {[dA,dB].map((side,si)=>{
           const c = side.ri !== null ? comboOf(side.deck, side.ri) : null;
           const hasCombo = side.ri !== null;
           return (
-            <div key={si} style={{flex:1,minWidth:0,borderRadius:bp(12),border:`2px solid ${hasCombo?side.cl+"60":"var(--border)"}`,background:hasCombo?`${side.cl}0D`:"var(--surface2)",overflow:"hidden"}}>
-              <ComboLabel
-                blade={hasCombo?c?.blade||"—":null}
-                ratchet={hasCombo?c?.ratchet||null:null}
-                bit={hasCombo?c?.bit||null:null}
-                color={hasCombo?side.cl:"var(--text-muted)"}
-                color2={hasCombo?side.cl:"var(--text-faint)"}
-                empty={!hasCombo}
-                emptyText="Pick combo ↑"
-              />
+            <div key={si} style={{flex:1,minWidth:0,borderRadius:bp(12),border:`2px solid ${hasCombo?side.cl+"60":"var(--border)"}`,background:hasCombo?`${side.cl}0D`:"var(--surface2)",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",padding:`${bp(4)}px ${bp(6)}px`}}>
+              {hasCombo ? (
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:0,width:"100%",overflow:"hidden"}}>
+                  <span style={{fontSize:Math.round(bf(13)*comboFrac),fontWeight:900,color:side.cl,textAlign:"center",lineHeight:1.15,whiteSpace:"normal",wordBreak:"normal",overflowWrap:"normal",maxWidth:"100%"}}>{c?.blade||"—"}</span>
+                  {c?.ratchet&&<span style={{fontSize:Math.round(bf(9)*comboFrac),fontWeight:700,color:side.cl,textAlign:"center",lineHeight:1.15,whiteSpace:"nowrap",maxWidth:"100%",opacity:0.9}}>{c.ratchet}</span>}
+                  <span style={{fontSize:Math.round(bf(9)*comboFrac),fontWeight:600,color:side.cl,textAlign:"center",lineHeight:1.15,whiteSpace:"normal",wordBreak:"normal",overflowWrap:"normal",maxWidth:"100%",opacity:0.8}}>{c?.bit||""}</span>
+                </div>
+              ) : (
+                <span style={{fontSize:Math.round(bf(10)*comboFrac),fontWeight:600,color:"var(--text-faint)",textAlign:"center"}}></span>
+              )}
             </div>
           );
         })}
