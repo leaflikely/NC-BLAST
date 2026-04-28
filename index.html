@@ -1814,7 +1814,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       winnerCombo:comboStr(scoringPi===0?d1[r1]:d2[r2]),
       time:new Date().toISOString(),
       _pp:[...pts],_ps:[...sets],_cs:curSet,
-      _u1:[...used1],_u2:[...used2],_sh:shuf,_ls:[...lerStrikes],
+      _u1:[...used1],_u2:[...used2],_sh:shuf,_ls:[...lerStrikes],_ss:[...setScores],
     };
     const newLog=[...log,entry];
     setLog(newLog); sSave(KEYS.matchLog, newLog); setFuture([]); setPts(np);
@@ -1866,6 +1866,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     setPts(l._pp); setSets(l._ps); setCurSet(l._cs);
     setUsed1(l._u1); setUsed2(l._u2); setShuf(l._sh);
     if(l._ls) setLerStrikes(l._ls);
+    if(l._ss) setSetScores(l._ss);
     setPendingFinish(null);
     // preserve r1/r2 — do not reset combo selection on undo
     setPhase("battle");
@@ -1880,6 +1881,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     else { setUsed1(nu1); setUsed2(nu2); setShuf(n._sh); }
     if(config.pts>0&&(n.p1Score>=config.pts||n.p2Score>=config.pts)){
       const ns=[sets[0],sets[1]]; ns[n.scorerIdx]+=1; setSets(ns);
+      setSetScores(ss=>[...ss,{p1:n.p1Score,p2:n.p2Score}]);
       if(ns[n.scorerIdx]>=need)setPhase("over");
       else { setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(s=>s+1); }
     }
@@ -3066,7 +3068,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       setUsed1(last._u1);
       setUsed2(last._u2);
       setShuf(last._sh);
-      setSetScores(ss => ss.slice(0,-1));
+      if(last._ss) setSetScores(last._ss); else setSetScores(ss => ss.slice(0,-1));
       setConfirmState(null);
       setOverBackConfirm(false);
       setR1(null); setR2(null); setPendingFinish(null);
@@ -3610,7 +3612,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                       p1Side:currentSides.p1Side||"",p2Side:currentSides.p2Side||"",
                       winnerCombo:"",time:new Date().toISOString(),
                       _pp:[...pts],_ps:[...sets],_cs:curSet,
-                      _u1:[...used1],_u2:[...used2],_sh:shuf,_ls:[...lerStrikes],
+                      _u1:[...used1],_u2:[...used2],_sh:shuf,_ls:[...lerStrikes],_ss:[...setScores],
                       _lerStrikeFor:side.ci,
                     };
                     const newLog=[...log,strikeEntry];
@@ -3648,7 +3650,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 return (
                   <ScaledBtn key="confirm"
                     disabled={layoutEditMode||!canConfirm}
-                    onClick={()=>{ if(!layoutEditMode&&canConfirm){ const fin=pendingFinish; setPendingFinish(null); doScore(fin.pi,fin.fin); } }}
+                    onClick={()=>{ if(!layoutEditMode&&canConfirm){ doScore(side.ci,side.pending); setPendingFinish(null); } }}
                     baseStyle={{flex:1,minHeight:0,width:"100%",borderRadius:bp(7),border:"2px solid transparent",background:canConfirm?side.cl:"var(--surface3)",color:canConfirm?"#fff":"var(--text-disabled)",fontFamily:"'Outfit',sans-serif",cursor:canConfirm?"pointer":"not-allowed",boxSizing:"border-box",transition:"background 0.15s",overflow:"hidden",position:"relative"}}
                     renderContent={frac=>(
                       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
