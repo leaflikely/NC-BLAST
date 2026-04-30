@@ -810,7 +810,7 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark})
           <button onClick={()=>setShowChangelog(true)} style={{background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>v{CHANGELOG[CHANGELOG.length-1].v} — Changelog</button>
         </div>
       </div>
-      <button onClick={onOpenLib} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 14px",borderRadius:12,border:hasLib?"2px solid #15803D40":"2px dashed #EA580C",background:hasLib?"#15803D08":"#FFF7ED",cursor:"pointer",marginBottom:14,textAlign:"left"}}>
+      <button onClick={onOpenLib} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 14px",borderRadius:12,border:hasLib?"2px solid #15803D40":"2px dashed #EA580C",background:hasLib?"#15803D08":"#EA580C0D",cursor:"pointer",marginBottom:14,textAlign:"left"}}>
         <span style={{color:hasLib?"#15803D":"#EA580C"}}>{IC.db}</span>
         <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:hasLib?"#15803D":"#EA580C"}}>{hasLib?`Library: ${parts.blades.length} blades · ${parts.ratchets.length} ratchets · ${parts.bits.length} bits`:"No parts loaded — tap to set up"}</div><div style={{fontSize:11,color:"var(--text-muted)",marginTop:1}}>{hasLib?"Tap to manage":"Import your Beyblade X parts first"}</div></div>
       </button>
@@ -1169,7 +1169,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
       <p style={S.sub}>Players are saved between sessions</p>
 
       {/* Challonge import */}
-      <div style={{...S.card,border:"2px solid #E4600040",background:"#FFF7ED",marginBottom:12}}>
+      <div style={{...S.card,border:"2px solid #EA580C40",marginBottom:12}}>
         <h2 style={{...S.label,color:"#C2410C",marginBottom:8}}>Import from Challonge</h2>
 
         {/* Cached tournaments dropdown */}
@@ -1178,7 +1178,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
             type="button"
             onClick={()=>{ if(cachedOpen){ setCachedOpen(false); } else { fetchCachedTournaments(); } refreshCachedList(); }}
             disabled={cachedTournaments==="loading"}
-            style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"9px 12px",borderRadius:10,border:"2px solid #7C3AED30",background:"#F5F3FF",color:"#6D28D9",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:cachedTournaments==="loading"?"not-allowed":"pointer",opacity:cachedTournaments==="loading"?0.7:1}}>
+            style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"9px 12px",borderRadius:10,border:"2px solid #7C3AED30",background:"#7C3AED15",color:"#7C3AED",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:cachedTournaments==="loading"?"not-allowed":"pointer",opacity:cachedTournaments==="loading"?0.7:1}}>
             <span>{cachedTournaments==="loading" ? "⏳ Checking server cache..." : "⚡ Cached Tournaments"}</span>
             {cachedTournaments!=="loading"&&<span style={{fontSize:10,opacity:0.7}}>{cachedOpen ? "▲ Hide" : "▼ Show"}</span>}
           </button>
@@ -1243,7 +1243,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
           <button
             onClick={importChallonge}
             disabled={!challongeUrl.trim()||challongeStatus==="loading"}
-            style={{padding:"0 14px",borderRadius:10,border:"none",background:challongeUrl.trim()?"#EA580C":"#CBD5E1",color:"#fff",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:challongeUrl.trim()?"pointer":"not-allowed",flexShrink:0}}>
+            style={{padding:"0 14px",borderRadius:10,border:"none",background:challongeUrl.trim()?"#EA580C":"var(--surface3)",color:challongeUrl.trim()?"#fff":"var(--text-disabled)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:challongeUrl.trim()?"pointer":"not-allowed",flexShrink:0}}>
             {challongeStatus==="loading"?"..." :"Import"}
           </button>
         </div>
@@ -1251,7 +1251,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
         {challongeStatus==="ok"&&challongeSource&&(
           <div style={{display:"inline-flex",alignItems:"center",gap:5,marginTop:5,padding:"3px 9px",borderRadius:20,border:"1px solid",
             borderColor: challongeSource==="cached" ? "#7C3AED40" : "#15803D40",
-            background:  challongeSource==="cached" ? "#F5F3FF"   : "#F0FDF4",
+            background:  challongeSource==="cached" ? "#7C3AED15"   : "#15803D15",
           }}>
             <span style={{fontSize:10}}>{challongeSource==="cached" ? "⚡" : "🌐"}</span>
             <span style={{fontSize:10,fontWeight:700,color: challongeSource==="cached" ? "#6D28D9" : "#15803D"}}>
@@ -1282,7 +1282,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
                   <textarea
                     readOnly
                     value={csvFallback.names.join(", ")}
-                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"2px solid #15803D40",background:"#F0FDF4",color:"#14532D",fontSize:11,fontFamily:"'Outfit',sans-serif",resize:"none",height:72,outline:"none"}}
+                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"2px solid #15803D40",background:"#15803D0D",color:"var(--text-primary)",fontSize:11,fontFamily:"'Outfit',sans-serif",resize:"none",height:72,outline:"none"}}
                     onFocus={e=>e.target.select()}
                   />
                   <button
@@ -1930,6 +1930,16 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const r1eff = "p1ComboIdx" in extraState ? extraState.p1ComboIdx : r1;
     const r2eff = "p2ComboIdx" in extraState ? extraState.p2ComboIdx : r2;
     const { p1ComboIdx, p2ComboIdx, ...rest } = extraState;
+    // Build combo history: last 5 completed battles from this match (no LER strikes)
+    const currentLog = log.slice(matchStartIdx).filter(e=>e.type!=="LER-STRIKE"&&e.type!=="LER");
+    const comboHistory = currentLog.slice(-5).map(e=>({
+      scorer: e.scorerIdx===0 ? (p1||"") : (p2||""),
+      scorerIdx: e.scorerIdx,
+      typeName: e.typeName||"",
+      points: e.p||e.points||0,
+      winnerCombo: e.winnerCombo||"",
+      set: e.set||1,
+    }));
     const state = {
       p1, p2,
       p1Side: currentSides.p1Side||"",
@@ -1941,6 +1951,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       pointLimit: config.pts,
       tournamentName: config.tournamentName||"",
       judge,
+      challongeMatchId: challongeMatchId||null,
+      matchOver: phase==="over",
+      comboHistory,
       p1ActiveCombo: activeComboOf(d1, r1eff),
       p2ActiveCombo: activeComboOf(d2, r2eff),
       ...rest,
@@ -2116,7 +2129,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               return (
                 <button key={ch} disabled={isTaken}
                   onClick={()=>setCxPicker({...cxPicker,step:"blade",chip:ch})}
-                  style={{padding:"18px 20px",borderRadius:12,border:`2px solid ${isTaken?"#E2E8F0":"#0F766E40"}`,background:isTaken?"#F1F5F9":"#F0FDF9",color:isTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:16,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:isTaken?"not-allowed":"pointer",textAlign:"left",opacity:isTaken?0.45:1}}>
+                  style={{padding:"18px 20px",borderRadius:12,border:`2px solid ${isTaken?"var(--border)":"#0F766E40"}`,background:isTaken?"var(--surface3)":"var(--surface2)",color:isTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:16,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:isTaken?"not-allowed":"pointer",textAlign:"left",opacity:isTaken?0.45:1}}>
                   {ch}
                   {ch==="Standard"&&<span style={{fontSize:11,fontWeight:500,color:"var(--text-secondary)",display:"block",marginTop:2}}>Multiple allowed per deck</span>}
                   {isTaken&&<span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)",display:"block",marginTop:2}}>Already used</span>}
@@ -2136,7 +2149,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 const blastTaken = usedCxParts.blades.includes("Blast");
                 return (
                   <button disabled={blastTaken} onClick={()=>!blastTaken&&setCxPicker({...cxPicker,step:"assist",blade:"Blast"})}
-                    style={{width:"100%",padding:"12px",borderRadius:9,border:"2px solid #0D9488",background:blastTaken?"#F1F5F9":"#0D948822",color:blastTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:blastTaken?"not-allowed":"pointer",opacity:blastTaken?0.45:1}}>
+                    style={{width:"100%",padding:"12px",borderRadius:9,border:"2px solid #0D9488",background:blastTaken?"var(--surface3)":"#0D948822",color:blastTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:blastTaken?"not-allowed":"pointer",opacity:blastTaken?0.45:1}}>
                     Blast{blastTaken?" — IN USE":""}
                   </button>
                 );
@@ -2157,7 +2170,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                         if(returnToReview){ setPicker(null); setDeckReview(true); return; }
                         openPicker({who,slot,cat:"ratchet"});
                       }}
-                      style={{padding:"8px 4px",borderRadius:8,border:`2px solid ${anyTaken?"#E2E8F0":"#0D948860"}`,background:anyTaken?"#F1F5F9":"#0D948818",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",opacity:anyTaken?0.45:1}}>
+                      style={{padding:"8px 4px",borderRadius:8,border:`2px solid ${anyTaken?"var(--border)":"#0D948860"}`,background:anyTaken?"var(--surface3)":"#0D948818",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",opacity:anyTaken?0.45:1}}>
                       Blast {assist}
                       {anyTaken&&<span style={{display:"block",fontSize:7,color:"var(--text-faint)"}}>IN USE</span>}
                     </button>
@@ -2171,7 +2184,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 const bladeTaken = usedCxParts.blades.includes(b);
                 return (
                   <button key={b} disabled={bladeTaken} onClick={()=>!bladeTaken&&setCxPicker({...cxPicker,step:"assist",blade:b})}
-                    style={{padding:"10px 4px",borderRadius:9,border:`2px solid ${bladeTaken?"#E2E8F0":"#CBD5E1"}`,background:bladeTaken?"#F1F5F9":"#F8FAFC",color:bladeTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:bladeTaken?"not-allowed":"pointer",minHeight:40,textAlign:"center",opacity:bladeTaken?0.45:1}}>
+                    style={{padding:"10px 4px",borderRadius:9,border:`2px solid ${bladeTaken?"var(--border)":"var(--border2)"}`,background:bladeTaken?"var(--surface3)":"var(--surface2)",color:bladeTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:bladeTaken?"not-allowed":"pointer",minHeight:40,textAlign:"center",opacity:bladeTaken?0.45:1}}>
                     {b}
                     {bladeTaken&&<span style={{display:"block",fontSize:7,fontWeight:700,color:"var(--text-faint)",marginTop:2}}>IN USE</span>}
                   </button>
@@ -2187,7 +2200,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   return (
                     <button key={b} disabled={bladeTaken}
                       onClick={()=>!bladeTaken&&setCxPicker({...cxPicker,step:"over_blade",blade:b,isCXE:true})}
-                      style={{padding:"12px 4px",borderRadius:9,border:`2px solid ${bladeTaken?"#E2E8F0":"#7C3AED60"}`,background:bladeTaken?"#F1F5F9":"#F5F3FF",color:bladeTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:bladeTaken?"not-allowed":"pointer",minHeight:44,textAlign:"center",opacity:bladeTaken?0.45:1}}>
+                      style={{padding:"12px 4px",borderRadius:9,border:`2px solid ${bladeTaken?"var(--border)":"#7C3AED60"}`,background:bladeTaken?"var(--surface3)":"#7C3AED15",color:bladeTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:bladeTaken?"not-allowed":"pointer",minHeight:44,textAlign:"center",opacity:bladeTaken?0.45:1}}>
                       {b}
                       {bladeTaken&&<span style={{display:"block",fontSize:7,fontWeight:700,color:"var(--text-faint)",marginTop:2}}>IN USE</span>}
                     </button>
@@ -2207,7 +2220,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 return (
                   <button key={ob} disabled={taken}
                     onClick={()=>!taken&&setCxPicker({...cxPicker,step:"assist",overBlade:ob})}
-                    style={{padding:"16px 4px",borderRadius:12,border:`2px solid ${taken?"#E2E8F0":"#7C3AED60"}`,background:taken?"#F1F5F9":"#F5F3FF",color:taken?"var(--text-disabled)":"var(--text-primary)",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:taken?"not-allowed":"pointer",minHeight:56,textAlign:"center",opacity:taken?0.45:1}}>
+                    style={{padding:"16px 4px",borderRadius:12,border:`2px solid ${taken?"var(--border)":"#7C3AED60"}`,background:taken?"var(--surface3)":"#7C3AED15",color:taken?"var(--text-disabled)":"var(--text-primary)",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:taken?"not-allowed":"pointer",minHeight:56,textAlign:"center",opacity:taken?0.45:1}}>
                     {ob}
                     {taken&&<span style={{display:"block",fontSize:7,fontWeight:700,color:"var(--text-faint)",marginTop:2}}>IN USE</span>}
                   </button>
@@ -2228,7 +2241,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   const taken = usedCxParts.assists.includes(a);
                   return (
                     <button key={a} disabled={taken} onClick={()=>!taken&&advance(finalName)}
-                      style={{padding:"10px 4px",borderRadius:9,border:`2px solid ${taken?"#E2E8F0":"#0F766E"}`,background:taken?"#F1F5F9":"#0F766E18",color:taken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:taken?"not-allowed":"pointer",minHeight:40,textAlign:"center",position:"relative",opacity:taken?0.45:1}}>
+                      style={{padding:"10px 4px",borderRadius:9,border:`2px solid ${taken?"var(--border)":"#0F766E"}`,background:taken?"var(--surface3)":"#0F766E18",color:taken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:taken?"not-allowed":"pointer",minHeight:40,textAlign:"center",position:"relative",opacity:taken?0.45:1}}>
                       {a}
                       {taken&&<span style={{position:"absolute",bottom:2,fontSize:7,fontWeight:700,color:"var(--text-faint)",letterSpacing:0.3}}>IN USE</span>}
                     </button>
@@ -2243,7 +2256,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 const taken = usedCxParts.assists.includes(a);
                 return (
                   <button key={a} disabled={taken} onClick={()=>!taken&&advance(finalName)}
-                    style={{padding:"10px 4px",borderRadius:9,border:`2px solid ${taken?"#E2E8F0":"#CBD5E1"}`,background:taken?"#F1F5F9":"#F8FAFC",color:taken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:taken?"not-allowed":"pointer",minHeight:40,textAlign:"center",position:"relative",opacity:taken?0.45:1}}>
+                    style={{padding:"10px 4px",borderRadius:9,border:`2px solid ${taken?"var(--border)":"var(--border2)"}`,background:taken?"var(--surface3)":"var(--surface2)",color:taken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:taken?"not-allowed":"pointer",minHeight:40,textAlign:"center",position:"relative",opacity:taken?0.45:1}}>
                     {a}
                     {taken&&<span style={{position:"absolute",bottom:2,fontSize:7,fontWeight:700,color:"var(--text-faint)",letterSpacing:0.3}}>IN USE</span>}
                   </button>
@@ -2583,7 +2596,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                         else if(who===1){ openPicker({who:2,slot:0,cat:"blade"}); }
                         else { setPicker(null); setDeckReview(true); }
                       }}
-                      style={{padding:"8px 4px",borderRadius:9,border:`2px solid ${anyTaken?"#E2E8F0":bladeColor+"50"}`,background:anyTaken?"#F1F5F9":bladeColor+"10",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2}}>
+                      style={{padding:"8px 4px",borderRadius:9,border:`2px solid ${anyTaken?"var(--border)":bladeColor+"50"}`,background:anyTaken?"var(--surface3)":bladeColor+"10",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2}}>
                       <span style={{fontSize:13,fontWeight:800}}>{c.blade}</span>
                       <span style={{fontSize:11,opacity:0.65}}>{c.ratchet} · {c.bit}</span>
                       {anyTaken&&<span style={{fontSize:9,color:"var(--text-faint)"}}>IN USE</span>}
@@ -2619,7 +2632,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                       else if(who===1){ openPicker({who:2,slot:0,cat:"blade"}); }
                       else { setPicker(null); setDeckReview(true); }
                     }}
-                    style={{padding:"8px 4px",borderRadius:9,border:`2px solid ${anyTaken?"#E2E8F0":bladeColor+"60"}`,background:anyTaken?"#F1F5F9":bladeColor+"12",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:52,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2}}>
+                    style={{padding:"8px 4px",borderRadius:9,border:`2px solid ${anyTaken?"var(--border)":bladeColor+"60"}`,background:anyTaken?"var(--surface3)":bladeColor+"12",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:52,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2}}>
                     <span style={{fontSize:13,fontWeight:800}}>{qc.blade}</span>
                     <span style={{fontSize:11,opacity:0.7}}>{qc.ratchet} · {qc.bit}</span>
                     {anyTaken&&<span style={{fontSize:9,color:"var(--text-faint)"}}>IN USE</span>}
@@ -2653,7 +2666,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           </div>
           {cat==="blade"&&(
             <button onClick={()=>setCxPicker({step:"chip",who,slot,returnToReview:picker?.returnToReview||false})}
-              style={{padding:"9px 14px",borderRadius:10,border:"2px solid #0F766E",background:"#F0FDF9",color:"#0F766E",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
+              style={{padding:"9px 14px",borderRadius:10,border:"2px solid #0F766E",background:"#0F766E18",color:"#0F766E",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
               CX
             </button>
           )}
@@ -2675,12 +2688,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           <div style={{marginTop:14}}>
             <button
               onClick={()=>setCrossoverOpen(o=>!o)}
-              style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"10px 14px",borderRadius:10,border:"2px solid #7C3AED40",background:crossoverOpen?"#7C3AED":"#F5F3FF",color:crossoverOpen?"#fff":"#7C3AED",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"10px 14px",borderRadius:10,border:"2px solid #7C3AED40",background:crossoverOpen?"#7C3AED":"#7C3AED15",color:crossoverOpen?"#fff":"#7C3AED",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
               <span>🌐 Crossover Blades ({CROSSOVER_BLADES.length})</span>
               <span style={{fontSize:16,lineHeight:1}}>{crossoverOpen?"▲":"▼"}</span>
             </button>
             {crossoverOpen&&(
-              <div style={{marginTop:8,padding:"10px",background:"#F5F3FF",borderRadius:10,border:"1px solid #7C3AED30"}}>
+              <div style={{marginTop:8,padding:"10px",background:"#7C3AED15",borderRadius:10,border:"1px solid #7C3AED30"}}>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
                   {CROSSOVER_BLADES.filter(n=>!pickerSearch||n.toLowerCase().includes(pickerSearch.toLowerCase())).map(name=>(
                     <PartBtn key={name} name={name}/>
@@ -2858,7 +2871,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     {config.tm ? "2. Select Match" : "Select Match"}
                   </p>
                   <button type="button" onClick={fetchActiveMatches}
-                    style={{fontSize:12,fontWeight:700,color:"#1D4ED8",background:"#EFF6FF",border:"2px solid #BFDBFE",borderRadius:10,padding:"7px 14px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",display:"flex",alignItems:"center",gap:5}}>
+                    style={{fontSize:12,fontWeight:700,color:"#1D4ED8",background:"#1D4ED820",border:"2px solid #1D4ED840",borderRadius:10,padding:"7px 14px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",display:"flex",alignItems:"center",gap:5}}>
                     ↻ Refresh
                   </button>
                 </div>
@@ -2888,7 +2901,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                         onClick={()=>!judgeConflict&&selectActivePairing(match)}
                         style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"12px 14px",borderRadius:10,
                           border:`2px solid ${judgeConflict?"var(--border)":isSelected?"#1D4ED8":"var(--border)"}`,
-                          background:judgeConflict?"var(--surface3)":isSelected?"#EFF6FF":"var(--surface2)",
+                          background:judgeConflict?"var(--surface3)":isSelected?"#1D4ED820":"var(--surface2)",
                           opacity:judgeConflict?0.5:1,
                           cursor:judgeConflict?"not-allowed":"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
                         <div>
@@ -2910,7 +2923,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               {challongeMatchId&&(
                 <div>
                   {judgeIsPlayer&&(
-                    <div style={{padding:"10px 14px",borderRadius:10,background:"#FEF2F2",border:"1px solid #FECACA",marginBottom:8,fontSize:12,fontWeight:600,color:"#DC2626",textAlign:"center"}}>
+                    <div style={{padding:"10px 14px",borderRadius:10,background:"#DC262615",border:"1px solid #DC262640",marginBottom:8,fontSize:12,fontWeight:600,color:"#DC2626",textAlign:"center"}}>
                       ⚠️ The selected judge is playing in this match. Please select a different judge.
                     </div>
                   )}
@@ -3135,7 +3148,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                 {setScores.map((ss,i)=>{
                   const p1w=ss.p1>ss.p2;
                   return(
-                    <div key={i} style={{textAlign:"center",background:p1w?"#EFF6FF":"#FEF2F2",borderRadius:10,padding:"8px 14px",border:`1px solid ${p1w?"#BFDBFE":"#FECACA"}`}}>
+                    <div key={i} style={{textAlign:"center",background:p1w?"#2563EB15":"#DC262615",borderRadius:10,padding:"8px 14px",border:`1px solid ${p1w?"#2563EB40":"#DC262640"}`}}>
                       <p style={{fontSize:8,fontWeight:700,color:p1w?"#3B82F6":"#EF4444",letterSpacing:1,marginBottom:4}}>SET {i+1}</p>
                       <p style={{fontSize:18,fontWeight:900,lineHeight:1}}>
                         <span style={{color:p1w?"#2563EB":"var(--text-faint)"}}>{ss.p1}</span>
@@ -3189,7 +3202,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
         {/* ── Tournament mode: player confirms + judge submit modal trigger ── */}
         {config.tm&&!submitted&&(
-          <div style={{...S.card,border:"2px solid #7C3AED30",background:"#F5F3FF",marginBottom:12}}>
+          <div style={{...S.card,border:"2px solid #7C3AED30",background:"#7C3AED0A",marginBottom:12}}>
             <p style={{fontSize:11,fontWeight:700,color:"#7C3AED",marginBottom:10,textAlign:"center",letterSpacing:1}}>CONFIRM RESULT</p>
             <p style={{fontSize:11,color:"#64748B",textAlign:"center",marginBottom:12}}>Both players confirm, then the judge submits.</p>
             <div style={{display:"flex",gap:8,marginBottom:8}}>
@@ -3233,7 +3246,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   {val:submitChallongeCheck,set:setSubmitChallongeCheck,label:"Submit to Challonge",desc:hasChallonge?"Reports result to the active bracket match":"No bracket match selected",disabled:!hasChallonge},
                 ].map((opt,oi)=>(
                   <button key={oi} type="button" disabled={opt.disabled} onClick={()=>!opt.disabled&&opt.set(v=>!v)}
-                    style={{display:"flex",alignItems:"flex-start",gap:12,width:"100%",padding:"11px 13px",borderRadius:11,border:`2px solid ${opt.val&&!opt.disabled?"#2563EB":"var(--border)"}`,background:opt.val&&!opt.disabled?"#EFF6FF":"var(--surface2)",cursor:opt.disabled?"not-allowed":"pointer",marginBottom:8,textAlign:"left",fontFamily:"'Outfit',sans-serif",opacity:opt.disabled?0.45:1}}>
+                    style={{display:"flex",alignItems:"flex-start",gap:12,width:"100%",padding:"11px 13px",borderRadius:11,border:`2px solid ${opt.val&&!opt.disabled?"#2563EB":"var(--border)"}`,background:opt.val&&!opt.disabled?"#2563EB20":"var(--surface2)",cursor:opt.disabled?"not-allowed":"pointer",marginBottom:8,textAlign:"left",fontFamily:"'Outfit',sans-serif",opacity:opt.disabled?0.45:1}}>
                     <div style={{width:20,height:20,borderRadius:6,border:`2px solid ${opt.val&&!opt.disabled?"#2563EB":"var(--border2)"}`,background:opt.val&&!opt.disabled?"#2563EB":"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",marginTop:1}}>
                       {opt.val&&!opt.disabled&&<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                     </div>
@@ -3273,7 +3286,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               const winnerIsP1=sets[0]>=need;
               const winnerId=winnerIsP1?challongeP1ParticipantId:challongeP2ParticipantId;
               return challongeSubmitStatus==="ok"
-                ? <div style={{padding:"10px 14px",borderRadius:10,background:"#F0FDF4",border:"1px solid #86EFAC",fontSize:12,fontWeight:600,color:"#15803D",textAlign:"center",marginBottom:8}}>✓ Submitted to Challonge</div>
+                ? <div style={{padding:"10px 14px",borderRadius:10,background:"#15803D15",border:"1px solid #15803D40",fontSize:12,fontWeight:600,color:"#15803D",textAlign:"center",marginBottom:8}}>✓ Submitted to Challonge</div>
                 : <button type="button" disabled={challongeSubmitStatus==="loading"}
                     onClick={()=>submitChallongeScore(challongeMatchId,sets[0],sets[1],winnerId)}
                     style={{display:"block",width:"100%",padding:"11px 0",borderRadius:10,border:"none",background:challongeSubmitStatus==="loading"?"#CBD5E1":"#EA580C",color:"#fff",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:challongeSubmitStatus==="loading"?"not-allowed":"pointer",marginBottom:8}}>
@@ -3287,12 +3300,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         <button style={{display:"block",width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"var(--surface2)",color:"var(--text-muted)",fontSize:13,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginTop:6,textAlign:"center"}} onClick={()=>{setSheetsStatus(null);reset();onMainMenu();}}>⬅ Main Menu</button>
 
         {config.tm&&sheetsStatus==="success"&&(
-          <div style={{marginTop:10,padding:"10px 14px",borderRadius:10,background:"#F0FDF4",border:"1px solid #86EFAC",fontSize:12,fontWeight:600,color:"#15803D",textAlign:"center"}}>
+          <div style={{marginTop:10,padding:"10px 14px",borderRadius:10,background:"#15803D15",border:"1px solid #15803D40",fontSize:12,fontWeight:600,color:"#15803D",textAlign:"center"}}>
             ✓ Results submitted to Google Sheets
           </div>
         )}
         {config.tm&&sheetsStatus==="error"&&(
-          <div style={{marginTop:10,padding:"10px 14px",borderRadius:10,background:"#FEF2F2",border:"1px solid #FCA5A5",fontSize:12,fontWeight:600,color:"#DC2626",textAlign:"center"}}>
+          <div style={{marginTop:10,padding:"10px 14px",borderRadius:10,background:"#DC262615",border:"1px solid #DC262640",fontSize:12,fontWeight:600,color:"#DC2626",textAlign:"center"}}>
             ✕ Sheets submission failed — download CSV manually
           </div>
         )}
