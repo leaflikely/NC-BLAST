@@ -5203,7 +5203,7 @@ function RolePicker({onSelect}) {
 ═══════════════════════════════════════ */
 function BeyJudgeApp() {
   const sc = useScale();
-  S = makeS(sc); // update module-level S so all components see it
+  S = makeS(sc);
   const [dark,setDark] = useState(()=>{
     try{return localStorage.getItem("ncblast-dark")==="1";}catch{return false;}
   });
@@ -5212,36 +5212,30 @@ function BeyJudgeApp() {
     try{localStorage.setItem("ncblast-dark",next?"1":"0");}catch{}
     return next;
   });
-  // Apply dark class to body
   useEffect(()=>{
     document.body.classList.toggle("dark",dark);
   },[dark]);
 
-  // Role: null = show picker, "judge" = judge app, "player" = player app
-  // Not persisted — picker always shows on refresh
+  // Role — always at top, never after a conditional return
   const [role,setRole] = useState(null);
   const chooseRole = (r) => setRole(r);
 
-  // Player view renders entirely inside its own component — no judge state needed
-  if(!role) return <RolePicker onSelect={chooseRole}/>;
-  if(role==="player") return <PlayerApp onSwitchRole={()=>chooseRole(null)}/>;
-
+  // All judge-side state declared unconditionally (React rules require this)
   const [screen,setScreen] = useState("format");
   const [config,setConfig] = useState({pts:4,bo:3,tm:false,tournamentName:""});
   const [parts,setParts] = useState({blades:[],ratchets:[],bits:[]});
   const [players,setPlayers] = useState([]);
   const [libOpen,setLibOpen] = useState(false);
   const [judge,setJudge] = useState("");
-  const [sheetsStatus,setSheetsStatus] = useState(null); // null | "success" | "error"
+  const [sheetsStatus,setSheetsStatus] = useState(null);
   const [challongeSlug,setChallongeSlug] = useState("");
-  const [challongeParticipants,setChallongeParticipants] = useState({}); // { displayName: challongeId }
+  const [challongeParticipants,setChallongeParticipants] = useState({});
 
   useEffect(()=>{
     const saved=sGet(KEYS.parts,{});
     const merged=mergeWithDefaults(saved);
     setParts(merged); sSave(KEYS.parts,merged);
     setPlayers(sGet(KEYS.players,[]));
-    // Restore last Challonge tournament context
     const savedMap = sGet(KEYS.challongeMap, {});
     if(savedMap.slug) setChallongeSlug(savedMap.slug);
     if(savedMap.participants) setChallongeParticipants(savedMap.participants);
@@ -5324,6 +5318,10 @@ function BeyJudgeApp() {
     }
   };
 
+
+  // Branch on role in the render — no early returns before hooks
+  if(!role) return <RolePicker onSelect={chooseRole}/>;
+  if(role==="player") return <PlayerApp onSwitchRole={()=>chooseRole(null)}/>;
 
   return (
     <div style={{background:"var(--bg)",minHeight:"100vh",fontFamily:"'Outfit',sans-serif"}}>
