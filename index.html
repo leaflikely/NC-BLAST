@@ -28,6 +28,12 @@
     --shadow:rgba(0,0,0,0.06);
     --pill-bg:#F1F5F9;
     --input-bg:#FAFAFA;
+    --accent:#EA580C;
+    --accent2:#F97316;
+    --green:#22C55E;
+    --blue:#3B82F6;
+    --red:#EF4444;
+    --purple:#A855F7;
   }
   body.dark{
     --bg:linear-gradient(180deg,#0F172A 0%,#1E293B 100%);
@@ -45,12 +51,23 @@
     --shadow:rgba(0,0,0,0.3);
     --pill-bg:#334155;
     --input-bg:#1E293B;
+    --accent:#EA580C;
+    --accent2:#F97316;
+    --green:#22C55E;
+    --blue:#3B82F6;
+    --red:#EF4444;
+    --purple:#A855F7;
   }
   body{background:var(--bg);min-height:100vh;font-family:'Outfit',sans-serif;color:var(--text-primary);overscroll-behavior:none;}
   input,textarea{color:var(--text-primary);background:var(--input-bg);}
   input::placeholder{color:var(--text-faint);}
   /* Bottom bar always uses surface color */
   .bottom-bar{background:var(--surface);}
+  /* Player view classes */
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+  .fade-in{animation:fadeIn 0.3s ease both;}
+  .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22C55E;animation:pulse 1.5s ease infinite;margin-right:5px;}
 </style>
 </head>
 <body>
@@ -4407,7 +4424,7 @@ function LiveScoreView({slot, initialState, onClose}){
 
   // ── Main live view ──
   return (
-    <div style={{position:"fixed",inset:0,background:"var(--bg)",zIndex:200,display:"flex",flexDirection:"column",overflowY:"auto",position:"relative"}}>
+    <div style={{position:"fixed",inset:0,background:"var(--bg)",zIndex:200,display:"flex",flexDirection:"column",overflowY:"auto"}}>
       {SetWinFlash}
       {AnnouncementBanner}
 
