@@ -73,7 +73,7 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useCallback } = React;
 
 /* ═══════════════════════════════════════
    VIEWPORT SCALE
@@ -3846,8 +3846,6 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[]}
   const [cxOpen, setCxOpen] = useState(false);
   const [crossoverOpen, setCrossoverOpen] = useState(false);
   const stepHistory = useRef([]);
-
-  const CROSSOVER_BLADES = ["Bumblebee","Captain America","Chewbacca","Darth Vader","Draciel Shield","Dragoon Storm","Dranzer Spiral","Driger S","General Grievous","Green Goblin","Iron Man","Lightning L-Drago","Luke Skywalker","Megatron","Miles Morales","Moff Gideon","Mosasaurus","Obi-Wan Kenobi","Optimus Primal","Optimus Prime","Quetzalcoatlus","Red Hulk","Rock Leone","Soundwave","Spider-Man","Spinosaurus","Starscream","Storm Pegasus","Storm Spriggan","Storm Trooper","T.Rex","Thanos","The Mandalorian","Venom","Victory Valkyrie","Xeno Xcalibur"];
 
   const allReady = deck.every(c=>c.blade&&c.ratchet&&c.bit);
 
