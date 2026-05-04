@@ -4408,12 +4408,11 @@ function LiveScoreView({slot, initialState, onClose}){
 
   // ── Finish announcement banner ──
   const AnnouncementBanner = announcement ? (
-    <div style={{position:"absolute",top:60,left:12,right:12,zIndex:20,
-      padding:"14px 16px",borderRadius:16,
-      background:`${announcement.color}22`,border:`2px solid ${announcement.color}80`,
-      textAlign:"center",pointerEvents:"none"}}>
-      <p style={{fontSize:22,margin:"0 0 4px"}}>{announcement.emoji}</p>
-      <p style={{fontSize:16,fontWeight:900,color:announcement.color,letterSpacing:1,margin:"0 0 2px"}}>{announcement.label} {announcement.pts}</p>
+    <div style={{margin:"0 16px 12px",padding:"12px 16px",borderRadius:16,flexShrink:0,
+      background:`${announcement.color}18`,border:`2px solid ${announcement.color}60`,
+      textAlign:"center"}}>
+      <p style={{fontSize:20,margin:"0 0 2px"}}>{announcement.emoji}</p>
+      <p style={{fontSize:15,fontWeight:900,color:announcement.color,letterSpacing:1,margin:"0 0 2px"}}>{announcement.label} {announcement.pts}</p>
       <p style={{fontSize:12,color:"var(--text-muted)",margin:0}}>
         <span style={{color:announcement.scorerColor,fontWeight:700}}>{announcement.scorer}</span> scores
       </p>
@@ -4424,7 +4423,6 @@ function LiveScoreView({slot, initialState, onClose}){
   return (
     <div style={{position:"fixed",inset:0,background:"var(--bg)",zIndex:200,display:"flex",flexDirection:"column",overflowY:"auto"}}>
       {SetWinFlash}
-      {AnnouncementBanner}
 
       {/* Top bar */}
       <div style={{padding:"12px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid var(--border)",flexShrink:0}}>
@@ -4491,6 +4489,9 @@ function LiveScoreView({slot, initialState, onClose}){
         </div>
       </div>
 
+      {/* Finish announcement — inline below score */}
+      {AnnouncementBanner}
+
       {/* Active combos */}
       {(s.p1ActiveCombo||s.p2ActiveCombo)&&(
         <div style={{padding:"0 16px 12px",flexShrink:0}}>
@@ -4535,19 +4536,38 @@ function PairingsTab({slug, myName, liveSlots}){
   const [pairings, setPairings] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [liveView, setLiveView] = useState(null); // {slot, state} — opens LiveScoreView
+  const [liveView, setLiveView] = useState(null);
+  const [collapsedRounds, setCollapsedRounds] = useState(new Set());
 
   const load = useCallback(async()=>{
     if(!slug){setError("No tournament loaded.");return;}
     setLoading(true); setError(null);
     try {
       const data = await workerGet(`/pairings?slug=${encodeURIComponent(slug)}`);
-      setPairings(data.pairings||[]);
+      const pairs = data.pairings||[];
+      setPairings(pairs);
+      // Auto-collapse all fully-complete rounds except the latest one
+      const grouped = {};
+      pairs.forEach(m=>{ const r=m.round||0; if(!grouped[r]) grouped[r]=[]; grouped[r].push(m); });
+      const rounds = Object.keys(grouped).map(Number).sort((a,b)=>a-b);
+      const toCollapse = new Set();
+      rounds.forEach((r,i)=>{
+        const allDone = grouped[r].every(m=>m.state==="complete");
+        const isLast = i===rounds.length-1;
+        if(allDone && !isLast) toCollapse.add(r);
+      });
+      setCollapsedRounds(toCollapse);
     } catch(e){ setError("Couldn't load matches. Try again."); }
     finally{ setLoading(false); }
   },[slug]);
 
   useEffect(()=>{ load(); },[load]);
+
+  const toggleRound = (r) => setCollapsedRounds(prev=>{
+    const next = new Set(prev);
+    next.has(r) ? next.delete(r) : next.add(r);
+    return next;
+  });
 
   // Group by round
   const grouped = {};
@@ -4629,43 +4649,60 @@ function PairingsTab({slug, myName, liveSlots}){
       </div>
       {error&&<p style={{color:"#EF4444",fontSize:13,marginBottom:12}}>{error}</p>}
       {loading&&!pairings&&<p style={{color:"var(--text-muted)",fontSize:13}}>Loading matches…</p>}
-      {rounds.map(r=>(
-        <div key={r} style={{marginBottom:20}}>
-          <p style={{fontSize:10,fontWeight:800,color:"var(--text-faint)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>
-            {r<0?`Top Cut — Round ${Math.abs(r)}`:`Swiss Round ${r}`}
-          </p>
-          {grouped[r].map(m=>{
-            const mine = isMyMatch(m);
-            const done = m.state==="complete";
-            return (
-              <div key={m.id} className="fade-in"
-                style={{
-                  padding:"11px 13px",borderRadius:12,marginBottom:7,
-                  border:`2px solid ${mine?"#EA580C60":"var(--border)"}`,
-                  background:mine?"#EA580C08":"var(--surface2)",
-                }}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                      {mine&&<span style={{fontSize:9,fontWeight:800,color:"var(--accent)",background:"#EA580C20",padding:"2px 6px",borderRadius:4,letterSpacing:0.5}}>YOU</span>}
-                      {done&&<span style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",background:"var(--surface3)",padding:"2px 6px",borderRadius:4}}>DONE</span>}
-                      {!done&&!mine&&<span style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",background:"var(--surface3)",padding:"2px 6px",borderRadius:4}}>PENDING</span>}
-                    </div>
-                    <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",marginTop:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                      {m.player1_name||"TBD"} <span style={{color:"var(--text-faint)",fontWeight:500}}>vs</span> {m.player2_name||"TBD"}
-                    </p>
-                    {done&&m.scores_csv&&(
-                      <p style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>
-                        Score: {m.scores_csv} · Winner: <strong style={{color:"var(--text-secondary)"}}>{String(m.winner_id)===String(m.player1_id)?m.player1_name:m.player2_name}</strong>
+      {rounds.map(r=>{
+        const allDone = grouped[r].every(m=>m.state==="complete");
+        const collapsed = collapsedRounds.has(r);
+        const hasMyMatch = grouped[r].some(m=>isMyMatch(m));
+        const roundLabel = r<0 ? `Top Cut — Round ${Math.abs(r)}` : `Swiss Round ${r}`;
+        return (
+          <div key={r} style={{marginBottom:12}}>
+            {/* Round header — tappable to collapse */}
+            <button onClick={()=>toggleRound(r)}
+              style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+                width:"100%",padding:"8px 12px",borderRadius:10,marginBottom:collapsed?0:8,
+                border:`1px solid ${allDone&&collapsed?"var(--border)":"var(--border)"}`,
+                background:allDone&&collapsed?"var(--surface2)":"var(--surface3)",
+                cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:10,fontWeight:800,color:allDone?"var(--text-faint)":"var(--text-secondary)",letterSpacing:1.5,textTransform:"uppercase"}}>{roundLabel}</span>
+                {allDone&&<span style={{fontSize:9,fontWeight:700,color:"#22C55E",background:"#22C55E18",padding:"2px 6px",borderRadius:4}}>COMPLETE</span>}
+                {hasMyMatch&&<span style={{fontSize:9,fontWeight:700,color:"var(--accent)",background:"#EA580C18",padding:"2px 6px",borderRadius:4}}>YOUR ROUND</span>}
+              </div>
+              <span style={{fontSize:12,color:"var(--text-faint)"}}>{collapsed?"▼":"▲"}</span>
+            </button>
+            {!collapsed&&grouped[r].map(m=>{
+              const mine = isMyMatch(m);
+              const done = m.state==="complete";
+              return (
+                <div key={m.id} className="fade-in"
+                  style={{
+                    padding:"11px 13px",borderRadius:12,marginBottom:7,
+                    border:`2px solid ${mine?"#EA580C60":"var(--border)"}`,
+                    background:mine?"#EA580C08":"var(--surface2)",
+                  }}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                        {mine&&<span style={{fontSize:9,fontWeight:800,color:"var(--accent)",background:"#EA580C20",padding:"2px 6px",borderRadius:4,letterSpacing:0.5}}>YOU</span>}
+                        {done&&<span style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",background:"var(--surface3)",padding:"2px 6px",borderRadius:4}}>DONE</span>}
+                        {!done&&<span style={{fontSize:9,fontWeight:700,color:"#F59E0B",background:"#F59E0B18",padding:"2px 6px",borderRadius:4}}>LIVE</span>}
+                      </div>
+                      <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",marginTop:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {m.player1_name||"TBD"} <span style={{color:"var(--text-faint)",fontWeight:500}}>vs</span> {m.player2_name||"TBD"}
                       </p>
-                    )}
+                      {done&&m.scores_csv&&(
+                        <p style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>
+                          Score: {m.scores_csv} · Winner: <strong style={{color:"var(--text-secondary)"}}>{String(m.winner_id)===String(m.player1_id)?m.player1_name:m.player2_name}</strong>
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      ))}
+              );
+            })}
+          </div>
+        );
+      })}
       {pairings&&pairings.length===0&&<p style={{color:"var(--text-muted)",fontSize:13}}>No matches found yet.</p>}
     </div>
   );
@@ -5057,7 +5094,14 @@ function PlayerApp({onSwitchRole}){
     const poll = async() => {
       try {
         const data = await workerGet("/overlay/all");
-        setLiveSlots((data.slots||[]).filter(s=>s.state&&s.state.p1));
+        const seen = new Set();
+        const deduped = (data.slots||[]).filter(s=>{
+          if(!s.state||!s.state.p1) return false;
+          if(seen.has(s.slot)) return false;
+          seen.add(s.slot);
+          return true;
+        });
+        setLiveSlots(deduped);
       } catch(_){}
     };
     poll();
@@ -5082,6 +5126,9 @@ function PlayerApp({onSwitchRole}){
       <div style={{padding:"10px 14px",background:"var(--surface)",borderBottom:"1px solid var(--border)",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {onSwitchRole&&(
+              <button onClick={onSwitchRole} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:18,padding:"0 4px 0 0",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>←</button>
+            )}
             <span style={{fontSize:16,fontWeight:900}}>⚔️ NC <span style={{color:"var(--accent)"}}>BLAST</span></span>
             {liveSlots.length>0&&(
               <div style={{display:"flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:20,background:"#22C55E20",border:"1px solid #22C55E40"}}>
