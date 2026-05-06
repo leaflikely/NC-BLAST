@@ -1952,9 +1952,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const r1eff = "p1ComboIdx" in extraState ? extraState.p1ComboIdx : r1;
     const r2eff = "p2ComboIdx" in extraState ? extraState.p2ComboIdx : r2;
     const { p1ComboIdx, p2ComboIdx, ...rest } = extraState;
-    // Build combo history: last 5 completed battles from this match (no LER strikes)
+    // Build combo history: completed battles from this match (no LER strikes)
     const currentLog = log.slice(matchStartIdx).filter(e=>e.type!=="LER-STRIKE"&&e.type!=="LER");
-    const comboHistory = currentLog.slice(-5).map(e=>({
+    const historyFull = currentLog.map(e=>({
       scorer: e.scorerIdx===0 ? (p1||"") : (p2||""),
       scorerIdx: e.scorerIdx,
       typeName: e.typeName||"",
@@ -1962,6 +1962,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       winnerCombo: e.winnerCombo||"",
       set: e.set||1,
     }));
+    // For live view: send last 5 only (keeps the overlay payload small)
+    // For matchOver: send full history so it can be saved to the log store
+    const comboHistory = phase==="over" ? historyFull : historyFull.slice(-5);
     const state = {
       p1, p2,
       p1Side: currentSides.p1Side||"",
@@ -4881,6 +4884,8 @@ function HistoryTab({slug, myName}){
   const [pairings, setPairings] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [expanded, setExpanded] = useState({}); // matchId -> true/false
+  const [battleLogs, setBattleLogs] = useState({}); // matchId -> {loading, data, error}
 
   const load = useCallback(async()=>{
     if(!slug||!myName){setError(!slug?"No tournament loaded.":"Select your name to view history.");return;}
@@ -4906,6 +4911,26 @@ function HistoryTab({slug, myName}){
     return String(m.winner_id)===String(myId);
   }).length;
   const losses = myMatches.length - wins;
+
+  const toggleExpand = async (m) => {
+    const id = m.id;
+    const nowExpanded = !expanded[id];
+    setExpanded(prev=>({...prev,[id]:nowExpanded}));
+    // If opening and not yet fetched, fetch the battle log
+    if(nowExpanded && !battleLogs[id]){
+      setBattleLogs(prev=>({...prev,[id]:{loading:true,data:null,error:null}}));
+      try {
+        const params = new URLSearchParams();
+        if(m.id) params.set("matchId", m.id);
+        if(m.player1_name) params.set("p1", m.player1_name);
+        if(m.player2_name) params.set("p2", m.player2_name);
+        const data = await workerGet(`/matchlog?${params.toString()}`);
+        setBattleLogs(prev=>({...prev,[id]:{loading:false,data:data.found?data:null,error:null}}));
+      } catch(e){
+        setBattleLogs(prev=>({...prev,[id]:{loading:false,data:null,error:"Couldn't load battle log."}}));
+      }
+    }
+  };
 
   if(!slug||!myName) return (
     <div style={{padding:"32px 16px",textAlign:"center",color:"var(--text-muted)"}}>
@@ -4942,20 +4967,79 @@ function HistoryTab({slug, myName}){
         const myId = isP1 ? m.player1_id : m.player2_id;
         const won = String(m.winner_id)===String(myId);
         const roundLabel = m.round<0 ? `Top Cut R${Math.abs(m.round)}` : `Swiss R${m.round}`;
+        const isOpen = !!expanded[m.id];
+        const logEntry = battleLogs[m.id];
+
         return (
-          <div key={m.id} className="fade-in" style={{padding:"12px 14px",borderRadius:12,marginBottom:8,
+          <div key={m.id} className="fade-in" style={{borderRadius:12,marginBottom:8,
             border:`2px solid ${won?"#22C55E40":"#EF444430"}`,
-            background:won?"#22C55E08":"#EF444408"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-              <div>
-                <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.5,marginBottom:3}}>{roundLabel}</p>
-                <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0}}>
-                  <span style={{color:won?"#22C55E":"#EF4444",marginRight:6}}>{won?"W":"L"}</span>vs {opponent||"Unknown"}
-                </p>
-                {m.scores_csv&&<p style={{fontSize:11,color:"var(--text-muted)",marginTop:3}}>Score: {m.scores_csv}</p>}
+            background:won?"#22C55E08":"#EF444408",overflow:"hidden"}}>
+
+            {/* Match summary row — tap to expand */}
+            <button onClick={()=>toggleExpand(m)}
+              style={{display:"block",width:"100%",padding:"12px 14px",background:"transparent",border:"none",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.5,marginBottom:3}}>{roundLabel}</p>
+                  <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0}}>
+                    <span style={{color:won?"#22C55E":"#EF4444",marginRight:6}}>{won?"W":"L"}</span>vs {opponent||"Unknown"}
+                  </p>
+                  {m.scores_csv&&<p style={{fontSize:11,color:"var(--text-muted)",marginTop:3}}>Score: {m.scores_csv}</p>}
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,marginLeft:8}}>
+                  <span style={{fontSize:22}}>{won?"🏆":"💢"}</span>
+                  <span style={{fontSize:14,color:"var(--text-faint)",lineHeight:1}}>{isOpen?"▲":"▼"}</span>
+                </div>
               </div>
-              <span style={{fontSize:22}}>{won?"🏆":"💢"}</span>
-            </div>
+            </button>
+
+            {/* Expanded battle log */}
+            {isOpen&&(
+              <div style={{borderTop:`1px solid ${won?"#22C55E30":"#EF444430"}`,padding:"10px 14px 12px"}}>
+                {logEntry?.loading&&(
+                  <p style={{fontSize:12,color:"var(--text-faint)",margin:0}}>Loading battle log…</p>
+                )}
+                {logEntry?.error&&(
+                  <p style={{fontSize:12,color:"#EF4444",margin:0}}>{logEntry.error}</p>
+                )}
+                {logEntry&&!logEntry.loading&&!logEntry.data&&!logEntry.error&&(
+                  <p style={{fontSize:12,color:"var(--text-faint)",margin:0,lineHeight:1.5}}>
+                    No battle log available — this match wasn't scored through NC BLAST.
+                  </p>
+                )}
+                {logEntry?.data?.comboHistory?.length>0&&(
+                  <div>
+                    <p style={{fontSize:9,fontWeight:800,color:"var(--text-faint)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Battle Log</p>
+                    {logEntry.data.comboHistory.map((h,bi)=>{
+                      const meta = FINISH_META[h.typeName]||FINISH_META[h.type]||{emoji:"🌀",color:"var(--text-muted)",label:h.typeName||"?"};
+                      const isMyBattle = myName&&h.scorer&&h.scorer.toLowerCase()===myName.toLowerCase();
+                      return (
+                        <div key={bi} style={{
+                          display:"flex",alignItems:"center",gap:8,
+                          padding:"7px 0",
+                          borderBottom:bi<logEntry.data.comboHistory.length-1?"1px solid var(--border)":"none",
+                        }}>
+                          <span style={{fontSize:16,flexShrink:0,width:22,textAlign:"center"}}>{meta.emoji}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <p style={{fontSize:12,fontWeight:700,color:isMyBattle?"var(--accent2)":"var(--text-primary)",margin:0}}>
+                              {h.scorer||"?"}
+                              <span style={{fontSize:11,fontWeight:500,color:"var(--text-muted)",marginLeft:5}}>
+                                {meta.label} <span style={{color:"#22C55E",fontWeight:800}}>+{h.points}</span>
+                              </span>
+                            </p>
+                            {h.winnerCombo&&<p style={{fontSize:10,color:"var(--text-faint)",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.winnerCombo}</p>}
+                          </div>
+                          {h.set>1&&<span style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",flexShrink:0}}>S{h.set}</span>}
+                        </div>
+                      );
+                    })}
+                    {logEntry.data.judge&&(
+                      <p style={{fontSize:10,color:"var(--text-faint)",marginTop:8,margin:0}}>Judged by {logEntry.data.judge}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         );
       })}
@@ -5097,6 +5181,7 @@ function PlayerApp({onSwitchRole}){
         const seen = new Set();
         const deduped = (data.slots||[]).filter(s=>{
           if(!s.state||!s.state.p1) return false;
+          if(s.state.matchOver) return false; // match is finished — don't show as live
           if(seen.has(s.slot)) return false;
           seen.add(s.slot);
           return true;
