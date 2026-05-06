@@ -1770,19 +1770,35 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   // Portrait vs landscape for combo button layout — recomputed on each render via sc trigger
   const comboAreaRef = useRef(null); // kept for legacy ref safety, not used for measurement
 
-  // ── beforeunload: warn desktop users before they accidentally refresh/close
-  //    while a match is in progress. On mobile, pull-to-refresh is blocked via
-  //    CSS overscroll-behavior:none, so this mainly covers F5/Cmd+R/browser chrome.
+  // ── beforeunload: warn before accidental close, and mark match as abandoned in KV
+  //    so the player view stops showing it as live.
   useEffect(()=>{
     const handler = (e) => {
       const battlesLogged = log.slice(matchStartIdx).filter(en=>en.type!=="LER-STRIKE").length;
-      if(phase!=="battle" || battlesLogged === 0) return;
-      e.preventDefault();
-      e.returnValue = "";
+      const matchActive = phase==="battle" && battlesLogged > 0;
+
+      // Push an abandoned marker so the player view knows to hide this match.
+      // Use sendBeacon so the request survives the page unload.
+      if(challongeMatchId && matchActive){
+        const body = JSON.stringify({
+          matchId: challongeMatchId,
+          ...(overlaySlot ? { slot: overlaySlot } : {}),
+          state: { p1, p2, abandoned: true, pushedAt: Date.now() },
+        });
+        navigator.sendBeacon
+          ? navigator.sendBeacon(`${OVERLAY_WORKER}/overlay/push`, new Blob([body], {type:"application/json"}))
+          : fetch(`${OVERLAY_WORKER}/overlay/push`, {method:"POST",headers:{"Content-Type":"application/json"},body,keepalive:true}).catch(()=>{});
+      }
+
+      // Show the browser's "are you sure?" dialog for desktop
+      if(matchActive){
+        e.preventDefault();
+        e.returnValue = "";
+      }
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [log, matchStartIdx, phase]);
+  }, [log, matchStartIdx, phase, challongeMatchId, overlaySlot, p1, p2]);
 
   // Auto-fetch active matches if we default to active tab
   useEffect(()=>{ if(challongeSlug) fetchActiveMatches(); },[]);
@@ -1942,7 +1958,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   };
 
   const pushOverlay = (extraState={}) => {
-    if(!overlaySlot) return; // streaming disabled
     const activeComboOf = (deck, idx) => {
       const c = idx !== null ? deck[idx] : null;
       return c?.blade ? {blade:c.blade,ratchet:c.ratchet,bit:c.bit} : null;
@@ -1983,10 +1998,18 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       p2ActiveCombo: activeComboOf(d2, r2eff),
       ...rest,
     };
+
+    // Always push via matchId for player-view live tracking (no channel required)
+    // Also push via slot number if OBS streaming is enabled
+    const body = { state };
+    if(challongeMatchId) body.matchId = challongeMatchId;
+    if(overlaySlot) body.slot = overlaySlot;
+    if(!challongeMatchId && !overlaySlot) return; // nothing to push to
+
     fetch(`${OVERLAY_WORKER}/overlay/push`, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({slot: overlaySlot, state}),
+      body: JSON.stringify(body),
     }).then(()=>setOverlayStatus("ok")).catch(()=>setOverlayStatus("error"));
   };
 
@@ -4246,7 +4269,7 @@ const FINISH_META = {
 };
 
 /* ─── Live Score View — long-poll, full viewing experience ────── */
-function LiveScoreView({slot, initialState, onClose}){
+function LiveScoreView({matchId, slot, initialState, onClose}){
   const [state, setState]           = useState(initialState);
   const [etag, setEtag]             = useState(null);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
@@ -4300,8 +4323,11 @@ function LiveScoreView({slot, initialState, onClose}){
       if(cancelled) return;
       try {
         abortRef.current = new AbortController();
+        const pollParam = matchId
+          ? `matchId=${encodeURIComponent(matchId)}`
+          : `slot=${slot}`;
         const res = await fetch(
-          `${OVERLAY_WORKER}/overlay/poll?slot=${slot}&etag=${encodeURIComponent(currentEtag||"")}`,
+          `${OVERLAY_WORKER}/overlay/poll?${pollParam}&etag=${encodeURIComponent(currentEtag||"")}`,
           { signal: abortRef.current.signal }
         );
         if(cancelled) return;
@@ -4610,7 +4636,7 @@ function PairingsTab({slug, myName, liveSlots}){
   if(!slug) return <div style={{padding:"32px 16px",textAlign:"center",color:"var(--text-muted)"}}>No tournament linked. Ask your organizer for the tournament link.</div>;
 
   // If a live view is open, render it full screen instead of this tab
-  if(liveView) return <LiveScoreView slot={liveView.slot} initialState={liveView.state} onClose={()=>setLiveView(null)}/>;
+  if(liveView) return <LiveScoreView matchId={liveView.matchId} slot={liveView.slot} initialState={liveView.state} onClose={()=>setLiveView(null)}/>;
 
   return (
     <div style={{padding:"12px 14px",paddingBottom:20}}>
@@ -4701,7 +4727,7 @@ function PairingsTab({slug, myName, liveSlots}){
               if(isLive){
                 return (
                   <button key={m.id} className="fade-in"
-                    onClick={()=>setLiveView({slot:liveSlot.slot, state:liveState})}
+                    onClick={()=>setLiveView({matchId:liveSlot.matchId, slot:liveSlot.slot, state:liveState})}
                     style={{display:"block",width:"100%",padding:"11px 13px",borderRadius:12,marginBottom:7,
                       border:`2px solid ${borderColor}`,background:bgColor,
                       cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
@@ -5194,18 +5220,20 @@ function PlayerApp({onSwitchRole}){
     }
   },[]);
 
-  // Poll live slot state every 5 seconds when on pairings tab
+  // Poll live match state every 5 seconds
   useEffect(()=>{
     if(!slug) return;
     const poll = async() => {
       try {
         const data = await workerGet("/overlay/all");
+        // Server already filters stale/abandoned/matchOver entries.
+        // Just deduplicate by matchId in case of any duplicate keys.
         const seen = new Set();
         const deduped = (data.slots||[]).filter(s=>{
           if(!s.state||!s.state.p1) return false;
-          if(s.state.matchOver) return false; // match is finished — don't show as live
-          if(seen.has(s.slot)) return false;
-          seen.add(s.slot);
+          const key = s.matchId||s.slot;
+          if(seen.has(key)) return false;
+          seen.add(key);
           return true;
         });
         setLiveSlots(deduped);
