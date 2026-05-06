@@ -49,38 +49,45 @@
     transition: opacity 0.2s;
   }
   #widget:hover .resize-handle { opacity: 1; }
+  /* On touch devices: always show handles so they are visible and tappable */
+  @media (pointer: coarse) {
+    .resize-handle { opacity: 1 !important; }
+  }
 
   /* Corner — scale uniformly */
   #rh-corner {
-    bottom: -5px; right: -5px;
-    width: 16px; height: 16px;
+    bottom: -8px; right: -8px;
+    width: 28px; height: 28px;
     cursor: se-resize;
-    background: rgba(255,255,255,0.15);
-    border-radius: 3px;
+    background: rgba(255,255,255,0.18);
+    border-radius: 4px;
+    touch-action: none;
   }
   #rh-corner::after {
     content: '';
     position: absolute;
-    bottom: 3px; right: 3px;
-    width: 8px; height: 8px;
-    border-right: 2px solid rgba(255,255,255,0.6);
-    border-bottom: 2px solid rgba(255,255,255,0.6);
+    bottom: 5px; right: 5px;
+    width: 10px; height: 10px;
+    border-right: 2.5px solid rgba(255,255,255,0.75);
+    border-bottom: 2.5px solid rgba(255,255,255,0.75);
   }
   /* Right edge — stretch width only */
   #rh-right {
-    top: 20%; bottom: 20%; right: -5px;
-    width: 10px;
+    top: 15%; bottom: 15%; right: -8px;
+    width: 16px;
     cursor: ew-resize;
-    background: rgba(255,255,255,0.08);
-    border-radius: 0 4px 4px 0;
+    background: rgba(255,255,255,0.1);
+    border-radius: 0 5px 5px 0;
+    touch-action: none;
   }
   /* Bottom edge — stretch height only */
   #rh-bottom {
-    left: 20%; right: 20%; bottom: -5px;
-    height: 10px;
+    left: 15%; right: 15%; bottom: -8px;
+    height: 16px;
     cursor: ns-resize;
-    background: rgba(255,255,255,0.08);
-    border-radius: 0 0 4px 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 0 0 5px 5px;
+    touch-action: none;
   }
 
   /* ── MAIN CARD ─────────────────────────────── */
@@ -600,24 +607,15 @@ function startResize(mode, e) {
   e.stopPropagation();
 }
 
-el("rh-corner").addEventListener("mousedown", e => startResize("corner", e));
-el("rh-right").addEventListener("mousedown",  e => startResize("right",  e));
-el("rh-bottom").addEventListener("mousedown", e => startResize("bottom", e));
-
-document.addEventListener("mousemove", e => {
-  if (!resizeMode) return;
-  const dx = e.clientX - resizeStartX;
-  const dy = e.clientY - resizeStartY;
-
+// ── RESIZE: shared delta logic (used by both mouse and touch) ────
+function applyResizeDelta(dx, dy) {
   if (resizeMode === "corner") {
-    // Uniform scale from corner drag
     widgetScale = Math.max(0.3, Math.min(3.0, resizeStartScale + dx / 500));
-    widgetW = 0; widgetH = 0; // let scale drive size
+    widgetW = 0; widgetH = 0;
     scaleWrap.style.transform = `scale(${widgetScale})`;
     widget.style.width  = (BASE_W * widgetScale) + "px";
     widget.style.height = ((el("main-card").offsetHeight || BASE_H) * widgetScale) + "px";
   } else if (resizeMode === "right") {
-    // Width-only drag
     widgetW = Math.max(200, resizeStartW + dx);
     widgetH = 0;
     widgetScale = widgetW / BASE_W;
@@ -625,7 +623,6 @@ document.addEventListener("mousemove", e => {
     widget.style.width  = widgetW + "px";
     widget.style.height = ((el("main-card").offsetHeight || BASE_H) * widgetScale) + "px";
   } else if (resizeMode === "bottom") {
-    // Height-only drag — scales to fit
     widgetH = Math.max(60, resizeStartH + dy);
     const cardH = el("main-card").offsetHeight || BASE_H;
     widgetScale = widgetH / cardH;
@@ -634,14 +631,96 @@ document.addEventListener("mousemove", e => {
     widget.style.width  = widgetW + "px";
     widget.style.height = widgetH + "px";
   }
+}
+
+function saveResizeState() {
+  localStorage.setItem("ncblast-scale", String(widgetScale));
+  localStorage.setItem("ncblast-w", String(widgetW));
+  localStorage.setItem("ncblast-h", String(widgetH));
+}
+
+// ── RESIZE: mouse events ─────────────────────────────────────────
+el("rh-corner").addEventListener("mousedown", e => startResize("corner", e));
+el("rh-right").addEventListener("mousedown",  e => startResize("right",  e));
+el("rh-bottom").addEventListener("mousedown", e => startResize("bottom", e));
+
+document.addEventListener("mousemove", e => {
+  if (!resizeMode) return;
+  applyResizeDelta(e.clientX - resizeStartX, e.clientY - resizeStartY);
 });
 
 document.addEventListener("mouseup", () => {
   if (!resizeMode) return;
   resizeMode = null;
-  localStorage.setItem("ncblast-scale", String(widgetScale));
-  localStorage.setItem("ncblast-w", String(widgetW));
-  localStorage.setItem("ncblast-h", String(widgetH));
+  saveResizeState();
+});
+
+// ── RESIZE: touch events on handles (mobile) ──────────────────────
+function startResizeTouch(mode, e) {
+  if (e.touches.length !== 1) return;
+  const t = e.touches[0];
+  resizeMode = mode;
+  resizeStartX = t.clientX;
+  resizeStartY = t.clientY;
+  resizeStartScale = widgetScale;
+  resizeStartW = widgetW || BASE_W * widgetScale;
+  resizeStartH = widgetH || (el("main-card").offsetHeight * widgetScale);
+  e.preventDefault();
+  e.stopPropagation();
+}
+el("rh-corner").addEventListener("touchstart", e => startResizeTouch("corner", e), { passive: false });
+el("rh-right").addEventListener("touchstart",  e => startResizeTouch("right",  e), { passive: false });
+el("rh-bottom").addEventListener("touchstart", e => startResizeTouch("bottom", e), { passive: false });
+
+document.addEventListener("touchmove", e => {
+  if (!resizeMode || e.touches.length !== 1) return;
+  const t = e.touches[0];
+  applyResizeDelta(t.clientX - resizeStartX, t.clientY - resizeStartY);
+  e.preventDefault();
+}, { passive: false });
+
+document.addEventListener("touchend", () => {
+  if (!resizeMode) return;
+  resizeMode = null;
+  saveResizeState();
+});
+
+// ── PINCH TO ZOOM (two-finger spread/pinch on the widget) ────────
+// Most natural mobile resize — spread to grow, pinch to shrink.
+let pinchStartDist = null;
+let pinchStartScale = null;
+
+widget.addEventListener("touchstart", e => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    pinchStartDist = Math.hypot(dx, dy);
+    pinchStartScale = widgetScale;
+    e.preventDefault();
+  }
+}, { passive: false });
+
+widget.addEventListener("touchmove", e => {
+  if (e.touches.length !== 2 || pinchStartDist === null) return;
+  const dx = e.touches[0].clientX - e.touches[1].clientX;
+  const dy = e.touches[0].clientY - e.touches[1].clientY;
+  const dist = Math.hypot(dx, dy);
+  widgetScale = Math.max(0.3, Math.min(3.0, pinchStartScale * (dist / pinchStartDist)));
+  widgetW = 0; widgetH = 0;
+  scaleWrap.style.transform = `scale(${widgetScale})`;
+  widget.style.width  = (BASE_W * widgetScale) + "px";
+  widget.style.height = ((el("main-card").offsetHeight || BASE_H) * widgetScale) + "px";
+  e.preventDefault();
+}, { passive: false });
+
+widget.addEventListener("touchend", e => {
+  if (pinchStartDist !== null && e.touches.length < 2) {
+    pinchStartDist = null;
+    pinchStartScale = null;
+    localStorage.setItem("ncblast-scale", String(widgetScale));
+    localStorage.setItem("ncblast-w", "0");
+    localStorage.setItem("ncblast-h", "0");
+  }
 });
 
 // ── RENDER COMBO ─────────────────────────────────────────────────
