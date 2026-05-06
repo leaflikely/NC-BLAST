@@ -4549,7 +4549,7 @@ function PairingsTab({slug, myName, liveSlots}){
       const data = await workerGet(`/pairings?slug=${encodeURIComponent(slug)}`);
       const pairs = data.pairings||[];
       setPairings(pairs);
-      // Auto-collapse all fully-complete rounds except the latest one
+      // Auto-collapse only fully-complete rounds that are not the latest round
       const grouped = {};
       pairs.forEach(m=>{ const r=m.round||0; if(!grouped[r]) grouped[r]=[]; grouped[r].push(m); });
       const rounds = Object.keys(grouped).map(Number).sort((a,b)=>a-b);
@@ -4566,11 +4566,32 @@ function PairingsTab({slug, myName, liveSlots}){
 
   useEffect(()=>{ load(); },[load]);
 
-  const toggleRound = (r) => setCollapsedRounds(prev=>{
-    const next = new Set(prev);
-    next.has(r) ? next.delete(r) : next.add(r);
-    return next;
+  // Build a lookup: match player names -> live slot, so we can light up individual cards
+  // Keys are "p1name|p2name" and "p2name|p1name" (both directions) so order doesn't matter
+  const liveByPlayers = {};
+  liveSlots.forEach(s=>{
+    if(!s.state) return;
+    const p1 = (s.state.p1||"").toLowerCase();
+    const p2 = (s.state.p2||"").toLowerCase();
+    if(p1) liveByPlayers[`${p1}|${p2}`] = s;
+    if(p2) liveByPlayers[`${p2}|${p1}`] = s;
   });
+
+  const getLiveSlot = (m) => {
+    const n1 = (m.player1_name||"").toLowerCase();
+    const n2 = (m.player2_name||"").toLowerCase();
+    return liveByPlayers[`${n1}|${n2}`] || liveByPlayers[`${n2}|${n1}`] || null;
+  };
+
+  // Only allow toggling collapse on fully-complete rounds
+  const toggleRound = (r, allDone) => {
+    if(!allDone) return; // active rounds cannot be collapsed
+    setCollapsedRounds(prev=>{
+      const next = new Set(prev);
+      next.has(r) ? next.delete(r) : next.add(r);
+      return next;
+    });
+  };
 
   // Group by round
   const grouped = {};
@@ -4593,59 +4614,8 @@ function PairingsTab({slug, myName, liveSlots}){
 
   return (
     <div style={{padding:"12px 14px",paddingBottom:20}}>
-
-      {/* ── Live Matches section ── */}
-      {liveSlots.length>0&&(
-        <div style={{marginBottom:20}}>
-          <p style={{fontSize:10,fontWeight:800,color:"#22C55E",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>
-            <span className="live-dot"/>Live Now — {liveSlots.length} match{liveSlots.length>1?"es":""}
-          </p>
-          {liveSlots.map(s=>{
-            const {state, slot} = s;
-            if(!state) return null;
-            const p1pts = state.pts?.[0]||0, p2pts = state.pts?.[1]||0;
-            const isMyLive = myName && (
-              (state.p1&&state.p1.toLowerCase()===myName.toLowerCase()) ||
-              (state.p2&&state.p2.toLowerCase()===myName.toLowerCase())
-            );
-            return (
-              <button key={slot} onClick={()=>setLiveView({slot, state})} className="fade-in"
-                style={{display:"block",width:"100%",padding:"13px 14px",borderRadius:13,marginBottom:8,
-                  border:`2px solid ${isMyLive?"#EA580C80":"#22C55E50"}`,
-                  background:isMyLive?"#EA580C0C":"#22C55E0C",
-                  cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                  <div style={{display:"flex",alignItems:"center",gap:7}}>
-                    <span className="live-dot"/>
-                    <span style={{fontSize:10,fontWeight:800,color:"#22C55E",letterSpacing:0.5}}>LIVE · Tap to watch</span>
-                    {isMyLive&&<span style={{fontSize:9,fontWeight:800,color:"var(--accent)",background:"#EA580C20",padding:"2px 6px",borderRadius:4,letterSpacing:0.5}}>YOUR MATCH</span>}
-                  </div>
-                  <span style={{fontSize:12,color:"var(--text-faint)"}}>👁</span>
-                </div>
-                {/* Score preview */}
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <p style={{fontSize:13,fontWeight:800,color:"#3B82F6",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{state.p1||"Player 1"}</p>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-                    <span style={{fontSize:22,fontWeight:900,color:"#3B82F6"}}>{p1pts}</span>
-                    <span style={{fontSize:14,fontWeight:700,color:"var(--text-faint)"}}>–</span>
-                    <span style={{fontSize:22,fontWeight:900,color:"#EF4444"}}>{p2pts}</span>
-                  </div>
-                  <div style={{flex:1,minWidth:0,textAlign:"right"}}>
-                    <p style={{fontSize:13,fontWeight:800,color:"#EF4444",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{state.p2||"Player 2"}</p>
-                  </div>
-                </div>
-                {state.judge&&<p style={{fontSize:10,color:"var(--text-faint)",marginTop:6}}>Judge: {state.judge}</p>}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── Bracket pairings ── */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <h2 style={{fontSize:18,fontWeight:900,margin:0}}>All Pairings</h2>
+        <h2 style={{fontSize:18,fontWeight:900,margin:0}}>Bracket</h2>
         <button onClick={load} disabled={loading} style={{background:"none",border:"2px solid var(--border)",borderRadius:8,padding:"5px 10px",color:"var(--text-muted)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
           {loading?"...":"↻ Refresh"}
         </button>
@@ -4654,52 +4624,96 @@ function PairingsTab({slug, myName, liveSlots}){
       {loading&&!pairings&&<p style={{color:"var(--text-muted)",fontSize:13}}>Loading matches…</p>}
       {rounds.map(r=>{
         const allDone = grouped[r].every(m=>m.state==="complete");
-        const collapsed = collapsedRounds.has(r);
+        const collapsed = allDone && collapsedRounds.has(r); // only complete rounds can be collapsed
         const hasMyMatch = grouped[r].some(m=>isMyMatch(m));
         const roundLabel = r<0 ? `Top Cut — Round ${Math.abs(r)}` : `Swiss Round ${r}`;
         return (
           <div key={r} style={{marginBottom:12}}>
-            {/* Round header — tappable to collapse */}
-            <button onClick={()=>toggleRound(r)}
+            {/* Round header */}
+            <button
+              onClick={()=>toggleRound(r, allDone)}
               style={{display:"flex",alignItems:"center",justifyContent:"space-between",
                 width:"100%",padding:"8px 12px",borderRadius:10,marginBottom:collapsed?0:8,
-                border:`1px solid ${allDone&&collapsed?"var(--border)":"var(--border)"}`,
-                background:allDone&&collapsed?"var(--surface2)":"var(--surface3)",
-                cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
+                border:"1px solid var(--border)",
+                background:"var(--surface3)",
+                cursor:allDone?"pointer":"default",
+                fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontSize:10,fontWeight:800,color:allDone?"var(--text-faint)":"var(--text-secondary)",letterSpacing:1.5,textTransform:"uppercase"}}>{roundLabel}</span>
                 {allDone&&<span style={{fontSize:9,fontWeight:700,color:"#22C55E",background:"#22C55E18",padding:"2px 6px",borderRadius:4}}>COMPLETE</span>}
                 {hasMyMatch&&<span style={{fontSize:9,fontWeight:700,color:"var(--accent)",background:"#EA580C18",padding:"2px 6px",borderRadius:4}}>YOUR ROUND</span>}
               </div>
-              <span style={{fontSize:12,color:"var(--text-faint)"}}>{collapsed?"▼":"▲"}</span>
+              {/* Only show collapse arrow for complete rounds */}
+              {allDone&&<span style={{fontSize:12,color:"var(--text-faint)"}}>{collapsed?"▼":"▲"}</span>}
             </button>
+
             {!collapsed&&grouped[r].map(m=>{
               const mine = isMyMatch(m);
               const done = m.state==="complete";
+              const liveSlot = getLiveSlot(m);
+              const isLive = !!liveSlot;
+              const isMyLive = isLive && mine;
+              const liveState = liveSlot?.state;
+              const p1pts = liveState?.pts?.[0]??null;
+              const p2pts = liveState?.pts?.[1]??null;
+
+              // Border/background priority: myLive > live > mine > default
+              const borderColor = isMyLive ? "#EA580C80" : isLive ? "#22C55E60" : mine ? "#EA580C60" : "var(--border)";
+              const bgColor     = isMyLive ? "#EA580C0C" : isLive ? "#22C55E0C" : mine ? "#EA580C08" : "var(--surface2)";
+
+              const cardInner = (
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    {/* Status badges */}
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                      {mine&&<span style={{fontSize:9,fontWeight:800,color:"var(--accent)",background:"#EA580C20",padding:"2px 6px",borderRadius:4,letterSpacing:0.5}}>YOU</span>}
+                      {isLive&&(
+                        <span style={{display:"flex",alignItems:"center",gap:4,fontSize:9,fontWeight:800,color:"#22C55E",background:"#22C55E18",padding:"2px 7px",borderRadius:4,letterSpacing:0.5}}>
+                          <span className="live-dot" style={{marginRight:0}}/>LIVE · Tap to watch
+                        </span>
+                      )}
+                      {!isLive&&done&&<span style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",background:"var(--surface3)",padding:"2px 6px",borderRadius:4}}>DONE</span>}
+                    </div>
+                    {/* Player names */}
+                    <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {m.player1_name||"TBD"} <span style={{color:"var(--text-faint)",fontWeight:500}}>vs</span> {m.player2_name||"TBD"}
+                    </p>
+                    {/* Live score preview */}
+                    {isLive&&p1pts!==null&&(
+                      <p style={{fontSize:12,fontWeight:800,color:"var(--text-muted)",marginTop:3}}>
+                        <span style={{color:"#3B82F6"}}>{p1pts}</span>
+                        <span style={{color:"var(--text-faint)",margin:"0 5px"}}>–</span>
+                        <span style={{color:"#EF4444"}}>{p2pts}</span>
+                      </p>
+                    )}
+                    {/* Completed score */}
+                    {!isLive&&done&&m.scores_csv&&(
+                      <p style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>
+                        Score: {m.scores_csv} · Winner: <strong style={{color:"var(--text-secondary)"}}>{String(m.winner_id)===String(m.player1_id)?m.player1_name:m.player2_name}</strong>
+                      </p>
+                    )}
+                  </div>
+                  {isLive&&<span style={{fontSize:16,flexShrink:0,marginLeft:8}}>👁</span>}
+                </div>
+              );
+
+              // Live cards are tappable buttons; others are plain divs
+              if(isLive){
+                return (
+                  <button key={m.id} className="fade-in"
+                    onClick={()=>setLiveView({slot:liveSlot.slot, state:liveState})}
+                    style={{display:"block",width:"100%",padding:"11px 13px",borderRadius:12,marginBottom:7,
+                      border:`2px solid ${borderColor}`,background:bgColor,
+                      cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
+                    {cardInner}
+                  </button>
+                );
+              }
               return (
                 <div key={m.id} className="fade-in"
-                  style={{
-                    padding:"11px 13px",borderRadius:12,marginBottom:7,
-                    border:`2px solid ${mine?"#EA580C60":"var(--border)"}`,
-                    background:mine?"#EA580C08":"var(--surface2)",
-                  }}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                        {mine&&<span style={{fontSize:9,fontWeight:800,color:"var(--accent)",background:"#EA580C20",padding:"2px 6px",borderRadius:4,letterSpacing:0.5}}>YOU</span>}
-                        {done&&<span style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",background:"var(--surface3)",padding:"2px 6px",borderRadius:4}}>DONE</span>}
-                        {!done&&<span style={{fontSize:9,fontWeight:700,color:"#F59E0B",background:"#F59E0B18",padding:"2px 6px",borderRadius:4}}>LIVE</span>}
-                      </div>
-                      <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",marginTop:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                        {m.player1_name||"TBD"} <span style={{color:"var(--text-faint)",fontWeight:500}}>vs</span> {m.player2_name||"TBD"}
-                      </p>
-                      {done&&m.scores_csv&&(
-                        <p style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>
-                          Score: {m.scores_csv} · Winner: <strong style={{color:"var(--text-secondary)"}}>{String(m.winner_id)===String(m.player1_id)?m.player1_name:m.player2_name}</strong>
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                  style={{padding:"11px 13px",borderRadius:12,marginBottom:7,
+                    border:`2px solid ${borderColor}`,background:bgColor}}>
+                  {cardInner}
                 </div>
               );
             })}
@@ -4924,10 +4938,18 @@ function HistoryTab({slug, myName}){
         if(m.id) params.set("matchId", m.id);
         if(m.player1_name) params.set("p1", m.player1_name);
         if(m.player2_name) params.set("p2", m.player2_name);
-        const data = await workerGet(`/matchlog?${params.toString()}`);
-        setBattleLogs(prev=>({...prev,[id]:{loading:false,data:data.found?data:null,error:null}}));
+        // Use raw fetch instead of workerGet so we can handle 404 gracefully
+        const res = await fetch(`${OVERLAY_WORKER}/matchlog?${params.toString()}`, {signal: AbortSignal.timeout(8000)});
+        if(res.ok){
+          const data = await res.json();
+          setBattleLogs(prev=>({...prev,[id]:{loading:false,data:data.found?data:null,error:null}}));
+        } else {
+          // 404 or other error from worker — treat as no log available
+          setBattleLogs(prev=>({...prev,[id]:{loading:false,data:null,error:null}}));
+        }
       } catch(e){
-        setBattleLogs(prev=>({...prev,[id]:{loading:false,data:null,error:"Couldn't load battle log."}}));
+        // Network error — treat as no log rather than showing a scary error
+        setBattleLogs(prev=>({...prev,[id]:{loading:false,data:null,error:null}}));
       }
     }
   };
