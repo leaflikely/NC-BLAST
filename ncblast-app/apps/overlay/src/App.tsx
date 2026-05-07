@@ -19,7 +19,7 @@ const BASE_H = 160; // approximate natural card height at scale 1
 function parsePos(): { x: number; y: number } {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.overlayPos);
-    if (!raw) return { x:30, y: 880 };
+    if (!raw) return { x:0, y: 0 };
     const parsed: unknown = JSON.parse(raw);
     if (
       parsed &&
@@ -34,7 +34,7 @@ function parsePos(): { x: number; y: number } {
   } catch {
     /* ignore */
   }
-  return { x: 30, y: 880 };
+  return { x: 0, y: 0 };
 }
 
 /**
