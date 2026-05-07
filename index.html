@@ -4657,20 +4657,30 @@ function PairingsTab({slug, myName, liveSlots}){
 
   useEffect(()=>{ load(); },[load]);
 
-  // Build a lookup: match player names -> live slot, so we can light up individual cards
-  // Keys are "p1name|p2name" and "p2name|p1name" (both directions) so order doesn't matter
+  // Build lookups so we can light up individual pairing cards:
+  // 1. By Challonge match ID (exact, preferred — no name ambiguity)
+  // 2. By player name pair as a fallback for non-Challonge matches
+  const liveByMatchId = {};
   const liveByPlayers = {};
   liveSlots.forEach(s=>{
     if(!s.state) return;
-    const p1 = (s.state.p1||"").toLowerCase();
-    const p2 = (s.state.p2||"").toLowerCase();
-    if(p1) liveByPlayers[`${p1}|${p2}`] = s;
-    if(p2) liveByPlayers[`${p2}|${p1}`] = s;
+    if(s.state.challongeMatchId) {
+      liveByMatchId[String(s.state.challongeMatchId)] = s;
+    }
+    const p1 = (s.state.p1||"").toLowerCase().trim();
+    const p2 = (s.state.p2||"").toLowerCase().trim();
+    if(p1 && p2) {
+      liveByPlayers[`${p1}|${p2}`] = s;
+      liveByPlayers[`${p2}|${p1}`] = s;
+    }
   });
 
   const getLiveSlot = (m) => {
-    const n1 = (m.player1_name||"").toLowerCase();
-    const n2 = (m.player2_name||"").toLowerCase();
+    // Try match ID first — most reliable
+    if(m.id && liveByMatchId[String(m.id)]) return liveByMatchId[String(m.id)];
+    // Fall back to name matching
+    const n1 = (m.player1_name||"").toLowerCase().trim();
+    const n2 = (m.player2_name||"").toLowerCase().trim();
     return liveByPlayers[`${n1}|${n2}`] || liveByPlayers[`${n2}|${n1}`] || null;
   };
 
@@ -5087,18 +5097,26 @@ function OrgApp({onSwitchRole}) {
     ? (pairings||[]).filter(m => m.round === currentRound)
     : [];
 
-  // Build a map of who's being judged right now: matchId -> live slot state
-  const liveByPlayers = {};
+  // Build live lookups: by Challonge match ID (exact, preferred) and by name pair (fallback)
+  const liveByMatchId = {};
+  const liveByPlayersOrg = {};
   liveSlots.forEach(s => {
-    if (s.state?.p1 && s.state?.p2) {
-      const key = [s.state.p1, s.state.p2].sort().join("|");
-      liveByPlayers[key] = s.state;
+    if (!s.state) return;
+    if (s.state.challongeMatchId) {
+      liveByMatchId[String(s.state.challongeMatchId)] = s.state;
+    }
+    const p1 = (s.state.p1||"").toLowerCase().trim();
+    const p2 = (s.state.p2||"").toLowerCase().trim();
+    if (p1 && p2) {
+      const key = [p1, p2].sort().join("|");
+      liveByPlayersOrg[key] = s.state;
     }
   });
 
   const getLiveState = (m) => {
-    const key = [m.player1_name, m.player2_name].sort().join("|");
-    return liveByPlayers[key] || null;
+    if (m.id && liveByMatchId[String(m.id)]) return liveByMatchId[String(m.id)];
+    const key = [(m.player1_name||"").toLowerCase().trim(), (m.player2_name||"").toLowerCase().trim()].sort().join("|");
+    return liveByPlayersOrg[key] || null;
   };
 
   const roundLabel = currentRound !== null
