@@ -1753,6 +1753,10 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [judgeEditMode,setJudgeEditMode] = useState(false); // judge name editable on over screen
   const [layoutEditMode,setLayoutEditMode] = useState(false); // height adjustment mode
   const [overlayModal,setOverlayModal] = useState(false); // stream slot picker modal
+  const [pingModal,setPingModal] = useState(false); // Contact TO ping modal
+  const [pingComment,setPingComment] = useState("");
+  const [pingSending,setPingSending] = useState(false);
+  const [pingSent,setPingSent] = useState(false);
   // Section heights in px — null = auto/flex
   const [sectionH,setSectionH] = useState({score:null,combo:null,picker:null,finish:null});
   // Drag state for height sliders
@@ -3412,6 +3416,14 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             title="Stream overlay">
             {overlaySlot>0?`📡 ${overlaySlot}`:"📡"}
           </button>
+          {/* Contact TO button — only shown when a Challonge match is active */}
+          {challongeMatchId&&challongeSlug&&(
+            <button type="button" onClick={()=>setPingModal(true)}
+              style={{flex:1,height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",background:"#DC2626",border:"none",color:"#fff",borderRadius:bp(6),fontSize:bf(9),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer",lineHeight:1,minWidth:0}}
+              title="Contact Tournament Organizer">
+              🚨 TO
+            </button>
+          )}
           {/* Layout edit mode toggle */}
           <button type="button" onClick={()=>setLayoutEditMode(m=>!m)}
             style={{flex:1,height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",background:layoutEditMode?"#7C3AED":"none",border:layoutEditMode?"none":`1px solid ${config.tm?"rgba(255,255,255,0.3)":"var(--border2)"}`,color:layoutEditMode?"#fff":config.tm?"#E9D5FF":"var(--text-muted)",borderRadius:bp(6),fontSize:bf(13),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",lineHeight:1,position:"relative",zIndex:160,minWidth:0}}
@@ -3766,6 +3778,59 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               <button type="button" onClick={()=>{ pushOverlay(); setOverlayModal(false); }} style={{marginTop:bp(12),width:"100%",padding:`${bp(8)}px`,borderRadius:bp(8),border:"none",background:overlayStatus==="ok"?"#15803D":"#EA580C",color:"#fff",fontSize:bf(10),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
                 {overlayStatus==="ok"?"🟢 Push Update":"▶ Connect Channel "+overlaySlot}
               </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Contact TO Ping Modal ─────────────────────────────────── */}
+      {pingModal&&(
+        <div onClick={()=>{if(!pingSending){setPingModal(false);setPingComment("");setPingSent(false);}}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 20px"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:bp(18),padding:`${bp(20)}px ${bp(20)}px`,width:"100%",maxWidth:340,boxShadow:"0 12px 40px rgba(0,0,0,0.4)",border:"2px solid #DC2626"}}>
+            {pingSent?(
+              <div style={{textAlign:"center",padding:`${bp(12)}px 0`}}>
+                <div style={{fontSize:40,marginBottom:bp(10)}}>✅</div>
+                <p style={{fontSize:bf(14),fontWeight:900,color:"var(--text-primary)",marginBottom:bp(6)}}>TO Notified</p>
+                <p style={{fontSize:bf(10),color:"var(--text-muted)",marginBottom:bp(16)}}>Your ping has been sent.</p>
+                <button type="button" onClick={()=>{setPingModal(false);setPingComment("");setPingSent(false);}} style={{width:"100%",padding:`${bp(10)}px`,borderRadius:bp(10),border:"none",background:"var(--surface3)",color:"var(--text-primary)",fontSize:bf(11),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>Close</button>
+              </div>
+            ):(
+              <>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:bp(14)}}>
+                  <div>
+                    <p style={{fontSize:bf(14),fontWeight:900,color:"#DC2626",margin:0}}>🚨 Contact TO</p>
+                    <p style={{fontSize:bf(9),color:"var(--text-muted)",margin:0,marginTop:2}}>Ping the tournament organizer</p>
+                  </div>
+                  <button type="button" onClick={()=>{setPingModal(false);setPingComment("");setPingSent(false);}} style={{background:"var(--surface3)",border:"none",borderRadius:bp(6),width:bp(26),height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"var(--text-muted)",fontSize:bf(11),fontWeight:700}}>✕</button>
+                </div>
+                <div style={{background:"var(--surface2)",borderRadius:bp(10),padding:`${bp(10)}px ${bp(12)}px`,marginBottom:bp(12),border:"1px solid var(--border)"}}>
+                  <p style={{fontSize:bf(8),color:"var(--text-faint)",fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 4px"}}>Match Info (auto-included)</p>
+                  <p style={{fontSize:bf(10),fontWeight:800,color:"var(--text-primary)",margin:0}}>{p1||"?"} vs {p2||"?"}</p>
+                  {judge&&<p style={{fontSize:bf(9),color:"var(--text-muted)",margin:"2px 0 0"}}>Judge: {judge}</p>}
+                </div>
+                <p style={{fontSize:bf(9),fontWeight:700,color:"var(--text-secondary)",marginBottom:bp(6)}}>Add a note (optional)</p>
+                <textarea
+                  value={pingComment}
+                  onChange={e=>setPingComment(e.target.value)}
+                  placeholder="Describe the issue or reason for the call…"
+                  rows={3}
+                  style={{width:"100%",borderRadius:bp(10),border:"1px solid var(--border2)",background:"var(--input-bg)",color:"var(--text-primary)",fontSize:bf(10),fontFamily:"'Outfit',sans-serif",padding:`${bp(8)}px ${bp(10)}px`,resize:"none",outline:"none",boxSizing:"border-box"}}
+                />
+                <button type="button" disabled={pingSending} onClick={async()=>{
+                  setPingSending(true);
+                  try {
+                    await fetch(`${OVERLAY_WORKER}/pings/send`, {
+                      method:"POST",
+                      headers:{"Content-Type":"application/json"},
+                      body:JSON.stringify({slug:challongeSlug,judge,p1,p2,comment:pingComment}),
+                    });
+                    setPingSent(true);
+                  } catch(_) { alert("Failed to send ping. Check your connection."); }
+                  finally { setPingSending(false); }
+                }} style={{marginTop:bp(12),width:"100%",padding:`${bp(12)}px`,borderRadius:bp(10),border:"none",background:pingSending?"#991B1B":"#DC2626",color:"#fff",fontSize:bf(12),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:pingSending?"not-allowed":"pointer",opacity:pingSending?0.7:1}}>
+                  {pingSending?"Sending…":"🚨 Send Ping to TO"}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -4919,6 +4984,362 @@ function ComboTab({myName, myDeck, onDeckSaved, slug}){
   );
 }
 
+
+/* ═══════════════════════════════════════
+   ORGANIZER APP
+═══════════════════════════════════════ */
+function OrgApp({onSwitchRole}) {
+  const [slug, setSlug] = useState(null);           // active tournament slug
+  const [tourneyName, setTourneyName] = useState(""); // display name
+  const [pings, setPings] = useState([]);            // queued ping list
+  const [activePing, setActivePing] = useState(null);// currently shown ping notification
+  const [liveSlots, setLiveSlots] = useState([]);    // active judged matches
+  const [pairings, setPairings] = useState(null);    // all matches for current round
+  const [loadingPairings, setLoadingPairings] = useState(false);
+  const pingPollRef = useRef(null);
+  const liveSlotRef = useRef(null);
+  const afterRef = useRef(0); // timestamp: only poll for pings newer than this
+
+  // ── When a tournament is selected, start polling ─────────────────
+  useEffect(() => {
+    if (!slug) return;
+
+    // Load pairings once
+    const loadPairings = async () => {
+      setLoadingPairings(true);
+      try {
+        const data = await workerGet(`/pairings?slug=${encodeURIComponent(slug)}`);
+        setPairings(data.pairings || []);
+      } catch(_) {}
+      finally { setLoadingPairings(false); }
+    };
+    loadPairings();
+
+    // Poll live match slots every 5s
+    const pollLive = async () => {
+      try {
+        const data = await workerGet("/overlay/all");
+        setLiveSlots(data.slots || []);
+      } catch(_) {}
+    };
+    pollLive();
+    liveSlotRef.current = setInterval(pollLive, 5000);
+
+    // Long-poll for pings
+    const pollPings = async () => {
+      try {
+        const data = await workerGet(`/pings/poll?slug=${encodeURIComponent(slug)}&after=${afterRef.current}`);
+        const fresh = data.pings || [];
+        if (fresh.length > 0) {
+          // Move afterRef forward so we don't re-receive these
+          afterRef.current = Math.max(...fresh.map(p => p.sentAt));
+          setPings(prev => {
+            // Deduplicate by id
+            const ids = new Set(prev.map(p => p.id));
+            return [...prev, ...fresh.filter(p => !ids.has(p.id))];
+          });
+        }
+      } catch(_) {}
+      // Immediately re-open the long-poll
+      pingPollRef.current = setTimeout(pollPings, 200);
+    };
+    pingPollRef.current = setTimeout(pollPings, 0);
+
+    return () => {
+      clearInterval(liveSlotRef.current);
+      clearTimeout(pingPollRef.current);
+    };
+  }, [slug]);
+
+  // ── When pings arrive, surface the first one if none showing ─────
+  useEffect(() => {
+    if (!activePing && pings.length > 0) {
+      setActivePing(pings[0]);
+    }
+  }, [pings, activePing]);
+
+  // ── Dismiss a ping ───────────────────────────────────────────────
+  const dismissPing = async (ping) => {
+    // Remove from local queue immediately
+    setPings(prev => prev.filter(p => p.id !== ping.id));
+    setActivePing(null);
+    // Tell the server to remove it too (fire and forget)
+    try {
+      await fetch(`${OVERLAY_WORKER}/pings/dismiss`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({slug, id: ping.id}),
+      });
+    } catch(_) {}
+  };
+
+  // ── Tournament select screen ──────────────────────────────────────
+  if (!slug) {
+    return <OrgTournamentSelect onSelect={(s, name) => { setSlug(s); setTourneyName(name); }} onSwitchRole={onSwitchRole}/>;
+  }
+
+  // ── Figure out the current round from pairings ───────────────────
+  const openMatches = (pairings||[]).filter(m => m.state === "open" || m.state === "pending");
+  const currentRound = openMatches.length > 0
+    ? Math.min(...openMatches.map(m => m.round || 0))
+    : null;
+  const roundMatches = currentRound !== null
+    ? (pairings||[]).filter(m => m.round === currentRound)
+    : [];
+
+  // Build a map of who's being judged right now: matchId -> live slot state
+  const liveByPlayers = {};
+  liveSlots.forEach(s => {
+    if (s.state?.p1 && s.state?.p2) {
+      const key = [s.state.p1, s.state.p2].sort().join("|");
+      liveByPlayers[key] = s.state;
+    }
+  });
+
+  const getLiveState = (m) => {
+    const key = [m.player1_name, m.player2_name].sort().join("|");
+    return liveByPlayers[key] || null;
+  };
+
+  const roundLabel = currentRound !== null
+    ? (currentRound < 0 ? `Top Cut Round ${Math.abs(currentRound)}` : `Swiss Round ${currentRound}`)
+    : "No open rounds";
+
+  return (
+    <div style={{minHeight:"100vh",background:"var(--bg)",fontFamily:"'Outfit',sans-serif",display:"flex",flexDirection:"column"}}>
+
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <div style={{background:"var(--surface)",borderBottom:"1px solid var(--border)",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+        <button onClick={onSwitchRole} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",lineHeight:1,padding:"2px 4px"}}>←</button>
+        <div style={{flex:1,minWidth:0}}>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:0}}>Organizer View</p>
+          <p style={{fontSize:14,fontWeight:900,color:"var(--text-primary)",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tourneyName||slug}</p>
+        </div>
+        {pings.length > 0 && (
+          <div style={{background:"#DC2626",color:"#fff",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,flexShrink:0}}>
+            {pings.length}
+          </div>
+        )}
+        <button onClick={()=>setSlug(null)} style={{background:"none",border:"1px solid var(--border)",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,color:"var(--text-muted)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          ⇄ Switch
+        </button>
+      </div>
+
+      {/* ── Body ───────────────────────────────────────────────── */}
+      <div style={{flex:1,overflowY:"auto",padding:"12px 14px 32px"}}>
+
+        {/* Round header */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div>
+            <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:1,margin:0}}>Current Round</p>
+            <h2 style={{fontSize:18,fontWeight:900,color:"var(--text-primary)",margin:0}}>{roundLabel}</h2>
+          </div>
+          <button onClick={async()=>{
+            setLoadingPairings(true);
+            try { const d = await workerGet(`/pairings?slug=${encodeURIComponent(slug)}`); setPairings(d.pairings||[]); } catch(_){}
+            finally { setLoadingPairings(false); }
+          }} disabled={loadingPairings} style={{background:"none",border:"2px solid var(--border)",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,color:"var(--text-muted)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+            {loadingPairings?"…":"↻"}
+          </button>
+        </div>
+
+        {/* Stats row */}
+        {roundMatches.length > 0 && (() => {
+          const judgedCount = roundMatches.filter(m => getLiveState(m) !== null).length;
+          const doneCount = roundMatches.filter(m => m.state === "complete").length;
+          const openCount = roundMatches.filter(m => m.state !== "complete").length;
+          return (
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              {[
+                {label:"Total",val:roundMatches.length,color:"var(--text-secondary)"},
+                {label:"Live",val:judgedCount,color:"#22C55E"},
+                {label:"Waiting",val:openCount-judgedCount,color:"#F59E0B"},
+                {label:"Done",val:doneCount,color:"var(--text-faint)"},
+              ].map(s=>(
+                <div key={s.label} style={{flex:1,padding:"8px 0",borderRadius:10,background:"var(--surface)",border:"1px solid var(--border)",textAlign:"center"}}>
+                  <p style={{fontSize:18,fontWeight:900,color:s.color,margin:0}}>{s.val}</p>
+                  <p style={{fontSize:9,color:"var(--text-faint)",fontWeight:700,margin:0,textTransform:"uppercase",letterSpacing:0.5}}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* Match list */}
+        {loadingPairings && !pairings && <p style={{color:"var(--text-muted)",fontSize:13}}>Loading matches…</p>}
+
+        {roundMatches.map(m => {
+          const live = getLiveState(m);
+          const done = m.state === "complete";
+          const borderColor = live ? "#22C55E" : done ? "var(--border)" : "var(--border2)";
+          const bgColor = live ? "#22C55E0A" : "var(--surface)";
+
+          return (
+            <div key={m.id} style={{borderRadius:12,marginBottom:8,border:`2px solid ${borderColor}`,background:bgColor,padding:"11px 13px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                    {live && <><span className="live-dot"/><span style={{fontSize:9,fontWeight:800,color:"#22C55E",textTransform:"uppercase",letterSpacing:0.8}}>LIVE</span></>}
+                    {done && <span style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8}}>Complete</span>}
+                    {!live && !done && <span style={{fontSize:9,fontWeight:700,color:"#F59E0B",textTransform:"uppercase",letterSpacing:0.8}}>Waiting</span>}
+                  </div>
+                  <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {m.player1_name||"?"} <span style={{color:"var(--text-faint)",fontWeight:400}}>vs</span> {m.player2_name||"?"}
+                  </p>
+                  {live && (
+                    <p style={{fontSize:12,fontWeight:700,color:"#22C55E",margin:"3px 0 0"}}>
+                      {(live.pts||[0,0])[0]} – {(live.pts||[0,0])[1]}
+                      {live.judge && <span style={{fontSize:10,fontWeight:500,color:"var(--text-muted)",marginLeft:8}}>Judge: {live.judge}</span>}
+                    </p>
+                  )}
+                  {done && m.scores_csv && (
+                    <p style={{fontSize:11,color:"var(--text-muted)",margin:"2px 0 0"}}>Final: {m.scores_csv}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {pairings && roundMatches.length === 0 && (
+          <div style={{textAlign:"center",padding:"40px 0",color:"var(--text-muted)"}}>
+            <p style={{fontSize:32,marginBottom:12}}>🏁</p>
+            <p style={{fontSize:14,fontWeight:700}}>No open matches found.</p>
+            <p style={{fontSize:12,color:"var(--text-faint)"}}>All matches may be complete, or the round hasn't started yet.</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Ping notification modal (must be manually dismissed) ── */}
+      {activePing && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 20px"}}>
+          <div style={{background:"var(--surface)",borderRadius:18,width:"100%",maxWidth:360,boxShadow:"0 16px 48px rgba(0,0,0,0.5)",border:"3px solid #DC2626",overflow:"hidden"}}>
+            {/* Red header */}
+            <div style={{background:"#DC2626",padding:"14px 18px",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:24}}>🚨</span>
+              <div style={{flex:1}}>
+                <p style={{fontSize:14,fontWeight:900,color:"#fff",margin:0}}>Judge Calling TO</p>
+                {pings.length > 1 && <p style={{fontSize:10,color:"rgba(255,255,255,0.75)",margin:0}}>{pings.length - 1} more ping{pings.length > 2 ? "s" : ""} waiting</p>}
+              </div>
+            </div>
+            {/* Ping details */}
+            <div style={{padding:"16px 18px"}}>
+              <div style={{background:"var(--surface2)",borderRadius:10,padding:"10px 12px",marginBottom:12,border:"1px solid var(--border)"}}>
+                <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 4px"}}>Match</p>
+                <p style={{fontSize:15,fontWeight:900,color:"var(--text-primary)",margin:0}}>{activePing.p1||"?"} vs {activePing.p2||"?"}</p>
+                {activePing.judge && <p style={{fontSize:11,color:"var(--text-muted)",margin:"3px 0 0"}}>Judge: {activePing.judge}</p>}
+              </div>
+              {activePing.comment && (
+                <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 12px",marginBottom:12,border:"1px solid #FCD34D"}}>
+                  <p style={{fontSize:10,fontWeight:700,color:"#92400E",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 4px"}}>Note from Judge</p>
+                  <p style={{fontSize:13,color:"#78350F",margin:0,lineHeight:1.5}}>{activePing.comment}</p>
+                </div>
+              )}
+              <p style={{fontSize:10,color:"var(--text-faint)",margin:"0 0 12px",textAlign:"right"}}>
+                {new Date(activePing.sentAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
+              </p>
+              <button onClick={()=>dismissPing(activePing)} style={{width:"100%",padding:"12px",borderRadius:10,border:"none",background:"var(--surface3)",color:"var(--text-primary)",fontSize:13,fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                ✕ Dismiss {pings.length > 1 ? `(${pings.length - 1} more)` : ""}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Org Tournament Select ────────────────────────────────────────── */
+function OrgTournamentSelect({onSelect, onSwitchRole}) {
+  const [linkInput, setLinkInput] = useState("");
+  const [cachedList, setCachedList] = useState([]);
+  const [loadingList, setLoadingList] = useState(true);
+  const [loadingLink, setLoadingLink] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoadingList(true);
+      try {
+        const data = await workerGet("/list");
+        setCachedList(data.tournaments || []);
+      } catch(_) { setCachedList([]); }
+      finally { setLoadingList(false); }
+    };
+    load();
+  }, []);
+
+  const handleLinkSubmit = async () => {
+    setError(null);
+    // Extract slug from link — same logic as judge view
+    const raw = linkInput.trim();
+    let slug = raw;
+    try {
+      const u = new URL(raw.startsWith("http") ? raw : "https://" + raw);
+      const parts = u.pathname.split("/").filter(Boolean);
+      slug = parts[parts.length - 1] || slug;
+    } catch(_) {}
+    // Strip subdomain if present (e.g. "ncbl-eventname" -> keep as is, it's the slug)
+    if (!slug) { setError("Enter a valid Challonge link."); return; }
+    setLoadingLink(true);
+    try {
+      // Try fetching participants to confirm the tournament exists and is cached
+      const data = await workerGet(`/?slug=${encodeURIComponent(slug)}`);
+      const name = data.tournamentName || data.name || slug;
+      onSelect(slug, name);
+    } catch(e) {
+      setError("Couldn't load that tournament. Check the link and try again.");
+    } finally { setLoadingLink(false); }
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:"var(--bg)",fontFamily:"'Outfit',sans-serif",display:"flex",flexDirection:"column"}}>
+      <div style={{background:"var(--surface)",borderBottom:"1px solid var(--border)",padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
+        <button onClick={onSwitchRole} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",lineHeight:1,padding:"2px 4px"}}>←</button>
+        <div>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:0}}>Organizer View</p>
+          <p style={{fontSize:14,fontWeight:900,color:"var(--text-primary)",margin:0}}>Select Tournament</p>
+        </div>
+      </div>
+
+      <div style={{flex:1,padding:"16px 14px 32px"}}>
+
+        {/* Paste a link */}
+        <div style={{background:"var(--surface)",borderRadius:14,padding:"14px 14px",marginBottom:20,border:"1px solid var(--border)"}}>
+          <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",marginBottom:8}}>Load from Challonge link</p>
+          <div style={{display:"flex",gap:8}}>
+            <input
+              value={linkInput}
+              onChange={e=>setLinkInput(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&handleLinkSubmit()}
+              placeholder="challonge.com/ncbl-eventname"
+              style={{flex:1,borderRadius:10,border:"1px solid var(--border2)",background:"var(--input-bg)",padding:"9px 12px",fontSize:13,fontFamily:"'Outfit',sans-serif",outline:"none"}}
+            />
+            <button onClick={handleLinkSubmit} disabled={loadingLink||!linkInput.trim()} style={{borderRadius:10,border:"none",background:"#EA580C",color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",padding:"0 16px",cursor:loadingLink||!linkInput.trim()?"not-allowed":"pointer",opacity:loadingLink||!linkInput.trim()?0.6:1}}>
+              {loadingLink?"…":"Go"}
+            </button>
+          </div>
+          {error && <p style={{fontSize:11,color:"#EF4444",marginTop:8}}>{error}</p>}
+        </div>
+
+        {/* Cached tournaments */}
+        <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",marginBottom:10}}>Recently cached</p>
+        {loadingList && <p style={{fontSize:13,color:"var(--text-muted)"}}>Loading…</p>}
+        {!loadingList && cachedList.length === 0 && (
+          <p style={{fontSize:12,color:"var(--text-faint)"}}>No cached tournaments found. Load a tournament in judge view first.</p>
+        )}
+        {cachedList.map(t => (
+          <button key={t.slug} onClick={()=>onSelect(t.slug, t.name||t.slug)}
+            style={{display:"block",width:"100%",padding:"12px 14px",borderRadius:12,marginBottom:8,border:"1px solid var(--border)",background:"var(--surface)",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
+            <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0}}>{t.name||t.slug}</p>
+            <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>{t.slug}</p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Match History Tab ───────────────────────────────────────── */
 function HistoryTab({slug, myName}){
   const [pairings, setPairings] = useState(null);
@@ -5382,6 +5803,16 @@ function RolePicker({onSelect}) {
         }}>
           🏆 A Player
         </button>
+
+        <button onClick={()=>onSelect("org")} style={{
+          padding:"20px 0", borderRadius:16,
+          border:"2px solid var(--border2)",
+          background:"var(--surface)",
+          color:"var(--text-secondary)", fontSize:18, fontWeight:900,
+          fontFamily:"'Outfit',sans-serif", cursor:"pointer",
+        }}>
+          📋 An Organizer
+        </button>
       </div>
 
       <p style={{
@@ -5519,6 +5950,7 @@ function BeyJudgeApp() {
   // Branch on role in the render — no early returns before hooks
   if(!role) return <RolePicker onSelect={chooseRole}/>;
   if(role==="player") return <PlayerApp onSwitchRole={()=>chooseRole(null)}/>;
+  if(role==="org") return <OrgApp onSwitchRole={()=>chooseRole(null)}/>;
 
   return (
     <div style={{background:"var(--bg)",minHeight:"100vh",fontFamily:"'Outfit',sans-serif"}}>
