@@ -1680,6 +1680,113 @@ function ComboLabel({blade, ratchet, bit, color, color2, empty, emptyText}) {
   );
 }
 
+function ShuffleTimerInner({onDismiss}){
+  const TOTAL = 60;
+  const [seconds, setSeconds] = useState(TOTAL);
+  const [expired, setExpired] = useState(false);
+  const intervalRef = useRef(null);
+
+  useEffect(()=>{
+    intervalRef.current = setInterval(()=>{
+      setSeconds(s=>{
+        if(s<=1){ clearInterval(intervalRef.current); setExpired(true); return 0; }
+        return s-1;
+      });
+    },1000);
+    return ()=>clearInterval(intervalRef.current);
+  },[]);
+
+  const fraction = seconds/TOTAL;
+  const handDeg = (1-fraction)*360 - 90;
+  const R = 90;
+  const WCX = 110, WCY = 130;
+  const elapsed = 1 - fraction;
+  const arcAngle = elapsed * 2 * Math.PI;
+  const startX = WCX + R * Math.cos(-Math.PI/2);
+  const startY = WCY + R * Math.sin(-Math.PI/2);
+  const endX = WCX + R * Math.cos(-Math.PI/2 + arcAngle);
+  const endY = WCY + R * Math.sin(-Math.PI/2 + arcAngle);
+  const largeArc = elapsed > 0.5 ? 1 : 0;
+
+  if(expired){
+    return (
+      <div style={{position:"fixed",inset:0,background:"#DC2626",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:600,padding:"24px"}}>
+        <p style={{fontSize:48,fontWeight:900,color:"#fff",textAlign:"center",lineHeight:1.1,marginBottom:16}}>⏱️</p>
+        <p style={{fontSize:28,fontWeight:900,color:"#fff",textAlign:"center",lineHeight:1.2,marginBottom:12,letterSpacing:1}}>SHUFFLE TIME</p>
+        <p style={{fontSize:28,fontWeight:900,color:"#fff",textAlign:"center",lineHeight:1.2,marginBottom:40,letterSpacing:1}}>EXPIRED</p>
+        <button onClick={onDismiss}
+          style={{padding:"16px 40px",borderRadius:16,border:"3px solid rgba(255,255,255,0.5)",background:"rgba(255,255,255,0.15)",color:"#fff",fontSize:18,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          Continue →
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"var(--bg-solid)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:600,padding:"24px",gap:0}}>
+      <p style={{fontSize:11,fontWeight:700,letterSpacing:3,color:"var(--text-muted)",textTransform:"uppercase",marginBottom:20}}>Shuffle Order Selection</p>
+
+      {/* Stopwatch SVG */}
+      <svg width="220" height="240" viewBox="0 0 220 260" style={{marginBottom:12}}>
+        {/* Watch body */}
+        <circle cx="110" cy="130" r="96" fill="var(--surface)" stroke="var(--border2)" strokeWidth="4"/>
+        {/* Crown / button at top */}
+        <rect x="96" y="28" width="28" height="12" rx="6" fill="var(--border2)"/>
+        <rect x="104" y="22" width="12" height="10" rx="4" fill="var(--border2)"/>
+        {/* Tick marks */}
+        {Array.from({length:60}).map((_,i)=>{
+          const angle = (i/60)*2*Math.PI - Math.PI/2;
+          const isMajor = i%5===0;
+          const r1 = isMajor ? 78 : 82;
+          const r2 = 90;
+          return <line key={i}
+            x1={110+r1*Math.cos(angle)} y1={130+r1*Math.sin(angle)}
+            x2={110+r2*Math.cos(angle)} y2={130+r2*Math.sin(angle)}
+            stroke={isMajor?"var(--text-secondary)":"var(--border2)"}
+            strokeWidth={isMajor?2:1}
+          />;
+        })}
+        {/* Elapsed arc (red sweep) */}
+        {elapsed > 0 && elapsed < 1 && (
+          <path
+            d={`M ${startX} ${startY} A ${R} ${R} 0 ${largeArc} 1 ${endX} ${endY}`}
+            fill="none" stroke="#EF4444" strokeWidth="6" strokeLinecap="round"
+            opacity="0.35"
+          />
+        )}
+        {elapsed >= 1 && (
+          <circle cx="110" cy="130" r={R} fill="none" stroke="#EF4444" strokeWidth="6" opacity="0.35"/>
+        )}
+        {/* Center dot */}
+        <circle cx="110" cy="130" r="5" fill="var(--text-secondary)"/>
+        {/* Second hand */}
+        <line
+          x1="110" y1="130"
+          x2={110 + 78*Math.cos(handDeg*Math.PI/180)}
+          y2={130 + 78*Math.sin(handDeg*Math.PI/180)}
+          stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round"
+        />
+        {/* Counter-weight tail */}
+        <line
+          x1="110" y1="130"
+          x2={110 - 18*Math.cos(handDeg*Math.PI/180)}
+          y2={130 - 18*Math.sin(handDeg*Math.PI/180)}
+          stroke="#EF4444" strokeWidth="3" strokeLinecap="round"
+        />
+      </svg>
+
+      {/* Countdown number */}
+      <p style={{fontSize:64,fontWeight:900,color:"var(--text-primary)",lineHeight:1,marginBottom:4,fontVariantNumeric:"tabular-nums"}}>{seconds}</p>
+      <p style={{fontSize:13,fontWeight:600,color:"var(--text-muted)",marginBottom:36}}>seconds remaining</p>
+
+      <button onClick={onDismiss}
+        style={{padding:"16px 40px",borderRadius:16,border:"none",background:"#22C55E",color:"#fff",fontSize:18,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",boxShadow:"0 4px 16px rgba(34,197,94,0.35)"}}>
+        ✓ Players Ready
+      </button>
+    </div>
+  );
+}
+
 function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheetsStatus,onBack,onMainMenu,onDownloadCSV,onSendSheets,onOpenLib,dark,toggleDark,challongeSlug,challongeParticipants}) {
   const [phase,setPhase] = useState("pick");
   const [abandonConfirm,setAbandonConfirm] = useState(false);
@@ -1757,6 +1864,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [pingComment,setPingComment] = useState("");
   const [pingSending,setPingSending] = useState(false);
   const [pingSent,setPingSent] = useState(false);
+  // shuffleTimer: null = hidden, "active" = counting down, "expired" = time ran out
+  const [shuffleTimer,setShuffleTimer] = useState(null);
   // Section heights in px — null = auto/flex
   const [sectionH,setSectionH] = useState({score:null,combo:null,picker:null,finish:null});
   // Drag state for height sliders
@@ -1885,7 +1994,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(s=>s+1);
       }
     } else {
-      if(nu1.length>=3&&nu2.length>=3){ setUsed1([]); setUsed2([]); setShuf(s=>s+1); }
+      if(nu1.length>=3&&nu2.length>=3){ if(config.tm){ setShuffleTimer("active"); } else { setUsed1([]); setUsed2([]); setShuf(s=>s+1); } }
       // stay on battle screen — combos reset via setR1/setR2 null above
     }
   };
@@ -2044,7 +2153,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     }
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
+  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
 
   // Navigation helpers
   // Unified back navigation — context-aware, no stale closure issues
@@ -3042,6 +3151,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     );
   }
 
+  // ── Shuffle Timer Screen ────────────────────────────────────────────────────
+  if(shuffleTimer){
+    const dismissTimer = () => { setShuffleTimer(null); setUsed1([]); setUsed2([]); setShuf(s=>s+1); };
+    return <ShuffleTimerInner onDismiss={dismissTimer}/>;
+  }
+
   // ── Side Assignment Modal ──────────────────────────────────────────────────
   if(phase==="battle"&&sidePicker){
     const priorityKnown = sidePicker.priority !== null;
@@ -3087,6 +3202,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     setSideAssign({pickPriority:sidePicker.priority,p1Side,p2Side});
                     setCurrentSides({p1Side,p2Side});
                     setSidePicker(null);
+                    setShuffleTimer("active");
                   }} style={{width:"100%",padding:"36px 0",borderRadius:20,border:`3px solid ${priorityColor}40`,background:`${priorityColor}0D`,color:priorityColor,fontSize:48,fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
                     {side} Side
                   </button>
