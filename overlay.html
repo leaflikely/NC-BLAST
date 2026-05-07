@@ -901,6 +901,15 @@ async function poll() {
 }
 
 // ── INIT ──────────────────────────────────────────────────────────
+// If no saved scale exists yet (first time opening this channel site),
+// auto-size the widget to 75% of the available window width.
+// Once a user manually resizes, their preference is saved and this is skipped.
+if (!localStorage.getItem("ncblast-scale")) {
+  const targetW = window.innerWidth * 0.75;
+  widgetScale = Math.max(0.3, Math.min(3.0, targetW / BASE_W));
+  widgetW = 0; widgetH = 0;
+}
+
 widget.style.left = widgetPos.x + "px";
 widget.style.top  = widgetPos.y + "px";
 scaleWrap.style.transform = `scale(${widgetScale})`;
@@ -942,11 +951,16 @@ renderState(null, null);
 poll();
 
 // ── KEYBOARD SHORTCUTS (for streamer convenience) ─────────────────
-// R = reset position to bottom-left
+// R = reset position and scale to default (75% window width, bottom-left)
 // +/- = scale up/down
 document.addEventListener("keydown", e => {
   if (e.key === "r" || e.key === "R") {
     widgetPos = { x: 30, y: 880 };
+    widgetScale = Math.max(0.3, Math.min(3.0, (window.innerWidth * 0.75) / BASE_W));
+    widgetW = 0; widgetH = 0;
+    localStorage.removeItem("ncblast-scale");
+    localStorage.removeItem("ncblast-w");
+    localStorage.removeItem("ncblast-h");
     localStorage.setItem("ncblast-pos", JSON.stringify(widgetPos));
     applyTransform();
   }
