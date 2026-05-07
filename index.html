@@ -1994,7 +1994,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(s=>s+1);
       }
     } else {
-      if(nu1.length>=3&&nu2.length>=3){ if(config.tm){ setShuffleTimer("active"); } else { setUsed1([]); setUsed2([]); setShuf(s=>s+1); } }
+      if(nu1.length>=3&&nu2.length>=3){ if(config.tm){ setShuffleTimer("active"); pushOverlay({shuffling:true}); } else { setUsed1([]); setUsed2([]); setShuf(s=>s+1); } }
       // stay on battle screen — combos reset via setR1/setR2 null above
     }
   };
@@ -3153,7 +3153,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
   // ── Shuffle Timer Screen ────────────────────────────────────────────────────
   if(shuffleTimer){
-    const dismissTimer = () => { setShuffleTimer(null); setUsed1([]); setUsed2([]); setShuf(s=>s+1); };
+    const dismissTimer = () => { pushOverlay({shuffling:false}); setShuffleTimer(null); setUsed1([]); setUsed2([]); setShuf(s=>s+1); };
     return <ShuffleTimerInner onDismiss={dismissTimer}/>;
   }
 
@@ -3203,6 +3203,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     setCurrentSides({p1Side,p2Side});
                     setSidePicker(null);
                     setShuffleTimer("active");
+                    pushOverlay({shuffling:true, p1Side, p2Side});
                   }} style={{width:"100%",padding:"36px 0",borderRadius:20,border:`3px solid ${priorityColor}40`,background:`${priorityColor}0D`,color:priorityColor,fontSize:48,fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
                     {side} Side
                   </button>
@@ -4652,6 +4653,17 @@ function LiveScoreView({matchId, slot, initialState, onClose}){
         {s.judge&&<span style={{fontSize:11,color:"var(--text-faint)"}}>Judge: <strong style={{color:"var(--text-muted)"}}>{s.judge}</strong></span>}
       </div>
 
+      {/* Shuffle timer banner */}
+      {s.shuffling&&(
+        <div style={{padding:"12px 16px",background:"#F59E0B18",borderBottom:"2px solid #F59E0B40",flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>⏱</span>
+          <div>
+            <p style={{fontSize:13,fontWeight:900,color:"#F59E0B",margin:0,letterSpacing:0.5}}>Shuffle Time</p>
+            <p style={{fontSize:11,color:"var(--text-muted)",margin:0}}>Players are selecting their bey order</p>
+          </div>
+        </div>
+      )}
+
       {/* Set tracker */}
       {need>1&&(
         <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
@@ -4871,6 +4883,7 @@ function PairingsTab({slug, myName, liveSlots}){
               const isLive = !!liveSlot;
               const isMyLive = isLive && mine;
               const liveState = liveSlot?.state;
+              const isShuffling = isLive && !!liveState?.shuffling;
               const p1pts = liveState?.pts?.[0]??null;
               const p2pts = liveState?.pts?.[1]??null;
 
@@ -4884,9 +4897,14 @@ function PairingsTab({slug, myName, liveSlots}){
                     {/* Status badges */}
                     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
                       {mine&&<span style={{fontSize:9,fontWeight:800,color:"var(--accent)",background:"#EA580C20",padding:"2px 6px",borderRadius:4,letterSpacing:0.5}}>YOU</span>}
-                      {isLive&&(
+                      {isLive&&!isShuffling&&(
                         <span style={{display:"flex",alignItems:"center",gap:4,fontSize:9,fontWeight:800,color:"#22C55E",background:"#22C55E18",padding:"2px 7px",borderRadius:4,letterSpacing:0.5}}>
                           <span className="live-dot" style={{marginRight:0}}/>LIVE · Tap to watch
+                        </span>
+                      )}
+                      {isShuffling&&(
+                        <span style={{fontSize:9,fontWeight:800,color:"#F59E0B",background:"#F59E0B18",padding:"2px 7px",borderRadius:4,letterSpacing:0.5}}>
+                          ⏱ SHUFFLE TIME
                         </span>
                       )}
                       {!isLive&&done&&<span style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",background:"var(--surface3)",padding:"2px 6px",borderRadius:4}}>DONE</span>}
@@ -4895,8 +4913,8 @@ function PairingsTab({slug, myName, liveSlots}){
                     <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                       {m.player1_name||"TBD"} <span style={{color:"var(--text-faint)",fontWeight:500}}>vs</span> {m.player2_name||"TBD"}
                     </p>
-                    {/* Live score preview */}
-                    {isLive&&p1pts!==null&&(
+                    {/* Live score preview — only show when not shuffling */}
+                    {isLive&&!isShuffling&&p1pts!==null&&(
                       <p style={{fontSize:12,fontWeight:800,color:"var(--text-muted)",marginTop:3}}>
                         <span style={{color:"#3B82F6"}}>{p1pts}</span>
                         <span style={{color:"var(--text-faint)",margin:"0 5px"}}>–</span>
@@ -4910,12 +4928,13 @@ function PairingsTab({slug, myName, liveSlots}){
                       </p>
                     )}
                   </div>
-                  {isLive&&<span style={{fontSize:16,flexShrink:0,marginLeft:8}}>👁</span>}
+                  {isLive&&!isShuffling&&<span style={{fontSize:16,flexShrink:0,marginLeft:8}}>👁</span>}
+                  {isShuffling&&<span style={{fontSize:16,flexShrink:0,marginLeft:8}}>⏱</span>}
                 </div>
               );
 
-              // Live cards are tappable buttons; others are plain divs
-              if(isLive){
+              // Live non-shuffling cards are tappable; shuffling and non-live cards are plain divs
+              if(isLive&&!isShuffling){
                 return (
                   <button key={m.id} className="fade-in"
                     onClick={()=>setLiveView({matchId:liveSlot.matchId, slot:liveSlot.slot, state:liveState})}
@@ -5305,6 +5324,7 @@ function OrgApp({onSwitchRole}) {
         {roundMatches.map(m => {
           const live = getLiveState(m);
           const done = m.state === "complete";
+          const isShuffling = live && !!live.shuffling;
           const borderColor = live ? "#22C55E" : done ? "var(--border)" : "var(--border2)";
           const bgColor = live ? "#22C55E0A" : "var(--surface)";
 
@@ -5313,18 +5333,22 @@ function OrgApp({onSwitchRole}) {
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                    {live && <><span className="live-dot"/><span style={{fontSize:9,fontWeight:800,color:"#22C55E",textTransform:"uppercase",letterSpacing:0.8}}>LIVE</span></>}
+                    {live && !isShuffling && <><span className="live-dot"/><span style={{fontSize:9,fontWeight:800,color:"#22C55E",textTransform:"uppercase",letterSpacing:0.8}}>LIVE</span></>}
+                    {isShuffling && <span style={{fontSize:9,fontWeight:800,color:"#F59E0B",textTransform:"uppercase",letterSpacing:0.8}}>⏱ SHUFFLE TIME</span>}
                     {done && <span style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8}}>Complete</span>}
                     {!live && !done && <span style={{fontSize:9,fontWeight:700,color:"#F59E0B",textTransform:"uppercase",letterSpacing:0.8}}>Waiting</span>}
                   </div>
                   <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                     {m.player1_name||"?"} <span style={{color:"var(--text-faint)",fontWeight:400}}>vs</span> {m.player2_name||"?"}
                   </p>
-                  {live && (
+                  {live && !isShuffling && (
                     <p style={{fontSize:12,fontWeight:700,color:"#22C55E",margin:"3px 0 0"}}>
                       {(live.pts||[0,0])[0]} – {(live.pts||[0,0])[1]}
                       {live.judge && <span style={{fontSize:10,fontWeight:500,color:"var(--text-muted)",marginLeft:8}}>Judge: {live.judge}</span>}
                     </p>
+                  )}
+                  {isShuffling && live && live.judge && (
+                    <p style={{fontSize:11,fontWeight:500,color:"var(--text-muted)",margin:"3px 0 0"}}>Judge: {live.judge}</p>
                   )}
                   {done && m.scores_csv && (
                     <p style={{fontSize:11,color:"var(--text-muted)",margin:"2px 0 0"}}>Final: {m.scores_csv}</p>
