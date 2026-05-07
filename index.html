@@ -4403,8 +4403,8 @@ function LiveScoreView({matchId, slot, initialState, onClose}){
         }
       } catch(e){
         if(e.name==="AbortError") return;
-        // Network error — wait 2s then retry
-        await new Promise(r=>setTimeout(r,2000));
+        // Network error — wait 500ms then retry
+        await new Promise(r=>setTimeout(r,500));
       }
       if(!cancelled) poll(); // loop
     };
@@ -5033,7 +5033,7 @@ function OrgApp({onSwitchRole}) {
       } catch(_) {}
     };
     pollLive();
-    liveSlotRef.current = setInterval(pollLive, 5000);
+    liveSlotRef.current = setInterval(pollLive, 1000);
 
     // Long-poll for pings
     const pollPings = async () => {
@@ -5051,7 +5051,7 @@ function OrgApp({onSwitchRole}) {
         }
       } catch(_) {}
       // Immediately re-open the long-poll
-      pingPollRef.current = setTimeout(pollPings, 200);
+      pingPollRef.current = setTimeout(pollPings, 100);
     };
     pingPollRef.current = setTimeout(pollPings, 0);
 
@@ -5679,7 +5679,7 @@ function PlayerApp({onSwitchRole}){
       } catch(_){}
     };
     poll();
-    pollRef.current = setInterval(poll, 5000);
+    pollRef.current = setInterval(poll, 1000);
     return ()=>clearInterval(pollRef.current);
   },[slug]);
 
