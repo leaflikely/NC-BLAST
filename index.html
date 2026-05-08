@@ -4954,13 +4954,19 @@ function OrgApp({onSwitchRole}) {
   // ── Figure out the current round from pairings ───────────────────
   // Treat anything that isn't explicitly "complete" as still in play
   const openMatches = (pairings||[]).filter(m => m.state !== "complete");
-  const currentRound = openMatches.length > 0
-    ? (() => { const r = Math.min(...openMatches.map(m => m.round || Infinity)); return isFinite(r) ? r : null; })()
-    : null;
+  // Use Number() to avoid type mismatches (KV/JSON can return strings or numbers)
+  const openRoundNums = openMatches
+    .map(m => m.round)
+    .filter(r => r != null && r !== 0 && isFinite(Number(r)))
+    .map(Number);
+  const currentRound = openRoundNums.length > 0 ? Math.min(...openRoundNums) : null;
   // Show all matches in the current round (including completed ones in that round)
-  const roundMatches = currentRound !== null
-    ? (pairings||[]).filter(m => m.round === currentRound)
+  // String comparison guards against "1" === 1 type mismatches
+  let roundMatches = currentRound !== null
+    ? (pairings||[]).filter(m => String(m.round) === String(currentRound))
     : (pairings||[]);
+  // Safety fallback: if round filter yields nothing but open matches exist, show them
+  if (roundMatches.length === 0 && openMatches.length > 0) roundMatches = openMatches;
 
   // Build live lookups: by Challonge match ID (exact, preferred) and by name pair (fallback)
   const liveByMatchId = {};
@@ -5526,35 +5532,57 @@ function NamePicker({participants, onSelect, currentName}){
 
 /* ─── Tournament Loader ───────────────────────────────────────── */
 function TournamentLoader({onLoaded}){
-  const [url, setUrl] = useState("");
-  const [status, setStatus] = useState(null); // null | "loading" | "ok" | "error"
-  const [msg, setMsg] = useState("");
+  const [cachedList, setCachedList] = useState([]);
+  const [loadingList, setLoadingList] = useState(true);
+  const [pinSlug, setPinSlug] = useState(null);
+  const [pinError, setPinError] = useState(null);
+  const [pinLoading, setPinLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
-  const load = async() => {
-    const raw = url.trim();
-    if(!raw) return;
-    let slug = "";
+  useEffect(() => {
+    const fetch_ = async () => {
+      setLoadingList(true);
+      try { const d = await workerGet("/list"); setCachedList(d.tournaments||[]); } catch(_) {}
+      finally { setLoadingList(false); }
+    };
+    fetch_();
+  }, []);
+
+  const handleSelect = (t) => { setPinSlug(t.slug); setPinError(null); setLoadError(null); };
+
+  const handlePin = async (pin) => {
+    setPinLoading(true); setPinError(null);
     try {
-      const u = new URL(raw.startsWith("http")?raw:"https://"+raw);
-      const cleanPath = u.pathname.replace(/\/(participants|standings|teams|matches).*$/i,"");
-      const parts = cleanPath.replace(/^\/|\/$/g,"").split("/").filter(Boolean);
-      const subdomain = u.hostname.split(".")[0];
-      const isCommunity = subdomain!=="challonge"&&subdomain!=="www";
-      const pathSlug = parts[parts.length-1]||parts[0];
-      slug = isCommunity?`${subdomain}-${pathSlug}`:pathSlug;
-    } catch {
-      slug = raw.replace(/.*challonge\.com\//,"").replace(/\/(participants|standings).*/i,"").replace(/\/$/,"").split("/").pop();
-    }
-    if(!slug){setStatus("error");setMsg("Couldn't read tournament from that URL.");return;}
-    setStatus("loading");setMsg("Checking server cache...");
+      const res = await fetch(`${OVERLAY_WORKER}/pin/verify`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({slug: pinSlug, pin}), signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { setPinError("Incorrect PIN."); setPinLoading(false); return; }
+    } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
+    // PIN verified — load participants
     try {
-      const data = await workerGet(`/?slug=${encodeURIComponent(slug)}`);
-      const participants = (data.participants||[]).map(p=>(p.participant?.display_name||p.participant?.name||"").trim()).filter(Boolean);
+      const data = await workerGet(`/?slug=${encodeURIComponent(pinSlug)}`);
+      const extractP = (p) => p.participant || p;
+      const participants = (data.participants||[]).map(p=>(extractP(p).display_name||extractP(p).name||"").trim()).filter(Boolean);
       if(!participants.length) throw new Error("No participants found.");
-      setStatus("ok");setMsg(`✓ ${participants.length} players loaded`);
-      onLoaded(slug, participants);
-    } catch(e){ setStatus("error"); setMsg(e.message||"Failed to load."); }
+      setPinLoading(false);
+      onLoaded(pinSlug, participants);
+    } catch(e) { setLoadError(e.message||"Failed to load."); setPinLoading(false); }
   };
+
+  if (pinSlug) {
+    return (
+      <PinModal
+        title="Tournament PIN"
+        subtitle={`Enter the PIN for "${pinSlug}" to join.`}
+        onSubmit={handlePin}
+        onCancel={()=>{ setPinSlug(null); setPinError(null); setLoadError(null); }}
+        error={pinError||loadError}
+        loading={pinLoading}
+      />
+    );
+  }
 
   return (
     <div style={{padding:"20px 16px"}}>
@@ -5563,22 +5591,23 @@ function TournamentLoader({onLoaded}){
         <h1 style={{fontSize:28,fontWeight:900,margin:0}}>NC <span style={{color:"var(--accent)"}}>BLAST</span></h1>
         <p style={{fontSize:12,color:"var(--text-muted)",marginTop:4}}>Player View</p>
       </div>
-      <div style={{background:"var(--surface)",borderRadius:16,padding:"18px 16px",border:"1px solid var(--border)"}}>
+      <div style={{background:"var(--surface)",borderRadius:16,padding:"18px 16px",border:"1px solid var(--border)",marginBottom:16}}>
         <p style={{fontSize:14,fontWeight:800,marginBottom:4}}>Join Your Tournament</p>
-        <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:12,lineHeight:1.5}}>Paste the Challonge URL for today's event.</p>
-        <input value={url} onChange={e=>setUrl(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&load()}
-          placeholder="ncbl.challonge.com/TOURNAMENT"
-          style={{width:"100%",padding:"11px 13px",borderRadius:10,border:"2px solid var(--border2)",background:"var(--surface2)",color:"var(--text-primary)",fontSize:13,fontFamily:"'Outfit',sans-serif",outline:"none",marginBottom:10}}/>
-        <button onClick={load} disabled={!url.trim()||status==="loading"}
-          style={{width:"100%",padding:"13px 0",borderRadius:11,border:"none",background:url.trim()?"var(--accent)":"var(--surface3)",color:url.trim()?"#fff":"var(--text-faint)",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:url.trim()?"pointer":"not-allowed"}}>
-          {status==="loading"?"Loading…":"Enter Tournament"}
-        </button>
-        {msg&&<p style={{fontSize:12,marginTop:8,color:status==="error"?"#EF4444":"#22C55E",fontWeight:600}}>{msg}</p>}
+        <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:12,lineHeight:1.5}}>Select today's event from the list below.</p>
+        {loadingList && <p style={{fontSize:13,color:"var(--text-muted)",textAlign:"center",padding:"12px 0"}}>⏳ Loading events…</p>}
+        {!loadingList && cachedList.length === 0 && (
+          <p style={{fontSize:12,color:"var(--text-faint)",textAlign:"center",padding:"12px 0",lineHeight:1.6}}>
+            No tournaments are available right now.<br/>Ask your organizer to set up the event.
+          </p>
+        )}
+        {cachedList.map(t => (
+          <button key={t.slug} onClick={()=>handleSelect(t)}
+            style={{display:"block",width:"100%",padding:"13px 14px",borderRadius:12,border:"1px solid var(--border)",background:"var(--surface2)",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif",marginBottom:8}}>
+            <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0}}>{t.name||t.slug}</p>
+            <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>{t.slug} · 🔒 PIN required</p>
+          </button>
+        ))}
       </div>
-      <p style={{fontSize:11,color:"var(--text-faint)",textAlign:"center",marginTop:20,lineHeight:1.6}}>
-        Your organizer may share a QR code or direct link.<br/>You can also find the link on the event's Challonge page.
-      </p>
     </div>
   );
 }
