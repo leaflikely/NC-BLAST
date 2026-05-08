@@ -5286,7 +5286,11 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
   }, []);
 
   const refreshList = async () => {
-    try { const data = await workerGet("/list"); setCachedList(data.tournaments || []); } catch(_) {}
+    try {
+      const data = await workerGet("/list");
+      console.log("[BLAST] /list response:", JSON.stringify(data.tournaments));
+      setCachedList(data.tournaments || []);
+    } catch(e) { console.error("[BLAST] /list failed:", e.message); }
   };
 
   const verifyPin = async (slug, pin) => {
@@ -5327,8 +5331,10 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
     } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
     try {
       const data = await workerGet(`/?slug=${encodeURIComponent(pendingSlug)}`);
+      console.log("[BLAST] /?slug= response:", JSON.stringify({fromCache: data.fromCache, count: (data.participants||[]).length, errors: data.errors}));
+      if(data.errors) throw new Error(data.errors[0]||"Challonge error");
       setPendingName(data.tournamentName || data.name || pendingSlug);
-    } catch(e) { setPinError("Couldn't load that tournament. Check the link."); setPinLoading(false); return; }
+    } catch(e) { console.error("[BLAST] /?slug= failed:", e.message); setPinError("Couldn't load that tournament: "+e.message); setPinLoading(false); return; }
     setPinLoading(false); setPendingDisplayName(""); setPinMode("name_tournament"); setPinError(null);
   };
 
