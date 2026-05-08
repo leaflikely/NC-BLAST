@@ -5007,7 +5007,7 @@ function OrgApp({onSwitchRole}) {
       } catch(e) { console.error("[BLAST] pollLive failed", e); }
     };
     pollLive();
-    liveSlotRef.current = setInterval(pollLive, 1000);
+    liveSlotRef.current = setInterval(pollLive, 5000);
 
     // Long-poll for pings
     const pollPings = async () => {
@@ -5025,7 +5025,7 @@ function OrgApp({onSwitchRole}) {
         }
       } catch(_) {}
       // Immediately re-open the long-poll
-      pingPollRef.current = setTimeout(pollPings, 100);
+      pingPollRef.current = setTimeout(pollPings, 2000);
     };
     pingPollRef.current = setTimeout(pollPings, 0);
 
@@ -5332,7 +5332,7 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
     try {
       const raw = await fetch(`${OVERLAY_WORKER}/?slug=${encodeURIComponent(pendingSlug)}`);
       const data = await raw.json();
-      console.log("[BLAST] /?slug= response:", JSON.stringify({status: raw.status, fromCache: data.fromCache, count: (data.participants||[]).length, errors: data.errors, error: data.error}));
+      console.log("[BLAST] /?slug= response:", JSON.stringify({status: raw.status, fromCache: data.fromCache, count: (data.participants||[]).length, indexCount: data.indexCount, kvWriteError: data.kvWriteError, errors: data.errors, error: data.error}));
       if(!raw.ok) throw new Error(data.error || data.errors?.[0] || `HTTP ${raw.status}`);
       if(data.errors) throw new Error(data.errors[0]||"Challonge error");
       setPendingName(data.tournamentName || data.name || pendingSlug);
@@ -5822,7 +5822,7 @@ function PlayerApp({onSwitchRole}){
       } catch(_){}
     };
     poll();
-    pollRef.current = setInterval(poll, 1000);
+    pollRef.current = setInterval(poll, 5000);
     return ()=>clearInterval(pollRef.current);
   },[slug]);
 
