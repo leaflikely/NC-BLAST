@@ -5330,8 +5330,10 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
       sessionStorage.setItem("ncblast-master-session", pin);
     } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
     try {
-      const data = await workerGet(`/?slug=${encodeURIComponent(pendingSlug)}`);
-      console.log("[BLAST] /?slug= response:", JSON.stringify({fromCache: data.fromCache, count: (data.participants||[]).length, errors: data.errors}));
+      const raw = await fetch(`${OVERLAY_WORKER}/?slug=${encodeURIComponent(pendingSlug)}`);
+      const data = await raw.json();
+      console.log("[BLAST] /?slug= response:", JSON.stringify({status: raw.status, fromCache: data.fromCache, count: (data.participants||[]).length, errors: data.errors, error: data.error}));
+      if(!raw.ok) throw new Error(data.error || data.errors?.[0] || `HTTP ${raw.status}`);
       if(data.errors) throw new Error(data.errors[0]||"Challonge error");
       setPendingName(data.tournamentName || data.name || pendingSlug);
     } catch(e) { console.error("[BLAST] /?slug= failed:", e.message); setPinError("Couldn't load that tournament: "+e.message); setPinLoading(false); return; }
