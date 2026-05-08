@@ -394,9 +394,117 @@ function LibraryManager({parts,setParts,onClose}) {
 }
 
 /* ═══════════════════════════════════════
+   CACHED EVENT PICKER (used in FormatScreen TM mode)
+═══════════════════════════════════════ */
+function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport}) {
+  const [cachedList, setCachedList] = useState(null); // null=loading, []=empty
+  const [pinSlug, setPinSlug] = useState(null);
+  const [pinDisplayName, setPinDisplayName] = useState("");
+  const [pinError, setPinError] = useState(null);
+  const [pinLoading, setPinLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+
+  useEffect(() => {
+    workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>setCachedList([]));
+  }, []);
+
+  const handleSelect = (t) => {
+    setPinSlug(t.slug);
+    setPinDisplayName(t.name || t.slug);
+    setPinError(null); setLoadError(null);
+  };
+
+  const handlePin = async (pin) => {
+    setPinLoading(true); setPinError(null);
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/pin/verify`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({slug: pinSlug, pin}), signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { setPinError("Incorrect PIN."); setPinLoading(false); return; }
+    } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
+    // Load participants
+    try {
+      const data = await workerGet(`/?slug=${encodeURIComponent(pinSlug)}`);
+      const extractP = (p) => p.participant || p;
+      const participants = (data.participants||[]).map(p=>(extractP(p).display_name||extractP(p).name||"").trim()).filter(Boolean);
+      if (!participants.length) throw new Error("No participants found.");
+      // Build participant ID map
+      const participantMap = {};
+      (data.participants||[]).forEach(p => {
+        const part = extractP(p);
+        const name = (part.display_name||part.name||"").trim();
+        const id = part.id;
+        if (name && id) {
+          participantMap[name] = id;
+          if (Array.isArray(part.group_player_ids)) {
+            part.group_player_ids.forEach(gid => { if(gid) participantMap[`__gid__${gid}`] = id; });
+          }
+        }
+      });
+      if (onChallongeImport) onChallongeImport(pinSlug, participantMap);
+      setConfig(c => ({...c, tournamentName: pinDisplayName}));
+      setPinLoading(false); setPinSlug(null);
+    } catch(e) { setLoadError(e.message||"Failed to load."); setPinLoading(false); }
+  };
+
+  if (pinSlug) {
+    return (
+      <div style={{marginTop:12}}>
+        <PinModal
+          title="Tournament PIN"
+          subtitle={`Enter the PIN for "${pinDisplayName}" to link it.`}
+          onSubmit={handlePin}
+          onCancel={()=>{ setPinSlug(null); setPinError(null); setLoadError(null); }}
+          error={pinError || loadError}
+          loading={pinLoading}
+        />
+      </div>
+    );
+  }
+
+  // Show currently linked event if one is selected
+  if (config.tournamentName && challongeSlug) {
+    return (
+      <div style={{marginTop:12,padding:"10px 12px",borderRadius:10,border:"2px solid #7C3AED40",background:"#7C3AED08"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <p style={{fontSize:12,fontWeight:800,color:"#7C3AED",margin:0}}>{config.tournamentName}</p>
+            <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>{challongeSlug} · ✓ Linked</p>
+          </div>
+          <button onClick={()=>{ setConfig(c=>({...c,tournamentName:""})); if(onChallongeImport) onChallongeImport("",{}); }}
+            style={{background:"none",border:"1px solid var(--border)",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,color:"var(--text-muted)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+            Change
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{marginTop:12}}>
+      <p style={{fontSize:11,color:"var(--text-muted)",marginBottom:8}}>Select the Challonge event for this tournament:</p>
+      {cachedList === null && <p style={{fontSize:12,color:"var(--text-faint)",padding:"8px 0"}}>⏳ Loading events…</p>}
+      {Array.isArray(cachedList) && cachedList.length === 0 && (
+        <p style={{fontSize:12,color:"var(--text-faint)",lineHeight:1.6,padding:"6px 0"}}>No events cached yet. Ask your TO to add one via Organizer View.</p>
+      )}
+      {Array.isArray(cachedList) && cachedList.map(t => (
+        <button key={t.slug} onClick={()=>handleSelect(t)}
+          style={{display:"block",width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface2)",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif",marginBottom:6}}>
+          <p style={{fontSize:13,fontWeight:700,color:"var(--text-primary)",margin:0}}>{t.name||t.slug}</p>
+          <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>{t.slug} · 🔒 PIN required</p>
+        </button>
+      ))}
+      {!config.tournamentName?.trim() && <p style={{...S.hint,color:"#7C3AED",marginTop:6}}>Select an event to continue</p>}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════
    SCREEN 1 — FORMAT
 ═══════════════════════════════════════ */
-function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,onSwitchRole}) {
+function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,onSwitchRole,challongeSlug,onChallongeImport}) {
   const [showGuide,setShowGuide] = useState(false);
   const total=parts.blades.length+parts.ratchets.length+parts.bits.length;
   const hasLib=total>0;
@@ -462,15 +570,10 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,o
         <h2 style={{...S.label,marginTop:20}}>Tournament Mode</h2>
         <div style={S.row}>{[false,true].map(v=>(<button key={String(v)} style={{...S.chip,...(config.tm===v?(v?{background:"#7C3AED",borderColor:"#7C3AED",color:"#fff"}:S.chipOn):{})}} onClick={()=>setConfig({...config,tm:v})}>{v?"On":"Off"}</button>))}</div>
         {config.tm&&(
-          <div style={{marginTop:12}}>
-            <input
-              style={{...S.inp,width:"100%",borderColor:"#7C3AED60"}}
-              placeholder="Tournament name..."
-              value={config.tournamentName||""}
-              onChange={e=>setConfig({...config,tournamentName:e.target.value})}
-            />
-            {!config.tournamentName?.trim()&&<p style={{...S.hint,color:"#7C3AED",marginTop:4}}>Enter tournament name to continue</p>}
-          </div>
+          <CachedEventPicker
+            config={config} setConfig={setConfig}
+            challongeSlug={challongeSlug} onChallongeImport={onChallongeImport}
+          />
         )}
 
       </div>
@@ -495,7 +598,7 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,o
 /* ═══════════════════════════════════════
    SCREEN 2 — PLAYERS
 ═══════════════════════════════════════ */
-function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
+function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tournamentMode}) {
   const [inp,setInp] = useState("");
   const [challongeUrl,setChallongeUrl] = useState("");
   const [challongeStatus,setChallongeStatus] = useState(null); // null | "loading" | "ok" | "error"
@@ -868,8 +971,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
       <h1 style={S.title}>Player Roster</h1>
       <p style={S.sub}>Players are saved between sessions</p>
 
-      {/* Challonge import */}
-      <div style={{...S.card,border:"2px solid #EA580C40",marginBottom:12}}>
+      {/* Challonge import — hidden in tournament mode (event already linked on format screen) */}
+      {!tournamentMode&&<div style={{...S.card,border:"2px solid #EA580C40",marginBottom:12}}>
         <h2 style={{...S.label,color:"#C2410C",marginBottom:8}}>Import from Challonge</h2>
 
         {/* Cached tournaments dropdown */}
@@ -944,9 +1047,10 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
         )}
         {challongeStatus==="error"&&<p style={{fontSize:11,color:"#DC2626",fontWeight:600,lineHeight:1.5,marginTop:4}}>{challongeMsg}</p>}
         {challongeStatus==="loading"&&<p style={{fontSize:11,color:"#C2410C",fontWeight:600,marginTop:4,lineHeight:1.5}}>⏳ {challongeMsg}</p>}
-      </div>
+      </div>}
 
-      {/* Manual add */}
+      {/* Manual add — hidden in tournament mode (roster comes from Challonge, new names won't link) */}
+      {!tournamentMode&&
       <div style={S.card}>
         <h2 style={S.label}>Add Players</h2>
         <div style={S.addR}>
@@ -971,7 +1075,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
         <p style={S.hint}>Paste multiple names separated by commas or new lines to add them all at once</p>
         <input type="file" ref={pRef} accept=".csv,.txt" style={{display:"none"}} onChange={onFile}/>
         <button style={S.upBtn} onClick={()=>pRef.current.click()}>{IC.upload} Import from File</button>
-      </div>
+      </div>}
 
       {/* Roster */}
       <div style={S.card}>
@@ -5156,6 +5260,7 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
   const [pinLoading, setPinLoading] = useState(false);
   const [pendingSlug, setPendingSlug] = useState(null);
   const [pendingName, setPendingName] = useState(null);
+  const [pendingDisplayName, setPendingDisplayName] = useState(""); // human-readable name org enters
 
   useEffect(() => {
     const load = async () => {
@@ -5206,7 +5311,14 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
       const data = await workerGet(`/?slug=${encodeURIComponent(pendingSlug)}`);
       setPendingName(data.tournamentName || data.name || pendingSlug);
     } catch(e) { setPinError("Couldn't load that tournament. Check the link."); setPinLoading(false); return; }
-    setPinLoading(false); setPinMode("set_tournament"); setPinError(null);
+    setPinLoading(false); setPendingDisplayName(""); setPinMode("name_tournament"); setPinError(null);
+  };
+
+  // Step 2b: org enters a display name for the tournament
+  const handleNameSubmit = () => {
+    const name = pendingDisplayName.trim();
+    if (!name) { setPinError("Enter a name for this tournament."); return; }
+    setPinError(null); setPinMode("set_tournament");
   };
 
   // Step 3: set tournament-specific PIN
@@ -5222,10 +5334,20 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
       const data = await res.json();
       if (!res.ok || !data.ok) { setPinError(data.error || "Failed to set PIN."); setPinLoading(false); return; }
     } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
+    const masterPinForName = sessionStorage.getItem("ncblast-master-session") || "";
     sessionStorage.removeItem("ncblast-master-session");
+    // Save the display name to the server (fire and forget — list refresh will pick it up)
+    const displayName = pendingDisplayName.trim() || pendingName || pendingSlug;
+    try {
+      await fetch(`${OVERLAY_WORKER}/name/set`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({slug: pendingSlug, name: displayName, masterPin: masterPinForName}),
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch(_) {}
     setPinLoading(false); setPinMode(null);
     await refreshList();
-    onSelect(pendingSlug, pendingName);
+    onSelect(pendingSlug, displayName);
   };
 
   // Open cached tournament → verify tournament PIN
@@ -5267,7 +5389,32 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",fontFamily:"'Outfit',sans-serif",display:"flex",flexDirection:"column"}}>
       {pinMode==="master_for_create"&&<PinModal title="Master PIN Required" subtitle="Enter the master PIN to add a new tournament." onSubmit={handleMasterForCreate} onCancel={()=>setPinMode(null)} error={pinError} loading={pinLoading}/>}
-      {pinMode==="set_tournament"&&<PinModal title="Set Tournament PIN" subtitle={`Choose a 4-digit PIN for "${pendingName}". Judges will need this to access the event.`} onSubmit={handleSetTournamentPin} onCancel={()=>{setPinMode(null);sessionStorage.removeItem("ncblast-master-session");}} error={pinError} loading={pinLoading}/>}
+      {pinMode==="name_tournament"&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.7)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 20px"}}>
+          <div style={{background:"var(--surface)",borderRadius:18,width:"100%",maxWidth:360,padding:"24px 20px",boxShadow:"0 16px 48px rgba(0,0,0,0.4)"}}>
+            <p style={{fontSize:16,fontWeight:900,color:"var(--text-primary)",marginBottom:4}}>Name This Tournament</p>
+            <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:16,lineHeight:1.5}}>This name is shown to judges and players. It also appears in the Sheets data.</p>
+            <input
+              autoFocus
+              value={pendingDisplayName}
+              onChange={e=>{ setPendingDisplayName(e.target.value); setPinError(null); }}
+              onKeyDown={e=>e.key==="Enter"&&handleNameSubmit()}
+              placeholder="e.g. NorCal Spring Open 2025"
+              style={{width:"100%",padding:"11px 13px",borderRadius:10,border:`2px solid ${pinError?"#EF4444":"var(--border2)"}`,background:"var(--surface2)",color:"var(--text-primary)",fontSize:14,fontFamily:"'Outfit',sans-serif",outline:"none",marginBottom:8}}
+            />
+            {pinError&&<p style={{fontSize:11,color:"#EF4444",marginBottom:8}}>{pinError}</p>}
+            <button onClick={handleNameSubmit} disabled={!pendingDisplayName.trim()}
+              style={{width:"100%",padding:"13px 0",borderRadius:11,border:"none",background:pendingDisplayName.trim()?"#EA580C":"var(--surface3)",color:pendingDisplayName.trim()?"#fff":"var(--text-faint)",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:pendingDisplayName.trim()?"pointer":"not-allowed",marginBottom:8}}>
+              Next: Set PIN →
+            </button>
+            <button onClick={()=>{setPinMode(null);sessionStorage.removeItem("ncblast-master-session");setPinError(null);}}
+              style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {pinMode==="set_tournament"&&<PinModal title="Set Tournament PIN" subtitle={`Choose a 4-digit PIN for "${pendingDisplayName.trim()||pendingName}". Judges and players will need this to access the event.`} onSubmit={handleSetTournamentPin} onCancel={()=>{setPinMode(null);sessionStorage.removeItem("ncblast-master-session");}} error={pinError} loading={pinLoading}/>}
       {pinMode==="open_tournament"&&<PinModal title="Tournament PIN" subtitle={`Enter the PIN for "${pendingName}".`} onSubmit={handleVerifyForOpen} onCancel={()=>setPinMode(null)} error={pinError} loading={pinLoading}/>}
       {pinMode==="master_for_delete"&&<PinModal title="Master PIN Required" subtitle={`Enter the master PIN to delete "${pendingName}".`} onSubmit={handleMasterForDelete} onCancel={()=>setPinMode(null)} error={pinError} loading={pinLoading}/>}
 
@@ -5531,7 +5678,7 @@ function NamePicker({participants, onSelect, currentName}){
 }
 
 /* ─── Tournament Loader ───────────────────────────────────────── */
-function TournamentLoader({onLoaded}){
+function TournamentLoader({onLoaded, onSwitchRole}){
   const [cachedList, setCachedList] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
   const [pinSlug, setPinSlug] = useState(null);
@@ -5584,6 +5731,13 @@ function TournamentLoader({onLoaded}){
     );
   }
 
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refresh = () => {
+    setCachedList([]);
+    setLoadingList(true);
+    workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>setCachedList([])).finally(()=>setLoadingList(false));
+  };
+
   return (
     <div style={{padding:"20px 16px"}}>
       <div style={{textAlign:"center",marginBottom:24}}>
@@ -5592,12 +5746,18 @@ function TournamentLoader({onLoaded}){
         <p style={{fontSize:12,color:"var(--text-muted)",marginTop:4}}>Player View</p>
       </div>
       <div style={{background:"var(--surface)",borderRadius:16,padding:"18px 16px",border:"1px solid var(--border)",marginBottom:16}}>
-        <p style={{fontSize:14,fontWeight:800,marginBottom:4}}>Join Your Tournament</p>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+          <p style={{fontSize:14,fontWeight:800,margin:0}}>Join Your Tournament</p>
+          <button onClick={refresh} disabled={loadingList}
+            style={{background:"none",border:"1px solid var(--border)",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,color:"var(--text-muted)",fontFamily:"'Outfit',sans-serif",cursor:loadingList?"not-allowed":"pointer",opacity:loadingList?0.5:1}}>
+            {loadingList?"…":"↻ Refresh"}
+          </button>
+        </div>
         <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:12,lineHeight:1.5}}>Select today's event from the list below.</p>
         {loadingList && <p style={{fontSize:13,color:"var(--text-muted)",textAlign:"center",padding:"12px 0"}}>⏳ Loading events…</p>}
         {!loadingList && cachedList.length === 0 && (
           <p style={{fontSize:12,color:"var(--text-faint)",textAlign:"center",padding:"12px 0",lineHeight:1.6}}>
-            No tournaments are available right now.<br/>Ask your organizer to set up the event.
+            No tournaments are available right now.<br/>Ask your organizer to set up the event first.
           </p>
         )}
         {cachedList.map(t => (
@@ -5608,6 +5768,12 @@ function TournamentLoader({onLoaded}){
           </button>
         ))}
       </div>
+      {onSwitchRole && (
+        <button onClick={onSwitchRole}
+          style={{display:"block",width:"100%",padding:"11px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-faint)",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          ↩ Switch View
+        </button>
+      )}
     </div>
   );
 }
@@ -5674,7 +5840,7 @@ function PlayerApp({onSwitchRole}){
   ];
 
   if(!slug){
-    return <TournamentLoader onLoaded={(s,p)=>updateSession({slug:s,participants:p,myName:null,myDeck:null})}/>;
+    return <TournamentLoader onLoaded={(s,p)=>updateSession({slug:s,participants:p,myName:null,myDeck:null})} onSwitchRole={onSwitchRole}/>;
   }
 
   return (
@@ -5956,8 +6122,8 @@ function BeyJudgeApp() {
   return (
     <div style={{background:"var(--bg)",minHeight:"100vh",fontFamily:"'Outfit',sans-serif"}}>
       {libOpen&&<LibraryManager parts={parts} setParts={setParts} onClose={()=>setLibOpen(false)}/>}
-      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)}/>}
-      {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}}/>}
+      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}}/>}
+      {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}} tournamentMode={config.tm}/>}
       {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
     </div>
   );
