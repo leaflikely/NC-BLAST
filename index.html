@@ -428,13 +428,13 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport}
     try {
       const data = await workerGet(`/?slug=${encodeURIComponent(pinSlug)}`);
       const extractP = (p) => p.participant || p;
-      const participants = (data.participants||[]).map(p=>(extractP(p).display_name||extractP(p).name||"").trim()).filter(Boolean);
+      const participants = (data.participants||[]).map(p=>(extractP(p).display_name||extractP(p).username||extractP(p).name||"").trim()).filter(Boolean);
       if (!participants.length) throw new Error("No participants found.");
       // Build participant ID map
       const participantMap = {};
       (data.participants||[]).forEach(p => {
         const part = extractP(p);
-        const name = (part.display_name||part.name||"").trim();
+        const name = (part.display_name||part.username||part.name||"").trim();
         const id = part.id;
         if (name && id) {
           participantMap[name] = id;
@@ -710,14 +710,14 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
       const participants = data.participants || [];
       // Handle both Challonge's wrapped format { participant: {...} } and flat format
       const extractP = (p) => p.participant || p;
-      const names = participants.map(p=>(extractP(p).display_name||extractP(p).name||"").trim()).filter(Boolean);
+      const names = participants.map(p=>(extractP(p).display_name||extractP(p).username||extractP(p).name||"").trim()).filter(Boolean);
       if(!names.length) throw new Error("No participants found in cache");
       const merged = [...new Set([...players,...names])];
       setPlayers(merged); sSave(KEYS.players, merged);
       const participantMap = {};
       participants.forEach(p => {
         const part = extractP(p);
-        const name = (part.display_name||part.name||"").trim();
+        const name = (part.display_name||part.username||part.name||"").trim();
         const id = part.id;
         if(name && id) {
           participantMap[name] = id;
@@ -894,7 +894,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
           return attempt(proxy.buildUrl());
         }, proxy.retries, 600);
         const { data, fromServerCache } = parseResponse(text, proxy.raw);
-        const names = data.map(p=>(p.participant?.display_name||p.participant?.name||"").trim()).filter(Boolean);
+        const names = data.map(p=>(p.participant?.display_name||p.participant?.username||p.participant?.name||"").trim()).filter(Boolean);
         if(!names.length) throw new Error("No participants found — is this tournament public with entrants added?");
         const merged = [...new Set([...players,...names])];
         setPlayers(merged); sSave(KEYS.players, merged);
@@ -902,7 +902,7 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
         // Build participant ID map — store both full name and truncated name as keys
         const participantMap = {};
         data.forEach(p => {
-          const name = (p.participant?.display_name||p.participant?.name||"").trim();
+          const name = (p.participant?.display_name||p.participant?.username||p.participant?.name||"").trim();
           const id = p.participant?.id;
           if(name && id) {
             participantMap[name] = id;
@@ -4973,6 +4973,7 @@ function OrgApp({onSwitchRole}) {
   const [liveSlots, setLiveSlots] = useState([]);    // active judged matches
   const [pairings, setPairings] = useState(null);    // all matches for current round
   const [loadingPairings, setLoadingPairings] = useState(false);
+  const [pairingsError, setPairingsError] = useState(null);
   const pingPollRef = useRef(null);
   const liveSlotRef = useRef(null);
   const afterRef = useRef(0); // timestamp: only poll for pings newer than this
@@ -4983,11 +4984,11 @@ function OrgApp({onSwitchRole}) {
 
     // Load pairings once
     const loadPairings = async () => {
-      setLoadingPairings(true);
+      setLoadingPairings(true); setPairingsError(null);
       try {
         const data = await workerGet(`/pairings?slug=${encodeURIComponent(slug)}`);
         setPairings(data.pairings || []);
-      } catch(_) {}
+      } catch(e) { setPairingsError(e.message||"Failed to load pairings."); setPairings([]); }
       finally { setLoadingPairings(false); }
     };
     loadPairings();
@@ -5160,6 +5161,12 @@ function OrgApp({onSwitchRole}) {
 
         {/* Match list */}
         {loadingPairings && !pairings && <p style={{color:"var(--text-muted)",fontSize:13}}>Loading matches…</p>}
+        {pairingsError && (
+          <div style={{textAlign:"center",padding:"24px 0"}}>
+            <p style={{fontSize:13,color:"#EF4444",fontWeight:600,marginBottom:8}}>⚠ {pairingsError}</p>
+            <p style={{fontSize:11,color:"var(--text-faint)"}}>Check that the slug is correct and the tournament is public on Challonge.</p>
+          </div>
+        )}
 
         {roundMatches.map(m => {
           const live = getLiveState(m);
@@ -5711,11 +5718,17 @@ function TournamentLoader({onLoaded, onSwitchRole}){
     try {
       const data = await workerGet(`/?slug=${encodeURIComponent(pinSlug)}`);
       const extractP = (p) => p.participant || p;
-      const participants = (data.participants||[]).map(p=>(extractP(p).display_name||extractP(p).name||"").trim()).filter(Boolean);
+      const participants = (data.participants||[]).map(p=>(extractP(p).display_name||extractP(p).username||extractP(p).name||"").trim()).filter(Boolean);
       if(!participants.length) throw new Error("No participants found.");
       setPinLoading(false);
       onLoaded(pinSlug, participants);
     } catch(e) { setLoadError(e.message||"Failed to load."); setPinLoading(false); }
+  };
+
+  const refresh = () => {
+    setCachedList([]);
+    setLoadingList(true);
+    workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>setCachedList([])).finally(()=>setLoadingList(false));
   };
 
   if (pinSlug) {
@@ -5730,13 +5743,6 @@ function TournamentLoader({onLoaded, onSwitchRole}){
       />
     );
   }
-
-  const [refreshKey, setRefreshKey] = useState(0);
-  const refresh = () => {
-    setCachedList([]);
-    setLoadingList(true);
-    workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>setCachedList([])).finally(()=>setLoadingList(false));
-  };
 
   return (
     <div style={{padding:"20px 16px"}}>
@@ -5801,7 +5807,7 @@ function PlayerApp({onSwitchRole}){
       (async()=>{
         try {
           const data = await workerGet(`/?slug=${encodeURIComponent(paramSlug)}`);
-          const parts = (data.participants||[]).map(p=>(p.participant?.display_name||p.participant?.name||"").trim()).filter(Boolean);
+          const parts = (data.participants||[]).map(p=>(p.participant?.display_name||p.participant?.username||p.participant?.name||"").trim()).filter(Boolean);
           if(parts.length) updateSession({slug:paramSlug,participants:parts});
         } catch(_){}
       })();
