@@ -191,14 +191,14 @@ const QUICK_COMBOS = [
   {blade:"Golem Rock",  ratchet:"9-60", bit:"Free Ball"},
   {blade:"Aero Pegasus", ratchet:"1-50", bit:"Rush"},
   {blade:"Hover Wyvern", ratchet:"9-60", bit:"Kick"},
-  {blade:"Meteor Dragoon", ratchet:"7-70", bit:"Level"},
+  {blade:"Bullet Griffon", ratchet:null, bit:"Hexa"},
   {blade:"Meteor Dragoon", ratchet:"7-60", bit:"Level"},
   {blade:"Clock Mirage", ratchet:"7-55", bit:"Free Ball"},
 ];
 
 // Top 10 priority items per category (displayed first as a group)
 const TOP10 = {
-  blades: ["Wizard Rod","Shark Scale","Cobalt Dragoon","Aero Pegasus","Hover Wyvern","Golem Rock","Meteor Dragoon","Phoenix Wing","Silver Wolf","Clock Mirage"],
+  blades: ["Wizard Rod","Shark Scale","Cobalt Dragoon","Aero Pegasus","Hover Wyvern","Golem Rock","Meteor Dragoon","Bullet Griffon","Silver Wolf","Clock Mirage"],
   ratchets: ["1-50","1-60","1-70","3-60","5-60","7-55","7-60","7-70","8-70","9-60"],
   bits: ["Ball","Elevate","Free Ball","Hexa","Jolt","Kick","Level","Low Orb","Low Rush","Rush"],
 };
@@ -212,7 +212,7 @@ const BLADE_COLORS = {
   "Hover Wyvern":  "#15803D", // green
   "Golem Rock":    "#EA580C", // orange
   "Meteor Dragoon":"#A855F7", // light purple
-  "Phoenix Wing":  "#DC2626", // red
+  "Bullet Griffon": "#DC2626", // red
   "Silver Wolf":   "#64748B", // grey
   "Clock Mirage":  "#065F46", // dark green
 };
@@ -261,9 +261,18 @@ const PENALTY = [
   {id:"LER",p:1,name:"Launch Error",penalty:true},
 ];
 
+const NO_RATCHET_BLADES = ["Bullet Griffon"];
 const emptyCombo = () => ({blade:null,ratchet:null,bit:null});
-const comboStr = (c) => c?.blade&&c?.ratchet&&c?.bit ? `${c.blade} ${c.ratchet} ${c.bit}` : "—";
-const comboReady = (c) => c?.blade&&c?.ratchet&&c?.bit;
+const comboStr = (c) => {
+  if(!c?.blade||!c?.bit) return "—";
+  if(NO_RATCHET_BLADES.includes(c.blade)) return `${c.blade} ${c.bit}`;
+  return c.ratchet ? `${c.blade} ${c.ratchet} ${c.bit}` : "—";
+};
+const comboReady = (c) => {
+  if(!c?.blade||!c?.bit) return false;
+  if(NO_RATCHET_BLADES.includes(c.blade)) return true;
+  return !!c.ratchet;
+};
 // Normalize a combo loaded from storage: replace dashes in bit names with spaces
 // Ratchets like "1-60" are intentionally excluded (they contain only digits around the dash)
 const normalizeBit = (bit) => bit ? bit.replace(/-(?![0-9])/g, " ") : bit;
@@ -388,7 +397,6 @@ function LibraryManager({parts,setParts,onClose}) {
    SCREEN 1 — FORMAT
 ═══════════════════════════════════════ */
 function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,onSwitchRole}) {
-  const [showChangelog,setShowChangelog] = useState(false);
   const [showGuide,setShowGuide] = useState(false);
   const total=parts.blades.length+parts.ratchets.length+parts.bits.length;
   const hasLib=total>0;
@@ -406,386 +414,8 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,o
     {icon:"⚡", title:"Challonge Cache", body:"When a Challonge tournament is imported, the participant list is cached on the NC BLAST server for 30 minutes. Any device that imports the same tournament within that window loads from cache instantly with no API call. The cached tournaments dropdown on the Players screen shows all currently cached tournaments so you can load them without re-pasting the link."},
   ];
 
-  const CHANGELOG = [
-    {v:"1.0",label:"Initial Build",items:[
-      "Converted original JSX scorer into a self-contained HTML file",
-      "Parts library with manual entry, file import, and persistent localStorage",
-      "Format screen: Match Type (4/5/7/No Limit/Custom pts), Sets (BO3/BO5), Own Finish toggle",
-      "Players screen: roster management saved between sessions",
-      "Select Match screen: tap P1 then P2 from roster",
-      "Build Decks screen: 3 combos per player, no duplicate parts within same player",
-      "Pick Combo screen: select active combo each battle, used combos marked with X",
-      "Battle screen: score buttons XTR+3, OVR+2, BST+2, SPF+1",
-      "Match Over screen: winner display, export/send button",
-      "Match log side panel with undo/redo",
-      "Google Sheets integration via Apps Script URL",
-    ]},
-    {v:"1.1",label:"Parts Library Overhaul",items:[
-      "Replaced starter parts list with full comprehensive blade/ratchet/bit database",
-      "59 blades, 37 ratchets, 47 bits preloaded",
-      "Separated Turbo and Operate as distinct ratchets",
-    ]},
-    {v:"1.2",label:"Priority Sorting",items:[
-      "Priority blades pushed to top: Wizard Rod, Shark Scale, Cobalt Dragoon, Aero Pegasus, Hover Wyvern, Golem Rock, Clock Mirage, Meteor Dragoon",
-      "Priority bits pushed to top: Elevate, Hexa, Low Orb, Rush, Low Rush, Free Ball, Kick, Level, Ball",
-      "Priority groups display in specified order, not alphabetically",
-    ]},
-    {v:"1.3",label:"Judge Accountability & Battle Screen Clarity",items:[
-      "Judge name input added to Select Match screen",
-      "Build Decks button locked until judge name is entered",
-      "Combo cards shown prominently on battle screen for quick reference",
-      "Set score and battle score both shown on Pick Combo screen",
-    ]},
-    {v:"1.4",label:"Challonge Import",items:[
-      "Challonge tournament URL paste field on Players screen",
-      "API v1 key authentication",
-      "CORS proxy (allorigins.win + corsproxy.io fallback) to bypass browser restrictions",
-      "Auto-populates player roster from tournament participants",
-    ]},
-    {v:"2.0",label:"Tournament/Ranked Mode",items:[
-      "Own Finish toggle replaced with Tournament Mode (renamed Ranked Mode)",
-      "Tournament name input required when ranked mode is on",
-      "Judge on Duty moved to Select Match screen, 3-click flow (P1 → P2 → Judge)",
-      "Name Not Present button for manual judge entry",
-      "Best-of-1 added as set option",
-      "Side Assignment modal: judge picks priority player, they choose B Side or X Side",
-      "Loser gets pick priority for subsequent sets",
-      "Sides logged in every battle entry and exported",
-      "Penalty scoring buttons: Own Finish ×2, Own Finish ×3 (award to opponent), Launch Error ×1 (redo battle)",
-      "Match Over confirmation screen: both players confirm, then judge submits or voids",
-      "Void Match flow requires Tournament Organizer confirmation",
-      "Google Sheets only receives data in ranked mode; casual CSV download always available",
-      "Score capped at point threshold — no going over",
-      "Per-set scores tracked and shown in confirmation screen",
-    ]},
-    {v:"2.1",label:"Match Over Screen Redesign",items:[
-      "Single unified Match Over screen (removed separate confirmation screen for ranked mode)",
-      "Blue gradient winner hero banner with tournament name",
-      "Match score card with per-set breakdown tiles",
-      "Stats row: Battles, Shuffles, Judge",
-      "Match history inline on over screen",
-      "Confirmation buttons integrated into over screen for ranked mode",
-    ]},
-    {v:"2.2",label:"Pick Combo & Battle Screen Redesign",items:[
-      "Match Score (small, top) → Current Set + Battle counters → Set Score (large, dominant)",
-      "Player names displayed large next to set score numbers",
-      "Scoring buttons shrunk to minimal footprint",
-      "Battle count resets each set and counts up without denominator",
-      "Best-of-1 hides current set and match score (irrelevant)",
-      "Terminology: Sets → Match Score, Battle → Set Score",
-    ]},
-    {v:"2.3",label:"Viewport Scaling",items:[
-      "useScale() hook measures window dimensions on load and resize",
-      "All layout values scale proportionally from base 480×700 design",
-      "Clamps between 0.7× and 2.0× for narrow phones through large tablets",
-      "CSS font-size on :root drives text scaling",
-    ]},
-    {v:"3.0",label:"Deck Builder — Top 10 & Search",items:[
-      "Updated priority lists: blades, ratchets, bits each have 10 priority items",
-      "Blade Top 10: Wizard Rod (yellow), Shark Scale (purple), Cobalt Dragoon (dark blue), Aero Pegasus (teal), Hover Wyvern (green), Golem Rock (orange), Meteor Dragoon (light purple), Phoenix Wing (red), Silver Wolf (grey), Clock Mirage (dark green)",
-      "Top 10 shown in 5-column grid with tinted container",
-      "Search bar between Top 10 and rest of list — live filters with each keystroke",
-      "All non-Top-10 buttons black text for readability",
-    ]},
-    {v:"3.1",label:"Crossover Blades Dropdown",items:[
-      "36 crossover blades (licensed characters, legacy beys) added to library",
-      "Collapsible 🌐 Crossover Blades section at bottom of blade picker",
-      "Crossover blades hidden from main list, only visible in dropdown",
-    ]},
-    {v:"3.2",label:"CX Blade System",items:[
-      "CX button in blade picker search bar opens 3-step builder: Gear Chip → Blade → Assist",
-      "Gear chips: Standard (unlimited), Emperor, Valkyrie",
-      "16 CX blades including Blast (priority/teal)",
-      "Blast Heavy and Blast Wheel quick-pick shortcuts",
-      "Assist Top 5: Heavy, Wheel, Slash, Free, Dual",
-      "Naming: Standard chip omitted (Blast Heavy), named chip prefixed (Emperor Blast Heavy)",
-      "No duplicate parts allowed across combos",
-    ]},
-    {v:"3.3",label:"CXE Blade System",items:[
-      "CXE Blades section at bottom of CX blade screen: Blitz, Fortress, Rage",
-      "Selecting a CXE blade adds Over Blade step: Break, Guard, Flow",
-      "4-step CXE flow: Chip → CXE Blade → Over Blade → Assist",
-      "Naming: [Chip] [CXE Blade] [Over Blade] [Assist]",
-      "CXE parts tracked separately in duplicate prevention",
-    ]},
-    {v:"3.4",label:"Quick Combos & Shortcuts",items:[
-      "8 Quick Combos in blade picker: Wizard Rod 1-60 Hexa/Low-Orb, Cobalt Dragoon 5-60/9-60 Elevate, Shark Scale 3-60 Low-Rush/Free-Ball, Golem Rock 9-60 Free-Ball, Aero Pegasus 1-50 Rush",
-      "Quick Combos appear above Top 10 for fastest access",
-      "Tapping a quick combo fills all 3 parts and advances to next combo",
-      "Conflict detection: greys out if any part is already used",
-    ]},
-    {v:"4.0",label:"Linear Deck Builder Flow",items:[
-      "Eliminated hub-based deck builder — now fully linear 3-click-per-combo",
-      "Blade → Ratchet → Bit auto-advances on each tap",
-      "Flows through all 6 combos (P1 ×3, P2 ×3) without any back navigation",
-      "Progress bar shows position in 18-step flow",
-      "Combo labels: First/Second/Third Combo",
-      "Review screen after all combos built — tap any part to edit",
-      "Editing from review returns to review after single selection (returnToReview flag)",
-    ]},
-    {v:"4.1",label:"Previous Combos Memory",items:[
-      "After each match, both players' combos saved to localStorage by player name",
-      "🕐 Previous Combos section appears above quick combos in blade picker",
-      "One-tap to reuse any previously built combo",
-      "Deletion of a player from roster also removes their saved combos",
-      "Works in all modes (not just ranked)",
-    ]},
-    {v:"4.2",label:"Players Screen Improvements",items:[
-      "Multi-name paste: comma or newline separated names added all at once",
-      "Clear All button with in-app confirmation modal (not browser dialog)",
-      "Challonge import field with template URL placeholder",
-      "File import supports comma-separated formats",
-    ]},
-    {v:"4.3",label:"Parts Library Search",items:[
-      "Search bar added to each tab in the Parts Library overlay",
-      "Live filtering with each keystroke",
-      "Search resets when switching tabs",
-      "Delete button still works correctly on filtered results",
-    ]},
-    {v:"5.0",label:"NC BLAST — Rebrand",items:[
-      "Renamed from BeyJudgeX to NC BLAST",
-      "Subtitle: NorCal Battle Log and Stat Tracker",
-      "CSV filenames updated to ncblast_ prefix",
-    ]},
-    {v:"5.1",label:"New Parts Added",items:[
-      "Standard blades: Dran Strike, Ring Aether, Bullet Griffon, Cutter Shinobi, Rampart Aegis, Valor Bison",
-      "All CX, CXE, crossover, and new blades added to Parts Library",
-      "Storage key bumped to force library refresh on next load",
-    ]},
-    {v:"5.2",label:"Ranked Mode Rename & Feature Parity",items:[
-      "Tournament Mode renamed to Ranked Mode in UI",
-      "Penalty buttons now visible in casual mode too",
-      "Previous Combos memory works in all modes",
-    ]},
-    {v:"5.3",label:"Persistent Match Log",items:[
-      "Match log survives across matches and page reloads (localStorage)",
-      "Log is never auto-cleared between matches",
-      "Clear Log button added to log panel with in-app confirmation modal",
-      "matchStartIdx tracks where current match begins in persistent log",
-      "Battle count display correctly scoped to current match",
-      "All exports (Sheets, CSV) send only current match battles",
-    ]},
-    {v:"5.4",label:"Google Sheets — Second Sheet",items:[
-      "Each submitted match now writes to a second sheet with per-battle detail",
-      "Columns: Date/Time (PST), Judge, P1 Name, P1 Side, P1 Combo, P2 Name, P2 Side, P2 Combo, Winning Player, Winning Combo, Win Condition (e.g. XTR+3), Losing Combo, Losing Player",
-    ]},
-    {v:"6.0",label:"Navigation & Back Button System",items:[
-      "Universal Back button on all screens using phaseStack navigation history",
-      "Back button added to Pick Combo and Battle screens",
-      "Abandon Match warning modal when leaving an active match mid-game — voids and removes all battles from that match",
-      "Match Over screen back button undoes the deciding battle and returns to Pick Combo",
-      "goBack() function handles picker → review → phase stack → onBack() chain",
-    ]},
-    {v:"6.1",label:"Battle Count Bug Fix",items:[
-      "Battle count no longer counts battles from previous matches",
-      "Both selectRound and battle screen counters scoped to matchStartIdx",
-    ]},
-    {v:"7.0",label:"Dark Mode",items:[
-      "Dark mode toggle on Format screen and in bottom bar (🌙/☀️)",
-      "Preference saved to localStorage and restored on load",
-      "CSS variables drive all theme colors — instant toggle with no re-render cost",
-      "All surfaces, borders, text, inputs, cards, and backgrounds adapt",
-      "Player accent colors (blue/red) and action buttons unchanged in dark mode",
-      "Deck builder button text white in dark mode",
-    ]},
-    {v:"8.0",label:"Quick Combo Text & UX Polish",items:[
-      "Quick Combo and Previous Combo button text enlarged for readability",
-      "Challonge import error handling improved with fallback proxy and descriptive messages",
-      "Match history on over screen scoped to current match only",
-    ]},
-    {v:"8.1",label:"Changelog Added",items:[
-      "Comprehensive in-app changelog accessible from main menu (v8.0 — Changelog link)",
-      "All versions from v1.0 documented with bullet-point change descriptions",
-      "Newest version shown first",
-    ]},
-    {v:"8.2",label:"Round Count Fix",items:[
-      "Round number in Google Sheets now resets to 1 for each new match",
-      "Previously the round counter grew continuously across all matches in a session",
-    ]},
-    {v:"8.3",label:"Back Button Reliability",items:[
-      "Rewrote back navigation as a deterministic context-aware function",
-      "Eliminated stale closure bug that caused delayed or non-responsive back presses",
-      "Removed phaseStack approach in favor of phase-specific logic per screen",
-      "Back now correctly handles: CX picker → part picker → deck review → pick → players",
-      "Abandon match warning still triggers when mid-match battles exist",
-      "Side picker modal dismissable via back",
-    ]},
-    {v:"8.4",label:"Abandon Confirm Instant Response",items:[
-      "Abandon match confirmation now renders at top of MatchScreen — fires instantly on first press with no delay",
-      "Changelog version number on main menu now always shows the latest version dynamically",
-    ]},
-    {v:"8.5",label:"Undo/Redo Match Boundary Fix",items:[
-      "Undo and redo can no longer cross into a previous match's battles",
-      "Undo button disabled at the start of each match until a battle is logged",
-      "Redo stack cleared when a new match begins — no stale future from prior matches",
-    ]},
-    {v:"8.6",label:"Dark Mode Text & UI Fixes",items:[
-      "All text input fields now readable in dark mode — removed hardcoded white backgrounds",
-      "Placeholder text color adapts to dark mode via CSS",
-      "Confirmation modals (Clear Roster, Clear Log, Abandon Match) use dark surface colors",
-      "Bottom bar and match log panel use theme surface color",
-    ]},
-    {v:"8.7",label:"Part Button Readability",items:[
-      "Two-word part names now displayed on two lines, one word per row, centered",
-      "Bits with dashes in their name (e.g. Low-Rush) split across two lines, dash removed",
-      "Ratchets keep their dashes (e.g. 1-60 stays intact)",
-      "Part button minimum height increased and text sized up to fill available space",
-      "Deck review buttons: removed small category labels (blade/ratchet/bit) above each value",
-      "Deck review buttons use PartLabel for consistent multi-line display",
-    ]},
-    {v:"8.8",label:"Challonge Import Reliability",items:[
-      "4 CORS proxies now attempted in sequence: allorigins, corsproxy.io, allorigins-raw, cors-anywhere",
-      "Each proxy retries up to 2 times with increasing delay before moving to the next",
-      "Smart error routing: definitive API errors (403, 404) stop retrying immediately",
-      "Status message updates live to show which proxy is being tried",
-      "More descriptive final error message with fallback suggestion",
-    ]},
-    {v:"8.9",label:"Challonge Import Live Status & Enter Key",items:[
-      "Live status messages during import describe exactly what is happening at each step",
-      "Each proxy attempt and retry shows a unique descriptive sentence so nothing looks stuck",
-      "⏳ spinner indicator shown during active import",
-      "Enter key now submits the Challonge URL field",
-      "Enter key also submits the manual player name add field",
-    ]},
-    {v:"9.0",label:"Netlify Function Integration",items:[
-      "NC BLAST now uses its own Netlify server function as the first Challonge proxy",
-      "Netlify function bypasses CORS entirely with no rate limits or downtime",
-      "Falls back to public proxies automatically if Netlify is unreachable",
-      "Blank screen bug fixed: apostrophes in JS comments were breaking Babel parsing",
-    ]},
-    {v:"9.1",label:"Import Caching & Reduced API Calls",items:[
-      "Netlify function now returns a fetchedAt timestamp with every response",
-      "Netlify CDN caches each tournament's participant list for 30 minutes at the edge",
-      "Repeated imports of the same tournament within 30 minutes hit zero Challonge API calls",
-      "Netlify proxy retries reduced from 3 to 2 extra retries (3 total) to handle cold starts",
-      "Public fallback proxies reduced to 1 attempt each — worst-case requests cut from 15 to 7",
-      "Import source badge displayed after successful import: Live from Challonge API or Served from NC BLAST cache",
-    ]},
-   {v:"9.2",label:"Migrated to Cloudflare",items:[
-          "Site hosting moved from Netlify to Cloudflare Pages",
-          "Challonge proxy function moved from Netlify Functions to Cloudflare Workers",
-          "Worker caches tournament participant lists at the CDN edge for 30 minutes",
-          "Challonge API key moved to encrypted Cloudflare environment variable",
-          "Proxy retry logic updated: Cloudflare Worker gets 3 attempts, public fallbacks get 1 each",
-        ]},
-    {v:"9.3",label:"Server-Side Import Cache & Quick Combo Additions",items:[
-      "Tournament participant lists cached server-side in Cloudflare KV for 30 minutes per slug",
-      "Any device importing the same tournament within 30 minutes gets cached results — zero Challonge API calls",
-      "Worker returns explicit fromCache flag so client knows the source of every import",
-      "Quick Combos added: Hover Wyvern 9-60 Kick, Meteor Dragoon 7-70 Level, Meteor Dragoon 7-60 Level, Clock Mirage 7-55 Free-Ball",
-    ]},
-    {v:"9.4",label:"Cached Tournament Dropdown & In-App Guide",items:[
-      "Cached Tournaments dropdown on Players screen lists all server-cached slugs",
-      "Tap any cached tournament to load its participant list instantly — no URL needed",
-      "Badge shows how many minutes ago the cache was populated",
-      "Instructions & Guide modal added to main menu — covers all NC BLAST features",
-      "Guide sections: Setup, Match Modes, Adding Players, Building Decks, Scoring, Undo, Exporting, Dark Mode, Challonge Cache",
-      "Guide and Changelog accessible side by side from main menu buttons",
-    ]},
-    {v:"9.5",label:"Instant Live Cache Sync",items:[
-      "Cached tournament list now fetched silently in the background when the Players screen loads",
-      "Dropdown is pre-populated before anyone taps it — no loading delay on first open",
-      "Cached list refreshes automatically the moment a live Challonge import completes",
-      "All devices see the new entry in the dropdown instantly after any user imports a tournament",
-      "Age timers in the dropdown refresh after loading a cached tournament",
-    ]},
-    {v:"9.6",label:"Cached Dropdown Reliability Fix",items:[
-      "Tapping the Cached Tournaments button always triggers a server refresh — open or close",
-      "Added type=button to all inner dropdown buttons to prevent unintended page reloads",
-      "Interacting with the dropdown in any way now guarantees the list is current",
-    ]},
-    {v:"9.7",label:"Instant Cache List Loading",items:[
-      "Cached Tournaments dropdown now loads in ~10ms regardless of how many tournaments are cached",
-      "Worker now maintains a single lightweight metadata key storing all slug names, counts, and timestamps",
-      "Previous approach fetched the full participant array for every cached tournament on every list request",
-      "New approach reads one small object — list speed is now constant no matter how large the cache grows",
-    ]},
-    {v:"9.8",label:"Deck Builder Undo & UI Readability Overhaul",items:[
-      "Undo button added to linear deck builder — steps back one pick without breaking the linear flow",
-      "Undo only appears when there is history to step back through and not in single-part edit mode",
-      "Combo selector buttons on Pick Combo screen enlarged to match score bubble size, stacked 3 tall per player",
-      "Combo buttons show blade name large and ratchet+bit below — fully readable at a glance",
-      "Battle screen combo display replaced with large spectator-readable bubbles with auto-scaling text",
-      "Finish type buttons doubled in height with full names written out — no more abbreviations",
-      "Side selection screen expanded to fill vertical space with much larger text and buttons",
-      "Over screen winner name enlarged to 72px; loser name enlarged to 42px (previously small inline text)",
-    ]},
-    {v:"9.9",label:"Launch Error Strike System",items:[
-      "First Launch Error by a player adds a warning strike — no point awarded, battle redone",
-      "Strike indicator displayed prominently on the battle screen: ⚠️ LER STRIKE — next error = point",
-      "Second Launch Error while strike is active awards +1 to the opponent, clears the strike, battle redone",
-      "Strikes are cleared when any normal finish or own finish scores (effectively on any score change)",
-      "Strikes are saved in each log entry snapshot and fully restored on undo",
-      "Strike state resets on new match",
-    ]},
-    {v:"10.0",label:"Battle Screen Compactness & Readability",items:[
-      "Back button moved onto same row as Set/Battle/Match pills — all context in one line",
-      "All battle screen sizing routed through viewport scale system — consistent across all device sizes",
-      "Combo bubbles: player names removed, blade on top line, ratchet+bit on second line with auto-scaling font",
-      "All finish button text changed to black (var(--text-primary)) — readable in both light and dark mode",
-      "Penalty button badge uses CSS surface variables — adapts correctly in dark mode",
-      "Finish button padding scaled proportionally to fit all buttons without scrolling on any device",
-    ]},
-    {v:"10.1",label:"Challonge Direct Scoring & Active Matches",items:[
-      "Player names longer than 15 characters truncated to 12 + ellipsis after match selection — prevents UI overflow",
-      "Pick Combo and battle score screen grey text updated to use CSS variables for dark mode correctness",
-      "Active Matches tab on Select Match screen — shows all open Challonge bracket pairings for the loaded tournament",
-      "Judge picker shown at top of active matches tab — must select judge before match buttons are enabled",
-      "All players available as judges including manual name entry; tapping a selected judge deselects them",
-      "Match buttons locked until a judge is selected in ranked mode",
-      "Matches where the judge is one of the players are greyed out with a ⚠️ warning inline",
-      "Build Decks button locked with red warning banner if selected judge is playing in the chosen match",
-      "Challonge participant IDs stored to localStorage on import — names resolve correctly across page reloads",
-      "Submit to Challonge button on Match Over screen — sends result directly to Challonge bracket",
-      "Submission refreshes active matches automatically so next round pairings appear immediately",
-    ]},
-    {v:"10.2",label:"Submit Fix, Name Resolution & Cache Delete",items:[
-      "Fixed instant submission failure: winner ID lookup now tries exact name match, truncated name prefix match, then match-stored player ID as final fallback",
-      "Submit error message now explains when winner Challonge ID cannot be found and suggests re-importing",
-      "Worker /matches route resolves player display names server-side — no ID strings shown to judges",
-      "Client falls back through server name → local participant map → raw ID for maximum resilience",
-      "Cache deletion: trash icon per cached entry with confirmation modal — removes from server KV and all devices",
-    ]},
-    {v:"10.3",label:"Battle Screen Squares, Confirm Step & Name Overflow",items:[
-      "Finish buttons redesigned as 2×3 square grid per player — XTR, OVR, BST, SPF, Own×2, Own×3",
-      "Tapping a finish highlights it without scoring — a Confirm button appears to commit the selection",
-      "Tapping the same finish again deselects it, allowing judges to correct accidental taps",
-      "Launch Error stays as a full-width immediate-fire button below the grid — no confirm step",
-      "Cache deletion now awaits server response before refreshing the list — actually removes entries",
-      "All player name display locations scale font size down for longer names and clip with ellipsis",
-    ]},
-    {v:"10.4",label:"Submit & Delete Fixes",items:[
-      "Submit no longer exits early when winner ID is missing — always attempts the network call so loading state is visible",
-      "Submit error now shows the actual error message returned from the Worker or network instead of a generic label",
-      "Submit button label shows ⚠️ no ID when winner Challonge ID could not be resolved, making the problem visible",
-      "Cache delete now removes the entry from the UI immediately (optimistic update) so feedback is instant",
-      "Cache delete still calls the Worker to remove from KV and refreshes the list after 800ms to confirm server state",
-      "Undo LER strike logic reverted to simple behavior — will be revisited separately",
-    ]},
-   ];
-
   return (
     <>
-    {showChangelog&&(
-      <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.7)",zIndex:300,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 16px",overflowY:"auto"}}>
-        <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:480,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-            <div>
-              <h2 style={{margin:0,fontSize:20,fontWeight:900,color:"var(--text-primary)"}}>NC BLAST</h2>
-              <p style={{margin:0,fontSize:11,color:"var(--text-faint)"}}>Development Changelog</p>
-            </div>
-            <button onClick={()=>setShowChangelog(false)} style={{background:"var(--surface3)",border:"none",borderRadius:10,width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"var(--text-muted)",fontSize:18}}>{IC.x}</button>
-          </div>
-          {[...CHANGELOG].reverse().map((ver,vi)=>(
-            <div key={vi} style={{marginBottom:20,paddingBottom:20,borderBottom:vi<CHANGELOG.length-1?"1px solid var(--border)":"none"}}>
-              <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
-                <span style={{background:"#EA580C",color:"#fff",fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:6,letterSpacing:0.5}}>v{ver.v}</span>
-                <span style={{fontSize:14,fontWeight:800,color:"var(--text-primary)"}}>{ver.label}</span>
-              </div>
-              <ul style={{margin:0,paddingLeft:16,display:"flex",flexDirection:"column",gap:3}}>
-                {ver.items.map((item,ii)=>(
-                  <li key={ii} style={{fontSize:11,color:"var(--text-secondary)",lineHeight:1.5}}>{item}</li>
-                ))}
               </ul>
             </div>
           ))}
@@ -823,8 +453,7 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,o
         <p style={S.sub}>NorCal Battle Log and Stat Tracker</p>
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,marginTop:4}}>
           <button onClick={()=>setShowGuide(true)} style={{background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>Guide & Intro</button>
-          <span style={{color:"var(--text-disabled)",fontSize:11}}>·</span>
-          <button onClick={()=>setShowChangelog(true)} style={{background:"none",border:"none",color:"var(--text-faint)",fontSize:11,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textDecoration:"underline"}}>v{CHANGELOG[CHANGELOG.length-1].v} — Changelog</button>
+
         </div>
       </div>
       <button onClick={onOpenLib} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 14px",borderRadius:12,border:hasLib?"2px solid #15803D40":"2px dashed #EA580C",background:hasLib?"#15803D08":"#EA580C0D",cursor:"pointer",marginBottom:14,textAlign:"left"}}>
@@ -862,7 +491,7 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,o
       {!hasLib&&<p style={S.hint}>Set up your parts library first</p>}
       {onSwitchRole&&(
         <button onClick={onSwitchRole} style={{display:"block",width:"100%",marginTop:10,padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"transparent",color:"var(--text-faint)",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-          🏆 Switch to Player View
+          ↩ Switch View
         </button>
       )}
     </div>
@@ -886,6 +515,10 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
   const csvRef = useRef();
   const [confirmClear,setConfirmClear] = useState(false);
   const pRef = useRef();
+  const [judgePinMode, setJudgePinMode] = useState(null); // null | "verify" | "delete"
+  const [judgePinSlug, setJudgePinSlug] = useState(null);
+  const [judgePinError, setJudgePinError] = useState(null);
+  const [judgePinLoading, setJudgePinLoading] = useState(false);
 
   const add = () => {
     // Support pasting multiple names at once (newline or comma separated)
@@ -1014,47 +647,42 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
   };
 
   const loadFromCache = (slug) => {
-    setJudgePinSlug(slug);
-    setJudgePinError(null);
-    setJudgePinMode("verify");
-    setCachedOpen(false);
+    setJudgePinSlug(slug); setJudgePinError(null);
+    setJudgePinMode("verify"); setCachedOpen(false);
   };
 
   const handleJudgePinVerify = async (pin) => {
     setJudgePinLoading(true); setJudgePinError(null);
     try {
       const res = await fetch(`${OVERLAY_WORKER}/pin/verify`, {
-        method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ slug: judgePinSlug, pin }),
-        signal: AbortSignal.timeout(8000),
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({slug: judgePinSlug, pin}), signal: AbortSignal.timeout(8000),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) { setJudgePinError("Incorrect PIN."); setJudgePinLoading(false); return; }
-    } catch(e) { setJudgePinError("Connection error. Try again."); setJudgePinLoading(false); return; }
+    } catch(e) { setJudgePinError("Connection error."); setJudgePinLoading(false); return; }
     setJudgePinLoading(false); setJudgePinMode(null);
     await doLoadFromCache(judgePinSlug);
   };
 
   const handleJudgeDeleteRequest = (slug) => {
-    setJudgePinSlug(slug);
-    setJudgePinError(null);
-    setJudgePinMode("delete");
-    setCachedOpen(false);
+    setJudgePinSlug(slug); setJudgePinError(null);
+    setJudgePinMode("delete"); setCachedOpen(false);
   };
 
   const handleJudgeDeleteConfirm = async (pin) => {
     setJudgePinLoading(true); setJudgePinError(null);
     try {
       const res = await fetch(`${OVERLAY_WORKER}/delete`, {
-        method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ slug: judgePinSlug, masterPin: pin }),
-        signal: AbortSignal.timeout(8000),
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({slug: judgePinSlug, masterPin: pin}), signal: AbortSignal.timeout(8000),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) { setJudgePinError(data.error || "Incorrect master PIN."); setJudgePinLoading(false); return; }
-    } catch(e) { setJudgePinError("Connection error. Try again."); setJudgePinLoading(false); return; }
+    } catch(e) { setJudgePinError("Connection error."); setJudgePinLoading(false); return; }
     setJudgePinLoading(false); setJudgePinMode(null);
     setCachedTournaments(prev => Array.isArray(prev) ? prev.filter(t => t.slug !== judgePinSlug) : prev);
+    await refreshCachedList();
   };
 
   const importChallonge = async () => {
@@ -1230,23 +858,15 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
 
   return (
     <div style={{...S.page,height:"100dvh",overflowY:"auto"}}>
-      {judgePinMode === "verify" && judgePinSlug && (
-        <PinModal
-          title="Tournament PIN"
-          subtitle={`Enter the PIN to load "${judgePinSlug}".`}
-          onSubmit={handleJudgePinVerify}
-          onCancel={() => setJudgePinMode(null)}
-          error={judgePinError} loading={judgePinLoading}
-        />
+      {judgePinMode==="verify"&&judgePinSlug&&(
+        <PinModal title="Tournament PIN" subtitle={`Enter the PIN to load "${judgePinSlug}".`}
+          onSubmit={handleJudgePinVerify} onCancel={()=>setJudgePinMode(null)}
+          error={judgePinError} loading={judgePinLoading}/>
       )}
-      {judgePinMode === "delete" && judgePinSlug && (
-        <PinModal
-          title="Master PIN Required"
-          subtitle={`Enter the master PIN to remove "${judgePinSlug}" from the cache.`}
-          onSubmit={handleJudgeDeleteConfirm}
-          onCancel={() => setJudgePinMode(null)}
-          error={judgePinError} loading={judgePinLoading}
-        />
+      {judgePinMode==="delete"&&judgePinSlug&&(
+        <PinModal title="Master PIN Required" subtitle={`Enter the master PIN to remove "${judgePinSlug}" from the cache.`}
+          onSubmit={handleJudgeDeleteConfirm} onCancel={()=>setJudgePinMode(null)}
+          error={judgePinError} loading={judgePinLoading}/>
       )}
       <button style={S.back} onClick={onBack}>{IC.back} Format</button>
       <h1 style={S.title}>Player Roster</h1>
@@ -1303,9 +923,9 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
                       <div style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>{t.slug}</div>
                       <div style={{fontSize:10,color:"var(--text-muted)",marginTop:1}}>{t.participantCount} players · cached {minsAgo}m ago · expires in {minsLeft}m</div>
                     </button>
-                    <button type="button" onClick={()=>setDeleteConfirmSlug(t.slug)}
+                    <button type="button" onClick={()=>handleJudgeDeleteRequest(t.slug)}
                       style={{padding:"10px 12px",border:"none",background:"none",cursor:"pointer",color:"#DC2626",opacity:0.6,flexShrink:0}}
-                      title="Delete from cache">
+                      title="Delete from cache (master PIN required)">
                       {IC.trash}
                     </button>
                   </div>
@@ -2494,6 +2114,16 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
   if(picker){
     const {who,slot,cat}=picker;
+    // Skip ratchet step for blades that use none (e.g. Bullet Griffon)
+    if(cat==="ratchet"){
+      const currentDeck=who===1?d1:d2;
+      if(NO_RATCHET_BLADES.includes(currentDeck[slot]?.blade)){
+        const nd=[...currentDeck]; nd[slot]={...nd[slot],ratchet:null};
+        if(who===1) setD1(nd); else setD2(nd);
+        openPicker({who,slot,cat:"bit",returnToReview:picker.returnToReview});
+        return null;
+      }
+    }
     const list=parts[cat+"s"];
     const cc={blade:"#EA580C",ratchet:"#1D4ED8",bit:"#15803D"}[cat];
     const deck=who===1?d1:d2; const setDeck=who===1?setD1:setD2;
@@ -2534,7 +2164,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             const cats=["blade","ratchet","bit"];
             const catIdx=cats.indexOf(cat);
             if(catIdx<2){
-              openPicker({who,slot,cat:cats[catIdx+1]});
+              const nextCat=(cat==="blade"&&NO_RATCHET_BLADES.includes(name))?"bit":cats[catIdx+1];
+              openPicker({who,slot,cat:nextCat});
             } else if(slot<2){
               openPicker({who,slot:slot+1,cat:"blade"});
             } else if(who===1){
@@ -2599,7 +2230,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                   if(picker.returnToReview){setPicker(null);setDeckReview(true);return;}
                   const cats=["blade","ratchet","bit"];
                   const catIdx=cats.indexOf(cat);
-                  if(catIdx<2){openPicker({who,slot,cat:cats[catIdx+1]});}
+                  if(catIdx<2){const nextCat=(cat==="blade"&&NO_RATCHET_BLADES.includes(name))?"bit":cats[catIdx+1];openPicker({who,slot,cat:nextCat});}
                   else if(slot<2){openPicker({who,slot:slot+1,cat:"blade"});}
                   else if(who===1){openPicker({who:2,slot:0,cat:"blade"});}
                   else{setPicker(null);setDeckReview(true);}
@@ -2671,7 +2302,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                           if(picker.returnToReview){setPicker(null);setDeckReview(true);return;}
                           const cats=["blade","ratchet","bit"];
                           const catIdx=cats.indexOf(cat);
-                          if(catIdx<2){openPicker({who,slot,cat:cats[catIdx+1]});}
+                          if(catIdx<2){const nextCat=(cat==="blade"&&NO_RATCHET_BLADES.includes(name))?"bit":cats[catIdx+1];openPicker({who,slot,cat:nextCat});}
                           else if(slot<2){openPicker({who,slot:slot+1,cat:"blade"});}
                           else if(who===1){openPicker({who:2,slot:0,cat:"blade"});}
                           else{setPicker(null);setDeckReview(true);}
@@ -2730,7 +2361,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                           if(picker.returnToReview){setPicker(null);setDeckReview(true);return;}
                           const cats=["blade","ratchet","bit"];
                           const catIdx=cats.indexOf(cat);
-                          if(catIdx<2){openPicker({who,slot,cat:cats[catIdx+1]});}
+                          if(catIdx<2){const nextCat=(cat==="blade"&&NO_RATCHET_BLADES.includes(name))?"bit":cats[catIdx+1];openPicker({who,slot,cat:nextCat});}
                           else if(slot<2){openPicker({who,slot:slot+1,cat:"blade"});}
                           else if(who===1){openPicker({who:2,slot:0,cat:"blade"});}
                           else{setPicker(null);setDeckReview(true);}
@@ -2803,7 +2434,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
                 {prevCombos.map((c,ci)=>{
                   const bTaken=takenByOtherSlots.includes(c.blade);
-                  const rTaken=(who===1?d1:d2).map((dc,i)=>i!==slot?dc.ratchet:null).filter(Boolean).includes(c.ratchet);
+                  const rTaken=c.ratchet?(who===1?d1:d2).map((dc,i)=>i!==slot?dc.ratchet:null).filter(Boolean).includes(c.ratchet):false;
                   const bitTaken=(who===1?d1:d2).map((dc,i)=>i!==slot?dc.bit:null).filter(Boolean).includes(c.bit);
                   const anyTaken=bTaken||rTaken||bitTaken;
                   const bladeColor=BLADE_COLORS[c.blade]||"#64748B";
@@ -2838,7 +2469,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
               {QUICK_COMBOS.map((qc,qi)=>{
                 const bTaken=takenByOtherSlots.includes(qc.blade);
-                const rTaken=(who===1?d1:d2).map((c,i)=>i!==slot?c.ratchet:null).filter(Boolean).includes(qc.ratchet);
+                const rTaken=qc.ratchet?(who===1?d1:d2).map((c,i)=>i!==slot?c.ratchet:null).filter(Boolean).includes(qc.ratchet):false;
                 const bitTaken=(who===1?d1:d2).map((c,i)=>i!==slot?c.bit:null).filter(Boolean).includes(qc.bit);
                 const anyTaken=bTaken||rTaken||bitTaken;
                 const bladeColor=BLADE_COLORS[qc.blade]||cc;
@@ -2857,7 +2488,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     }}
                     style={{padding:"8px 4px",borderRadius:9,border:`2px solid ${anyTaken?"var(--border)":bladeColor+"60"}`,background:anyTaken?"var(--surface3)":bladeColor+"12",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:52,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2}}>
                     <span style={{fontSize:13,fontWeight:800}}>{qc.blade}</span>
-                    <span style={{fontSize:11,opacity:0.7}}>{qc.ratchet} · {qc.bit}</span>
+                    <span style={{fontSize:11,opacity:0.7}}>{qc.ratchet?`${qc.ratchet} · ${qc.bit}`:qc.bit}</span>
                     {anyTaken&&<span style={{fontSize:9,color:"var(--text-faint)"}}>IN USE</span>}
                   </button>
                 );
@@ -5194,83 +4825,95 @@ function ComboTab({myName, myDeck, onDeckSaved, slug}){
 
 
 /* ═══════════════════════════════════════
-   PIN MODAL — reusable 4-digit entry
+   PIN MODAL — on-screen 4-digit keypad
 ═══════════════════════════════════════ */
-function PinModal({ title, subtitle, onSubmit, onCancel, error, loading }) {
-  const [digits, setDigits] = React.useState(["", "", "", ""]);
-  const inputRefs = [useRef(), useRef(), useRef(), useRef()];
+function PinModal({title, subtitle, onSubmit, onCancel, error, loading}) {
+  const [digits, setDigits] = useState(["","","",""]);
 
-  // Auto-focus first input on mount
-  useEffect(() => { inputRefs[0].current?.focus(); }, []);
-
-  const handleChange = (i, val) => {
-    // Only allow single digit
-    const d = val.replace(/\D/g, "").slice(-1);
-    const nd = [...digits];
-    nd[i] = d;
-    setDigits(nd);
-    if (d && i < 3) inputRefs[i + 1].current?.focus();
+  const pressDigit = (d) => {
+    setDigits(prev => {
+      const filled = prev.filter(x => x !== "").length;
+      if(filled >= 4) return prev;
+      const next = [...prev];
+      next[filled] = String(d);
+      return next;
+    });
   };
 
-  const handleKeyDown = (i, e) => {
-    if (e.key === "Backspace") {
-      if (digits[i]) {
-        const nd = [...digits]; nd[i] = ""; setDigits(nd);
-      } else if (i > 0) {
-        inputRefs[i - 1].current?.focus();
-        const nd = [...digits]; nd[i - 1] = ""; setDigits(nd);
+  const pressBack = () => {
+    setDigits(prev => {
+      const next = [...prev];
+      for(let i = 3; i >= 0; i--) {
+        if(next[i] !== "") { next[i] = ""; break; }
       }
-    }
-    if (e.key === "Enter" && digits.every(d => d)) {
-      onSubmit(digits.join(""));
-    }
+      return next;
+    });
   };
 
   const pin = digits.join("");
   const ready = pin.length === 4;
 
-  return (
-    <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.75)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
-      <div style={{background:"var(--surface)",borderRadius:20,padding:"28px 24px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"1px solid var(--border)"}}>
-        <p style={{fontSize:18,fontWeight:900,color:"var(--text-primary)",margin:"0 0 4px",textAlign:"center"}}>{title}</p>
-        {subtitle && <p style={{fontSize:12,color:"var(--text-muted)",textAlign:"center",margin:"0 0 24px",lineHeight:1.5}}>{subtitle}</p>}
-        {!subtitle && <div style={{height:20}}/>}
+  const handleSubmit = () => { if(ready && !loading) onSubmit(pin); };
 
-        {/* Digit boxes */}
-        <div style={{display:"flex",gap:12,justifyContent:"center",marginBottom:20}}>
-          {digits.map((d, i) => (
-            <input key={i} ref={inputRefs[i]}
-              type="text" inputMode="numeric" pattern="[0-9]*"
-              maxLength={1} value={d}
-              onChange={e => handleChange(i, e.target.value)}
-              onKeyDown={e => handleKeyDown(i, e)}
-              style={{
-                width:52, height:64, textAlign:"center", fontSize:28, fontWeight:900,
-                fontFamily:"'Outfit',sans-serif", borderRadius:12,
-                border:`2px solid ${error ? "#EF4444" : d ? "#EA580C" : "var(--border2)"}`,
-                background: d ? "#EA580C12" : "var(--surface2)",
-                color:"var(--text-primary)", outline:"none",
-                caretColor:"transparent",
-              }}
-            />
+  const keys = [1,2,3,4,5,6,7,8,9,"",0,"⌫"];
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.8)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+      <div style={{background:"var(--surface)",borderRadius:20,padding:"24px 20px 20px",maxWidth:300,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"1px solid var(--border)"}}>
+        <p style={{fontSize:17,fontWeight:900,color:"var(--text-primary)",margin:"0 0 4px",textAlign:"center"}}>{title}</p>
+        {subtitle&&<p style={{fontSize:11,color:"var(--text-muted)",textAlign:"center",margin:"0 0 20px",lineHeight:1.5}}>{subtitle}</p>}
+        {!subtitle&&<div style={{height:16}}/>}
+
+        {/* Dot display */}
+        <div style={{display:"flex",gap:14,justifyContent:"center",marginBottom:16}}>
+          {digits.map((d,i)=>(
+            <div key={i} style={{
+              width:14,height:14,borderRadius:"50%",
+              background: d ? "#EA580C" : "var(--border2)",
+              transition:"background 0.1s",
+              border: error ? "2px solid #EF4444" : "none",
+            }}/>
           ))}
         </div>
 
-        {error && <p style={{fontSize:12,color:"#EF4444",textAlign:"center",marginBottom:16,fontWeight:600}}>{error}</p>}
+        {error&&<p style={{fontSize:12,color:"#EF4444",textAlign:"center",marginBottom:12,fontWeight:600}}>{error}</p>}
 
-        <button
-          onClick={() => ready && !loading && onSubmit(pin)}
-          disabled={!ready || loading}
-          style={{display:"block",width:"100%",padding:"14px 0",borderRadius:12,border:"none",
-            background: ready && !loading ? "#EA580C" : "var(--surface3)",
-            color: ready && !loading ? "#fff" : "var(--text-disabled)",
+        {/* Keypad */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
+          {keys.map((k,i)=>{
+            const isEmpty = k === "";
+            const isBack = k === "⌫";
+            return (
+              <button key={i}
+                onClick={isEmpty ? undefined : (isBack ? pressBack : ()=>pressDigit(k))}
+                disabled={loading || isEmpty}
+                style={{
+                  height:52, borderRadius:12,
+                  border: isBack ? "2px solid var(--border2)" : "2px solid var(--border)",
+                  background: isEmpty ? "transparent" : isBack ? "var(--surface2)" : "var(--surface3)",
+                  color: isBack ? "var(--text-secondary)" : "var(--text-primary)",
+                  fontSize: isBack ? 20 : 22,
+                  fontWeight:700, fontFamily:"'Outfit',sans-serif",
+                  cursor: isEmpty || loading ? "default" : "pointer",
+                  opacity: isEmpty ? 0 : 1,
+                }}
+              >{k}</button>
+            );
+          })}
+        </div>
+
+        <button onClick={handleSubmit} disabled={!ready||loading}
+          style={{display:"block",width:"100%",padding:"13px 0",borderRadius:12,border:"none",
+            background:ready&&!loading?"#EA580C":"var(--surface3)",
+            color:ready&&!loading?"#fff":"var(--text-disabled)",
             fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",
-            cursor: ready && !loading ? "pointer" : "not-allowed",marginBottom:10}}>
-          {loading ? "Checking…" : "Confirm"}
+            cursor:ready&&!loading?"pointer":"not-allowed",marginBottom:8}}>
+          {loading?"Checking…":"Confirm"}
         </button>
         <button onClick={onCancel} disabled={loading}
-          style={{display:"block",width:"100%",padding:"10px 0",borderRadius:12,border:"2px solid var(--border)",
-            background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,
+          style={{display:"block",width:"100%",padding:"9px 0",borderRadius:12,
+            border:"2px solid var(--border)",background:"none",
+            color:"var(--text-muted)",fontSize:13,fontWeight:700,
             fontFamily:"'Outfit',sans-serif",cursor:loading?"not-allowed":"pointer"}}>
           Cancel
         </button>
@@ -5373,13 +5016,15 @@ function OrgApp({onSwitchRole}) {
   }
 
   // ── Figure out the current round from pairings ───────────────────
-  const openMatches = (pairings||[]).filter(m => m.state === "open" || m.state === "pending");
+  // Treat anything that isn't explicitly "complete" as still in play
+  const openMatches = (pairings||[]).filter(m => m.state !== "complete");
   const currentRound = openMatches.length > 0
     ? Math.min(...openMatches.map(m => m.round || 0))
     : null;
+  // Show all matches in the current round (including completed ones in that round)
   const roundMatches = currentRound !== null
     ? (pairings||[]).filter(m => m.round === currentRound)
-    : [];
+    : (pairings||[]);
 
   // Build live lookups: by Challonge match ID (exact, preferred) and by name pair (fallback)
   const liveByMatchId = {};
@@ -5405,7 +5050,7 @@ function OrgApp({onSwitchRole}) {
 
   const roundLabel = currentRound !== null
     ? (currentRound < 0 ? `Top Cut Round ${Math.abs(currentRound)}` : `Swiss Round ${currentRound}`)
-    : "No open rounds";
+    : pairings && pairings.length > 0 ? "All Matches" : "No matches loaded";
 
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",fontFamily:"'Outfit',sans-serif",display:"flex",flexDirection:"column"}}>
@@ -5563,36 +5208,36 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingLink, setLoadingLink] = useState(false);
   const [error, setError] = useState(null);
-
-  // PIN modal state
-  // mode: null | "master_for_create" | "set_tournament" | "open_tournament" | "master_for_delete"
+  // PIN state: null | "master_for_create" | "set_tournament" | "open_tournament" | "master_for_delete"
   const [pinMode, setPinMode] = useState(null);
   const [pinError, setPinError] = useState(null);
   const [pinLoading, setPinLoading] = useState(false);
-  const [pendingSlug, setPendingSlug] = useState(null); // slug being acted on
-  const [pendingName, setPendingName] = useState(null); // display name for above
-  const [masterPinCache, setMasterPinCache] = useState(null); // briefly held between master verify and set steps
+  const [pendingSlug, setPendingSlug] = useState(null);
+  const [pendingName, setPendingName] = useState(null);
 
   useEffect(() => {
     const load = async () => {
       setLoadingList(true);
-      try {
-        const data = await workerGet("/list");
-        setCachedList(data.tournaments || []);
-      } catch(_) { setCachedList([]); }
+      try { const data = await workerGet("/list"); setCachedList(data.tournaments || []); }
+      catch(_) { setCachedList([]); }
       finally { setLoadingList(false); }
     };
     load();
   }, []);
 
   const refreshList = async () => {
-    try {
-      const data = await workerGet("/list");
-      setCachedList(data.tournaments || []);
-    } catch(_) {}
+    try { const data = await workerGet("/list"); setCachedList(data.tournaments || []); } catch(_) {}
   };
 
-  // Step 1: org pastes link and taps Go → ask for master PIN
+  const verifyPin = async (slug, pin) => {
+    const res = await fetch(`${OVERLAY_WORKER}/pin/verify`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({slug, pin}), signal: AbortSignal.timeout(8000),
+    });
+    return await res.json();
+  };
+
+  // Step 1: org pastes link → ask for master PIN
   const handleLinkSubmit = () => {
     setError(null);
     const raw = linkInput.trim();
@@ -5603,64 +5248,45 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
       slug = parts[parts.length - 1] || slug;
     } catch(_) {}
     if (!slug) { setError("Enter a valid Challonge link."); return; }
-    setPendingSlug(slug);
-    setPendingName(slug);
-    setPinError(null);
-    setPinMode("master_for_create");
+    setPendingSlug(slug); setPendingName(slug);
+    setPinError(null); setPinMode("master_for_create");
   };
 
-  // Step 2: master PIN verified → cache the tournament, then ask to set tournament PIN
+  // Step 2: master verified → cache tournament → prompt for tournament PIN
   const handleMasterForCreate = async (pin) => {
     setPinLoading(true); setPinError(null);
     try {
-      const res = await fetch(`${OVERLAY_WORKER}/pin/verify`, {
-        method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ slug: pendingSlug, pin }),
-        signal: AbortSignal.timeout(8000),
-      });
-      const data = await res.json();
+      const data = await verifyPin(pendingSlug, pin);
       if (!data.ok || !data.master) { setPinError("Incorrect master PIN."); setPinLoading(false); return; }
-    } catch(e) { setPinError("Connection error. Try again."); setPinLoading(false); return; }
-
-    // Now cache the tournament from Challonge
+      sessionStorage.setItem("ncblast-master-session", pin);
+    } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
     try {
       const data = await workerGet(`/?slug=${encodeURIComponent(pendingSlug)}`);
       setPendingName(data.tournamentName || data.name || pendingSlug);
     } catch(e) { setPinError("Couldn't load that tournament. Check the link."); setPinLoading(false); return; }
-
-    // Move to setting the tournament PIN
-    setPinLoading(false);
-    setPinMode("set_tournament");
-    setPinError(null);
+    setPinLoading(false); setPinMode("set_tournament"); setPinError(null);
   };
 
-  // Step 3: set a new tournament-specific PIN
+  // Step 3: set tournament-specific PIN
   const handleSetTournamentPin = async (pin) => {
     setPinLoading(true); setPinError(null);
-    // We need to pass masterPin — re-verify isn't practical here, so we use a cached master check
-    // Instead: we call /pin/set and rely on the master we already verified being "in session"
-    // The worker requires masterPin in the body — we need to prompt for it again or cache it briefly.
-    // We'll use a sessionStorage cache for the master PIN verified in this flow only.
     const masterPin = sessionStorage.getItem("ncblast-master-session");
-    if (!masterPin) { setPinError("Session expired. Please start over."); setPinLoading(false); return; }
+    if (!masterPin) { setPinError("Session expired. Start over."); setPinLoading(false); return; }
     try {
       const res = await fetch(`${OVERLAY_WORKER}/pin/set`, {
-        method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ slug: pendingSlug, pin, masterPin }),
-        signal: AbortSignal.timeout(8000),
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({slug: pendingSlug, pin, masterPin}), signal: AbortSignal.timeout(8000),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) { setPinError(data.error || "Failed to set PIN."); setPinLoading(false); return; }
-    } catch(e) { setPinError("Connection error. Try again."); setPinLoading(false); return; }
-
-    // All done — open the tournament
+    } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
     sessionStorage.removeItem("ncblast-master-session");
     setPinLoading(false); setPinMode(null);
     await refreshList();
     onSelect(pendingSlug, pendingName);
   };
 
-  // Cached tournament tapped → verify tournament PIN
+  // Open cached tournament → verify tournament PIN
   const handleOpenCached = (t) => {
     setPendingSlug(t.slug); setPendingName(t.name || t.slug);
     setPinError(null); setPinMode("open_tournament");
@@ -5669,19 +5295,14 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
   const handleVerifyForOpen = async (pin) => {
     setPinLoading(true); setPinError(null);
     try {
-      const res = await fetch(`${OVERLAY_WORKER}/pin/verify`, {
-        method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ slug: pendingSlug, pin }),
-        signal: AbortSignal.timeout(8000),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) { setPinError("Incorrect PIN."); setPinLoading(false); return; }
-    } catch(e) { setPinError("Connection error. Try again."); setPinLoading(false); return; }
+      const data = await verifyPin(pendingSlug, pin);
+      if (!data.ok) { setPinError("Incorrect PIN."); setPinLoading(false); return; }
+    } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
     setPinLoading(false); setPinMode(null);
     onSelect(pendingSlug, pendingName);
   };
 
-  // Delete button → ask for master PIN first
+  // Delete → require master PIN
   const handleDeleteRequest = (t) => {
     setPendingSlug(t.slug); setPendingName(t.name || t.slug);
     setPinError(null); setPinMode("master_for_delete");
@@ -5691,83 +5312,22 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
     setPinLoading(true); setPinError(null);
     try {
       const res = await fetch(`${OVERLAY_WORKER}/delete`, {
-        method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ slug: pendingSlug, masterPin: pin }),
-        signal: AbortSignal.timeout(8000),
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({slug: pendingSlug, masterPin: pin}), signal: AbortSignal.timeout(8000),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) { setPinError(data.error || "Incorrect master PIN."); setPinLoading(false); return; }
-    } catch(e) { setPinError("Connection error. Try again."); setPinLoading(false); return; }
+    } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
     setPinLoading(false); setPinMode(null);
     setCachedList(prev => prev.filter(t => t.slug !== pendingSlug));
   };
 
-  // Store master PIN briefly in sessionStorage for the create→set flow
-  const handleMasterForCreateWithCache = async (pin) => {
-    // Verify master first, then cache it for the set step
-    setPinLoading(true); setPinError(null);
-    try {
-      const res = await fetch(`${OVERLAY_WORKER}/pin/verify`, {
-        method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ slug: pendingSlug, pin }),
-        signal: AbortSignal.timeout(8000),
-      });
-      const data = await res.json();
-      if (!data.ok || !data.master) { setPinError("Incorrect master PIN."); setPinLoading(false); return; }
-      sessionStorage.setItem("ncblast-master-session", pin);
-    } catch(e) { setPinError("Connection error. Try again."); setPinLoading(false); return; }
-
-    // Cache the tournament
-    try {
-      const data = await workerGet(`/?slug=${encodeURIComponent(pendingSlug)}`);
-      setPendingName(data.tournamentName || data.name || pendingSlug);
-    } catch(e) { setPinError("Couldn't load that tournament. Check the link."); setPinLoading(false); return; }
-
-    setPinLoading(false);
-    setPinMode("set_tournament");
-    setPinError(null);
-  };
-
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",fontFamily:"'Outfit',sans-serif",display:"flex",flexDirection:"column"}}>
-
-      {/* PIN modals */}
-      {pinMode === "master_for_create" && (
-        <PinModal
-          title="Master PIN Required"
-          subtitle="Enter the master PIN to add a new tournament."
-          onSubmit={handleMasterForCreateWithCache}
-          onCancel={() => setPinMode(null)}
-          error={pinError} loading={pinLoading}
-        />
-      )}
-      {pinMode === "set_tournament" && (
-        <PinModal
-          title="Set Tournament PIN"
-          subtitle={`Choose a 4-digit PIN for "${pendingName}". Judges and organizers will need this to access the event.`}
-          onSubmit={handleSetTournamentPin}
-          onCancel={() => { setPinMode(null); sessionStorage.removeItem("ncblast-master-session"); }}
-          error={pinError} loading={pinLoading}
-        />
-      )}
-      {pinMode === "open_tournament" && (
-        <PinModal
-          title="Tournament PIN"
-          subtitle={`Enter the PIN for "${pendingName}".`}
-          onSubmit={handleVerifyForOpen}
-          onCancel={() => setPinMode(null)}
-          error={pinError} loading={pinLoading}
-        />
-      )}
-      {pinMode === "master_for_delete" && (
-        <PinModal
-          title="Master PIN Required"
-          subtitle={`Enter the master PIN to delete "${pendingName}" from the cache.`}
-          onSubmit={handleMasterForDelete}
-          onCancel={() => setPinMode(null)}
-          error={pinError} loading={pinLoading}
-        />
-      )}
+      {pinMode==="master_for_create"&&<PinModal title="Master PIN Required" subtitle="Enter the master PIN to add a new tournament." onSubmit={handleMasterForCreate} onCancel={()=>setPinMode(null)} error={pinError} loading={pinLoading}/>}
+      {pinMode==="set_tournament"&&<PinModal title="Set Tournament PIN" subtitle={`Choose a 4-digit PIN for "${pendingName}". Judges will need this to access the event.`} onSubmit={handleSetTournamentPin} onCancel={()=>{setPinMode(null);sessionStorage.removeItem("ncblast-master-session");}} error={pinError} loading={pinLoading}/>}
+      {pinMode==="open_tournament"&&<PinModal title="Tournament PIN" subtitle={`Enter the PIN for "${pendingName}".`} onSubmit={handleVerifyForOpen} onCancel={()=>setPinMode(null)} error={pinError} loading={pinLoading}/>}
+      {pinMode==="master_for_delete"&&<PinModal title="Master PIN Required" subtitle={`Enter the master PIN to delete "${pendingName}".`} onSubmit={handleMasterForDelete} onCancel={()=>setPinMode(null)} error={pinError} loading={pinLoading}/>}
 
       <div style={{background:"var(--surface)",borderBottom:"1px solid var(--border)",padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
         <button onClick={onSwitchRole} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",lineHeight:1,padding:"2px 4px"}}>←</button>
@@ -5778,40 +5338,34 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
       </div>
 
       <div style={{flex:1,padding:"16px 14px 32px"}}>
-
-        {/* Paste a link — master PIN required to create */}
-        <div style={{background:"var(--surface)",borderRadius:14,padding:"14px 14px",marginBottom:20,border:"1px solid var(--border)"}}>
+        <div style={{background:"var(--surface)",borderRadius:14,padding:"14px",marginBottom:20,border:"1px solid var(--border)"}}>
           <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",marginBottom:4}}>Load from Challonge link</p>
-          <p style={{fontSize:11,color:"var(--text-muted)",marginBottom:8}}>Requires master PIN. Sets a new tournament PIN.</p>
+          <p style={{fontSize:11,color:"var(--text-muted)",marginBottom:8}}>Requires master PIN · Sets a new event PIN</p>
           <div style={{display:"flex",gap:8}}>
-            <input
-              value={linkInput}
-              onChange={e=>setLinkInput(e.target.value)}
-              onKeyDown={e=>e.key==="Enter"&&handleLinkSubmit()}
+            <input value={linkInput} onChange={e=>setLinkInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLinkSubmit()}
               placeholder="challonge.com/ncbl-eventname"
-              style={{flex:1,borderRadius:10,border:"1px solid var(--border2)",background:"var(--input-bg)",padding:"9px 12px",fontSize:13,fontFamily:"'Outfit',sans-serif",outline:"none"}}
-            />
-            <button onClick={handleLinkSubmit} disabled={loadingLink||!linkInput.trim()} style={{borderRadius:10,border:"none",background:"#EA580C",color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",padding:"0 16px",cursor:loadingLink||!linkInput.trim()?"not-allowed":"pointer",opacity:loadingLink||!linkInput.trim()?0.6:1}}>
+              style={{flex:1,borderRadius:10,border:"1px solid var(--border2)",background:"var(--input-bg)",padding:"9px 12px",fontSize:13,fontFamily:"'Outfit',sans-serif",outline:"none"}}/>
+            <button onClick={handleLinkSubmit} disabled={loadingLink||!linkInput.trim()}
+              style={{borderRadius:10,border:"none",background:"#EA580C",color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",padding:"0 16px",cursor:loadingLink||!linkInput.trim()?"not-allowed":"pointer",opacity:loadingLink||!linkInput.trim()?0.6:1}}>
               {loadingLink?"…":"Go"}
             </button>
           </div>
-          {error && <p style={{fontSize:11,color:"#EF4444",marginTop:8}}>{error}</p>}
+          {error&&<p style={{fontSize:11,color:"#EF4444",marginTop:8}}>{error}</p>}
         </div>
 
-        {/* Cached tournaments — each requires tournament PIN to open */}
         <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",marginBottom:10}}>Recently cached</p>
-        {loadingList && <p style={{fontSize:13,color:"var(--text-muted)"}}>Loading…</p>}
-        {!loadingList && cachedList.length === 0 && (
-          <p style={{fontSize:12,color:"var(--text-faint)"}}>No cached tournaments found. Use the link field above to add one.</p>
+        {loadingList&&<p style={{fontSize:13,color:"var(--text-muted)"}}>Loading…</p>}
+        {!loadingList&&cachedList.length===0&&(
+          <p style={{fontSize:12,color:"var(--text-faint)"}}>No cached tournaments. Use the link field above to add one.</p>
         )}
-        {cachedList.map(t => (
+        {cachedList.map(t=>(
           <div key={t.slug} style={{display:"flex",gap:8,marginBottom:8,alignItems:"stretch"}}>
-            <button onClick={() => handleOpenCached(t)}
+            <button onClick={()=>handleOpenCached(t)}
               style={{flex:1,padding:"12px 14px",borderRadius:12,border:"1px solid var(--border)",background:"var(--surface)",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
               <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0}}>{t.name||t.slug}</p>
               <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>{t.slug} · 🔒 PIN required</p>
             </button>
-            <button onClick={() => handleDeleteRequest(t)}
+            <button onClick={()=>handleDeleteRequest(t)}
               style={{padding:"0 14px",borderRadius:12,border:"1px solid #EF444440",background:"#EF444408",cursor:"pointer",color:"#EF4444",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,flexShrink:0}}>
               Delete
             </button>
