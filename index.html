@@ -416,6 +416,13 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,o
 
   return (
     <>
+              </ul>
+            </div>
+          ))}
+          <button onClick={()=>setShowChangelog(false)} style={{...S.pri,marginTop:4}}>Close</button>
+        </div>
+      </div>
+    )}
     {showGuide&&(
       <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.7)",zIndex:300,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 16px",overflowY:"auto"}}>
         <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:480,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
@@ -605,20 +612,23 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
       const data = await res.json();
       if(data.errors) throw new Error(data.errors[0]);
       const participants = data.participants || [];
-      const names = participants.map(p=>(p.participant?.display_name||p.participant?.name||"").trim()).filter(Boolean);
+      // Handle both Challonge's wrapped format { participant: {...} } and flat format
+      const extractP = (p) => p.participant || p;
+      const names = participants.map(p=>(extractP(p).display_name||extractP(p).name||"").trim()).filter(Boolean);
       if(!names.length) throw new Error("No participants found in cache");
       const merged = [...new Set([...players,...names])];
       setPlayers(merged); sSave(KEYS.players, merged);
       const participantMap = {};
       participants.forEach(p => {
-        const name = (p.participant?.display_name||p.participant?.name||"").trim();
-        const id = p.participant?.id;
+        const part = extractP(p);
+        const name = (part.display_name||part.name||"").trim();
+        const id = part.id;
         if(name && id) {
           participantMap[name] = id;
           participantMap[tn(name)] = id;
           // Also map group_player_ids -> participant.id so group-stage submit works
-          if(Array.isArray(p.participant?.group_player_ids)) {
-            p.participant.group_player_ids.forEach(gid => {
+          if(Array.isArray(part.group_player_ids)) {
+            part.group_player_ids.forEach(gid => {
               if(gid) participantMap[`__gid__${gid}`] = id;
             });
           }
@@ -929,21 +939,6 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
 
       </div>
 
-        <div style={{display:"flex",gap:8,marginBottom:8}}>
-          <input
-            style={{...S.inp,flex:1,borderColor:"#EA580C40",fontSize:12}}
-            placeholder="https://ncbl.challonge.com/TOURNAMENTNAME/participants"
-            value={challongeUrl}
-            onChange={e=>{setChallongeUrl(e.target.value);setChallongeStatus(null);setCsvFallback(null);setChallongeSource(null);}}
-            onKeyDown={e=>e.key==="Enter"&&challongeUrl.trim()&&importChallonge()}
-          />
-          <button
-            onClick={importChallonge}
-            disabled={!challongeUrl.trim()||challongeStatus==="loading"}
-            style={{padding:"0 14px",borderRadius:10,border:"none",background:challongeUrl.trim()?"#EA580C":"var(--surface3)",color:challongeUrl.trim()?"#fff":"var(--text-disabled)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:challongeUrl.trim()?"pointer":"not-allowed",flexShrink:0}}>
-            {challongeStatus==="loading"?"..." :"Import"}
-          </button>
-        </div>
         {challongeStatus==="ok"&&<p style={{fontSize:11,color:"#15803D",fontWeight:600,marginTop:4}}>✓ {challongeMsg}</p>}
         {challongeStatus==="ok"&&challongeSource&&(
           <div style={{display:"inline-flex",alignItems:"center",gap:5,marginTop:5,padding:"3px 9px",borderRadius:20,border:"1px solid",
@@ -958,49 +953,6 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
         )}
         {challongeStatus==="error"&&<p style={{fontSize:11,color:"#DC2626",fontWeight:600,lineHeight:1.5,marginTop:4}}>{challongeMsg}</p>}
         {challongeStatus==="loading"&&<p style={{fontSize:11,color:"#C2410C",fontWeight:600,marginTop:4,lineHeight:1.5}}>⏳ {challongeMsg}</p>}
-        {!challongeStatus&&<p style={S.hint}>e.g. ncbl.challonge.com/TOURNAMENT</p>}
-
-        {/* CSV fallback — shown after all proxies fail */}
-        {csvFallback&&(
-          <div style={{marginTop:10,borderTop:"1px solid #FED7AA",paddingTop:10}}>
-            <p style={{fontSize:12,fontWeight:700,color:"#C2410C",marginBottom:6}}>📋 Manual CSV Fallback</p>
-            <p style={{fontSize:11,color:"#92400E",marginBottom:8,lineHeight:1.5}}>
-              In Challonge, go to your tournament → <strong>Participants</strong> tab → <strong>Export</strong> → download the CSV. Then upload it here:
-            </p>
-            <input type="file" ref={csvRef} accept=".csv,.txt" style={{display:"none"}} onChange={handleCsvFile}/>
-            {csvFallback.names.length===0?(
-              <button onClick={()=>csvRef.current.click()} style={{...S.upBtn,marginBottom:0}}>
-                📂 Upload Challonge CSV export
-              </button>
-            ):(
-              <div>
-                <p style={{fontSize:11,color:"#15803D",fontWeight:600,marginBottom:6}}>✓ Found {csvFallback.names.length} names — copy all and paste into Add Players:</p>
-                <div style={{position:"relative"}}>
-                  <textarea
-                    readOnly
-                    value={csvFallback.names.join(", ")}
-                    style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"2px solid #15803D40",background:"#15803D0D",color:"var(--text-primary)",fontSize:11,fontFamily:"'Outfit',sans-serif",resize:"none",height:72,outline:"none"}}
-                    onFocus={e=>e.target.select()}
-                  />
-                  <button
-                    onClick={()=>{navigator.clipboard?.writeText(csvFallback.names.join(", ")).catch(()=>{});}}
-                    style={{position:"absolute",top:6,right:6,padding:"4px 8px",borderRadius:6,border:"none",background:"#15803D",color:"#fff",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-                    Copy
-                  </button>
-                </div>
-                <button onClick={()=>{
-                  const merged=[...new Set([...players,...csvFallback.names])];
-                  setPlayers(merged); sSave(KEYS.players,merged);
-                  setChallongeStatus("ok");
-                  setChallongeMsg(`✓ ${csvFallback.names.length} players added from CSV`);
-                  setCsvFallback(null);
-                }} style={{...S.pri,marginTop:8,fontSize:12,padding:"10px 0"}}>
-                  Add All to Roster →
-                </button>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Manual add */}
@@ -5012,7 +4964,7 @@ function OrgApp({onSwitchRole}) {
   // Treat anything that isn't explicitly "complete" as still in play
   const openMatches = (pairings||[]).filter(m => m.state !== "complete");
   const currentRound = openMatches.length > 0
-    ? Math.min(...openMatches.map(m => m.round || 0))
+    ? (() => { const r = Math.min(...openMatches.map(m => m.round || Infinity)); return isFinite(r) ? r : null; })()
     : null;
   // Show all matches in the current round (including completed ones in that round)
   const roundMatches = currentRound !== null
