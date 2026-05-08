@@ -416,13 +416,6 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,o
 
   return (
     <>
-              </ul>
-            </div>
-          ))}
-          <button onClick={()=>setShowChangelog(false)} style={{...S.pri,marginTop:4}}>Close</button>
-        </div>
-      </div>
-    )}
     {showGuide&&(
       <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.7)",zIndex:300,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 16px",overflowY:"auto"}}>
         <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:480,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
