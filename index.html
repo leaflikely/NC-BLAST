@@ -5298,8 +5298,12 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
     let slug = raw;
     try {
       const u = new URL(raw.startsWith("http") ? raw : "https://" + raw);
-      const parts = u.pathname.split("/").filter(Boolean);
-      slug = parts[parts.length - 1] || slug;
+      const cleanPath = u.pathname.replace(/\/(participants|standings|teams|matches).*$/i, "");
+      const parts = cleanPath.replace(/^\/|\/$/g, "").split("/").filter(Boolean);
+      const subdomain = u.hostname.split(".")[0];
+      const isCommunity = subdomain !== "challonge" && subdomain !== "www";
+      const pathSlug = parts[parts.length - 1] || parts[0];
+      slug = isCommunity ? `${subdomain}-${pathSlug}` : pathSlug;
     } catch(_) {}
     if (!slug) { setError("Enter a valid Challonge link."); return; }
     setPendingSlug(slug); setPendingName(slug);
