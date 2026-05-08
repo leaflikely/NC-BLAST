@@ -443,7 +443,7 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport}
           }
         }
       });
-      if (onChallongeImport) onChallongeImport(pinSlug, participantMap);
+      if (onChallongeImport) onChallongeImport(pinSlug, participantMap, participants);
       setConfig(c => ({...c, tournamentName: pinDisplayName}));
       setPinLoading(false); setPinSlug(null);
     } catch(e) { setLoadError(e.message||"Failed to load."); setPinLoading(false); }
@@ -5692,61 +5692,29 @@ function NamePicker({participants, onSelect, currentName}){
 function TournamentLoader({onLoaded, onSwitchRole}){
   const [cachedList, setCachedList] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
-  const [pinSlug, setPinSlug] = useState(null);
-  const [pinError, setPinError] = useState(null);
-  const [pinLoading, setPinLoading] = useState(false);
+  const [loadingSlug, setLoadingSlug] = useState(null);
   const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
-    const fetch_ = async () => {
-      setLoadingList(true);
-      try { const d = await workerGet("/list"); setCachedList(d.tournaments||[]); } catch(_) {}
-      finally { setLoadingList(false); }
-    };
-    fetch_();
+    workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>{}).finally(()=>setLoadingList(false));
   }, []);
 
-  const handleSelect = (t) => { setPinSlug(t.slug); setPinError(null); setLoadError(null); };
-
-  const handlePin = async (pin) => {
-    setPinLoading(true); setPinError(null);
+  const handleSelect = async (t) => {
+    setLoadingSlug(t.slug); setLoadError(null);
     try {
-      const res = await fetch(`${OVERLAY_WORKER}/pin/verify`, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({slug: pinSlug, pin}), signal: AbortSignal.timeout(8000),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) { setPinError("Incorrect PIN."); setPinLoading(false); return; }
-    } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
-    // PIN verified — load participants
-    try {
-      const data = await workerGet(`/?slug=${encodeURIComponent(pinSlug)}`);
+      const data = await workerGet(`/?slug=${encodeURIComponent(t.slug)}`);
       const extractP = (p) => p.participant || p;
       const participants = (data.participants||[]).map(p=>(extractP(p).display_name||extractP(p).username||extractP(p).name||"").trim()).filter(Boolean);
-      if(!participants.length) throw new Error("No participants found.");
-      setPinLoading(false);
-      onLoaded(pinSlug, participants);
-    } catch(e) { setLoadError(e.message||"Failed to load."); setPinLoading(false); }
+      if(!participants.length) throw new Error("No participants found for this event.");
+      onLoaded(t.slug, participants);
+    } catch(e) { setLoadError(e.message||"Failed to load."); }
+    finally { setLoadingSlug(null); }
   };
 
   const refresh = () => {
-    setCachedList([]);
-    setLoadingList(true);
-    workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>setCachedList([])).finally(()=>setLoadingList(false));
+    setCachedList([]); setLoadingList(true); setLoadError(null);
+    workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>{}).finally(()=>setLoadingList(false));
   };
-
-  if (pinSlug) {
-    return (
-      <PinModal
-        title="Tournament PIN"
-        subtitle={`Enter the PIN for "${pinSlug}" to join.`}
-        onSubmit={handlePin}
-        onCancel={()=>{ setPinSlug(null); setPinError(null); setLoadError(null); }}
-        error={pinError||loadError}
-        loading={pinLoading}
-      />
-    );
-  }
 
   return (
     <div style={{padding:"20px 16px"}}>
@@ -5770,11 +5738,12 @@ function TournamentLoader({onLoaded, onSwitchRole}){
             No tournaments are available right now.<br/>Ask your organizer to set up the event first.
           </p>
         )}
+        {loadError && <p style={{fontSize:12,color:"#EF4444",fontWeight:600,marginBottom:8}}>{loadError}</p>}
         {cachedList.map(t => (
-          <button key={t.slug} onClick={()=>handleSelect(t)}
-            style={{display:"block",width:"100%",padding:"13px 14px",borderRadius:12,border:"1px solid var(--border)",background:"var(--surface2)",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif",marginBottom:8}}>
+          <button key={t.slug} onClick={()=>!loadingSlug&&handleSelect(t)}
+            style={{display:"block",width:"100%",padding:"13px 14px",borderRadius:12,border:"1px solid var(--border)",background:loadingSlug===t.slug?"var(--surface3)":"var(--surface2)",cursor:loadingSlug?"not-allowed":"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif",marginBottom:8,opacity:loadingSlug&&loadingSlug!==t.slug?0.5:1}}>
             <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0}}>{t.name||t.slug}</p>
-            <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>{t.slug} · 🔒 PIN required</p>
+            <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>{loadingSlug===t.slug?"Loading…":t.slug}</p>
           </button>
         ))}
       </div>
@@ -6132,7 +6101,7 @@ function BeyJudgeApp() {
   return (
     <div style={{background:"var(--bg)",minHeight:"100vh",fontFamily:"'Outfit',sans-serif"}}>
       {libOpen&&<LibraryManager parts={parts} setParts={setParts} onClose={()=>setLibOpen(false)}/>}
-      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}}/>}
+      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap,names)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});if(names&&names.length){const merged=[...new Set([...players,...names])];setPlayers(merged);sSave(KEYS.players,merged);}}}/>}
       {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}} tournamentMode={config.tm}/>}
       {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
     </div>
