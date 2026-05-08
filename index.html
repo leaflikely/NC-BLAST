@@ -1559,7 +1559,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [cxPicker,setCxPicker] = useState(null); // null | {step,who,slot,chip?,blade?,returnToReview?}
   const [deckReview,setDeckReview] = useState(false); // true = show review screen, false = in picker flow
   const [lerStrikes,setLerStrikes] = useState([0,0]); // launch error strike counter per player [p1,p2]
-  const [pickTab,setPickTab] = useState(challongeSlug?"active":"roster"); // "roster" | "active"
+  const [pickTab,setPickTab] = useState((challongeSlug||config.tm)?"active":"roster"); // "roster" | "active"
   const [activeMatches,setActiveMatches] = useState(null); // null | "loading" | []
   const [challongeMatchId,setChallongeMatchId] = useState(null);
   const [challongeP1ParticipantId,setChallongeP1ParticipantId] = useState(null);
@@ -1839,7 +1839,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const body = { state };
     if(challongeMatchId) body.matchId = challongeMatchId;
     if(overlaySlot) body.slot = overlaySlot;
-    if(!challongeMatchId && !overlaySlot) return; // nothing to push to
+    if(!challongeMatchId && !overlaySlot) { if(config.tm) setOverlayStatus("error"); return; } // nothing to push to
 
     fetch(`${OVERLAY_WORKER}/overlay/push`, {
       method: "POST",
@@ -2672,7 +2672,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
         </div>
 
         {/* Tabs — only show Active Matches if a Challonge tournament is loaded */}
-        {hasChallonge&&(
+        {hasChallonge&&!config.tm&&(
           <div style={{display:"flex",gap:0,marginBottom:12,borderRadius:10,overflow:"hidden",border:"2px solid var(--border)"}}>
             {[["roster","👥 Roster"],["active","⚡ Active Matches"]].map(([tab,label])=>(
               <button key={tab} type="button" onClick={()=>{ setPickTab(tab); if(tab==="active") fetchActiveMatches(); }}
