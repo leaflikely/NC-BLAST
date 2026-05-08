@@ -5312,6 +5312,7 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
       slug = isCommunity ? `${subdomain}-${pathSlug}` : pathSlug;
     } catch(_) {}
     if (!slug) { setError("Enter a valid Challonge link."); return; }
+    console.log("[BLAST] Parsed slug:", slug);
     setPendingSlug(slug); setPendingName(slug);
     setPinError(null); setPinMode("master_for_create");
   };
@@ -5405,7 +5406,7 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
 
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",fontFamily:"'Outfit',sans-serif",display:"flex",flexDirection:"column"}}>
-      {pinMode==="master_for_create"&&<PinModal title="Master PIN Required" subtitle="Enter the master PIN to add a new tournament." onSubmit={handleMasterForCreate} onCancel={()=>setPinMode(null)} error={pinError} loading={pinLoading}/>}
+      {pinMode==="master_for_create"&&<PinModal title="Master PIN Required" subtitle={`Enter the master PIN to add a new tournament.\nSlug: ${pendingSlug}`} onSubmit={handleMasterForCreate} onCancel={()=>setPinMode(null)} error={pinError} loading={pinLoading}/>}
       {pinMode==="name_tournament"&&(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.7)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 20px"}}>
           <div style={{background:"var(--surface)",borderRadius:18,width:"100%",maxWidth:360,padding:"24px 20px",boxShadow:"0 16px 48px rgba(0,0,0,0.4)"}}>
