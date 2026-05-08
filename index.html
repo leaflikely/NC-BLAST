@@ -936,9 +936,6 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport}) {
               })}
           </div>
         )}
-
-      </div>
-
         {challongeStatus==="ok"&&<p style={{fontSize:11,color:"#15803D",fontWeight:600,marginTop:4}}>✓ {challongeMsg}</p>}
         {challongeStatus==="ok"&&challongeSource&&(
           <div style={{display:"inline-flex",alignItems:"center",gap:5,marginTop:5,padding:"3px 9px",borderRadius:20,border:"1px solid",
