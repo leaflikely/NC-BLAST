@@ -1839,13 +1839,18 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     const body = { state };
     if(challongeMatchId) body.matchId = challongeMatchId;
     if(overlaySlot) body.slot = overlaySlot;
-    if(!challongeMatchId && !overlaySlot) { if(config.tm) setOverlayStatus("error"); return; } // nothing to push to
-
+    if(!challongeMatchId && !overlaySlot) {
+      console.warn("[BLAST] pushOverlay bailed — no challongeMatchId and no overlaySlot", {challongeMatchId, overlaySlot, p1, p2});
+      if(config.tm) setOverlayStatus("error");
+      return;
+    }
+    console.log("[BLAST] pushOverlay firing", {matchId: challongeMatchId, slot: overlaySlot, p1, p2});
     fetch(`${OVERLAY_WORKER}/overlay/push`, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify(body),
-    }).then(()=>setOverlayStatus("ok")).catch(()=>setOverlayStatus("error"));
+    }).then(r => { console.log("[BLAST] push response", r.status); setOverlayStatus("ok"); })
+      .catch(e => { console.error("[BLAST] push failed", e); setOverlayStatus("error"); });
   };
 
   const submitChallongeScore = async (matchId, p1Score, p2Score, winnerChallongeId) => {
@@ -4997,8 +5002,9 @@ function OrgApp({onSwitchRole}) {
     const pollLive = async () => {
       try {
         const data = await workerGet("/overlay/all");
+        if((data.slots||[]).length > 0) console.log("[BLAST] org liveSlots", data.slots);
         setLiveSlots(data.slots || []);
-      } catch(_) {}
+      } catch(e) { console.error("[BLAST] pollLive failed", e); }
     };
     pollLive();
     liveSlotRef.current = setInterval(pollLive, 1000);
