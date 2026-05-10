@@ -4787,19 +4787,26 @@ function StandingsTab({slug, myName}){
 }
 
 /* ─── Combo Registration Tab ──────────────────────────────────── */
-function ComboTab({myName, myDeck, onDeckSaved, slug}){
+function ComboTab({myName, myDeck, onDeckSaved, slug, onCombosFound}){
   const [building, setBuilding] = useState(false);
-  const [savedCombos, setSavedCombos] = useState([]);
+  const [workerCombos, setWorkerCombos] = useState(null); // null = still loading, [] = loaded but empty
   const [pushStatus, setPushStatus] = useState(null); // null | "ok" | "error"
 
-  // Load previous combos from Worker on mount
+  // Load combos from Worker KV on mount or name change — this is the primary source of truth
+  // because judges also write here after every match
   useEffect(()=>{
-    if(!myName) return;
+    if(!myName){ setWorkerCombos([]); return; }
+    setWorkerCombos(null); // reset to loading state when name changes
     (async()=>{
       try {
         const data = await workerGet(`/combos/get?player=${encodeURIComponent(myName)}`);
-        if(Array.isArray(data.combos)&&data.combos.length) setSavedCombos(data.combos.map(normalizeCombo));
-      } catch(_){}
+        const fetched = Array.isArray(data.combos) ? data.combos.map(normalizeCombo).filter(c=>c.blade) : [];
+        setWorkerCombos(fetched);
+        onCombosFound && onCombosFound(fetched.length > 0);
+      } catch(_){
+        setWorkerCombos([]); // treat network error as no combos found
+        onCombosFound && onCombosFound(false);
+      }
     })();
   },[myName]);
 
@@ -4807,7 +4814,7 @@ function ComboTab({myName, myDeck, onDeckSaved, slug}){
     setBuilding(false);
     setPushStatus(null);
     onDeckSaved(deck);
-    // Push to Worker
+    // Push to Worker and update local display
     try {
       await fetch(`${OVERLAY_WORKER}/combos/push`,{
         method:"POST",headers:{"Content-Type":"application/json"},
@@ -4815,24 +4822,38 @@ function ComboTab({myName, myDeck, onDeckSaved, slug}){
         signal:AbortSignal.timeout(8000),
       });
       setPushStatus("ok");
+      const saved = deck.filter(c=>c.blade).map(normalizeCombo);
+      setWorkerCombos(saved);
+      onCombosFound && onCombosFound(saved.length > 0);
     } catch(_){ setPushStatus("error"); }
   };
 
+  // Determine what combos to display:
+  // Worker KV is primary (includes judge-registered combos). myDeck is fallback.
+  const loading = workerCombos === null;
+  const displayCombos = (workerCombos && workerCombos.length > 0)
+    ? workerCombos
+    : (myDeck && myDeck.some(c=>c?.blade) ? myDeck.map(normalizeCombo) : []);
+  const hasCombos = displayCombos.some(c=>c.blade);
+
   if(building){
-    return <DeckBuilder playerName={myName} initialDeck={myDeck} onSave={handleSave} onCancel={()=>setBuilding(false)} savedCombos={savedCombos}/>;
+    return <DeckBuilder playerName={myName} initialDeck={hasCombos ? displayCombos : myDeck} onSave={handleSave} onCancel={()=>setBuilding(false)} savedCombos={displayCombos.filter(c=>c.blade&&c.bit)}/>;
   }
 
-  const deckReady = myDeck&&myDeck.some(c=>c.blade&&c.ratchet&&c.bit);
-  const fullDeck = myDeck&&myDeck.every(c=>c.blade&&c.ratchet&&c.bit);
+  const labels = ["First","Second","Third"];
 
   return (
     <div style={{padding:"12px 14px",paddingBottom:20}}>
-      <h2 style={{fontSize:18,fontWeight:900,marginBottom:4}}>Deck Registration</h2>
-      <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:16,lineHeight:1.5}}>
-        Register your combos before your match. Your judge will see these automatically when your match starts.
-      </p>
+      <h2 style={{fontSize:18,fontWeight:900,marginBottom:4}}>Deck Registry</h2>
 
-      {/* Status banner */}
+      {/* No name selected */}
+      {!myName&&(
+        <div style={{padding:"12px 14px",borderRadius:10,background:"#EA580C15",border:"1px solid #EA580C40",fontSize:12,color:"var(--accent2)",marginBottom:16}}>
+          ⚠ Select your name first to view your deck.
+        </div>
+      )}
+
+      {/* Status banner after save */}
       {pushStatus==="ok"&&(
         <div style={{padding:"10px 14px",borderRadius:10,background:"#22C55E15",border:"1px solid #22C55E40",fontSize:12,fontWeight:700,color:"#22C55E",marginBottom:14}}>
           ✓ Deck saved and shared to all judge devices
@@ -4844,50 +4865,59 @@ function ComboTab({myName, myDeck, onDeckSaved, slug}){
         </div>
       )}
 
-      {/* Current deck display */}
-      {deckReady&&(
-        <div style={{marginBottom:14}}>
-          <p style={{fontSize:10,fontWeight:800,color:"var(--text-faint)",letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>
-            Your Registered Deck {fullDeck?"✓":"(Incomplete)"}
+      {/* Loading state */}
+      {myName && loading && (
+        <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:16}}>Loading your deck…</p>
+      )}
+
+      {/* No combos found */}
+      {myName && !loading && !hasCombos && (
+        <div style={{padding:"20px 16px",borderRadius:14,background:"#EF444408",border:"2px dashed #EF444440",textAlign:"center",marginBottom:16}}>
+          <div style={{fontSize:36,marginBottom:10}}>📋</div>
+          <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",marginBottom:8}}>No combos saved.</p>
+          <p style={{fontSize:12,color:"var(--text-muted)",lineHeight:1.6,margin:0}}>
+            Help your judge by building your deck here for faster deck verification!
           </p>
-          {(myDeck||[]).map((c,i)=>{
-            const nc = normalizeCombo(c);
-            const ready = nc.blade&&nc.ratchet&&nc.bit;
-            const labels = ["First","Second","Third"];
-            return (
-              <div key={i} style={{padding:"10px 13px",borderRadius:11,marginBottom:6,
-                border:`2px solid ${ready?"#22C55E40":"var(--border)"}`,
-                background:ready?"#22C55E08":"var(--surface2)"}}>
-                <p style={{fontSize:10,fontWeight:700,color:ready?"#22C55E":"var(--text-faint)",marginBottom:ready?4:0,letterSpacing:0.5,textTransform:"uppercase"}}>{labels[i]} Combo</p>
-                {ready?<p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:0}}>{comboStr(nc)}</p>
-                      :<p style={{fontSize:12,color:"var(--text-faint)",margin:0}}>Not built</p>}
-              </div>
-            );
-          })}
         </div>
       )}
 
-      <button onClick={()=>setBuilding(true)}
-        style={{display:"block",width:"100%",padding:"14px 0",borderRadius:12,border:"none",
-          background:deckReady?"var(--surface3)":"var(--accent)",
-          color:deckReady?"var(--text-secondary)":"#fff",
-          fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:10,
-          border:`2px solid ${deckReady?"var(--border)":"transparent"}`}}>
-        {deckReady?"✏ Edit Deck":"Build Your Deck →"}
-      </button>
-
-      {!myName&&(
-        <div style={{padding:"12px 14px",borderRadius:10,background:"#EA580C15",border:"1px solid #EA580C40",fontSize:12,color:"var(--accent2)"}}>
-          ⚠ Select your name first to register a deck.
-        </div>
+      {/* Combos found — display them */}
+      {myName && !loading && hasCombos && (
+        <>
+          <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:12,lineHeight:1.6}}>
+            This is your most recently saved deck. It was registered by either you from right here or by a judge from your last match. If you don't plan to play this deck next round, try editing it here to help your next match run smoother and more quickly!
+          </p>
+          <div style={{marginBottom:16}}>
+            {displayCombos.slice(0,3).map((c,i)=>{
+              const nc = normalizeCombo(c);
+              const isNoRatchet = NO_RATCHET_BLADES.includes(nc.blade);
+              const ready = nc.blade && nc.bit && (nc.ratchet || isNoRatchet);
+              return (
+                <div key={i} style={{padding:"10px 13px",borderRadius:11,marginBottom:6,
+                  border:`2px solid ${ready?"#22C55E40":"var(--border)"}`,
+                  background:ready?"#22C55E08":"var(--surface2)"}}>
+                  <p style={{fontSize:10,fontWeight:700,color:ready?"#22C55E":"var(--text-faint)",marginBottom:ready?4:0,letterSpacing:0.5,textTransform:"uppercase"}}>{labels[i]} Combo</p>
+                  {ready
+                    ? <p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:0}}>{comboStr(nc)}</p>
+                    : <p style={{fontSize:12,color:"var(--text-faint)",margin:0}}>Not built</p>}
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
-      <div style={{marginTop:20,padding:"12px 14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)"}}>
-        <p style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",marginBottom:6}}>How it works</p>
-        <p style={{fontSize:11,color:"var(--text-faint)",lineHeight:1.6,margin:0}}>
-          Build and save your combos here before your match. When your judge starts scoring your match, your deck loads automatically on their device. You can update your deck between matches — your latest save is what judges see.
-        </p>
-      </div>
+      {/* Build / Edit button — only shown when name is selected */}
+      {myName && !loading && (
+        <button onClick={()=>setBuilding(true)}
+          style={{display:"block",width:"100%",padding:"14px 0",borderRadius:12,
+            background:hasCombos?"var(--surface3)":"var(--accent)",
+            color:hasCombos?"var(--text-secondary)":"#fff",
+            fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:10,
+            border:`2px solid ${hasCombos?"var(--border)":"transparent"}`}}>
+          {hasCombos?"✏ Edit Deck":"Build Your Deck →"}
+        </button>
+      )}
     </div>
   );
 }
@@ -5833,6 +5863,7 @@ function PlayerApp({onSwitchRole}){
   const [namePickerOpen, setNamePickerOpen] = useState(false);
   const [liveSlots, setLiveSlots] = useState([]);
   const [eventDeleted, setEventDeleted] = useState(false);
+  const [playerHasCombos, setPlayerHasCombos] = useState(true); // default true to avoid flashing badge before load
   const pollRef = useRef(null);
   const deletionPollRef = useRef(null);
 
@@ -5909,8 +5940,8 @@ function PlayerApp({onSwitchRole}){
     {id:"history",label:"History",icon:"📋"},
   ];
 
-  // Show a red (1) badge on Deck tab if player has no deck registered this session
-  const deckNeedsBadge = !!myName && !myDeck?.some(c=>c?.blade);
+  // Badge shows when player has a name but no combos found in Worker KV (checked by ComboTab)
+  const deckNeedsBadge = !!myName && !playerHasCombos;
 
   if(!slug){
     return <TournamentLoader onLoaded={(s,p)=>updateSession({slug:s,participants:p,myName:null,myDeck:null})} onSwitchRole={onSwitchRole}/>;
@@ -5962,7 +5993,8 @@ function PlayerApp({onSwitchRole}){
         {tab==="pairings"&&<PairingsTab slug={slug} myName={myName} liveSlots={liveSlots}/>}
         {tab==="standings"&&<StandingsTab slug={slug} myName={myName}/>}
         {tab==="combos"&&<ComboTab myName={myName} myDeck={myDeck} slug={slug}
-          onDeckSaved={deck=>updateSession({myDeck:deck})}/>}
+          onDeckSaved={deck=>updateSession({myDeck:deck})}
+          onCombosFound={found=>setPlayerHasCombos(found)}/>}
         {tab==="history"&&<HistoryTab slug={slug} myName={myName}/>}
       </div>
 
@@ -5994,7 +6026,7 @@ function PlayerApp({onSwitchRole}){
               <button onClick={()=>setNamePickerOpen(false)} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:22,fontFamily:"'Outfit',sans-serif"}}>×</button>
             </div>
             <NamePicker participants={participants} currentName={myName}
-              onSelect={name=>{ updateSession({myName:name}); setNamePickerOpen(false); }}/>
+              onSelect={name=>{ setPlayerHasCombos(true); updateSession({myName:name}); setNamePickerOpen(false); }}/>
             <div style={{padding:"0 14px 16px"}}>
               <button onClick={()=>{updateSession({slug:null,participants:[],myName:null,myDeck:null});setNamePickerOpen(false);}}
                 style={{width:"100%",padding:"11px 0",borderRadius:10,border:"2px solid var(--border)",background:"transparent",color:"var(--text-faint)",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:8}}>
