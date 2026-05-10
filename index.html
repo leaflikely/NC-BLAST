@@ -1,3 +1,4 @@
+<!-- NC BLAST index.html | last updated: 2026-05-10 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -113,12 +114,12 @@ const COMBO_CACHE_TTL = 60 * 60 * 1000; // 1 hour in ms
 
 // Push a player's combos to the Worker KV so other devices can load them
 async function pushComboCacheToWorker(playerName, combos) {
-  if(!playerName || !combos?.length) return;
+  if(!playerName) return;
   try {
     await fetch(`${OVERLAY_WORKER}/combos/push`, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ player: playerName, combos, updatedAt: Date.now() }),
+      body: JSON.stringify({ player: playerName, combos: combos||[], updatedAt: Date.now() }),
       signal: AbortSignal.timeout(5000),
     });
   } catch(_) {}
@@ -712,8 +713,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
       const extractP = (p) => p.participant || p;
       const names = participants.map(p=>(extractP(p).display_name||extractP(p).username||extractP(p).name||"").trim()).filter(Boolean);
       if(!names.length) throw new Error("No participants found in cache");
-      const merged = [...new Set([...players,...names])];
-      setPlayers(merged); sSave(KEYS.players, merged);
+      const fresh = [...new Set(names)];
+      setPlayers(fresh); sSave(KEYS.players, fresh);
       const participantMap = {};
       participants.forEach(p => {
         const part = extractP(p);
@@ -827,8 +828,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
     // Device cache hit — zero network calls
     const lcHit = lcGet(slug);
     if(lcHit) {
-      const merged = [...new Set([...players,...lcHit])];
-      setPlayers(merged); sSave(KEYS.players, merged);
+      const fresh = [...new Set(lcHit)];
+      setPlayers(fresh); sSave(KEYS.players, fresh);
       setChallongeStatus("ok");
       setChallongeSource("cached");
       setChallongeMsg(`✓ ${lcHit.length} players loaded from NC BLAST cache for "${slug}"`);
@@ -896,8 +897,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
         const { data, fromServerCache } = parseResponse(text, proxy.raw);
         const names = data.map(p=>(p.participant?.display_name||p.participant?.username||p.participant?.name||"").trim()).filter(Boolean);
         if(!names.length) throw new Error("No participants found — is this tournament public with entrants added?");
-        const merged = [...new Set([...players,...names])];
-        setPlayers(merged); sSave(KEYS.players, merged);
+        const fresh = [...new Set(names)];
+        setPlayers(fresh); sSave(KEYS.players, fresh);
         lcSet(slug, names);
         // Build participant ID map — store both full name and truncated name as keys
         const participantMap = {};
@@ -1753,6 +1754,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
 
   const saveCombosToStorage = () => {
     const saved = sGet(KEYS.combos, {});
+    const pushQueue = [];
     [[p1, d1],[p2, d2]].forEach(([name, deck])=>{
       if(!name) return;
       const prev = (saved[name] || []).map(normalizeCombo);
@@ -1770,10 +1772,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       // Expire combos older than 1hr
       const fresh = prev.filter(c=>!c.updatedAt||(Date.now()-c.updatedAt)<COMBO_CACHE_TTL);
       saved[name] = fresh;
-      // Push fresh list to Worker KV for cross-device access
-      pushComboCacheToWorker(name, fresh);
+      // Queue push for this player — will run in parallel below
+      pushQueue.push([name, fresh]);
     });
     sSave(KEYS.combos, saved);
+    // Push all players to Worker KV in parallel so neither overwrites the other
+    Promise.all(pushQueue.map(([name, fresh]) => pushComboCacheToWorker(name, fresh)));
   };
 
   const fetchActiveMatches = async () => {
@@ -2478,7 +2482,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
             delete store[playerName];
             sSave(KEYS.combos, store);
             setWorkerCombos(prev => { const n={...prev}; delete n[playerName]; return n; });
-            // Also clear from Worker KV (fire and forget)
             fetch(`${OVERLAY_WORKER}/combos/push`, {
               method:"POST", headers:{"Content-Type":"application/json"},
               body: JSON.stringify({player:playerName, combos:[], updatedAt:Date.now()}),
@@ -3838,7 +3841,6 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[]}
   };
 
   const advanceAfter = (slot, cat) => {
-    // auto-advance in linear flow — skip ratchet for Bullet Griffon
     const cats=["blade","ratchet","bit"];
     const ci=cats.indexOf(cat);
     if(ci<2){
@@ -4789,32 +4791,27 @@ function StandingsTab({slug, myName}){
 /* ─── Combo Registration Tab ──────────────────────────────────── */
 function ComboTab({myName, myDeck, onDeckSaved, slug, onCombosFound}){
   const [building, setBuilding] = useState(false);
-  const [workerCombos, setWorkerCombos] = useState(null); // null = still loading, [] = loaded but empty
-  const [pushStatus, setPushStatus] = useState(null); // null | "ok" | "error"
+  const [workerCombos, setWorkerCombos] = useState(null); // null=loading, []=loaded empty
+  const [pushStatus, setPushStatus] = useState(null);
 
-  // Load combos from Worker KV on mount or name change — this is the primary source of truth
-  // because judges also write here after every match
   useEffect(()=>{
-    if(!myName){ setWorkerCombos([]); return; }
-    setWorkerCombos(null); // reset to loading state when name changes
+    if(!myName){ setWorkerCombos([]); onCombosFound&&onCombosFound(false); return; }
+    setWorkerCombos(null);
     (async()=>{
       try {
         const data = await workerGet(`/combos/get?player=${encodeURIComponent(myName)}`);
         const fetched = Array.isArray(data.combos) ? data.combos.map(normalizeCombo).filter(c=>c.blade) : [];
         setWorkerCombos(fetched);
-        onCombosFound && onCombosFound(fetched.length > 0);
+        onCombosFound&&onCombosFound(fetched.length>0);
       } catch(_){
-        setWorkerCombos([]); // treat network error as no combos found
-        onCombosFound && onCombosFound(false);
+        setWorkerCombos([]);
+        onCombosFound&&onCombosFound(false);
       }
     })();
   },[myName]);
 
   const handleSave = async(deck) => {
-    setBuilding(false);
-    setPushStatus(null);
-    onDeckSaved(deck);
-    // Push to Worker and update local display
+    setBuilding(false); setPushStatus(null); onDeckSaved(deck);
     try {
       await fetch(`${OVERLAY_WORKER}/combos/push`,{
         method:"POST",headers:{"Content-Type":"application/json"},
@@ -4824,36 +4821,31 @@ function ComboTab({myName, myDeck, onDeckSaved, slug, onCombosFound}){
       setPushStatus("ok");
       const saved = deck.filter(c=>c.blade).map(normalizeCombo);
       setWorkerCombos(saved);
-      onCombosFound && onCombosFound(saved.length > 0);
+      onCombosFound&&onCombosFound(saved.length>0);
     } catch(_){ setPushStatus("error"); }
   };
 
-  // Determine what combos to display:
-  // Worker KV is primary (includes judge-registered combos). myDeck is fallback.
-  const loading = workerCombos === null;
-  const displayCombos = (workerCombos && workerCombos.length > 0)
+  const loading = workerCombos===null;
+  const displayCombos = (workerCombos&&workerCombos.length>0)
     ? workerCombos
-    : (myDeck && myDeck.some(c=>c?.blade) ? myDeck.map(normalizeCombo) : []);
+    : (myDeck&&myDeck.some(c=>c?.blade) ? myDeck.map(normalizeCombo) : []);
   const hasCombos = displayCombos.some(c=>c.blade);
+  const labels = ["First","Second","Third"];
 
   if(building){
-    return <DeckBuilder playerName={myName} initialDeck={hasCombos ? displayCombos : myDeck} onSave={handleSave} onCancel={()=>setBuilding(false)} savedCombos={displayCombos.filter(c=>c.blade&&c.bit)}/>;
+    return <DeckBuilder playerName={myName} initialDeck={hasCombos?displayCombos:myDeck} onSave={handleSave} onCancel={()=>setBuilding(false)} savedCombos={displayCombos.filter(c=>c.blade&&c.bit)}/>;
   }
-
-  const labels = ["First","Second","Third"];
 
   return (
     <div style={{padding:"12px 14px",paddingBottom:20}}>
       <h2 style={{fontSize:18,fontWeight:900,marginBottom:4}}>Deck Registry</h2>
 
-      {/* No name selected */}
       {!myName&&(
         <div style={{padding:"12px 14px",borderRadius:10,background:"#EA580C15",border:"1px solid #EA580C40",fontSize:12,color:"var(--accent2)",marginBottom:16}}>
           ⚠ Select your name first to view your deck.
         </div>
       )}
 
-      {/* Status banner after save */}
       {pushStatus==="ok"&&(
         <div style={{padding:"10px 14px",borderRadius:10,background:"#22C55E15",border:"1px solid #22C55E40",fontSize:12,fontWeight:700,color:"#22C55E",marginBottom:14}}>
           ✓ Deck saved and shared to all judge devices
@@ -4865,13 +4857,11 @@ function ComboTab({myName, myDeck, onDeckSaved, slug, onCombosFound}){
         </div>
       )}
 
-      {/* Loading state */}
-      {myName && loading && (
+      {myName&&loading&&(
         <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:16}}>Loading your deck…</p>
       )}
 
-      {/* No combos found */}
-      {myName && !loading && !hasCombos && (
+      {myName&&!loading&&!hasCombos&&(
         <div style={{padding:"20px 16px",borderRadius:14,background:"#EF444408",border:"2px dashed #EF444440",textAlign:"center",marginBottom:16}}>
           <div style={{fontSize:36,marginBottom:10}}>📋</div>
           <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",marginBottom:8}}>No combos saved.</p>
@@ -4881,8 +4871,7 @@ function ComboTab({myName, myDeck, onDeckSaved, slug, onCombosFound}){
         </div>
       )}
 
-      {/* Combos found — display them */}
-      {myName && !loading && hasCombos && (
+      {myName&&!loading&&hasCombos&&(
         <>
           <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:12,lineHeight:1.6}}>
             This is your most recently saved deck. It was registered by either you from right here or by a judge from your last match. If you don't plan to play this deck next round, try editing it here to help your next match run smoother and more quickly!
@@ -4891,15 +4880,15 @@ function ComboTab({myName, myDeck, onDeckSaved, slug, onCombosFound}){
             {displayCombos.slice(0,3).map((c,i)=>{
               const nc = normalizeCombo(c);
               const isNoRatchet = NO_RATCHET_BLADES.includes(nc.blade);
-              const ready = nc.blade && nc.bit && (nc.ratchet || isNoRatchet);
+              const ready = nc.blade&&nc.bit&&(nc.ratchet||isNoRatchet);
               return (
                 <div key={i} style={{padding:"10px 13px",borderRadius:11,marginBottom:6,
                   border:`2px solid ${ready?"#22C55E40":"var(--border)"}`,
                   background:ready?"#22C55E08":"var(--surface2)"}}>
                   <p style={{fontSize:10,fontWeight:700,color:ready?"#22C55E":"var(--text-faint)",marginBottom:ready?4:0,letterSpacing:0.5,textTransform:"uppercase"}}>{labels[i]} Combo</p>
                   {ready
-                    ? <p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:0}}>{comboStr(nc)}</p>
-                    : <p style={{fontSize:12,color:"var(--text-faint)",margin:0}}>Not built</p>}
+                    ?<p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:0}}>{comboStr(nc)}</p>
+                    :<p style={{fontSize:12,color:"var(--text-faint)",margin:0}}>Not built</p>}
                 </div>
               );
             })}
@@ -4907,8 +4896,7 @@ function ComboTab({myName, myDeck, onDeckSaved, slug, onCombosFound}){
         </>
       )}
 
-      {/* Build / Edit button — only shown when name is selected */}
-      {myName && !loading && (
+      {myName&&!loading&&(
         <button onClick={()=>setBuilding(true)}
           style={{display:"block",width:"100%",padding:"14px 0",borderRadius:12,
             background:hasCombos?"var(--surface3)":"var(--accent)",
@@ -5090,22 +5078,6 @@ function OrgApp({onSwitchRole}) {
     };
   }, [slug]);
 
-  // Poll for own event being deleted every 20s
-  const [orgEventDeleted, setOrgEventDeleted] = useState(false);
-  const orgDeletionRef = useRef(null);
-  useEffect(()=>{
-    if(!slug) return;
-    const check = async () => {
-      try {
-        const data = await workerGet("/list");
-        const slugs = (data.tournaments||[]).map(t=>t.slug);
-        if(!slugs.includes(slug)) setOrgEventDeleted(true);
-      } catch(_){}
-    };
-    orgDeletionRef.current = setInterval(check, 20000);
-    return ()=>clearInterval(orgDeletionRef.current);
-  },[slug]);
-
   // ── When pings arrive, surface the first one if none showing ─────
   useEffect(() => {
     if (!activePing && pings.length > 0) {
@@ -5127,6 +5099,22 @@ function OrgApp({onSwitchRole}) {
       });
     } catch(_) {}
   };
+
+  // Poll for event deletion every 20s
+  const [orgEventDeleted, setOrgEventDeleted] = React.useState(false);
+  const orgDeletionRef = React.useRef(null);
+  React.useEffect(()=>{
+    if(!slug) return;
+    const check = async () => {
+      try {
+        const data = await workerGet("/list");
+        const slugs = (data.tournaments||[]).map(t=>t.slug);
+        if(!slugs.includes(slug)) setOrgEventDeleted(true);
+      } catch(_){}
+    };
+    orgDeletionRef.current = setInterval(check, 20000);
+    return ()=>clearInterval(orgDeletionRef.current);
+  },[slug]);
 
   // ── Tournament select screen ──────────────────────────────────────
   if (!slug) {
@@ -5193,6 +5181,8 @@ function OrgApp({onSwitchRole}) {
           </div>
         </div>
       )}
+
+      {/* ── Header ─────────────────────────────────────────────── */}
       <div style={{background:"var(--surface)",borderBottom:"1px solid var(--border)",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         <button onClick={onSwitchRole} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",lineHeight:1,padding:"2px 4px"}}>←</button>
         <div style={{flex:1,minWidth:0}}>
@@ -5856,18 +5846,17 @@ function TournamentLoader({onLoaded, onSwitchRole}){
   );
 }
 
-/* ─── Main App ────────────────────────────────────────────────── */
 function PlayerApp({onSwitchRole}){
   const [session, setSession] = useState(()=>sGet(STORAGE_KEY,{slug:null,participants:[],myName:null,myDeck:null}));
-  const [tab, setTab] = useState("pairings"); // "pairings" | "standings" | "combos" | "history"
+  const [tab, setTab] = useState("pairings");
   const [namePickerOpen, setNamePickerOpen] = useState(false);
   const [liveSlots, setLiveSlots] = useState([]);
   const [eventDeleted, setEventDeleted] = useState(false);
-  const [playerHasCombos, setPlayerHasCombos] = useState(true); // default true to avoid flashing badge before load
+  const [playerHasCombos, setPlayerHasCombos] = useState(true); // default true — no badge flash before load
   const pollRef = useRef(null);
   const deletionPollRef = useRef(null);
 
-  // Destructure session early so all hooks below can reference slug
+  // Destructure early so all hooks below can reference slug
   const {slug, participants, myName, myDeck} = session;
 
   const updateSession = (patch) => {
@@ -5879,7 +5868,7 @@ function PlayerApp({onSwitchRole}){
     updateSession({slug:null,participants:[],myName:null,myDeck:null});
   };
 
-  // Poll for event deletion — check every 20s if our slug still exists in the cache list
+  // Poll for event deletion every 20s
   useEffect(()=>{
     if(!slug) return;
     const checkDeletion = async () => {
@@ -5898,7 +5887,6 @@ function PlayerApp({onSwitchRole}){
     const params = new URLSearchParams(window.location.search);
     const paramSlug = params.get("slug")||params.get("tournament");
     if(paramSlug&&!slug){
-      // Auto-load from URL param
       (async()=>{
         try {
           const data = await workerGet(`/?slug=${encodeURIComponent(paramSlug)}`);
@@ -5915,8 +5903,6 @@ function PlayerApp({onSwitchRole}){
     const poll = async() => {
       try {
         const data = await workerGet("/overlay/all");
-        // Server already filters stale/abandoned/matchOver entries.
-        // Just deduplicate by matchId in case of any duplicate keys.
         const seen = new Set();
         const deduped = (data.slots||[]).filter(s=>{
           if(!s.state||!s.state.p1) return false;
@@ -5940,7 +5926,6 @@ function PlayerApp({onSwitchRole}){
     {id:"history",label:"History",icon:"📋"},
   ];
 
-  // Badge shows when player has a name but no combos found in Worker KV (checked by ComboTab)
   const deckNeedsBadge = !!myName && !playerHasCombos;
 
   if(!slug){
@@ -5949,20 +5934,7 @@ function PlayerApp({onSwitchRole}){
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100dvh",maxWidth:480,margin:"0 auto"}}>
-      {/* Event deleted notification */}
-      {eventDeleted&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.85)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
-          <div style={{background:"var(--surface)",borderRadius:20,padding:"28px 22px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"2px solid #EF4444",textAlign:"center"}}>
-            <div style={{fontSize:40,marginBottom:12}}>🗑️</div>
-            <p style={{fontSize:17,fontWeight:900,color:"var(--text-primary)",marginBottom:8}}>Event Removed</p>
-            <p style={{fontSize:13,color:"var(--text-secondary)",marginBottom:22,lineHeight:1.5}}>This tournament has been removed from the NC BLAST cache by the organizer.</p>
-            <button onClick={handleEventDeletedDismiss}
-              style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:"#EA580C",color:"#fff",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-              Back to Event Select
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Top bar */}
       <div style={{padding:"10px 14px",background:"var(--surface)",borderBottom:"1px solid var(--border)",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -6017,6 +5989,21 @@ function PlayerApp({onSwitchRole}){
         ))}
       </div>
 
+      {/* Event deleted notification */}
+      {eventDeleted&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.85)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+          <div style={{background:"var(--surface)",borderRadius:20,padding:"28px 22px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"2px solid #EF4444",textAlign:"center"}}>
+            <div style={{fontSize:40,marginBottom:12}}>🗑️</div>
+            <p style={{fontSize:17,fontWeight:900,color:"var(--text-primary)",marginBottom:8}}>Event Removed</p>
+            <p style={{fontSize:13,color:"var(--text-secondary)",marginBottom:22,lineHeight:1.5}}>This tournament has been removed from the NC BLAST cache by the organizer.</p>
+            <button onClick={handleEventDeletedDismiss}
+              style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:"#EA580C",color:"#fff",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              Back to Event Select
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Name picker overlay */}
       {namePickerOpen&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:100,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
@@ -6026,7 +6013,7 @@ function PlayerApp({onSwitchRole}){
               <button onClick={()=>setNamePickerOpen(false)} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:22,fontFamily:"'Outfit',sans-serif"}}>×</button>
             </div>
             <NamePicker participants={participants} currentName={myName}
-              onSelect={name=>{ setPlayerHasCombos(true); updateSession({myName:name}); setNamePickerOpen(false); }}/>
+              onSelect={name=>{ setPlayerHasCombos(true); updateSession({myName:name, myDeck:null}); setNamePickerOpen(false); }}/>
             <div style={{padding:"0 14px 16px"}}>
               <button onClick={()=>{updateSession({slug:null,participants:[],myName:null,myDeck:null});setNamePickerOpen(false);}}
                 style={{width:"100%",padding:"11px 0",borderRadius:10,border:"2px solid var(--border)",background:"transparent",color:"var(--text-faint)",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:8}}>
@@ -6151,7 +6138,6 @@ function BeyJudgeApp() {
   const [judgeEventDeleted,setJudgeEventDeleted] = useState(false);
   const judgeDeletionRef = useRef(null);
 
-  // Poll for event deletion while a slug is loaded (every 20s)
   useEffect(()=>{
     if(!challongeSlug) return;
     const check = async () => {
@@ -6263,7 +6249,6 @@ function BeyJudgeApp() {
   return (
     <div style={{background:"var(--bg)",minHeight:"100vh",fontFamily:"'Outfit',sans-serif"}}>
       {libOpen&&<LibraryManager parts={parts} setParts={setParts} onClose={()=>setLibOpen(false)}/>}
-      {/* Judge event deletion notification */}
       {judgeEventDeleted&&(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.85)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
           <div style={{background:"var(--surface)",borderRadius:20,padding:"28px 22px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"2px solid #EF4444",textAlign:"center"}}>
