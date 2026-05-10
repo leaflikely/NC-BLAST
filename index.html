@@ -712,8 +712,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
       const extractP = (p) => p.participant || p;
       const names = participants.map(p=>(extractP(p).display_name||extractP(p).username||extractP(p).name||"").trim()).filter(Boolean);
       if(!names.length) throw new Error("No participants found in cache");
-      const fresh = [...new Set(names)];
-      setPlayers(fresh); sSave(KEYS.players, fresh);
+      const merged = [...new Set([...players,...names])];
+      setPlayers(merged); sSave(KEYS.players, merged);
       const participantMap = {};
       participants.forEach(p => {
         const part = extractP(p);
@@ -827,8 +827,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
     // Device cache hit — zero network calls
     const lcHit = lcGet(slug);
     if(lcHit) {
-      const fresh = [...new Set(lcHit)];
-      setPlayers(fresh); sSave(KEYS.players, fresh);
+      const merged = [...new Set([...players,...lcHit])];
+      setPlayers(merged); sSave(KEYS.players, merged);
       setChallongeStatus("ok");
       setChallongeSource("cached");
       setChallongeMsg(`✓ ${lcHit.length} players loaded from NC BLAST cache for "${slug}"`);
@@ -896,8 +896,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
         const { data, fromServerCache } = parseResponse(text, proxy.raw);
         const names = data.map(p=>(p.participant?.display_name||p.participant?.username||p.participant?.name||"").trim()).filter(Boolean);
         if(!names.length) throw new Error("No participants found — is this tournament public with entrants added?");
-        const fresh = [...new Set(names)];
-        setPlayers(fresh); sSave(KEYS.players, fresh);
+        const merged = [...new Set([...players,...names])];
+        setPlayers(merged); sSave(KEYS.players, merged);
         lcSet(slug, names);
         // Build participant ID map — store both full name and truncated name as keys
         const participantMap = {};
@@ -1531,16 +1531,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [picker,setPicker] = useState(null);
   const [pickerHistory,setPickerHistory] = useState([]); // stack of previous picker states for undo
   const openPicker = (val) => {
-    // Bullet Griffon cannot use a ratchet — skip the ratchet step automatically
-    if(val?.cat === "ratchet") {
-      const deck = val.who===1 ? d1 : d2;
-      const blade = deck[val.slot]?.blade;
-      if(blade && NO_RATCHET_BLADES.includes(blade)) {
-        setPickerHistory(h => picker ? [...h, picker] : h);
-        setPicker({...val, cat:"bit"}); setPickerSearch(""); setCrossoverOpen(false); setCxPicker(null);
-        return;
-      }
-    }
     setPickerHistory(h => picker ? [...h, picker] : h);
     setPicker(val); setPickerSearch(""); setCrossoverOpen(false); setCxPicker(null);
   };
@@ -2483,9 +2473,26 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           merged.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
           const prevCombos = merged.filter(c=>comboReady(c));
           if(!prevCombos.length) return null;
+          const clearCombos = () => {
+            const store = sGet(KEYS.combos, {});
+            delete store[playerName];
+            sSave(KEYS.combos, store);
+            setWorkerCombos(prev => { const n={...prev}; delete n[playerName]; return n; });
+            // Also clear from Worker KV (fire and forget)
+            fetch(`${OVERLAY_WORKER}/combos/push`, {
+              method:"POST", headers:{"Content-Type":"application/json"},
+              body: JSON.stringify({player:playerName, combos:[], updatedAt:Date.now()}),
+            }).catch(()=>{});
+          };
           return (
             <div style={{marginBottom:12}}>
-              <p style={{fontSize:9,fontWeight:700,color:"#7C3AED",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>🕐 Previous Combos</p>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                <p style={{fontSize:9,fontWeight:700,color:"#7C3AED",letterSpacing:1.5,textTransform:"uppercase",margin:0}}>🕐 Previous Combos</p>
+                <button onClick={clearCombos}
+                  style={{background:"none",border:"1px solid #EF444450",borderRadius:6,padding:"2px 8px",fontSize:9,fontWeight:700,color:"#EF4444",fontFamily:"'Outfit',sans-serif",cursor:"pointer",letterSpacing:0.3}}>
+                  Clear Previous Combos
+                </button>
+              </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
                 {prevCombos.map((c,ci)=>{
                   const bTaken=takenByOtherSlots.includes(c.blade);
@@ -3803,7 +3810,7 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[]}
   const [crossoverOpen, setCrossoverOpen] = useState(false);
   const stepHistory = useRef([]);
 
-  const allReady = deck.every(c=>c.blade&&c.ratchet&&c.bit);
+  const allReady = deck.every(c=>c.blade&&c.bit&&(c.ratchet||NO_RATCHET_BLADES.includes(c.blade)));
 
   // Taken parts (across all slots, excluding current slot)
   const takenFor = (slot, cat) => {
@@ -3814,6 +3821,10 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[]}
   };
 
   const openStep = (s) => {
+    // Skip ratchet step if Bullet Griffon is already selected in that slot
+    if(s?.cat === "ratchet" && NO_RATCHET_BLADES.includes(deck[s.slot]?.blade)) {
+      s = {...s, cat: "bit"};
+    }
     if(step) stepHistory.current.push(step);
     setStep(s); setSearch(""); setCxOpen(false); setCrossoverOpen(false);
   };
@@ -3827,11 +3838,14 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[]}
   };
 
   const advanceAfter = (slot, cat) => {
-    // auto-advance in linear flow
+    // auto-advance in linear flow — skip ratchet for Bullet Griffon
     const cats=["blade","ratchet","bit"];
     const ci=cats.indexOf(cat);
-    if(ci<2) openStep({slot,cat:cats[ci+1]});
-    else if(slot<2) openStep({slot:slot+1,cat:"blade"});
+    if(ci<2){
+      let nextCat = cats[ci+1];
+      if(nextCat==="ratchet" && NO_RATCHET_BLADES.includes(deck[slot]?.blade)) nextCat="bit";
+      openStep({slot,cat:nextCat});
+    } else if(slot<2) openStep({slot:slot+1,cat:"blade"});
     else { setStep(null); stepHistory.current=[]; }
   };
 
@@ -3878,7 +3892,8 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[]}
         <div style={{flex:1,overflowY:"auto",padding:"12px 16px"}}>
           {deck.map((c,i)=>{
             const nc = normalizeCombo(c);
-            const ready = nc.blade&&nc.ratchet&&nc.bit;
+            const isNoRatchet = NO_RATCHET_BLADES.includes(nc.blade);
+            const ready = nc.blade&&nc.bit&&(nc.ratchet||isNoRatchet);
             return (
               <div key={i} style={{marginBottom:10,padding:"12px 14px",borderRadius:13,border:`2px solid ${ready?"#22C55E40":"var(--border)"}`,background:ready?"#22C55E08":"var(--surface2)"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -3890,7 +3905,7 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[]}
                 </div>
                 {ready ? (
                   <div style={{display:"flex",gap:6}}>
-                    {["blade","ratchet","bit"].map(cat=>(
+                    {(isNoRatchet?["blade","bit"]:["blade","ratchet","bit"]).map(cat=>(
                       <button key={cat} onClick={()=>openStep({slot:i,cat,returnToReview:true})}
                         style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface3)",color:"var(--text-secondary)",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textAlign:"center",lineHeight:1.2}}>
                         <div style={{fontSize:8,color:"var(--text-faint)",marginBottom:2,textTransform:"uppercase",letterSpacing:0.5}}>{cat}</div>
@@ -5045,6 +5060,22 @@ function OrgApp({onSwitchRole}) {
     };
   }, [slug]);
 
+  // Poll for own event being deleted every 20s
+  const [orgEventDeleted, setOrgEventDeleted] = useState(false);
+  const orgDeletionRef = useRef(null);
+  useEffect(()=>{
+    if(!slug) return;
+    const check = async () => {
+      try {
+        const data = await workerGet("/list");
+        const slugs = (data.tournaments||[]).map(t=>t.slug);
+        if(!slugs.includes(slug)) setOrgEventDeleted(true);
+      } catch(_){}
+    };
+    orgDeletionRef.current = setInterval(check, 20000);
+    return ()=>clearInterval(orgDeletionRef.current);
+  },[slug]);
+
   // ── When pings arrive, surface the first one if none showing ─────
   useEffect(() => {
     if (!activePing && pings.length > 0) {
@@ -5118,7 +5149,20 @@ function OrgApp({onSwitchRole}) {
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",fontFamily:"'Outfit',sans-serif",display:"flex",flexDirection:"column"}}>
 
-      {/* ── Header ─────────────────────────────────────────────── */}
+      {/* Event deleted notification */}
+      {orgEventDeleted&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.85)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+          <div style={{background:"var(--surface)",borderRadius:20,padding:"28px 22px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"2px solid #EF4444",textAlign:"center"}}>
+            <div style={{fontSize:40,marginBottom:12}}>🗑️</div>
+            <p style={{fontSize:17,fontWeight:900,color:"var(--text-primary)",marginBottom:8}}>Event Removed</p>
+            <p style={{fontSize:13,color:"var(--text-secondary)",marginBottom:22,lineHeight:1.5}}>This tournament has been removed from the NC BLAST cache.</p>
+            <button onClick={()=>{setOrgEventDeleted(false);setSlug(null);setTourneyName("");}}
+              style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:"#EA580C",color:"#fff",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              Back to Event Select
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{background:"var(--surface)",borderBottom:"1px solid var(--border)",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         <button onClick={onSwitchRole} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",lineHeight:1,padding:"2px 4px"}}>←</button>
         <div style={{flex:1,minWidth:0}}>
@@ -5786,9 +5830,27 @@ function TournamentLoader({onLoaded, onSwitchRole}){
 function PlayerApp({onSwitchRole}){
   const [session, setSession] = useState(()=>sGet(STORAGE_KEY,{slug:null,participants:[],myName:null,myDeck:null}));
   const [tab, setTab] = useState("pairings"); // "pairings" | "standings" | "combos" | "history"
-  const [namePickerOpen, setNamePickerOpen] = useState(false);
-  const [liveSlots, setLiveSlots] = useState([]);
-  const pollRef = useRef(null);
+  const [eventDeleted, setEventDeleted] = useState(false);
+  const deletionPollRef = useRef(null);
+
+  // Poll for event deletion — check every 20s if our slug still exists in the cache list
+  useEffect(()=>{
+    if(!slug) return;
+    const checkDeletion = async () => {
+      try {
+        const data = await workerGet("/list");
+        const slugs = (data.tournaments||[]).map(t=>t.slug);
+        if(!slugs.includes(slug)) setEventDeleted(true);
+      } catch(_){}
+    };
+    deletionPollRef.current = setInterval(checkDeletion, 20000);
+    return ()=>clearInterval(deletionPollRef.current);
+  },[slug]);
+
+  const handleEventDeletedDismiss = () => {
+    setEventDeleted(false);
+    updateSession({slug:null,participants:[],myName:null,myDeck:null});
+  };
 
   const {slug, participants, myName, myDeck} = session;
 
@@ -5843,13 +5905,29 @@ function PlayerApp({onSwitchRole}){
     {id:"history",label:"History",icon:"📋"},
   ];
 
+  // Show a red (1) badge on Deck tab if player has no deck registered this session
+  const deckNeedsBadge = !!myName && !myDeck?.some(c=>c?.blade);
+
   if(!slug){
     return <TournamentLoader onLoaded={(s,p)=>updateSession({slug:s,participants:p,myName:null,myDeck:null})} onSwitchRole={onSwitchRole}/>;
   }
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100dvh",maxWidth:480,margin:"0 auto"}}>
-      {/* Top bar */}
+      {/* Event deleted notification */}
+      {eventDeleted&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.85)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+          <div style={{background:"var(--surface)",borderRadius:20,padding:"28px 22px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"2px solid #EF4444",textAlign:"center"}}>
+            <div style={{fontSize:40,marginBottom:12}}>🗑️</div>
+            <p style={{fontSize:17,fontWeight:900,color:"var(--text-primary)",marginBottom:8}}>Event Removed</p>
+            <p style={{fontSize:13,color:"var(--text-secondary)",marginBottom:22,lineHeight:1.5}}>This tournament has been removed from the NC BLAST cache by the organizer.</p>
+            <button onClick={handleEventDeletedDismiss}
+              style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:"#EA580C",color:"#fff",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              Back to Event Select
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{padding:"10px 14px",background:"var(--surface)",borderBottom:"1px solid var(--border)",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -5892,7 +5970,12 @@ function PlayerApp({onSwitchRole}){
               display:"flex",flexDirection:"column",alignItems:"center",gap:2,
               borderTop:`2px solid ${tab===t.id?"var(--accent)":"transparent"}`,
               transition:"border-color 0.15s"}}>
-            <span style={{fontSize:18}}>{t.icon}</span>
+            <div style={{position:"relative",display:"inline-flex"}}>
+              <span style={{fontSize:18}}>{t.icon}</span>
+              {t.id==="combos"&&deckNeedsBadge&&(
+                <span style={{position:"absolute",top:-4,right:-7,background:"#EF4444",color:"#fff",borderRadius:"50%",width:14,height:14,fontSize:9,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Outfit',sans-serif",lineHeight:1}}>1</span>
+              )}
+            </div>
             <span style={{fontSize:9,fontWeight:700,color:tab===t.id?"var(--accent)":"var(--text-faint)",fontFamily:"'Outfit',sans-serif",letterSpacing:0.3}}>{t.label}</span>
           </button>
         ))}
@@ -6029,6 +6112,24 @@ function BeyJudgeApp() {
   const [sheetsStatus,setSheetsStatus] = useState(null);
   const [challongeSlug,setChallongeSlug] = useState("");
   const [challongeParticipants,setChallongeParticipants] = useState({});
+  const [judgeEventDeleted,setJudgeEventDeleted] = useState(false);
+  const judgeDeletionRef = useRef(null);
+
+  // Poll for event deletion while a slug is loaded (every 20s)
+  useEffect(()=>{
+    if(!challongeSlug) return;
+    const check = async () => {
+      try {
+        const res = await fetch(`${OVERLAY_WORKER}/list`,{signal:AbortSignal.timeout(6000)});
+        if(!res.ok) return;
+        const data = await res.json();
+        const slugs = (data.tournaments||[]).map(t=>t.slug);
+        if(!slugs.includes(challongeSlug)) setJudgeEventDeleted(true);
+      } catch(_){}
+    };
+    judgeDeletionRef.current = setInterval(check, 20000);
+    return ()=>clearInterval(judgeDeletionRef.current);
+  },[challongeSlug]);
 
   useEffect(()=>{
     const saved=sGet(KEYS.parts,{});
@@ -6126,7 +6227,21 @@ function BeyJudgeApp() {
   return (
     <div style={{background:"var(--bg)",minHeight:"100vh",fontFamily:"'Outfit',sans-serif"}}>
       {libOpen&&<LibraryManager parts={parts} setParts={setParts} onClose={()=>setLibOpen(false)}/>}
-      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap,names)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});if(names&&names.length){const fresh=[...new Set(names)];setPlayers(fresh);sSave(KEYS.players,fresh);}}}/>}
+      {/* Judge event deletion notification */}
+      {judgeEventDeleted&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.85)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+          <div style={{background:"var(--surface)",borderRadius:20,padding:"28px 22px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"2px solid #EF4444",textAlign:"center"}}>
+            <div style={{fontSize:40,marginBottom:12}}>🗑️</div>
+            <p style={{fontSize:17,fontWeight:900,color:"var(--text-primary)",marginBottom:8}}>Event Removed</p>
+            <p style={{fontSize:13,color:"var(--text-secondary)",marginBottom:22,lineHeight:1.5}}>This tournament has been removed from the NC BLAST cache by the organizer.</p>
+            <button onClick={()=>{setJudgeEventDeleted(false);setChallongeSlug("");setChallongeParticipants({});sSave(KEYS.challongeMap,{});setPlayers([]);sSave(KEYS.players,[]);setScreen("format");}}
+              style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:"#EA580C",color:"#fff",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              Back to Main Menu
+            </button>
+          </div>
+        </div>
+      )}
+      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap,names)=>{setJudgeEventDeleted(false);setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});if(names&&names.length){const fresh=[...new Set(names)];setPlayers(fresh);sSave(KEYS.players,fresh);}}}/>}
       {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}} tournamentMode={config.tm}/>}
       {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
     </div>
