@@ -712,8 +712,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
       const extractP = (p) => p.participant || p;
       const names = participants.map(p=>(extractP(p).display_name||extractP(p).username||extractP(p).name||"").trim()).filter(Boolean);
       if(!names.length) throw new Error("No participants found in cache");
-      const merged = [...new Set([...players,...names])];
-      setPlayers(merged); sSave(KEYS.players, merged);
+      const fresh = [...new Set(names)];
+      setPlayers(fresh); sSave(KEYS.players, fresh);
       const participantMap = {};
       participants.forEach(p => {
         const part = extractP(p);
@@ -827,8 +827,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
     // Device cache hit — zero network calls
     const lcHit = lcGet(slug);
     if(lcHit) {
-      const merged = [...new Set([...players,...lcHit])];
-      setPlayers(merged); sSave(KEYS.players, merged);
+      const fresh = [...new Set(lcHit)];
+      setPlayers(fresh); sSave(KEYS.players, fresh);
       setChallongeStatus("ok");
       setChallongeSource("cached");
       setChallongeMsg(`✓ ${lcHit.length} players loaded from NC BLAST cache for "${slug}"`);
@@ -896,8 +896,8 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
         const { data, fromServerCache } = parseResponse(text, proxy.raw);
         const names = data.map(p=>(p.participant?.display_name||p.participant?.username||p.participant?.name||"").trim()).filter(Boolean);
         if(!names.length) throw new Error("No participants found — is this tournament public with entrants added?");
-        const merged = [...new Set([...players,...names])];
-        setPlayers(merged); sSave(KEYS.players, merged);
+        const fresh = [...new Set(names)];
+        setPlayers(fresh); sSave(KEYS.players, fresh);
         lcSet(slug, names);
         // Build participant ID map — store both full name and truncated name as keys
         const participantMap = {};
@@ -1531,6 +1531,16 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [picker,setPicker] = useState(null);
   const [pickerHistory,setPickerHistory] = useState([]); // stack of previous picker states for undo
   const openPicker = (val) => {
+    // Bullet Griffon cannot use a ratchet — skip the ratchet step automatically
+    if(val?.cat === "ratchet") {
+      const deck = val.who===1 ? d1 : d2;
+      const blade = deck[val.slot]?.blade;
+      if(blade && NO_RATCHET_BLADES.includes(blade)) {
+        setPickerHistory(h => picker ? [...h, picker] : h);
+        setPicker({...val, cat:"bit"}); setPickerSearch(""); setCrossoverOpen(false); setCxPicker(null);
+        return;
+      }
+    }
     setPickerHistory(h => picker ? [...h, picker] : h);
     setPicker(val); setPickerSearch(""); setCrossoverOpen(false); setCxPicker(null);
   };
@@ -6116,7 +6126,7 @@ function BeyJudgeApp() {
   return (
     <div style={{background:"var(--bg)",minHeight:"100vh",fontFamily:"'Outfit',sans-serif"}}>
       {libOpen&&<LibraryManager parts={parts} setParts={setParts} onClose={()=>setLibOpen(false)}/>}
-      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap,names)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});if(names&&names.length){const merged=[...new Set([...players,...names])];setPlayers(merged);sSave(KEYS.players,merged);}}}/>}
+      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap,names)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});if(names&&names.length){const fresh=[...new Set(names)];setPlayers(fresh);sSave(KEYS.players,fresh);}}}/>}
       {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}} tournamentMode={config.tm}/>}
       {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
     </div>
