@@ -5830,8 +5830,23 @@ function TournamentLoader({onLoaded, onSwitchRole}){
 function PlayerApp({onSwitchRole}){
   const [session, setSession] = useState(()=>sGet(STORAGE_KEY,{slug:null,participants:[],myName:null,myDeck:null}));
   const [tab, setTab] = useState("pairings"); // "pairings" | "standings" | "combos" | "history"
+  const [namePickerOpen, setNamePickerOpen] = useState(false);
+  const [liveSlots, setLiveSlots] = useState([]);
   const [eventDeleted, setEventDeleted] = useState(false);
+  const pollRef = useRef(null);
   const deletionPollRef = useRef(null);
+
+  // Destructure session early so all hooks below can reference slug
+  const {slug, participants, myName, myDeck} = session;
+
+  const updateSession = (patch) => {
+    setSession(s=>{const next={...s,...patch}; sSave(STORAGE_KEY,next); return next;});
+  };
+
+  const handleEventDeletedDismiss = () => {
+    setEventDeleted(false);
+    updateSession({slug:null,participants:[],myName:null,myDeck:null});
+  };
 
   // Poll for event deletion — check every 20s if our slug still exists in the cache list
   useEffect(()=>{
@@ -5846,17 +5861,6 @@ function PlayerApp({onSwitchRole}){
     deletionPollRef.current = setInterval(checkDeletion, 20000);
     return ()=>clearInterval(deletionPollRef.current);
   },[slug]);
-
-  const handleEventDeletedDismiss = () => {
-    setEventDeleted(false);
-    updateSession({slug:null,participants:[],myName:null,myDeck:null});
-  };
-
-  const {slug, participants, myName, myDeck} = session;
-
-  const updateSession = (patch) => {
-    setSession(s=>{const next={...s,...patch}; sSave(STORAGE_KEY,next); return next;});
-  };
 
   // Check URL param for slug on load
   useEffect(()=>{
