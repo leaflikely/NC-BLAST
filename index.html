@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-10 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button -->
+<!-- NC BLAST index.html | last updated: 2026-05-11 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1771,9 +1771,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       });
       // Expire combos older than 1hr
       const fresh = prev.filter(c=>!c.updatedAt||(Date.now()-c.updatedAt)<COMBO_CACHE_TTL);
-      saved[name] = fresh;
+      // Keep only the 3 most recently used combos — prevents accumulation across rounds
+      const capped = fresh.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).slice(0,3);
+      saved[name] = capped;
       // Queue push for this player — will run in parallel below
-      pushQueue.push([name, fresh]);
+      pushQueue.push([name, capped]);
     });
     sSave(KEYS.combos, saved);
     // Push all players to Worker KV in parallel so neither overwrites the other
