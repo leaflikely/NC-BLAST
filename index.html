@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-11 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds -->
+<!-- NC BLAST index.html | last updated: 2026-05-12 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds, quick combo duplicate part fix, TO alert reason+stadium buttons -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1585,6 +1585,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   const [overlayModal,setOverlayModal] = useState(false); // stream slot picker modal
   const [pingModal,setPingModal] = useState(false); // Contact TO ping modal
   const [pingComment,setPingComment] = useState("");
+  const [pingReason,setPingReason] = useState(null); // selected reason chip
+  const [pingStadium,setPingStadium] = useState(null); // selected stadium number
   const [pingSending,setPingSending] = useState(false);
   const [pingSent,setPingSent] = useState(false);
   // shuffleTimer: null = hidden, "active" = counting down, "expired" = time ran out
@@ -3661,57 +3663,97 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       )}
 
       {/* ── Contact TO Ping Modal ─────────────────────────────────── */}
-      {pingModal&&(
-        <div onClick={()=>{if(!pingSending){setPingModal(false);setPingComment("");setPingSent(false);}}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 20px"}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:bp(18),padding:`${bp(20)}px ${bp(20)}px`,width:"100%",maxWidth:340,boxShadow:"0 12px 40px rgba(0,0,0,0.4)",border:"2px solid #DC2626"}}>
-            {pingSent?(
-              <div style={{textAlign:"center",padding:`${bp(12)}px 0`}}>
-                <div style={{fontSize:40,marginBottom:bp(10)}}>✅</div>
-                <p style={{fontSize:bf(14),fontWeight:900,color:"var(--text-primary)",marginBottom:bp(6)}}>TO Notified</p>
-                <p style={{fontSize:bf(10),color:"var(--text-muted)",marginBottom:bp(16)}}>Your ping has been sent.</p>
-                <button type="button" onClick={()=>{setPingModal(false);setPingComment("");setPingSent(false);}} style={{width:"100%",padding:`${bp(10)}px`,borderRadius:bp(10),border:"none",background:"var(--surface3)",color:"var(--text-primary)",fontSize:bf(11),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>Close</button>
-              </div>
-            ):(
-              <>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:bp(14)}}>
-                  <div>
-                    <p style={{fontSize:bf(14),fontWeight:900,color:"#DC2626",margin:0}}>🚨 Contact TO</p>
-                    <p style={{fontSize:bf(9),color:"var(--text-muted)",margin:0,marginTop:2}}>Ping the tournament organizer</p>
+      {pingModal&&(()=>{
+        const closePing = ()=>{ setPingModal(false); setPingComment(""); setPingReason(null); setPingStadium(null); setPingSent(false); };
+        const PING_REASONS = ["Challenge","Rules Question","General Escalation","Other"];
+        // Build the comment that gets sent: reason + stadium + any typed note
+        const buildComment = () => {
+          const parts = [];
+          if(pingReason) parts.push(`Reason: ${pingReason}`);
+          if(pingStadium) parts.push(`Stadium: ${pingStadium}`);
+          if(pingComment.trim()) parts.push(pingComment.trim());
+          return parts.join(" | ");
+        };
+        return (
+          <div onClick={()=>{if(!pingSending) closePing();}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 20px"}}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:bp(18),padding:`${bp(20)}px ${bp(20)}px`,width:"100%",maxWidth:340,boxShadow:"0 12px 40px rgba(0,0,0,0.4)",border:"2px solid #DC2626"}}>
+              {pingSent?(
+                <div style={{textAlign:"center",padding:`${bp(12)}px 0`}}>
+                  <div style={{fontSize:40,marginBottom:bp(10)}}>✅</div>
+                  <p style={{fontSize:bf(14),fontWeight:900,color:"var(--text-primary)",marginBottom:bp(6)}}>TO Notified</p>
+                  <p style={{fontSize:bf(10),color:"var(--text-muted)",marginBottom:bp(16)}}>Your ping has been sent.</p>
+                  <button type="button" onClick={closePing} style={{width:"100%",padding:`${bp(10)}px`,borderRadius:bp(10),border:"none",background:"var(--surface3)",color:"var(--text-primary)",fontSize:bf(11),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>Close</button>
+                </div>
+              ):(
+                <>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:bp(14)}}>
+                    <div>
+                      <p style={{fontSize:bf(14),fontWeight:900,color:"#DC2626",margin:0}}>🚨 Contact TO</p>
+                      <p style={{fontSize:bf(9),color:"var(--text-muted)",margin:0,marginTop:2}}>Ping the tournament organizer</p>
+                    </div>
+                    <button type="button" onClick={closePing} style={{background:"var(--surface3)",border:"none",borderRadius:bp(6),width:bp(26),height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"var(--text-muted)",fontSize:bf(11),fontWeight:700}}>✕</button>
                   </div>
-                  <button type="button" onClick={()=>{setPingModal(false);setPingComment("");setPingSent(false);}} style={{background:"var(--surface3)",border:"none",borderRadius:bp(6),width:bp(26),height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"var(--text-muted)",fontSize:bf(11),fontWeight:700}}>✕</button>
-                </div>
-                <div style={{background:"var(--surface2)",borderRadius:bp(10),padding:`${bp(10)}px ${bp(12)}px`,marginBottom:bp(12),border:"1px solid var(--border)"}}>
-                  <p style={{fontSize:bf(8),color:"var(--text-faint)",fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 4px"}}>Match Info (auto-included)</p>
-                  <p style={{fontSize:bf(10),fontWeight:800,color:"var(--text-primary)",margin:0}}>{p1||"?"} vs {p2||"?"}</p>
-                  {judge&&<p style={{fontSize:bf(9),color:"var(--text-muted)",margin:"2px 0 0"}}>Judge: {judge}</p>}
-                </div>
-                <p style={{fontSize:bf(9),fontWeight:700,color:"var(--text-secondary)",marginBottom:bp(6)}}>Add a note (optional)</p>
-                <textarea
-                  value={pingComment}
-                  onChange={e=>setPingComment(e.target.value)}
-                  placeholder="Describe the issue or reason for the call…"
-                  rows={3}
-                  style={{width:"100%",borderRadius:bp(10),border:"1px solid var(--border2)",background:"var(--input-bg)",color:"var(--text-primary)",fontSize:bf(10),fontFamily:"'Outfit',sans-serif",padding:`${bp(8)}px ${bp(10)}px`,resize:"none",outline:"none",boxSizing:"border-box"}}
-                />
-                <button type="button" disabled={pingSending} onClick={async()=>{
-                  setPingSending(true);
-                  try {
-                    await fetch(`${OVERLAY_WORKER}/pings/send`, {
-                      method:"POST",
-                      headers:{"Content-Type":"application/json"},
-                      body:JSON.stringify({slug:challongeSlug,judge,p1,p2,comment:pingComment}),
-                    });
-                    setPingSent(true);
-                  } catch(_) { alert("Failed to send ping. Check your connection."); }
-                  finally { setPingSending(false); }
-                }} style={{marginTop:bp(12),width:"100%",padding:`${bp(12)}px`,borderRadius:bp(10),border:"none",background:pingSending?"#991B1B":"#DC2626",color:"#fff",fontSize:bf(12),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:pingSending?"not-allowed":"pointer",opacity:pingSending?0.7:1}}>
-                  {pingSending?"Sending…":"🚨 Send Ping to TO"}
-                </button>
-              </>
-            )}
+                  {/* Auto-included match info */}
+                  <div style={{background:"var(--surface2)",borderRadius:bp(10),padding:`${bp(10)}px ${bp(12)}px`,marginBottom:bp(14),border:"1px solid var(--border)"}}>
+                    <p style={{fontSize:bf(8),color:"var(--text-faint)",fontWeight:700,textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 4px"}}>Match Info (auto-included)</p>
+                    <p style={{fontSize:bf(10),fontWeight:800,color:"var(--text-primary)",margin:0}}>{p1||"?"} vs {p2||"?"}</p>
+                    {judge&&<p style={{fontSize:bf(9),color:"var(--text-muted)",margin:"2px 0 0"}}>Judge: {judge}</p>}
+                  </div>
+                  {/* Reason selector */}
+                  <p style={{fontSize:bf(9),fontWeight:700,color:"var(--text-secondary)",marginBottom:bp(6),textTransform:"uppercase",letterSpacing:0.8}}>Reason</p>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:bp(14)}}>
+                    {PING_REASONS.map(r=>{
+                      const sel = pingReason===r;
+                      return (
+                        <button key={r} type="button" onClick={()=>setPingReason(sel?null:r)}
+                          style={{padding:`${bp(8)}px ${bp(6)}px`,borderRadius:bp(9),border:`2px solid ${sel?"#DC2626":"var(--border2)"}`,background:sel?"#DC262618":"var(--surface2)",color:sel?"#DC2626":"var(--text-secondary)",fontSize:bf(9),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textAlign:"center",lineHeight:1.2}}>
+                          {r}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {/* Stadium selector */}
+                  <p style={{fontSize:bf(9),fontWeight:700,color:"var(--text-secondary)",marginBottom:bp(6),textTransform:"uppercase",letterSpacing:0.8}}>Stadium</p>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:5,marginBottom:bp(14)}}>
+                    {[1,2,3,4,5,6].map(n=>{
+                      const sel = pingStadium===n;
+                      return (
+                        <button key={n} type="button" onClick={()=>setPingStadium(sel?null:n)}
+                          style={{padding:`${bp(8)}px 0`,borderRadius:bp(9),border:`2px solid ${sel?"#DC2626":"var(--border2)"}`,background:sel?"#DC262618":"var(--surface2)",color:sel?"#DC2626":"var(--text-secondary)",fontSize:bf(13),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textAlign:"center"}}>
+                          {n}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {/* Optional typed note */}
+                  <p style={{fontSize:bf(9),fontWeight:700,color:"var(--text-secondary)",marginBottom:bp(6),textTransform:"uppercase",letterSpacing:0.8}}>Additional Note (optional)</p>
+                  <textarea
+                    value={pingComment}
+                    onChange={e=>setPingComment(e.target.value)}
+                    placeholder="Any extra details…"
+                    rows={2}
+                    style={{width:"100%",borderRadius:bp(10),border:"1px solid var(--border2)",background:"var(--input-bg)",color:"var(--text-primary)",fontSize:bf(10),fontFamily:"'Outfit',sans-serif",padding:`${bp(8)}px ${bp(10)}px`,resize:"none",outline:"none",boxSizing:"border-box"}}
+                  />
+                  <button type="button" disabled={pingSending} onClick={async()=>{
+                    setPingSending(true);
+                    try {
+                      await fetch(`${OVERLAY_WORKER}/pings/send`, {
+                        method:"POST",
+                        headers:{"Content-Type":"application/json"},
+                        body:JSON.stringify({slug:challongeSlug,judge,p1,p2,comment:buildComment()}),
+                      });
+                      setPingSent(true);
+                    } catch(_) { alert("Failed to send ping. Check your connection."); }
+                    finally { setPingSending(false); }
+                  }} style={{marginTop:bp(12),width:"100%",padding:`${bp(12)}px`,borderRadius:bp(10),border:"none",background:pingSending?"#991B1B":"#DC2626",color:"#fff",fontSize:bf(12),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:pingSending?"not-allowed":"pointer",opacity:pingSending?0.7:1}}>
+                    {pingSending?"Sending…":"🚨 Send Ping to TO"}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Match history slide-over (kept from BottomBar, triggered by strip button) */}
       <div style={{position:"fixed",top:0,right:0,bottom:0,width:historyOpen?Math.min(340,window.innerWidth-40):0,background:"var(--surface)",boxShadow:historyOpen?"-4px 0 24px rgba(0,0,0,0.25)":"none",transition:"width 0.25s ease",overflow:"hidden",zIndex:100}}>
@@ -4134,7 +4176,13 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[]}
             <p style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>⚡ Quick Combos</p>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
               {QUICK_COMBOS.map((qc,i)=>{
-                const anyTaken = taken.includes(qc.blade);
+                // Check all three parts against other slots — no duplicates allowed across any part type
+                const takenBlades = deck.filter((_,si)=>si!==slot).map(c=>c.blade).filter(Boolean);
+                const takenRatchets = deck.filter((_,si)=>si!==slot).map(c=>c.ratchet).filter(Boolean);
+                const takenBits = deck.filter((_,si)=>si!==slot).map(c=>c.bit).filter(Boolean);
+                const anyTaken = takenBlades.includes(qc.blade)
+                  || (qc.ratchet && takenRatchets.includes(qc.ratchet))
+                  || takenBits.includes(qc.bit);
                 return (
                   <button key={i} disabled={anyTaken} onClick={()=>{
                     if(anyTaken)return;
