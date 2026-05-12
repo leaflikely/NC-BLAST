@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-12 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds, quick combo duplicate part fix, TO alert reason+stadium buttons, remove localStorage combo storage (Worker KV only) -->
+<!-- NC BLAST index.html | last updated: 2026-05-12 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds, quick combo duplicate part fix, TO alert reason+stadium buttons, remove localStorage combo storage (Worker KV only), filter incomplete combos before player-side push -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -4844,17 +4844,18 @@ function ComboTab({myName, myDeck, onDeckSaved, slug, onCombosFound}){
   },[myName]);
 
   const handleSave = async(deck) => {
-    setBuilding(false); setPushStatus(null); onDeckSaved(deck);
+    // Only push combos that are fully built — incomplete slots get dropped
+    const readyCombos = deck.filter(comboReady).map(normalizeCombo);
+    setBuilding(false); setPushStatus(null); onDeckSaved(readyCombos);
     try {
       await fetch(`${OVERLAY_WORKER}/combos/push`,{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({player:myName,combos:deck,updatedAt:Date.now()}),
+        body:JSON.stringify({player:myName,combos:readyCombos,updatedAt:Date.now()}),
         signal:AbortSignal.timeout(8000),
       });
       setPushStatus("ok");
-      const saved = deck.filter(c=>c.blade).map(normalizeCombo);
-      setWorkerCombos(saved);
-      onCombosFound&&onCombosFound(saved.length>0);
+      setWorkerCombos(readyCombos);
+      onCombosFound&&onCombosFound(readyCombos.length>0);
     } catch(_){ setPushStatus("error"); }
   };
 
