@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-12 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds, quick combo duplicate part fix, TO alert reason+stadium buttons, remove localStorage combo storage (Worker KV only), filter incomplete combos before player-side push, fix Bullet Griffon ratchet skip stale state bug in DeckBuilder, fix BG combo dropped on fetch (comboReady filter), refresh combos on Build Decks tap -->
+<!-- NC BLAST index.html | last updated: 2026-05-12 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds, quick combo duplicate part fix, TO alert reason+stadium buttons, remove localStorage combo storage (Worker KV only), filter incomplete combos before player-side push, fix Bullet Griffon ratchet skip stale state bug in DeckBuilder, fix BG combo dropped on fetch (comboReady filter), refresh combos on Build Decks tap, fix long-name KV key mismatch (player view now uses tn() to match judge key) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -4844,7 +4844,8 @@ function ComboTab({myName, myDeck, onDeckSaved, slug, onCombosFound}){
     setWorkerCombos(null);
     (async()=>{
       try {
-        const data = await workerGet(`/combos/get?player=${encodeURIComponent(myName)}`);
+        const kvName = tn(myName); // match the key the judge uses (truncated for long names)
+        const data = await workerGet(`/combos/get?player=${encodeURIComponent(kvName)}`);
         const fetched = Array.isArray(data.combos) ? data.combos.map(normalizeCombo).filter(c=>c.blade) : [];
         setWorkerCombos(fetched);
         onCombosFound&&onCombosFound(fetched.length>0);
@@ -4862,7 +4863,7 @@ function ComboTab({myName, myDeck, onDeckSaved, slug, onCombosFound}){
     try {
       await fetch(`${OVERLAY_WORKER}/combos/push`,{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({player:myName,combos:readyCombos,updatedAt:Date.now()}),
+        body:JSON.stringify({player:tn(myName),combos:readyCombos,updatedAt:Date.now()}), // tn() matches judge-side key
         signal:AbortSignal.timeout(8000),
       });
       setPushStatus("ok");
