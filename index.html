@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-12 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds, quick combo duplicate part fix, TO alert reason+stadium buttons -->
+<!-- NC BLAST index.html | last updated: 2026-05-12 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds, quick combo duplicate part fix, TO alert reason+stadium buttons, remove localStorage combo storage (Worker KV only) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -626,12 +626,9 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
   };
 
   const del = (i) => {
-    const name = players[i];
     const n=players.filter((_,j)=>j!==i); setPlayers(n); sSave(KEYS.players,n);
-    // Remove saved combos for this player
-    const saved = sGet(KEYS.combos, {}); delete saved[name]; sSave(KEYS.combos, saved);
   };
-  const clearAll = () => { setPlayers([]); sSave(KEYS.players,[]); sSave(KEYS.combos,{}); setConfirmClear(false); };
+  const clearAll = () => { setPlayers([]); sSave(KEYS.players,[]); setConfirmClear(false); };
 
   const onFile = (e) => {
     const f=e.target.files[0]; if(!f)return;
@@ -1755,11 +1752,13 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   };
 
   const saveCombosToStorage = () => {
-    const saved = sGet(KEYS.combos, {});
+    // Combos are stored only in Worker KV (keyed by player name, 1hr TTL).
+    // We never write to localStorage — that caused stale combos bleeding across events.
     const pushQueue = [];
     [[p1, d1],[p2, d2]].forEach(([name, deck])=>{
       if(!name) return;
-      const prev = (saved[name] || []).map(normalizeCombo);
+      // Start from whatever is already in workerCombos for this player (in-memory only)
+      const prev = (workerCombos[name] || []).map(normalizeCombo);
       // Add new complete combos, refresh updatedAt for ones already seen
       deck.forEach(combo=>{
         if(!comboReady(combo)) return;
@@ -1771,17 +1770,14 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           prev.push({...combo, updatedAt: Date.now()});
         }
       });
-      // Expire combos older than 1hr
-      const fresh = prev.filter(c=>!c.updatedAt||(Date.now()-c.updatedAt)<COMBO_CACHE_TTL);
       // Keep only the 3 most recently used combos — prevents accumulation across rounds
-      const capped = fresh.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).slice(0,3);
-      saved[name] = capped;
-      // Queue push for this player — will run in parallel below
+      const capped = prev.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).slice(0,3);
+      // Update in-memory cache so the rest of this session sees the new combos immediately
+      setWorkerCombos(prev2 => ({...prev2, [name]: capped}));
       pushQueue.push([name, capped]);
     });
-    sSave(KEYS.combos, saved);
     // Push all players to Worker KV in parallel so neither overwrites the other
-    Promise.all(pushQueue.map(([name, fresh]) => pushComboCacheToWorker(name, fresh)));
+    Promise.all(pushQueue.map(([name, capped]) => pushComboCacheToWorker(name, capped)));
   };
 
   const fetchActiveMatches = async () => {
@@ -2466,25 +2462,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           <h1 style={{...S.title,color:cc,textAlign:"left",margin:0}}>Select {catLabels[cat]}</h1>
         </div>
 
-        {/* Previous Combos — blade screen only, merged from localStorage + Worker KV */}
+        {/* Previous Combos — blade screen only, from Worker KV only (no localStorage) */}
         {cat==="blade"&&(()=>{
           const playerName = who===1?p1:p2;
-          const savedAll = sGet(KEYS.combos, {});
-          const localCombos = (savedAll[playerName] || []).map(normalizeCombo).filter(c=>comboReady(c));
-          const remoteCombos = (workerCombos[playerName] || []).filter(c=>comboReady(c));
-          // Merge: prefer local, add any remote ones not already in local
-          const localNorm = localCombos.map(normalizeCombo);
-          const remoteNorm = remoteCombos.map(normalizeCombo);
-          const seen = new Set(localNorm.map(c=>comboStr(c)));
-          const merged = [...localNorm, ...remoteNorm.filter(c=>!seen.has(comboStr(c)))];
-          // Sort newest first by updatedAt
-          merged.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
-          const prevCombos = merged.filter(c=>comboReady(c));
+          const prevCombos = (workerCombos[playerName] || []).map(normalizeCombo).filter(c=>comboReady(c));
           if(!prevCombos.length) return null;
           const clearCombos = () => {
-            const store = sGet(KEYS.combos, {});
-            delete store[playerName];
-            sSave(KEYS.combos, store);
             setWorkerCombos(prev => { const n={...prev}; delete n[playerName]; return n; });
             fetch(`${OVERLAY_WORKER}/combos/push`, {
               method:"POST", headers:{"Content-Type":"application/json"},
