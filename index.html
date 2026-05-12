@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-12 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds, quick combo duplicate part fix, TO alert reason+stadium buttons, remove localStorage combo storage (Worker KV only), filter incomplete combos before player-side push, fix Bullet Griffon ratchet skip stale state bug in DeckBuilder -->
+<!-- NC BLAST index.html | last updated: 2026-05-12 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds, quick combo duplicate part fix, TO alert reason+stadium buttons, remove localStorage combo storage (Worker KV only), filter incomplete combos before player-side push, fix Bullet Griffon ratchet skip stale state bug in DeckBuilder, fix BG combo dropped on fetch (comboReady filter), refresh combos on Build Decks tap -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -137,7 +137,7 @@ async function fetchComboCacheFromWorker(playerName) {
     if(!Array.isArray(data.combos)) return [];
     // Respect TTL client-side too
     if(data.updatedAt && Date.now() - data.updatedAt > COMBO_CACHE_TTL) return [];
-    return data.combos.filter(c=>c?.blade&&c?.ratchet&&c?.bit).map(normalizeCombo);
+    return data.combos.filter(comboReady).map(normalizeCombo);
   } catch(_) { return []; }
 }
 function sGet(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; } }
@@ -1652,6 +1652,16 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     if(p1 || p2) load();
     return () => { cancelled = true; };
   }, [p1, p2]);
+
+  // Re-fetch combos for current players on demand (called when Build Decks is tapped)
+  const refreshCombos = async () => {
+    const results = {};
+    await Promise.all([p1, p2].filter(Boolean).map(async name => {
+      const combos = await fetchComboCacheFromWorker(name);
+      results[name] = combos; // always overwrite, even if empty, to clear stale entries
+    }));
+    setWorkerCombos(prev => ({...prev, ...results}));
+  };
   const need = Math.ceil(config.bo/2);
   const cReady = d1.every(comboReady)&&d2.every(comboReady);
 
@@ -2834,7 +2844,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
                     </div>
                   )}
                   <button style={{...S.pri,margin:0,opacity:activeCanProceed?1:0.4}} disabled={!activeCanProceed}
-                    onClick={()=>{setMatchStartIdx(log.length);setFuture([]);setDeckReview(false);setPhase("deck");}}>
+                    onClick={()=>{refreshCombos();setMatchStartIdx(log.length);setFuture([]);setDeckReview(false);setPhase("deck");}}>
                     Build Decks →
                   </button>
                 </div>
@@ -2843,7 +2853,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
           );
         })()}
 
-        {pickTab==="roster"&&<button style={{...S.pri,opacity:canProceed?1:0.4}} disabled={!canProceed} onClick={()=>{setMatchStartIdx(log.length);setFuture([]);setDeckReview(false);setPhase("deck");}}>Build Decks →</button>}
+        {pickTab==="roster"&&<button style={{...S.pri,opacity:canProceed?1:0.4}} disabled={!canProceed} onClick={()=>{refreshCombos();setMatchStartIdx(log.length);setFuture([]);setDeckReview(false);setPhase("deck");}}>Build Decks →</button>}
         {pickTab==="roster"&&config.tm&&playersSelected&&!judge.trim()&&<p style={{...S.hint,color:"#D97706"}}>Select the judge on duty to continue</p>}
       </div>
     );
