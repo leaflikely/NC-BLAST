@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-12 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds, quick combo duplicate part fix, TO alert reason+stadium buttons, remove localStorage combo storage (Worker KV only), filter incomplete combos before player-side push -->
+<!-- NC BLAST index.html | last updated: 2026-05-12 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds, quick combo duplicate part fix, TO alert reason+stadium buttons, remove localStorage combo storage (Worker KV only), filter incomplete combos before player-side push, fix Bullet Griffon ratchet skip stale state bug in DeckBuilder -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3867,12 +3867,14 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[]}
     const nd = [...deck]; nd[slot]={...nd[slot],[cat]:val}; setDeck(nd);
   };
 
-  const advanceAfter = (slot, cat) => {
+  const advanceAfter = (slot, cat, pickedName) => {
     const cats=["blade","ratchet","bit"];
     const ci=cats.indexOf(cat);
     if(ci<2){
       let nextCat = cats[ci+1];
-      if(nextCat==="ratchet" && NO_RATCHET_BLADES.includes(deck[slot]?.blade)) nextCat="bit";
+      // Use pickedName when advancing from blade — avoids reading stale React state after setPart
+      const bladeName = cat==="blade" ? pickedName : deck[slot]?.blade;
+      if(nextCat==="ratchet" && NO_RATCHET_BLADES.includes(bladeName)) nextCat="bit";
       openStep({slot,cat:nextCat});
     } else if(slot<2) openStep({slot:slot+1,cat:"blade"});
     else { setStep(null); stepHistory.current=[]; }
@@ -4112,7 +4114,7 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[]}
   const pick = (name) => {
     setPart(slot,cat,name);
     if(returnToReview){ setStep(null); stepHistory.current=[]; return; }
-    advanceAfter(slot,cat);
+    advanceAfter(slot,cat,name);
   };
 
   const totalSteps = 18;
