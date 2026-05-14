@@ -166,7 +166,7 @@ function useChallongeAuth() {
       if (!res.ok || !data.device_code) throw new Error(data.error || "Couldn't start login.");
 
       deviceCodeRef.current = data.device_code;
-      intervalRef.current = ((data.interval || 5) + 1) * 1000; // +1s buffer to avoid rate limiting
+      intervalRef.current = Math.max((data.interval || 5), 5) * 1000; // minimum 5s, respect Challonge's interval
       setUserCode(data.user_code || "");
       setVerificationUri(data.verification_uri || "https://auth.challonge.com/oauth/device");
 
@@ -184,7 +184,12 @@ function useChallongeAuth() {
           );
           const tText = await r.text();
           let d;
-          try { d = JSON.parse(tText); } catch(_) { d = {}; }
+          try { d = JSON.parse(tText); } catch(_) {
+            // Non-JSON response — back off and retry, don't kill the grant
+            intervalRef.current = Math.min(intervalRef.current * 2, 30000);
+            pollRef.current = setTimeout(poll, intervalRef.current);
+            return;
+          }
 
           if (d.access_token) {
             // Step 3: Resolve username — call Challonge directly
@@ -207,14 +212,17 @@ function useChallongeAuth() {
             }
             return;
           }
-          // Still pending or error from token endpoint
           const e = d.error || "";
           if (e === "expired_token" || e === "access_denied") {
             setErrorMsg("Login timed out. Try again.");
             setState("error");
             return;
           }
-          // authorization_pending or slow_down — keep polling
+          if (e === "slow_down") {
+            // OAuth spec: increase interval by 5s when told to slow down
+            intervalRef.current = intervalRef.current + 5000;
+          }
+          // authorization_pending or slow_down — keep polling at updated interval
           pollRef.current = setTimeout(poll, intervalRef.current);
         } catch (e) {
           setErrorMsg("Connection error while waiting. Try again.");
@@ -275,20 +283,33 @@ function ChallongeLoginScreen({ auth, title, subtitle, onCancel }) {
               border:"2px solid #EA580C", marginBottom:16
             }}>
               <p style={{fontSize:11, fontWeight:700, color:"var(--text-faint)", textTransform:"uppercase", letterSpacing:1, margin:"0 0 8px"}}>
-                Visit this URL on any device
+                Step 1 — Open this link
               </p>
-              <p style={{fontSize:13, fontWeight:700, color:"#EA580C", margin:"0 0 14px", wordBreak:"break-all"}}>
-                {auth.verificationUri}
-              </p>
+              <a href={auth.verificationUri} target="_blank" rel="noopener noreferrer" style={{
+                display:"block", fontSize:13, fontWeight:700, color:"#EA580C",
+                margin:"0 0 14px", wordBreak:"break-all", textDecoration:"underline",
+                cursor:"pointer",
+              }}>
+                {auth.verificationUri} ↗
+              </a>
               <p style={{fontSize:11, fontWeight:700, color:"var(--text-faint)", textTransform:"uppercase", letterSpacing:1, margin:"0 0 8px"}}>
-                Enter this code
+                Step 2 — Enter this code
               </p>
               <div style={{
                 fontSize:32, fontWeight:900, color:"var(--text-primary)",
-                letterSpacing:8, fontFamily:"'JetBrains Mono',monospace"
+                letterSpacing:8, fontFamily:"'JetBrains Mono',monospace",
+                marginBottom:10,
               }}>
                 {auth.userCode}
               </div>
+              <button onClick={()=>{ try { navigator.clipboard.writeText(auth.userCode); } catch(_){} }}
+                style={{
+                  padding:"6px 16px", borderRadius:8, border:"1px solid var(--border2)",
+                  background:"var(--surface2)", color:"var(--text-muted)",
+                  fontSize:11, fontWeight:700, fontFamily:"'Outfit',sans-serif", cursor:"pointer",
+                }}>
+                📋 Copy Code
+              </button>
             </div>
             <p style={{fontSize:12, color:"var(--text-muted)", marginBottom:16}}>
               Waiting for Challonge approval…
