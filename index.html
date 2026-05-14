@@ -170,36 +170,47 @@ const COMBO_CACHE_TTL = 60 * 60 * 1000; // 1 hour in ms
 function useChallongeAuth() {
   const REDIRECT_URI = "https://ncblast.pages.dev";
 
-  // Read one-shot OAuth flags set by the callback IIFE, then clear them
+  // Only treat sessionStorage flags as valid if we JUST came back from Challonge.
+  // "just came back" = ncblast-oauth-pending was set (IIFE is running or just finished).
+  // A stale ncblast-oauth-error from a previous session should NOT init as "error" —
+  // that would show the error screen with a Back button that sends to main menu.
+  const justReturned = (() => {
+    try {
+      return sessionStorage.getItem("ncblast-oauth-pending") === "1" ||
+             sessionStorage.getItem("ncblast-oauth-done")    === "1";
+    } catch(_) { return false; }
+  })();
+
   const initState = (() => {
+    if (!justReturned) return "idle"; // fresh visit — always start clean
     try {
       if (sessionStorage.getItem("ncblast-oauth-pending") === "1") return "exchanging";
       if (sessionStorage.getItem("ncblast-oauth-done")    === "1") return "done";
-      if (sessionStorage.getItem("ncblast-oauth-error"))           return "error";
     } catch(_) {}
     return "idle";
   })();
-  const initError = (() => {
-    try { return sessionStorage.getItem("ncblast-oauth-error") || ""; } catch(_) { return ""; }
-  })();
+
   const initUser = (() => {
+    if (!justReturned) return null;
     try { return sessionStorage.getItem("ncblast-auth-user") || null; } catch(_) { return null; }
   })();
 
   const [state, setState]       = React.useState(initState);
   const [username, setUsername] = React.useState(initUser);
-  const [errorMsg, setErrorMsg] = React.useState(initError);
+  const [errorMsg, setErrorMsg] = React.useState("");
   const pollRef = React.useRef(null);
 
-  // Clean up one-shot flags on mount.
-  // We DON'T remove oauth-error here — it's displayed in the UI.
-  // It gets removed when the user taps Try Again (reset/start).
+  // On mount: always clear all one-shot OAuth flags.
+  // If there's a stale error from a previous session, discard it — don't show it.
+  // Errors only show if they happen in THIS page load (set via setState/setErrorMsg directly).
   React.useEffect(() => {
     try {
       sessionStorage.removeItem("ncblast-oauth-done");
-      // If pending is still set on mount but we have an error, clean up pending
-      if (sessionStorage.getItem("ncblast-oauth-error")) {
-        sessionStorage.removeItem("ncblast-oauth-pending");
+      sessionStorage.removeItem("ncblast-oauth-error");
+      // Also clear stale auth token if we're not in a successful state
+      if (initState !== "done") {
+        sessionStorage.removeItem("ncblast-auth-token");
+        sessionStorage.removeItem("ncblast-auth-user");
       }
     } catch(_) {}
   }, []);
@@ -211,9 +222,10 @@ function useChallongeAuth() {
       try {
         if (sessionStorage.getItem("ncblast-oauth-pending") !== "1") {
           clearInterval(pollRef.current);
-          const user  = sessionStorage.getItem("ncblast-auth-user");
-          const err   = sessionStorage.getItem("ncblast-oauth-error");
+          const user = sessionStorage.getItem("ncblast-auth-user");
+          const err  = sessionStorage.getItem("ncblast-oauth-error");
           sessionStorage.removeItem("ncblast-oauth-error");
+          sessionStorage.removeItem("ncblast-oauth-pending");
           if (user) { setUsername(user); setState("done"); }
           else { setErrorMsg(err || "Login failed."); setState("error"); }
         }
