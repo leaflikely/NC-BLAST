@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth loop fix — clear stale ncblast-oauth-pending on page load when no ?code present, remove auto auth.start() from handleSelect so judge login requires explicit button click, Worker username lookup adds v1 fallback and detailed error logging -->
+<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth fixes — random state param forces fresh Challonge login each attempt, had-error flag set on all exchange failures so errors survive page reload, cleanup effect preserves error flags when init state is error -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -119,11 +119,13 @@ const { useState, useEffect, useRef, useCallback } = React;
         sessionStorage.setItem("ncblast-oauth-done", "1");
       } else {
         sessionStorage.setItem("ncblast-oauth-error", d.error || "Login failed");
+        sessionStorage.setItem("ncblast-oauth-had-error", "1");
       }
     })
     .catch(e => {
       sessionStorage.removeItem("ncblast-oauth-pending");
       sessionStorage.setItem("ncblast-oauth-error", e.message || "Connection error");
+      sessionStorage.setItem("ncblast-oauth-had-error", "1");
     });
   } catch(_) {}
 })();
@@ -221,8 +223,12 @@ function useChallongeAuth() {
   React.useEffect(() => {
     try {
       sessionStorage.removeItem("ncblast-oauth-done");
-      sessionStorage.removeItem("ncblast-oauth-error");
-      sessionStorage.removeItem("ncblast-oauth-had-error");
+      // Only clear error flags if we're not currently showing an error —
+      // clearing immediately wipes the message before it can display.
+      if (initState !== "error") {
+        sessionStorage.removeItem("ncblast-oauth-error");
+        sessionStorage.removeItem("ncblast-oauth-had-error");
+      }
       if (initState !== "done") {
         sessionStorage.removeItem("ncblast-auth-token");
         sessionStorage.removeItem("ncblast-auth-user");
@@ -269,8 +275,11 @@ function useChallongeAuth() {
     try { sessionStorage.removeItem("ncblast-oauth-error"); sessionStorage.removeItem("ncblast-oauth-had-error"); } catch(_) {}
     // Ask Worker for the authorize URL (keeps client_id server-side)
     try {
+      // Generate a fresh random state value each attempt — forces Challonge to treat it as new.
+      const oauthState = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      try { sessionStorage.setItem("ncblast-oauth-state", oauthState); } catch(_) {}
       const res = await fetch(
-        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code`,
+        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&state=${encodeURIComponent(oauthState)}`,
         { signal: AbortSignal.timeout(8000) }
       );
       const data = await res.json();
