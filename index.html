@@ -78,42 +78,55 @@
 const { useState, useEffect, useRef, useCallback } = React;
 
 // ── OAuth callback detection ──────────────────────────────────────────────
-// Implicit flow: Challonge redirects to ncblast.pages.dev#access_token=XXX
-// Authorization code flow: ncblast.pages.dev?code=XXX (kept as fallback)
-// If we're in a popup, send the result to the parent tab and close.
+// When Challonge redirects back to ncblast.pages.dev?code=XXX after login,
+// the page loads with the code in the URL. We detect it here, do the exchange
+// from the browser directly (no popup, no Worker exchange needed), then store
+// the result in sessionStorage so the app can pick it up on render.
 (function handleOAuthCallback() {
   try {
-    if (!window.opener) return; // not a popup, nothing to do
+    const params = new URLSearchParams(window.location.search);
+    const code  = params.get("code");
+    const error = params.get("error");
+    if (!code && !error) return; // normal page load, nothing to do
 
-    // Check URL hash first (implicit flow: #access_token=xxx&token_type=Bearer...)
-    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const token = hash.get("access_token");
-    const hashError = hash.get("error");
+    // Clean the URL immediately so refreshing doesn't re-trigger this
+    window.history.replaceState({}, document.title, "/");
 
-    if (token) {
-      window.opener.postMessage(
-        { type: "challonge_oauth", token, error: null },
-        "https://ncblast.pages.dev"
-      );
-      window.history.replaceState({}, document.title, "/");
-      setTimeout(() => window.close(), 300);
+    if (error) {
+      sessionStorage.setItem("ncblast-oauth-error", error);
       return;
     }
 
-    // Check query params (authorization code flow fallback)
-    const params = new URLSearchParams(window.location.search);
-    const code  = params.get("code");
-    const state = params.get("state");
-    const error = hashError || params.get("error");
+    // Attempt the token exchange directly from the browser.
+    // connect.challonge.com may allow CORS for the auth code flow since
+    // ncblast.pages.dev is registered as the OAuth URL.
+    const REDIRECT_URI = "https://ncblast.pages.dev";
+    const WORKER = "https://challonge-proxy.danny61734.workers.dev";
 
-    if (code || error) {
-      window.opener.postMessage(
-        { type: "challonge_oauth", code: code || null, state: state || null, token: null, error: error || null },
-        "https://ncblast.pages.dev"
-      );
-      window.history.replaceState({}, document.title, "/");
-      setTimeout(() => window.close(), 300);
-    }
+    // Mark as pending so the app shows a loading state
+    sessionStorage.setItem("ncblast-oauth-pending", "1");
+
+    // First try browser-direct exchange (works if Challonge has CORS on this endpoint)
+    fetch(`${WORKER}/auth/exchange`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, redirect_uri: REDIRECT_URI }),
+    })
+    .then(r => r.json())
+    .then(d => {
+      sessionStorage.removeItem("ncblast-oauth-pending");
+      if (d.username) {
+        sessionStorage.setItem("ncblast-auth-token", d.access_token || "");
+        sessionStorage.setItem("ncblast-auth-user", d.username);
+        sessionStorage.setItem("ncblast-oauth-done", "1");
+      } else {
+        sessionStorage.setItem("ncblast-oauth-error", d.error || "Exchange failed");
+      }
+    })
+    .catch(() => {
+      sessionStorage.removeItem("ncblast-oauth-pending");
+      sessionStorage.setItem("ncblast-oauth-error", "Connection error during login. Try again.");
+    });
   } catch(_) {}
 })();
 
@@ -167,140 +180,83 @@ const COMBO_CACHE_TTL = 60 * 60 * 1000; // 1 hour in ms
 function useChallongeAuth() {
   const REDIRECT_URI = "https://ncblast.pages.dev";
 
-  const [state, setState]       = React.useState("idle");
-  const [username, setUsername] = React.useState(null);
-  const [errorMsg, setErrorMsg] = React.useState("");
-  const popupRef    = React.useRef(null);
-  const pollRef     = React.useRef(null);
-  const stateKeyRef = React.useRef(null);
+  const [state, setState]       = React.useState(() => {
+    // Check if we just came back from a Challonge redirect
+    try {
+      if (sessionStorage.getItem("ncblast-oauth-pending") === "1") return "exchanging";
+      if (sessionStorage.getItem("ncblast-oauth-done") === "1")    return "done";
+      if (sessionStorage.getItem("ncblast-oauth-error"))           return "error";
+    } catch(_) {}
+    return "idle";
+  });
+  const [username, setUsername] = React.useState(() => {
+    try { return sessionStorage.getItem("ncblast-auth-user") || null; } catch(_) { return null; }
+  });
+  const [errorMsg, setErrorMsg] = React.useState(() => {
+    try { return sessionStorage.getItem("ncblast-oauth-error") || ""; } catch(_) { return ""; }
+  });
+  const pollRef = React.useRef(null);
+
+  // Clear one-shot OAuth sessionStorage flags on mount
+  React.useEffect(() => {
+    try {
+      sessionStorage.removeItem("ncblast-oauth-done");
+      sessionStorage.removeItem("ncblast-oauth-error");
+    } catch(_) {}
+  }, []);
+
+  // If we came back mid-exchange, poll sessionStorage until the IIFE finishes
+  React.useEffect(() => {
+    if (state !== "exchanging") return;
+    pollRef.current = setInterval(() => {
+      try {
+        if (sessionStorage.getItem("ncblast-oauth-pending") !== "1") {
+          clearInterval(pollRef.current);
+          const user  = sessionStorage.getItem("ncblast-auth-user");
+          const err   = sessionStorage.getItem("ncblast-oauth-error");
+          sessionStorage.removeItem("ncblast-oauth-error");
+          if (user) { setUsername(user); setState("done"); }
+          else { setErrorMsg(err || "Login failed."); setState("error"); }
+        }
+      } catch(_) { clearInterval(pollRef.current); setState("error"); setErrorMsg("Login failed."); }
+    }, 300);
+    return () => clearInterval(pollRef.current);
+  }, [state]);
 
   const reset = React.useCallback(() => {
     clearInterval(pollRef.current);
-    if (popupRef.current && !popupRef.current.closed) popupRef.current.close();
+    try {
+      sessionStorage.removeItem("ncblast-auth-token");
+      sessionStorage.removeItem("ncblast-auth-user");
+      sessionStorage.removeItem("ncblast-oauth-pending");
+      sessionStorage.removeItem("ncblast-oauth-done");
+      sessionStorage.removeItem("ncblast-oauth-error");
+    } catch(_) {}
     setState("idle");
     setUsername(null);
     setErrorMsg("");
-    stateKeyRef.current = null;
   }, []);
-
-  const finishWithToken = React.useCallback((token) => {
-    // Send token to Worker to resolve username via api.challonge.com (which works from Worker IP)
-    fetch(`${OVERLAY_WORKER}/auth/me`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
-      signal: AbortSignal.timeout(12000),
-    })
-    .then(r => r.json())
-    .then(d => {
-      if (d.username) {
-        try { sessionStorage.setItem("ncblast-auth-token", token); } catch(_) {}
-        try { sessionStorage.setItem("ncblast-auth-user", d.username); } catch(_) {}
-        setUsername(d.username);
-        setState("done");
-      } else {
-        setErrorMsg(d.error || "Couldn't get your Challonge username.");
-        setState("error");
-      }
-    })
-    .catch(() => { setErrorMsg("Connection error resolving username. Try again."); setState("error"); });
-  }, []);
-
-  React.useEffect(() => {
-    const handler = (event) => {
-      if (event.origin !== "https://ncblast.pages.dev") return;
-      if (!event.data || event.data.type !== "challonge_oauth") return;
-      clearInterval(pollRef.current);
-      if (popupRef.current && !popupRef.current.closed) popupRef.current.close();
-
-      const { token, code, state: returnedState, error } = event.data;
-
-      if (error) { setErrorMsg("Challonge login was cancelled or failed."); setState("error"); return; }
-
-      // Implicit flow: token arrives directly
-      if (token) { finishWithToken(token); return; }
-
-      // Authorization code fallback: exchange via Worker
-      if (code) {
-        if (returnedState !== stateKeyRef.current) { setErrorMsg("Security mismatch. Try again."); setState("error"); return; }
-        fetch(`${OVERLAY_WORKER}/auth/exchange`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, redirect_uri: REDIRECT_URI }),
-          signal: AbortSignal.timeout(15000),
-        })
-        .then(r => r.json())
-        .then(d => {
-          if (d.username) {
-            try { sessionStorage.setItem("ncblast-auth-token", d.access_token || ""); } catch(_) {}
-            try { sessionStorage.setItem("ncblast-auth-user", d.username); } catch(_) {}
-            setUsername(d.username);
-            setState("done");
-          } else {
-            setErrorMsg(d.error || "Couldn't get your Challonge username.");
-            setState("error");
-          }
-        })
-        .catch(() => { setErrorMsg("Connection error exchanging login. Try again."); setState("error"); });
-        return;
-      }
-
-      setErrorMsg("No token or code returned from Challonge."); setState("error");
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, [finishWithToken]);
 
   const start = React.useCallback(async () => {
-    if (popupRef.current && !popupRef.current.closed) popupRef.current.close();
-    clearInterval(pollRef.current);
     setErrorMsg("");
-    setState("waiting");
-
-    const stateKey = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-    stateKeyRef.current = stateKey;
-
+    setState("navigating");
     // Ask Worker for the authorize URL (keeps client_id server-side)
-    // Use implicit flow (response_type=token) so token arrives in URL hash —
-    // no server-side code exchange needed, avoiding the blocked connect.challonge.com endpoint
-    let popupUrl;
     try {
       const res = await fetch(
-        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${encodeURIComponent(stateKey)}&response_type=token`,
+        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code`,
         { signal: AbortSignal.timeout(8000) }
       );
       const data = await res.json();
       if (!data.url) throw new Error(data.error || "No URL returned");
-      popupUrl = data.url;
+      // Navigate the current tab — works on all browsers including mobile Safari
+      window.location.href = data.url;
     } catch(e) {
       setErrorMsg("Couldn't reach the server. Try again.");
       setState("error");
-      return;
     }
-
-    const popup = window.open(popupUrl, "challonge_auth",
-      "width=520,height=640,scrollbars=yes,resizable=yes,toolbar=no,menubar=no");
-    popupRef.current = popup;
-
-    if (!popup) {
-      setErrorMsg("Popup was blocked. Please allow popups for this site and try again.");
-      setState("error");
-      return;
-    }
-
-    pollRef.current = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(pollRef.current);
-        setState(prev => prev === "waiting" ? "error" : prev);
-        setErrorMsg(prev => prev || "Login window was closed. Try again.");
-      }
-    }, 800);
   }, []);
 
-  React.useEffect(() => () => {
-    clearInterval(pollRef.current);
-    if (popupRef.current && !popupRef.current.closed) popupRef.current.close();
-  }, []);
+  React.useEffect(() => () => clearInterval(pollRef.current), []);
 
   return { state, username, errorMsg, start, reset };
 }
@@ -340,7 +296,7 @@ function ChallongeLoginScreen({ auth, title, subtitle, onCancel }) {
           </button>
         )}
 
-        {auth.state === "waiting" && (
+        {(auth.state === "navigating" || auth.state === "exchanging") && (
           <div style={{textAlign:"center", marginBottom:16}}>
             <div style={{
               background:"var(--surface)", borderRadius:16, padding:"24px 20px",
@@ -350,20 +306,14 @@ function ChallongeLoginScreen({ auth, title, subtitle, onCancel }) {
                 border:"3px solid var(--border2)", borderTopColor:"#EA580C",
                 animation:"spin 1s linear infinite"}}/>
               <p style={{fontSize:14, fontWeight:800, color:"var(--text-primary)", margin:"0 0 6px"}}>
-                Challonge login window open
+                {auth.state === "navigating" ? "Opening Challonge…" : "Completing login…"}
               </p>
               <p style={{fontSize:12, color:"var(--text-muted)", margin:0, lineHeight:1.5}}>
-                Log in and approve access in the popup. This window will update automatically.
+                {auth.state === "navigating"
+                  ? "You'll be taken to Challonge to log in, then brought back here automatically."
+                  : "Verifying your account, just a moment."}
               </p>
             </div>
-            <button onClick={auth.start} style={{
-              width:"100%", padding:"11px 0", borderRadius:11, border:"1px solid var(--border2)",
-              background:"var(--surface)", color:"var(--text-muted)",
-              fontSize:13, fontWeight:700, fontFamily:"'Outfit',sans-serif", cursor:"pointer",
-              marginBottom:10,
-            }}>
-              ↺ Reopen Login Window
-            </button>
           </div>
         )}
 
