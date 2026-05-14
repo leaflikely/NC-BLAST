@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth fixes — random state param forces fresh Challonge login each attempt, had-error flag set on all exchange failures so errors survive page reload, cleanup effect preserves error flags when init state is error -->
+<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth browser-side me.json — exchange returns token, browser calls me.json directly, confirm verifies token via v1 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -104,7 +104,7 @@ const { useState, useEffect, useRef, useCallback } = React;
     const WORKER = "https://challonge-proxy.danny61734.workers.dev";
     sessionStorage.setItem("ncblast-oauth-pending", "1");
 
-    // Send code to Worker — Worker does the exchange and username lookup server-side
+    // Step 1: Send code to Worker — Worker exchanges it for an access token
     fetch(`${WORKER}/auth/exchange`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -112,15 +112,45 @@ const { useState, useEffect, useRef, useCallback } = React;
     })
     .then(r => r.json())
     .then(d => {
-      sessionStorage.removeItem("ncblast-oauth-pending");
-      if (d.username) {
-        sessionStorage.setItem("ncblast-auth-token", d.access_token || "");
-        sessionStorage.setItem("ncblast-auth-user", d.username);
-        sessionStorage.setItem("ncblast-oauth-done", "1");
-      } else {
-        sessionStorage.setItem("ncblast-oauth-error", d.error || "Login failed");
+      if (!d.ok || !d.access_token) {
+        sessionStorage.removeItem("ncblast-oauth-pending");
+        sessionStorage.setItem("ncblast-oauth-error", d.error || "Token exchange failed");
         sessionStorage.setItem("ncblast-oauth-had-error", "1");
+        return;
       }
+      const token = d.access_token;
+      // Step 2: Browser calls /me.json directly — avoids Cloudflare Content-Type injection
+      return fetch("https://api.challonge.com/v2.1/me.json", {
+        headers: { "Authorization": "Bearer " + token, "Accept": "application/json" },
+      })
+      .then(r => r.json())
+      .then(me => {
+        const username = me?.data?.attributes?.username || me?.user?.username || me?.username || null;
+        if (!username) {
+          sessionStorage.removeItem("ncblast-oauth-pending");
+          sessionStorage.setItem("ncblast-oauth-error", "Got token but no username from Challonge. Body: " + JSON.stringify(me).slice(0, 200));
+          sessionStorage.setItem("ncblast-oauth-had-error", "1");
+          return;
+        }
+        // Step 3: Tell Worker to confirm the token+username pair is valid
+        return fetch(`${WORKER}/auth/confirm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, username }),
+        })
+        .then(r => r.json())
+        .then(conf => {
+          sessionStorage.removeItem("ncblast-oauth-pending");
+          if (conf.ok) {
+            sessionStorage.setItem("ncblast-auth-token", token);
+            sessionStorage.setItem("ncblast-auth-user", username);
+            sessionStorage.setItem("ncblast-oauth-done", "1");
+          } else {
+            sessionStorage.setItem("ncblast-oauth-error", conf.error || "Verification failed");
+            sessionStorage.setItem("ncblast-oauth-had-error", "1");
+          }
+        });
+      });
     })
     .catch(e => {
       sessionStorage.removeItem("ncblast-oauth-pending");
