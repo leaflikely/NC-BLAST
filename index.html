@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth code flow restored, browser calls me.json after exchange, no username entry -->
+<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth restored to working state — auto-confirm from saved username, role restored after redirect -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -78,8 +78,6 @@
 const { useState, useEffect, useRef, useCallback } = React;
 
 // ── OAuth callback detection ──────────────────────────────────────────────
-// Code flow: Challonge returns ?code= in the URL. Worker exchanges it for a token.
-// Browser then calls /me.json directly to get the username (no CF header injection).
 (function handleOAuthCallback() {
   try {
     const params = new URLSearchParams(window.location.search);
@@ -103,7 +101,6 @@ const { useState, useEffect, useRef, useCallback } = React;
     const WORKER = "https://challonge-proxy.danny61734.workers.dev";
     sessionStorage.setItem("ncblast-oauth-pending", "1");
 
-    // Step 1: Worker exchanges code for token
     fetch(`${WORKER}/auth/exchange`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -111,31 +108,14 @@ const { useState, useEffect, useRef, useCallback } = React;
     })
     .then(r => r.json())
     .then(d => {
-      if (!d.ok || !d.access_token) {
-        sessionStorage.removeItem("ncblast-oauth-pending");
-        sessionStorage.setItem("ncblast-oauth-error", d.error || "Token exchange failed");
+      sessionStorage.removeItem("ncblast-oauth-pending");
+      if (d.ok && d.access_token) {
+        sessionStorage.setItem("ncblast-auth-token", d.access_token);
+        sessionStorage.setItem("ncblast-oauth-needs-username", "1");
+      } else {
+        sessionStorage.setItem("ncblast-oauth-error", d.error || "Login failed");
         sessionStorage.setItem("ncblast-oauth-had-error", "1");
-        return;
       }
-      const token = d.access_token;
-      // Step 2: Browser calls /me.json directly — avoids CF Worker Content-Type injection
-      return fetch("https://api.challonge.com/v2.1/me.json", {
-        headers: { "Authorization": "Bearer " + token, "Accept": "application/json" },
-      })
-      .then(r => { if (!r.ok) throw new Error("me.json HTTP " + r.status); return r.json(); })
-      .then(me => {
-        sessionStorage.removeItem("ncblast-oauth-pending");
-        const username = me?.data?.attributes?.username || me?.user?.username || me?.username || null;
-        if (username) {
-          sessionStorage.setItem("ncblast-auth-token", token);
-          sessionStorage.setItem("ncblast-auth-user", username);
-          sessionStorage.setItem("ncblast-oauth-done", "1");
-          try { localStorage.setItem("ncblast-saved-username", username); } catch(_) {}
-        } else {
-          sessionStorage.setItem("ncblast-oauth-error", "Got token but no username. Body: " + JSON.stringify(me).slice(0, 150));
-          sessionStorage.setItem("ncblast-oauth-had-error", "1");
-        }
-      });
     })
     .catch(e => {
       sessionStorage.removeItem("ncblast-oauth-pending");
@@ -201,18 +181,20 @@ function useChallongeAuth() {
   // that would show the error screen with a Back button that sends to main menu.
   const justReturned = (() => {
     try {
-      return sessionStorage.getItem("ncblast-oauth-pending")   === "1" ||
-             sessionStorage.getItem("ncblast-oauth-done")      === "1" ||
-             sessionStorage.getItem("ncblast-oauth-had-error") === "1";
+      return sessionStorage.getItem("ncblast-oauth-pending")        === "1" ||
+             sessionStorage.getItem("ncblast-oauth-done")           === "1" ||
+             sessionStorage.getItem("ncblast-oauth-had-error")      === "1" ||
+             sessionStorage.getItem("ncblast-oauth-needs-username") === "1";
     } catch(_) { return false; }
   })();
 
   const initState = (() => {
     if (!justReturned) return "idle";
     try {
-      if (sessionStorage.getItem("ncblast-oauth-pending")   === "1") return "exchanging";
-      if (sessionStorage.getItem("ncblast-oauth-done")      === "1") return "done";
-      if (sessionStorage.getItem("ncblast-oauth-had-error") === "1") return "error";
+      if (sessionStorage.getItem("ncblast-oauth-pending")        === "1") return "exchanging";
+      if (sessionStorage.getItem("ncblast-oauth-needs-username") === "1") return "confirm";
+      if (sessionStorage.getItem("ncblast-oauth-done")           === "1") return "done";
+      if (sessionStorage.getItem("ncblast-oauth-had-error")      === "1") return "error";
     } catch(_) {}
     return "idle";
   })();
@@ -242,7 +224,7 @@ function useChallongeAuth() {
         sessionStorage.removeItem("ncblast-oauth-error");
         sessionStorage.removeItem("ncblast-oauth-had-error");
       }
-      if (initState !== "done") {
+      if (initState !== "done" && initState !== "confirm") {
         sessionStorage.removeItem("ncblast-auth-token");
         sessionStorage.removeItem("ncblast-auth-user");
       }
@@ -256,17 +238,47 @@ function useChallongeAuth() {
       try {
         if (sessionStorage.getItem("ncblast-oauth-pending") !== "1") {
           clearInterval(pollRef.current);
+          const needsUser = sessionStorage.getItem("ncblast-oauth-needs-username") === "1";
           const user = sessionStorage.getItem("ncblast-auth-user");
           const err  = sessionStorage.getItem("ncblast-oauth-error");
           sessionStorage.removeItem("ncblast-oauth-error");
           sessionStorage.removeItem("ncblast-oauth-pending");
-          if (user) { setUsername(user); setState("done"); }
+          if (needsUser) { setState("confirm"); }
+          else if (user) { setUsername(user); setState("done"); }
           else { setErrorMsg(err || "Login failed."); setState("error"); }
         }
       } catch(_) { clearInterval(pollRef.current); setState("error"); setErrorMsg("Login failed."); }
     }, 300);
     return () => clearInterval(pollRef.current);
   }, [state]);
+
+  const confirm = React.useCallback(async (claimedUsername) => {
+    const token = sessionStorage.getItem("ncblast-auth-token");
+    if (!token || !claimedUsername) return;
+    setState("exchanging");
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/auth/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, username: claimedUsername.trim().toLowerCase() }),
+      });
+      const d = await res.json();
+      sessionStorage.removeItem("ncblast-oauth-needs-username");
+      if (d.ok) {
+        sessionStorage.setItem("ncblast-auth-user", d.username);
+        sessionStorage.setItem("ncblast-oauth-done", "1");
+        try { localStorage.setItem("ncblast-saved-username", d.username); } catch(_) {}
+        setUsername(d.username);
+        setState("done");
+      } else {
+        setErrorMsg(d.error || "Confirmation failed.");
+        setState("error");
+      }
+    } catch(e) {
+      setErrorMsg(e.message || "Connection error.");
+      setState("error");
+    }
+  }, []);
 
   const reset = React.useCallback(() => {
     clearInterval(pollRef.current);
@@ -277,6 +289,7 @@ function useChallongeAuth() {
       sessionStorage.removeItem("ncblast-oauth-done");
       sessionStorage.removeItem("ncblast-oauth-error");
       sessionStorage.removeItem("ncblast-oauth-had-error");
+      sessionStorage.removeItem("ncblast-oauth-needs-username");
     } catch(_) {}
     setState("idle");
     setUsername(null);
@@ -307,7 +320,16 @@ function useChallongeAuth() {
 
   React.useEffect(() => () => clearInterval(pollRef.current), []);
 
-  return { state, username, errorMsg, start, reset };
+  // Auto-confirm using saved username — no manual entry for returning users
+  React.useEffect(() => {
+    if (state !== "confirm") return;
+    try {
+      const saved = localStorage.getItem("ncblast-saved-username");
+      if (saved) confirm(saved);
+    } catch(_) {}
+  }, [state]);
+
+  return { state, username, errorMsg, start, reset, confirm };
 }
 
 /* ═══════════════════════════════════════
@@ -320,6 +342,9 @@ function useChallongeAuth() {
      onCancel    — back/cancel callback
 ═══════════════════════════════════════ */
 function ChallongeLoginScreen({ auth, title, subtitle, onCancel }) {
+  const [usernameInput, setUsernameInput] = React.useState(() => {
+    try { return localStorage.getItem("ncblast-saved-username") || ""; } catch(_) { return ""; }
+  });
   return (
     <div style={{
       minHeight:"100vh", display:"flex", flexDirection:"column",
@@ -362,6 +387,28 @@ function ChallongeLoginScreen({ auth, title, subtitle, onCancel }) {
                   ? "You'll be taken to Challonge to log in, then brought back here automatically."
                   : "Verifying your account, just a moment."}
               </p>
+            </div>
+          </div>
+        )}
+
+        {auth.state === "confirm" && (
+          <div style={{marginBottom:16}}>
+            <div style={{background:"var(--surface)", borderRadius:14, padding:"18px 16px", border:"2px solid #EA580C", marginBottom:14}}>
+              <p style={{fontSize:13, fontWeight:700, color:"var(--text-primary)", margin:"0 0 6px"}}>✅ Challonge login successful!</p>
+              <p style={{fontSize:12, color:"var(--text-muted)", margin:"0 0 14px", lineHeight:1.5}}>Enter your Challonge username to finish.</p>
+              <input type="text" placeholder="your-challonge-username" value={usernameInput}
+                onChange={e => setUsernameInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && usernameInput.trim()) auth.confirm(usernameInput.trim()); }}
+                style={{width:"100%", padding:"11px 12px", borderRadius:10, boxSizing:"border-box",
+                  border:"1.5px solid var(--border2)", background:"var(--surface2)",
+                  color:"var(--text-primary)", fontSize:14, fontFamily:"'Outfit',sans-serif",
+                  outline:"none", marginBottom:10}} autoFocus />
+              <button onClick={() => { if (usernameInput.trim()) auth.confirm(usernameInput.trim()); }}
+                disabled={!usernameInput.trim()}
+                style={{width:"100%", padding:"13px 0", borderRadius:12, border:"none",
+                  background:usernameInput.trim()?"#EA580C":"var(--border2)",
+                  color:"#fff", fontSize:14, fontWeight:800,
+                  fontFamily:"'Outfit',sans-serif", cursor:usernameInput.trim()?"pointer":"default"}}>Confirm</button>
             </div>
           </div>
         )}
@@ -5376,6 +5423,33 @@ function PinModal({title, subtitle, onSubmit, onCancel, error, loading}) {
 /* ═══════════════════════════════════════
    ORGANIZER APP
 ═══════════════════════════════════════ */
+function OrgConfirmUsername({ auth }) {
+  const [input, setInput] = React.useState(() => {
+    try { return localStorage.getItem("ncblast-saved-username") || ""; } catch(_) { return ""; }
+  });
+  return (
+    <div style={{marginBottom:14}}>
+      <div style={{background:"var(--surface)",borderRadius:14,padding:"16px",border:"2px solid #EA580C",marginBottom:10}}>
+        <p style={{fontSize:13,fontWeight:700,color:"var(--text-primary)",margin:"0 0 4px"}}>✅ Challonge login successful!</p>
+        <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 12px",lineHeight:1.5}}>Enter your Challonge username to finish.</p>
+        <input type="text" placeholder="your-challonge-username" value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && input.trim()) auth.confirm(input.trim()); }}
+          style={{width:"100%",padding:"10px 12px",borderRadius:10,boxSizing:"border-box",
+            border:"1.5px solid var(--border2)",background:"var(--surface2)",
+            color:"var(--text-primary)",fontSize:13,fontFamily:"'Outfit',sans-serif",
+            outline:"none",marginBottom:10}} autoFocus />
+        <button onClick={() => { if (input.trim()) auth.confirm(input.trim()); }}
+          disabled={!input.trim()}
+          style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",
+            background:input.trim()?"#EA580C":"var(--border2)",
+            color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",
+            cursor:input.trim()?"pointer":"default"}}>Confirm</button>
+      </div>
+    </div>
+  );
+}
+
 function OrgApp({onSwitchRole}) {
   const [slug, setSlug] = useState(null);           // active tournament slug
   const [tourneyName, setTourneyName] = useState(""); // display name
@@ -6054,6 +6128,9 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
                 {auth.state === "navigating" ? "Opening Challonge…" : "Completing login…"}
               </p>
             </div>
+          )}
+          {auth.state === "confirm" && (
+            <OrgConfirmUsername auth={auth} />
           )}
           {auth.state === "error" && (
             <div style={{marginBottom:14}}>
