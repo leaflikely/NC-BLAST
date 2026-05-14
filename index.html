@@ -77,6 +77,29 @@
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
 
+// ── OAuth callback detection ──────────────────────────────────────────────
+// When Challonge redirects back to ncblast.pages.dev?code=XXX&state=YYY,
+// this runs immediately. If we're in a popup (window.opener exists), we send
+// the code back to the parent tab and close ourselves.
+(function handleOAuthCallback() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const code  = params.get("code");
+    const state = params.get("state");
+    const error = params.get("error");
+    if (!window.opener) return; // not a popup, nothing to do
+    if (!code && !error) return; // no OAuth params, normal page load
+    window.opener.postMessage(
+      { type: "challonge_oauth", code: code || null, state: state || null, error: error || null },
+      "https://ncblast.pages.dev"
+    );
+    // Clean the URL so the app loads normally if the user navigates back
+    window.history.replaceState({}, document.title, "/");
+    // Let the message send before closing
+    setTimeout(() => window.close(), 300);
+  } catch(_) {}
+})();
+
 /* ═══════════════════════════════════════
    VIEWPORT SCALE
 ═══════════════════════════════════════ */
@@ -125,120 +148,110 @@ const COMBO_CACHE_TTL = 60 * 60 * 1000; // 1 hour in ms
    auth.reset(): go back to idle
 ═══════════════════════════════════════ */
 function useChallongeAuth() {
-  const CHALLONGE_CLIENT_ID = "43c8506385008d50b89b3b0ea8c84738a9b714b8955ba04a25fc99e810b82fa8";
-  const CHALLONGE_SCOPES    = "me tournaments:read matches:read participants:read";
+  const REDIRECT_URI = "https://ncblast.pages.dev";
 
-  const [state, setState] = React.useState("idle");
-  const [userCode, setUserCode] = React.useState("");
-  const [verificationUri, setVerificationUri] = React.useState("");
+  const [state, setState]       = React.useState("idle");
   const [username, setUsername] = React.useState(null);
   const [errorMsg, setErrorMsg] = React.useState("");
-  const pollRef = React.useRef(null);
-  const deviceCodeRef = React.useRef(null);
-  const intervalRef = React.useRef(5000);
+  const popupRef    = React.useRef(null);
+  const pollRef     = React.useRef(null);
+  const stateKeyRef = React.useRef(null);
 
   const reset = React.useCallback(() => {
-    clearTimeout(pollRef.current);
+    clearInterval(pollRef.current);
+    if (popupRef.current && !popupRef.current.closed) popupRef.current.close();
     setState("idle");
-    setUserCode("");
-    setVerificationUri("");
     setUsername(null);
     setErrorMsg("");
-    deviceCodeRef.current = null;
+    stateKeyRef.current = null;
+  }, []);
+
+  React.useEffect(() => {
+    const handler = (event) => {
+      if (event.origin !== "https://ncblast.pages.dev") return;
+      if (!event.data || event.data.type !== "challonge_oauth") return;
+      clearInterval(pollRef.current);
+      if (popupRef.current && !popupRef.current.closed) popupRef.current.close();
+
+      const { code, state: returnedState, error } = event.data;
+      if (error) { setErrorMsg("Challonge login was cancelled or failed."); setState("error"); return; }
+      if (returnedState !== stateKeyRef.current) { setErrorMsg("Security mismatch. Try again."); setState("error"); return; }
+      if (!code) { setErrorMsg("No code returned from Challonge."); setState("error"); return; }
+
+      fetch(`${OVERLAY_WORKER}/auth/exchange`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, redirect_uri: REDIRECT_URI }),
+        signal: AbortSignal.timeout(15000),
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.username) {
+          try { sessionStorage.setItem("ncblast-auth-token", d.access_token || ""); } catch(_) {}
+          try { sessionStorage.setItem("ncblast-auth-user", d.username); } catch(_) {}
+          setUsername(d.username);
+          setState("done");
+        } else {
+          setErrorMsg(d.error || "Couldn't get your Challonge username.");
+          setState("error");
+        }
+      })
+      .catch(() => { setErrorMsg("Connection error exchanging login. Try again."); setState("error"); });
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
   }, []);
 
   const start = React.useCallback(async () => {
-    clearTimeout(pollRef.current);
-    setState("polling");
+    if (popupRef.current && !popupRef.current.closed) popupRef.current.close();
+    clearInterval(pollRef.current);
     setErrorMsg("");
+    setState("waiting");
+
+    const stateKey = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    stateKeyRef.current = stateKey;
+
+    // Ask the Worker for the authorize URL — client ID stays server-side
+    let popupUrl;
     try {
-      // Step 1: Call Challonge directly from the browser — no Worker proxy needed
-      const params = new URLSearchParams({ client_id: CHALLONGE_CLIENT_ID, scope: CHALLONGE_SCOPES });
       const res = await fetch(
-        `https://connect.challonge.com/oauth/authorize_device?${params.toString()}`,
-        { method: "POST" }
+        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${encodeURIComponent(stateKey)}`,
+        { signal: AbortSignal.timeout(8000) }
       );
-      const text = await res.text();
-      let data;
-      try { data = JSON.parse(text); } catch(_) {
-        throw new Error("Challonge didn't respond correctly. Try again.");
-      }
-      if (!res.ok || !data.device_code) throw new Error(data.error || "Couldn't start login.");
-
-      deviceCodeRef.current = data.device_code;
-      intervalRef.current = Math.max((data.interval || 5), 5) * 1000; // minimum 5s, respect Challonge's interval
-      setUserCode(data.user_code || "");
-      setVerificationUri(data.verification_uri || "https://auth.challonge.com/oauth/device");
-
-      // Step 2: Poll Challonge directly for approval
-      const poll = async () => {
-        try {
-          const tParams = new URLSearchParams({
-            grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-            device_code: deviceCodeRef.current,
-            client_id: CHALLONGE_CLIENT_ID,
-          });
-          const r = await fetch(
-            `https://connect.challonge.com/oauth/token?${tParams.toString()}`,
-            { method: "POST" }
-          );
-          const tText = await r.text();
-          let d;
-          try { d = JSON.parse(tText); } catch(_) {
-            // Non-JSON response — back off and retry, don't kill the grant
-            intervalRef.current = Math.min(intervalRef.current * 2, 30000);
-            pollRef.current = setTimeout(poll, intervalRef.current);
-            return;
-          }
-
-          if (d.access_token) {
-            // Step 3: Resolve username — call Challonge directly
-            const meRes = await fetch("https://api.challonge.com/v2.1/users/me.json", {
-              headers: { "Authorization": `Bearer ${d.access_token}` },
-            });
-            const meData = await meRes.json();
-            const resolvedUsername =
-              meData?.data?.attributes?.username ||
-              meData?.user?.username ||
-              null;
-            if (resolvedUsername) {
-              try { sessionStorage.setItem("ncblast-auth-token", d.access_token); } catch(_) {}
-              try { sessionStorage.setItem("ncblast-auth-user", resolvedUsername); } catch(_) {}
-              setUsername(resolvedUsername);
-              setState("done");
-            } else {
-              setErrorMsg("Logged in but couldn't read your Challonge username.");
-              setState("error");
-            }
-            return;
-          }
-          const e = d.error || "";
-          if (e === "expired_token" || e === "access_denied") {
-            setErrorMsg("Login timed out. Try again.");
-            setState("error");
-            return;
-          }
-          if (e === "slow_down") {
-            // OAuth spec: increase interval by 5s when told to slow down
-            intervalRef.current = intervalRef.current + 5000;
-          }
-          // authorization_pending or slow_down — keep polling at updated interval
-          pollRef.current = setTimeout(poll, intervalRef.current);
-        } catch (e) {
-          setErrorMsg("Connection error while waiting. Try again.");
-          setState("error");
-        }
-      };
-      pollRef.current = setTimeout(poll, intervalRef.current);
-    } catch (e) {
-      setErrorMsg(e.message || "Login failed.");
+      const data = await res.json();
+      if (!data.url) throw new Error(data.error || "No URL returned");
+      popupUrl = data.url;
+    } catch(e) {
+      setErrorMsg("Couldn't reach the server. Try again.");
       setState("error");
+      return;
     }
+
+    const popup = window.open(popupUrl, "challonge_auth",
+      "width=520,height=640,scrollbars=yes,resizable=yes,toolbar=no,menubar=no");
+    popupRef.current = popup;
+
+    if (!popup) {
+      setErrorMsg("Popup was blocked. Please allow popups for this site and try again.");
+      setState("error");
+      return;
+    }
+
+    pollRef.current = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(pollRef.current);
+        setState(prev => prev === "waiting" ? "error" : prev);
+        setErrorMsg(prev => prev || "Login window was closed. Try again.");
+      }
+    }, 800);
   }, []);
 
-  React.useEffect(() => () => clearTimeout(pollRef.current), []);
+  React.useEffect(() => () => {
+    clearInterval(pollRef.current);
+    if (popupRef.current && !popupRef.current.closed) popupRef.current.close();
+  }, []);
 
-  return { state, userCode, verificationUri, username, errorMsg, start, reset };
+  return { state, username, errorMsg, start, reset };
 }
 
 /* ═══════════════════════════════════════
@@ -264,89 +277,6 @@ function ChallongeLoginScreen({ auth, title, subtitle, onCancel }) {
           {subtitle && <p style={{fontSize:13, color:"var(--text-muted)", margin:0, lineHeight:1.5}}>{subtitle}</p>}
         </div>
 
-        {auth.state === "idle" && (
-          <button onClick={auth.start} style={{
-            width:"100%", padding:"18px 0", borderRadius:14, border:"none",
-            background:"linear-gradient(135deg,#EA580C,#DC2626)",
-            color:"#fff", fontSize:16, fontWeight:900,
-            fontFamily:"'Outfit',sans-serif", cursor:"pointer",
-            boxShadow:"0 8px 24px rgba(234,88,12,0.35)", marginBottom:14
-          }}>
-            Log in with Challonge
-          </button>
-        )}
-
-        {auth.state === "polling" && (
-          <div style={{textAlign:"center"}}>
-            <div style={{
-              background:"var(--surface)", borderRadius:16, padding:"20px",
-              border:"2px solid #EA580C", marginBottom:16
-            }}>
-              <p style={{fontSize:11, fontWeight:700, color:"var(--text-faint)", textTransform:"uppercase", letterSpacing:1, margin:"0 0 8px"}}>
-                Step 1 — Open this link
-              </p>
-              <a href={auth.verificationUri} target="_blank" rel="noopener noreferrer" style={{
-                display:"block", fontSize:13, fontWeight:700, color:"#EA580C",
-                margin:"0 0 14px", wordBreak:"break-all", textDecoration:"underline",
-                cursor:"pointer",
-              }}>
-                {auth.verificationUri} ↗
-              </a>
-              <p style={{fontSize:11, fontWeight:700, color:"var(--text-faint)", textTransform:"uppercase", letterSpacing:1, margin:"0 0 8px"}}>
-                Step 2 — Enter this code
-              </p>
-              <div style={{
-                fontSize:32, fontWeight:900, color:"var(--text-primary)",
-                letterSpacing:8, fontFamily:"'JetBrains Mono',monospace",
-                marginBottom:10,
-              }}>
-                {auth.userCode}
-              </div>
-              <button onClick={()=>{ try { navigator.clipboard.writeText(auth.userCode); } catch(_){} }}
-                style={{
-                  padding:"6px 16px", borderRadius:8, border:"1px solid var(--border2)",
-                  background:"var(--surface2)", color:"var(--text-muted)",
-                  fontSize:11, fontWeight:700, fontFamily:"'Outfit',sans-serif", cursor:"pointer",
-                }}>
-                📋 Copy Code
-              </button>
-            </div>
-            <p style={{fontSize:12, color:"var(--text-muted)", marginBottom:16}}>
-              Waiting for Challonge approval…
-            </p>
-            <div style={{width:40, height:40, margin:"0 auto 16px", borderRadius:"50%",
-              border:"3px solid var(--border2)", borderTopColor:"#EA580C",
-              animation:"spin 1s linear infinite"}}/>
-          </div>
-        )}
-
-        {auth.state === "done" && (
-          <div style={{textAlign:"center", marginBottom:16}}>
-            <div style={{fontSize:40, marginBottom:8}}>✅</div>
-            <p style={{fontSize:16, fontWeight:800, color:"#22C55E", margin:"0 0 4px"}}>Logged in!</p>
-            <p style={{fontSize:13, color:"var(--text-muted)"}}>{auth.username}</p>
-          </div>
-        )}
-
-        {auth.state === "error" && (
-          <div style={{marginBottom:16}}>
-            <p style={{fontSize:13, color:"#EF4444", textAlign:"center", fontWeight:600, marginBottom:14}}>
-              ⚠ {auth.errorMsg}
-            </p>
-            <button onClick={auth.start} style={{
-              width:"100%", padding:"14px 0", borderRadius:12, border:"none",
-              background:"#EA580C", color:"#fff", fontSize:14, fontWeight:800,
-              fontFamily:"'Outfit',sans-serif", cursor:"pointer", marginBottom:10
-            }}>Try Again</button>
-          </div>
-        )}
-
-        <button onClick={onCancel} style={{
-          width:"100%", padding:"12px 0", borderRadius:12,
-          border:"2px solid var(--border)", background:"none",
-          color:"var(--text-muted)", fontSize:13, fontWeight:700,
-          fontFamily:"'Outfit',sans-serif", cursor:"pointer"
-        }}>← Back</button>
       </div>
     </div>
   );
