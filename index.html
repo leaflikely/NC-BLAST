@@ -78,24 +78,26 @@
 const { useState, useEffect, useRef, useCallback } = React;
 
 // ── OAuth callback detection ──────────────────────────────────────────────
-// When Challonge redirects back to ncblast.pages.dev?code=XXX after login,
-// this fires before React loads. We fetch exchange credentials from the Worker,
-// then call connect.challonge.com directly from the browser (bypasses Worker IP block).
 (function handleOAuthCallback() {
   try {
     const params = new URLSearchParams(window.location.search);
     const code  = params.get("code");
     const error = params.get("error");
+    const errorDesc = params.get("error_description");
     if (!code && !error) return; // normal page load
 
     window.history.replaceState({}, document.title, "/");
 
-    if (error) { sessionStorage.setItem("ncblast-oauth-error", error); return; }
+    if (error) {
+      const msg = errorDesc || error || "Challonge returned an error. Check your OAuth settings.";
+      sessionStorage.setItem("ncblast-oauth-error", msg);
+      return;
+    }
 
     const WORKER = "https://challonge-proxy.danny61734.workers.dev";
     sessionStorage.setItem("ncblast-oauth-pending", "1");
 
-    // Step 1: Get exchange credentials from Worker (keeps secret out of source code)
+    // Step 1: Get exchange credentials from Worker
     fetch(`${WORKER}/auth/exchange-params`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -103,10 +105,10 @@ const { useState, useEffect, useRef, useCallback } = React;
     })
     .then(r => r.json())
     .then(({ client_id, client_secret, redirect_uri, error: credErr }) => {
-      if (credErr || !client_id) throw new Error(credErr || "No credentials");
+      if (credErr || !client_id) throw new Error(credErr || "No credentials from server");
 
-      // Step 2: Exchange code for token directly from browser
-      // Browser IP bypasses the Cloudflare bot check on connect.challonge.com
+      // Step 2: Exchange code → token directly from browser
+      // Uses api.challonge.com (same domain as /me.json, consistent token system)
       const tokenParams = new URLSearchParams({
         grant_type:    "authorization_code",
         code,
@@ -114,19 +116,20 @@ const { useState, useEffect, useRef, useCallback } = React;
         client_secret,
         redirect_uri,
       });
-      return fetch(`https://connect.challonge.com/oauth/token?${tokenParams.toString()}`, {
+      return fetch(`https://api.challonge.com/oauth/token?${tokenParams.toString()}`, {
         method: "POST",
         headers: { "Accept": "application/json" },
       });
     })
-    .then(r => {
-      if (!r.ok && r.status !== 200) throw new Error("HTTP " + r.status);
-      return r.json();
-    })
-    .then(tokenData => {
-      if (!tokenData.access_token) throw new Error(tokenData.error || "No token returned");
+    .then(r => r.text())
+    .then(text => {
+      let tokenData;
+      try { tokenData = JSON.parse(text); }
+      catch(_) { throw new Error("Non-JSON from token endpoint: " + text.slice(0, 100)); }
+      if (!tokenData.access_token) throw new Error(tokenData.error_description || tokenData.error || "No token returned");
 
-      // Step 3: Resolve username via Worker (api.challonge.com works from Worker IP)
+      // Step 3: Resolve username via Worker (api.challonge.com/v2.1/me.json)
+      const WORKER = "https://challonge-proxy.danny61734.workers.dev";
       return fetch(`${WORKER}/auth/me`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -220,11 +223,16 @@ function useChallongeAuth() {
   const [errorMsg, setErrorMsg] = React.useState(initError);
   const pollRef = React.useRef(null);
 
-  // Clear one-shot flags immediately on mount so they don't persist across navigation
+  // Clean up one-shot flags on mount.
+  // We DON'T remove oauth-error here — it's displayed in the UI.
+  // It gets removed when the user taps Try Again (reset/start).
   React.useEffect(() => {
     try {
       sessionStorage.removeItem("ncblast-oauth-done");
-      sessionStorage.removeItem("ncblast-oauth-error");
+      // If pending is still set on mount but we have an error, clean up pending
+      if (sessionStorage.getItem("ncblast-oauth-error")) {
+        sessionStorage.removeItem("ncblast-oauth-pending");
+      }
     } catch(_) {}
   }, []);
 
@@ -259,10 +267,10 @@ function useChallongeAuth() {
     setUsername(null);
     setErrorMsg("");
   }, []);
-
   const start = React.useCallback(async () => {
     setErrorMsg("");
     setState("navigating");
+    try { sessionStorage.removeItem("ncblast-oauth-error"); } catch(_) {}
     // Ask Worker for the authorize URL (keeps client_id server-side)
     try {
       const res = await fetch(
