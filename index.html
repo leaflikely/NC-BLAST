@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth username confirm flow — exchange returns needsUsername, user types Challonge username, Worker confirms via /auth/confirm -->
+<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth complete — org/verify now receives username from client, CORS allows X-Master-Key, not-authorized message updated -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5942,7 +5942,7 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
       // Verify it's still an authorized org user
       fetch(`${OVERLAY_WORKER}/org/verify`, {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({token}), signal: AbortSignal.timeout(8000),
+        body: JSON.stringify({token, username: user}), signal: AbortSignal.timeout(8000),
       }).then(r => r.json()).then(d => {
         if (d.ok) { setOrgUsername(d.username); setAuthStep("verified"); }
         else { sessionStorage.removeItem("ncblast-auth-token"); sessionStorage.removeItem("ncblast-auth-user"); setAuthStep("login"); }
@@ -5958,7 +5958,7 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
     const token = sessionStorage.getItem("ncblast-auth-token");
     fetch(`${OVERLAY_WORKER}/org/verify`, {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({token}), signal: AbortSignal.timeout(8000),
+      body: JSON.stringify({token, username: auth.username}), signal: AbortSignal.timeout(8000),
     }).then(r => r.json()).then(d => {
       if (d.ok) { setOrgUsername(d.username); setAuthStep("verified"); }
       else { setAuthStep("not_org"); }
