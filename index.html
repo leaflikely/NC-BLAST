@@ -125,14 +125,17 @@ const COMBO_CACHE_TTL = 60 * 60 * 1000; // 1 hour in ms
    auth.reset(): go back to idle
 ═══════════════════════════════════════ */
 function useChallongeAuth() {
-  const [state, setState] = React.useState("idle"); // idle | polling | done | error
+  const CHALLONGE_CLIENT_ID = "43c8506385008d50b89b3b0ea8c84738a9b714b8955ba04a25fc99e810b82fa8";
+  const CHALLONGE_SCOPES    = "me tournaments:read matches:read participants:read";
+
+  const [state, setState] = React.useState("idle");
   const [userCode, setUserCode] = React.useState("");
   const [verificationUri, setVerificationUri] = React.useState("");
   const [username, setUsername] = React.useState(null);
   const [errorMsg, setErrorMsg] = React.useState("");
   const pollRef = React.useRef(null);
   const deviceCodeRef = React.useRef(null);
-  const intervalRef = React.useRef(5);
+  const intervalRef = React.useRef(5000);
 
   const reset = React.useCallback(() => {
     clearTimeout(pollRef.current);
@@ -149,44 +152,72 @@ function useChallongeAuth() {
     setState("polling");
     setErrorMsg("");
     try {
-      const res = await fetch(`${OVERLAY_WORKER}/auth/device`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok || !data.device_code) throw new Error(data.error || "Failed to start login");
+      // Step 1: Call Challonge directly from the browser — no Worker proxy needed
+      const params = new URLSearchParams({ client_id: CHALLONGE_CLIENT_ID, scope: CHALLONGE_SCOPES });
+      const res = await fetch(
+        `https://connect.challonge.com/oauth/authorize_device?${params.toString()}`,
+        { method: "POST" }
+      );
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch(_) {
+        throw new Error("Challonge didn't respond correctly. Try again.");
+      }
+      if (!res.ok || !data.device_code) throw new Error(data.error || "Couldn't start login.");
+
       deviceCodeRef.current = data.device_code;
-      intervalRef.current = (data.interval || 5) * 1000;
+      intervalRef.current = ((data.interval || 5) + 1) * 1000; // +1s buffer to avoid rate limiting
       setUserCode(data.user_code || "");
       setVerificationUri(data.verification_uri || "https://auth.challonge.com/oauth/device");
 
-      // Poll for approval
+      // Step 2: Poll Challonge directly for approval
       const poll = async () => {
         try {
-          const r = await fetch(`${OVERLAY_WORKER}/auth/token`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ device_code: deviceCodeRef.current }),
+          const tParams = new URLSearchParams({
+            grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+            device_code: deviceCodeRef.current,
+            client_id: CHALLONGE_CLIENT_ID,
           });
-          const d = await r.json();
+          const r = await fetch(
+            `https://connect.challonge.com/oauth/token?${tParams.toString()}`,
+            { method: "POST" }
+          );
+          const tText = await r.text();
+          let d;
+          try { d = JSON.parse(tText); } catch(_) { d = {}; }
+
           if (d.access_token) {
-            // Got a token — resolve username
-            const meRes = await fetch(`${OVERLAY_WORKER}/auth/me?token=${encodeURIComponent(d.access_token)}`);
+            // Step 3: Resolve username — call Challonge directly
+            const meRes = await fetch("https://api.challonge.com/v2.1/users/me.json", {
+              headers: { "Authorization": `Bearer ${d.access_token}` },
+            });
             const meData = await meRes.json();
-            if (meData.username) {
-              // Store token in sessionStorage so it survives page refreshes within the session
-              try { sessionStorage.setItem("ncblast-auth-token", d.access_token); } catch (_) {}
-              try { sessionStorage.setItem("ncblast-auth-user", meData.username); } catch (_) {}
-              setUsername(meData.username);
+            const resolvedUsername =
+              meData?.data?.attributes?.username ||
+              meData?.user?.username ||
+              null;
+            if (resolvedUsername) {
+              try { sessionStorage.setItem("ncblast-auth-token", d.access_token); } catch(_) {}
+              try { sessionStorage.setItem("ncblast-auth-user", resolvedUsername); } catch(_) {}
+              setUsername(resolvedUsername);
               setState("done");
             } else {
-              setErrorMsg("Couldn't resolve Challonge username.");
+              setErrorMsg("Logged in but couldn't read your Challonge username.");
               setState("error");
             }
             return;
           }
-          if (d.expired) { setErrorMsg("Login timed out. Try again."); setState("error"); return; }
-          // Still pending — poll again
+          // Still pending or error from token endpoint
+          const e = d.error || "";
+          if (e === "expired_token" || e === "access_denied") {
+            setErrorMsg("Login timed out. Try again.");
+            setState("error");
+            return;
+          }
+          // authorization_pending or slow_down — keep polling
           pollRef.current = setTimeout(poll, intervalRef.current);
         } catch (e) {
-          setErrorMsg("Connection error. Try again.");
+          setErrorMsg("Connection error while waiting. Try again.");
           setState("error");
         }
       };
