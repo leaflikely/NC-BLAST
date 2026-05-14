@@ -6172,7 +6172,7 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
         <div style={{fontSize:40,marginBottom:12}}>🚫</div>
         <h2 style={{fontSize:20,fontWeight:900,color:"var(--text-primary)",margin:"0 0 8px",textAlign:"center"}}>Not Authorized</h2>
         <p style={{fontSize:13,color:"var(--text-muted)",textAlign:"center",lineHeight:1.6,maxWidth:300,marginBottom:24}}>
-          Your Challonge account (<strong style={{color:"var(--text-primary)"}}>{auth.username}</strong>) is not on the organizer list. Ask Leaf to add you.
+          Your Challonge account (<strong style={{color:"var(--text-primary)"}}>{auth.username}</strong>) is not on the organizer list. Ask a dev team member to add you.
         </p>
         <button onClick={() => { auth.reset(); setAuthStep("login"); }} style={{padding:"13px 28px",borderRadius:12,border:"none",background:"#EA580C",color:"#fff",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:12}}>
           Try a Different Account
