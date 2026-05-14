@@ -116,9 +116,13 @@ const { useState, useEffect, useRef, useCallback } = React;
         client_secret,
         redirect_uri,
       });
-      return fetch(`https://api.challonge.com/oauth/token?${tokenParams.toString()}`, {
+      return fetch(`https://api.challonge.com/oauth/token`, {
         method: "POST",
-        headers: { "Accept": "application/json" },
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Accept": "application/json",
+        },
+        body: tokenParams.toString(),
       });
     })
     .then(r => r.text())
