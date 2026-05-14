@@ -199,24 +199,28 @@ const COMBO_CACHE_TTL = 60 * 60 * 1000; // 1 hour in ms
 function useChallongeAuth() {
   const REDIRECT_URI = "https://ncblast.pages.dev";
 
-  const [state, setState]       = React.useState(() => {
-    // Check if we just came back from a Challonge redirect
+  // Read one-shot OAuth flags set by the callback IIFE, then clear them
+  const initState = (() => {
     try {
       if (sessionStorage.getItem("ncblast-oauth-pending") === "1") return "exchanging";
-      if (sessionStorage.getItem("ncblast-oauth-done") === "1")    return "done";
+      if (sessionStorage.getItem("ncblast-oauth-done")    === "1") return "done";
       if (sessionStorage.getItem("ncblast-oauth-error"))           return "error";
     } catch(_) {}
     return "idle";
-  });
-  const [username, setUsername] = React.useState(() => {
-    try { return sessionStorage.getItem("ncblast-auth-user") || null; } catch(_) { return null; }
-  });
-  const [errorMsg, setErrorMsg] = React.useState(() => {
+  })();
+  const initError = (() => {
     try { return sessionStorage.getItem("ncblast-oauth-error") || ""; } catch(_) { return ""; }
-  });
+  })();
+  const initUser = (() => {
+    try { return sessionStorage.getItem("ncblast-auth-user") || null; } catch(_) { return null; }
+  })();
+
+  const [state, setState]       = React.useState(initState);
+  const [username, setUsername] = React.useState(initUser);
+  const [errorMsg, setErrorMsg] = React.useState(initError);
   const pollRef = React.useRef(null);
 
-  // Clear one-shot OAuth sessionStorage flags on mount
+  // Clear one-shot flags immediately on mount so they don't persist across navigation
   React.useEffect(() => {
     try {
       sessionStorage.removeItem("ncblast-oauth-done");
