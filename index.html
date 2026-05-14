@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth complete — org/verify now receives username from client, CORS allows X-Master-Key, not-authorized message updated -->
+<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth UX — auto-confirm from saved username, restore role after redirect, pass username in all Worker calls -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -278,6 +278,8 @@ function useChallongeAuth() {
       if (d.ok) {
         sessionStorage.setItem("ncblast-auth-user", d.username);
         sessionStorage.setItem("ncblast-oauth-done", "1");
+        // Save username to localStorage so it auto-fills next time
+        try { localStorage.setItem("ncblast-saved-username", d.username); } catch(_) {}
         setUsername(d.username);
         setState("done");
       } else {
@@ -320,6 +322,14 @@ function useChallongeAuth() {
       );
       const data = await res.json();
       if (!data.url) throw new Error(data.error || "No URL returned");
+      // Save current role so we can restore it after OAuth redirect brings us back
+      try {
+        const currentRole = sessionStorage.getItem("ncblast-pending-role");
+        if (!currentRole) {
+          // Try to read from React state via the DOM — look for active role in URL or body
+          // Best we can do: save whatever role triggered this login
+        }
+      } catch(_) {}
       // Navigate the current tab — works on all browsers including mobile Safari
       window.location.href = data.url;
     } catch(e) {
@@ -343,7 +353,15 @@ function useChallongeAuth() {
      onCancel    — back/cancel callback
 ═══════════════════════════════════════ */
 function ChallongeLoginScreen({ auth, title, subtitle, onCancel }) {
-  const [usernameInput, setUsernameInput] = React.useState("");
+  const [usernameInput, setUsernameInput] = React.useState(() => {
+    try { return localStorage.getItem("ncblast-saved-username") || ""; } catch(_) { return ""; }
+  });
+  // If we already have a saved username, auto-confirm immediately
+  React.useEffect(() => {
+    if (auth.state === "confirm" && usernameInput) {
+      auth.confirm(usernameInput);
+    }
+  }, [auth.state]);
   return (
     <div style={{
       minHeight:"100vh", display:"flex", flexDirection:"column",
@@ -5433,7 +5451,15 @@ function PinModal({title, subtitle, onSubmit, onCancel, error, loading}) {
    ORGANIZER APP
 ═══════════════════════════════════════ */
 function OrgConfirmUsername({ auth }) {
-  const [input, setInput] = React.useState("");
+  const [input, setInput] = React.useState(() => {
+    try { return localStorage.getItem("ncblast-saved-username") || ""; } catch(_) { return ""; }
+  });
+  // Auto-confirm if we already have a saved username
+  React.useEffect(() => {
+    if (auth.state === "confirm" && input) {
+      auth.confirm(input);
+    }
+  }, [auth.state]);
   return (
     <div style={{marginBottom:14}}>
       <div style={{background:"var(--surface)",borderRadius:14,padding:"16px",border:"2px solid #EA580C",marginBottom:10}}>
@@ -5505,7 +5531,7 @@ function OrgApp({onSwitchRole}) {
       const res = await fetch(`${OVERLAY_WORKER}/judges/set`, {
         method:"POST",
         headers:{"Content-Type":"application/json","X-Auth-Token":token||""},
-        body: JSON.stringify({ slug, judges: newJudges, headJudges: newHeadJudges }),
+        body: JSON.stringify({ slug, judges: newJudges, headJudges: newHeadJudges, username: sessionStorage.getItem("ncblast-auth-user") }),
         signal: AbortSignal.timeout(8000),
       });
       const data = await res.json();
@@ -6025,7 +6051,7 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
     try {
       const res = await fetch(`${OVERLAY_WORKER}/org/tournament/add`, {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ slug: pendingSlug, name, orgToken: token }),
+        body: JSON.stringify({ slug: pendingSlug, name, orgToken: token, username: sessionStorage.getItem("ncblast-auth-user") }),
         signal: AbortSignal.timeout(15000),
       });
       const data = await res.json();
@@ -6913,9 +6939,14 @@ function BeyJudgeApp() {
     document.body.classList.toggle("dark",dark);
   },[dark]);
 
-  // Role — always at top, never after a conditional return
-  const [role,setRole] = useState(null);
-  const chooseRole = (r) => setRole(r);
+  // Role — restore from sessionStorage if we just came back from OAuth redirect
+  const [role,setRole] = useState(() => {
+    try { return sessionStorage.getItem("ncblast-pending-role") || null; } catch(_) { return null; }
+  });
+  const chooseRole = (r) => {
+    setRole(r);
+    try { sessionStorage.setItem("ncblast-pending-role", r); } catch(_) {}
+  };
 
   // All judge-side state declared unconditionally (React rules require this)
   const [screen,setScreen] = useState("format");
