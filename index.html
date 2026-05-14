@@ -79,53 +79,72 @@ const { useState, useEffect, useRef, useCallback } = React;
 
 // ── OAuth callback detection ──────────────────────────────────────────────
 // When Challonge redirects back to ncblast.pages.dev?code=XXX after login,
-// the page loads with the code in the URL. We detect it here, do the exchange
-// from the browser directly (no popup, no Worker exchange needed), then store
-// the result in sessionStorage so the app can pick it up on render.
+// this fires before React loads. We fetch exchange credentials from the Worker,
+// then call connect.challonge.com directly from the browser (bypasses Worker IP block).
 (function handleOAuthCallback() {
   try {
     const params = new URLSearchParams(window.location.search);
     const code  = params.get("code");
     const error = params.get("error");
-    if (!code && !error) return; // normal page load, nothing to do
+    if (!code && !error) return; // normal page load
 
-    // Clean the URL immediately so refreshing doesn't re-trigger this
     window.history.replaceState({}, document.title, "/");
 
-    if (error) {
-      sessionStorage.setItem("ncblast-oauth-error", error);
-      return;
-    }
+    if (error) { sessionStorage.setItem("ncblast-oauth-error", error); return; }
 
-    // Attempt the token exchange directly from the browser.
-    // connect.challonge.com may allow CORS for the auth code flow since
-    // ncblast.pages.dev is registered as the OAuth URL.
-    const REDIRECT_URI = "https://ncblast.pages.dev";
     const WORKER = "https://challonge-proxy.danny61734.workers.dev";
-
-    // Mark as pending so the app shows a loading state
     sessionStorage.setItem("ncblast-oauth-pending", "1");
 
-    // First try browser-direct exchange (works if Challonge has CORS on this endpoint)
-    fetch(`${WORKER}/auth/exchange`, {
+    // Step 1: Get exchange credentials from Worker (keeps secret out of source code)
+    fetch(`${WORKER}/auth/exchange-params`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, redirect_uri: REDIRECT_URI }),
+      body: JSON.stringify({ code }),
     })
     .then(r => r.json())
-    .then(d => {
-      sessionStorage.removeItem("ncblast-oauth-pending");
-      if (d.username) {
-        sessionStorage.setItem("ncblast-auth-token", d.access_token || "");
-        sessionStorage.setItem("ncblast-auth-user", d.username);
-        sessionStorage.setItem("ncblast-oauth-done", "1");
-      } else {
-        sessionStorage.setItem("ncblast-oauth-error", d.error || "Exchange failed");
-      }
+    .then(({ client_id, client_secret, redirect_uri, error: credErr }) => {
+      if (credErr || !client_id) throw new Error(credErr || "No credentials");
+
+      // Step 2: Exchange code for token directly from browser
+      // Browser IP bypasses the Cloudflare bot check on connect.challonge.com
+      const tokenParams = new URLSearchParams({
+        grant_type:    "authorization_code",
+        code,
+        client_id,
+        client_secret,
+        redirect_uri,
+      });
+      return fetch(`https://connect.challonge.com/oauth/token?${tokenParams.toString()}`, {
+        method: "POST",
+        headers: { "Accept": "application/json" },
+      });
     })
-    .catch(() => {
+    .then(r => {
+      if (!r.ok && r.status !== 200) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(tokenData => {
+      if (!tokenData.access_token) throw new Error(tokenData.error || "No token returned");
+
+      // Step 3: Resolve username via Worker (api.challonge.com works from Worker IP)
+      return fetch(`${WORKER}/auth/me`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: tokenData.access_token }),
+      }).then(r => r.json()).then(d => {
+        sessionStorage.removeItem("ncblast-oauth-pending");
+        if (d.username) {
+          sessionStorage.setItem("ncblast-auth-token", tokenData.access_token);
+          sessionStorage.setItem("ncblast-auth-user", d.username);
+          sessionStorage.setItem("ncblast-oauth-done", "1");
+        } else {
+          sessionStorage.setItem("ncblast-oauth-error", d.error || "Couldn't resolve username");
+        }
+      });
+    })
+    .catch(e => {
       sessionStorage.removeItem("ncblast-oauth-pending");
-      sessionStorage.setItem("ncblast-oauth-error", "Connection error during login. Try again.");
+      sessionStorage.setItem("ncblast-oauth-error", e.message || "Login failed. Try again.");
     });
   } catch(_) {}
 })();
