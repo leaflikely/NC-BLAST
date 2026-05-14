@@ -89,7 +89,8 @@ const { useState, useEffect, useRef, useCallback } = React;
     window.history.replaceState({}, document.title, "/");
 
     if (error) {
-      sessionStorage.setItem("ncblast-oauth-error", errorDesc || error);
+      sessionStorage.setItem("ncblast-oauth-error", "Challonge error: " + (errorDesc || error));
+      sessionStorage.setItem("ncblast-oauth-had-error", "1");
       return;
     }
 
@@ -177,17 +178,27 @@ function useChallongeAuth() {
   const justReturned = (() => {
     try {
       return sessionStorage.getItem("ncblast-oauth-pending") === "1" ||
-             sessionStorage.getItem("ncblast-oauth-done")    === "1";
+             sessionStorage.getItem("ncblast-oauth-done")    === "1" ||
+             sessionStorage.getItem("ncblast-oauth-had-error") === "1";
     } catch(_) { return false; }
   })();
 
   const initState = (() => {
-    if (!justReturned) return "idle"; // fresh visit — always start clean
+    if (!justReturned) return "idle";
     try {
-      if (sessionStorage.getItem("ncblast-oauth-pending") === "1") return "exchanging";
-      if (sessionStorage.getItem("ncblast-oauth-done")    === "1") return "done";
+      if (sessionStorage.getItem("ncblast-oauth-pending")   === "1") return "exchanging";
+      if (sessionStorage.getItem("ncblast-oauth-done")      === "1") return "done";
+      if (sessionStorage.getItem("ncblast-oauth-had-error") === "1") return "error";
     } catch(_) {}
     return "idle";
+  })();
+
+  const initError = (() => {
+    try {
+      if (sessionStorage.getItem("ncblast-oauth-had-error") === "1")
+        return sessionStorage.getItem("ncblast-oauth-error") || "Challonge returned an error.";
+    } catch(_) {}
+    return "";
   })();
 
   const initUser = (() => {
@@ -197,17 +208,14 @@ function useChallongeAuth() {
 
   const [state, setState]       = React.useState(initState);
   const [username, setUsername] = React.useState(initUser);
-  const [errorMsg, setErrorMsg] = React.useState("");
+  const [errorMsg, setErrorMsg] = React.useState(initError);
   const pollRef = React.useRef(null);
 
-  // On mount: always clear all one-shot OAuth flags.
-  // If there's a stale error from a previous session, discard it — don't show it.
-  // Errors only show if they happen in THIS page load (set via setState/setErrorMsg directly).
   React.useEffect(() => {
     try {
       sessionStorage.removeItem("ncblast-oauth-done");
       sessionStorage.removeItem("ncblast-oauth-error");
-      // Also clear stale auth token if we're not in a successful state
+      sessionStorage.removeItem("ncblast-oauth-had-error");
       if (initState !== "done") {
         sessionStorage.removeItem("ncblast-auth-token");
         sessionStorage.removeItem("ncblast-auth-user");
@@ -242,6 +250,7 @@ function useChallongeAuth() {
       sessionStorage.removeItem("ncblast-oauth-pending");
       sessionStorage.removeItem("ncblast-oauth-done");
       sessionStorage.removeItem("ncblast-oauth-error");
+      sessionStorage.removeItem("ncblast-oauth-had-error");
     } catch(_) {}
     setState("idle");
     setUsername(null);
@@ -250,7 +259,7 @@ function useChallongeAuth() {
   const start = React.useCallback(async () => {
     setErrorMsg("");
     setState("navigating");
-    try { sessionStorage.removeItem("ncblast-oauth-error"); } catch(_) {}
+    try { sessionStorage.removeItem("ncblast-oauth-error"); sessionStorage.removeItem("ncblast-oauth-had-error"); } catch(_) {}
     // Ask Worker for the authorize URL (keeps client_id server-side)
     try {
       const res = await fetch(
