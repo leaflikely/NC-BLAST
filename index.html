@@ -84,74 +84,38 @@ const { useState, useEffect, useRef, useCallback } = React;
     const code  = params.get("code");
     const error = params.get("error");
     const errorDesc = params.get("error_description");
-    if (!code && !error) return; // normal page load
+    if (!code && !error) return;
 
     window.history.replaceState({}, document.title, "/");
 
     if (error) {
-      const msg = errorDesc || error || "Challonge returned an error. Check your OAuth settings.";
-      sessionStorage.setItem("ncblast-oauth-error", msg);
+      sessionStorage.setItem("ncblast-oauth-error", errorDesc || error);
       return;
     }
 
     const WORKER = "https://challonge-proxy.danny61734.workers.dev";
     sessionStorage.setItem("ncblast-oauth-pending", "1");
 
-    // Step 1: Get exchange credentials from Worker
-    fetch(`${WORKER}/auth/exchange-params`, {
+    // Send code to Worker — Worker does the exchange and username lookup server-side
+    fetch(`${WORKER}/auth/exchange`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, redirect_uri: "https://ncblast.pages.dev" }),
     })
     .then(r => r.json())
-    .then(({ client_id, client_secret, redirect_uri, error: credErr }) => {
-      if (credErr || !client_id) throw new Error(credErr || "No credentials from server");
-
-      // Step 2: Exchange code → token directly from browser
-      // Uses api.challonge.com (same domain as /me.json, consistent token system)
-      const tokenParams = new URLSearchParams({
-        grant_type:    "authorization_code",
-        code,
-        client_id,
-        client_secret,
-        redirect_uri,
-      });
-      return fetch(`https://api.challonge.com/oauth/token`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Accept": "application/json",
-        },
-        body: tokenParams.toString(),
-      });
-    })
-    .then(r => r.text())
-    .then(text => {
-      let tokenData;
-      try { tokenData = JSON.parse(text); }
-      catch(_) { throw new Error("Non-JSON from token endpoint: " + text.slice(0, 100)); }
-      if (!tokenData.access_token) throw new Error(tokenData.error_description || tokenData.error || "No token returned");
-
-      // Step 3: Resolve username via Worker (api.challonge.com/v2.1/me.json)
-      const WORKER = "https://challonge-proxy.danny61734.workers.dev";
-      return fetch(`${WORKER}/auth/me`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: tokenData.access_token }),
-      }).then(r => r.json()).then(d => {
-        sessionStorage.removeItem("ncblast-oauth-pending");
-        if (d.username) {
-          sessionStorage.setItem("ncblast-auth-token", tokenData.access_token);
-          sessionStorage.setItem("ncblast-auth-user", d.username);
-          sessionStorage.setItem("ncblast-oauth-done", "1");
-        } else {
-          sessionStorage.setItem("ncblast-oauth-error", d.error || "Couldn't resolve username");
-        }
-      });
+    .then(d => {
+      sessionStorage.removeItem("ncblast-oauth-pending");
+      if (d.username) {
+        sessionStorage.setItem("ncblast-auth-token", d.access_token || "");
+        sessionStorage.setItem("ncblast-auth-user", d.username);
+        sessionStorage.setItem("ncblast-oauth-done", "1");
+      } else {
+        sessionStorage.setItem("ncblast-oauth-error", d.error || "Login failed");
+      }
     })
     .catch(e => {
       sessionStorage.removeItem("ncblast-oauth-pending");
-      sessionStorage.setItem("ncblast-oauth-error", e.message || "Login failed. Try again.");
+      sessionStorage.setItem("ncblast-oauth-error", e.message || "Connection error");
     });
   } catch(_) {}
 })();
