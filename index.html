@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth UX — auto-confirm from saved username, restore role after redirect, pass username in all Worker calls -->
+<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth auto-confirm moved into hook so it fires for all login paths -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -322,14 +322,6 @@ function useChallongeAuth() {
       );
       const data = await res.json();
       if (!data.url) throw new Error(data.error || "No URL returned");
-      // Save current role so we can restore it after OAuth redirect brings us back
-      try {
-        const currentRole = sessionStorage.getItem("ncblast-pending-role");
-        if (!currentRole) {
-          // Try to read from React state via the DOM — look for active role in URL or body
-          // Best we can do: save whatever role triggered this login
-        }
-      } catch(_) {}
       // Navigate the current tab — works on all browsers including mobile Safari
       window.location.href = data.url;
     } catch(e) {
@@ -339,6 +331,15 @@ function useChallongeAuth() {
   }, []);
 
   React.useEffect(() => () => clearInterval(pollRef.current), []);
+
+  // Auto-confirm using saved username — skips the manual entry step for returning users
+  React.useEffect(() => {
+    if (state !== "confirm") return;
+    try {
+      const saved = localStorage.getItem("ncblast-saved-username");
+      if (saved) confirm(saved);
+    } catch(_) {}
+  }, [state]);
 
   return { state, username, errorMsg, start, reset, confirm };
 }
