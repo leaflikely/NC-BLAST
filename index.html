@@ -5986,12 +5986,59 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
 
   if (authStep === "login") {
     return (
-      <ChallongeLoginScreen
-        auth={auth}
-        title="Organizer Login"
-        subtitle="Log in with your Challonge account to access Organizer View."
-        onCancel={onSwitchRole}
-      />
+      <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 24px",fontFamily:"'Outfit',sans-serif"}}>
+        <div style={{width:"100%",maxWidth:340}}>
+          <div style={{textAlign:"center",marginBottom:20}}>
+            <div style={{fontSize:40,marginBottom:10}}>🔗</div>
+            <h2 style={{fontSize:22,fontWeight:900,color:"var(--text-primary)",margin:"0 0 6px"}}>Organizer Login</h2>
+            <p style={{fontSize:13,color:"var(--text-muted)",margin:0,lineHeight:1.5}}>Log in with your Challonge account to access Organizer View.</p>
+          </div>
+          {/* DIAGNOSTIC — shows exact state so we can debug */}
+          <div style={{background:"#0F172A",borderRadius:10,padding:"10px 12px",marginBottom:14,fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"#94A3B8",lineHeight:1.8}}>
+            <div>auth.state: <span style={{color:"#F59E0B"}}>{auth.state}</span></div>
+            <div>auth.username: <span style={{color:"#F59E0B"}}>{String(auth.username)}</span></div>
+            <div>auth.errorMsg: <span style={{color:"#EF4444"}}>{auth.errorMsg || "—"}</span></div>
+          </div>
+          {auth.state === "idle" && (
+            <button onClick={auth.start} style={{
+              width:"100%",padding:"18px 0",borderRadius:14,border:"none",
+              background:"linear-gradient(135deg,#EA580C,#DC2626)",
+              color:"#fff",fontSize:16,fontWeight:900,
+              fontFamily:"'Outfit',sans-serif",cursor:"pointer",
+              boxShadow:"0 8px 24px rgba(234,88,12,0.35)",marginBottom:14,
+            }}>Log in with Challonge</button>
+          )}
+          {(auth.state === "navigating" || auth.state === "exchanging") && (
+            <div style={{textAlign:"center",marginBottom:16}}>
+              <div style={{width:36,height:36,margin:"0 auto 12px",borderRadius:"50%",
+                border:"3px solid var(--border2)",borderTopColor:"#EA580C",
+                animation:"spin 1s linear infinite"}}/>
+              <p style={{fontSize:13,color:"var(--text-muted)"}}>
+                {auth.state === "navigating" ? "Opening Challonge…" : "Completing login…"}
+              </p>
+            </div>
+          )}
+          {auth.state === "error" && (
+            <div style={{marginBottom:14}}>
+              <p style={{fontSize:13,color:"#EF4444",textAlign:"center",fontWeight:600,marginBottom:12}}>⚠ {auth.errorMsg}</p>
+              <button onClick={auth.start} style={{
+                width:"100%",padding:"14px 0",borderRadius:12,border:"none",
+                background:"#EA580C",color:"#fff",fontSize:14,fontWeight:800,
+                fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:10,
+              }}>Try Again</button>
+            </div>
+          )}
+          {auth.state === "done" && (
+            <p style={{fontSize:13,color:"#22C55E",textAlign:"center",fontWeight:700,marginBottom:14}}>✅ {auth.username} — verifying…</p>
+          )}
+          <button onClick={onSwitchRole} style={{
+            width:"100%",padding:"12px 0",borderRadius:12,
+            border:"2px solid var(--border)",background:"none",
+            color:"var(--text-muted)",fontSize:13,fontWeight:700,
+            fontFamily:"'Outfit',sans-serif",cursor:"pointer",
+          }}>← Back</button>
+        </div>
+      </div>
     );
   }
 
