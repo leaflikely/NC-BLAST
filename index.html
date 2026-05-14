@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-13 | session: Challonge OAuth device-flow login for judges and organizers, replace PIN system with account-based auth, org whitelist managed by master key, judge list per tournament set by org, head judge support, Player view frozen (Coming Soon), lastJudge pre-selection, OrgApp Judges tab -->
+<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth loop fix — clear stale ncblast-oauth-pending on page load when no ?code present, remove auto auth.start() from handleSelect so judge login requires explicit button click -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -84,7 +84,14 @@ const { useState, useEffect, useRef, useCallback } = React;
     const code  = params.get("code");
     const error = params.get("error");
     const errorDesc = params.get("error_description");
-    if (!code && !error) return;
+
+    // If we have a stale "pending" flag from a previous interrupted exchange
+    // (e.g. user hit Back while the token fetch was running), clear it now.
+    // A real in-flight exchange always returns with ?code or ?error in the URL.
+    if (!code && !error) {
+      try { sessionStorage.removeItem("ncblast-oauth-pending"); } catch(_) {}
+      return;
+    }
 
     window.history.replaceState({}, document.title, "/");
 
@@ -716,8 +723,7 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
     setSelectedSlug(t.slug);
     setSelectedName(t.name || t.slug);
     setAuthError(null);
-    auth.reset();
-    auth.start();
+    auth.reset(); // clears any previous login state so the button shows fresh
   };
 
   // Show Challonge login screen when a slug is selected and auth hasn't completed
