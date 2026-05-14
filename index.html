@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth implicit flow — token arrives in URL hash, browser calls me.json directly, no username entry ever -->
+<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth code flow restored, browser calls me.json after exchange, no username entry -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -78,54 +78,64 @@
 const { useState, useEffect, useRef, useCallback } = React;
 
 // ── OAuth callback detection ──────────────────────────────────────────────
-// Uses implicit flow: Challonge returns the token in the URL hash (#access_token=...).
-// The browser reads the token directly — no Worker exchange needed, no CORS issues.
-// The browser then calls /me.json directly to get the username.
+// Code flow: Challonge returns ?code= in the URL. Worker exchanges it for a token.
+// Browser then calls /me.json directly to get the username (no CF header injection).
 (function handleOAuthCallback() {
   try {
-    // Check query string for errors first
     const params = new URLSearchParams(window.location.search);
+    const code  = params.get("code");
     const error = params.get("error");
     const errorDesc = params.get("error_description");
+
+    if (!code && !error) {
+      try { sessionStorage.removeItem("ncblast-oauth-pending"); } catch(_) {}
+      return;
+    }
+
+    window.history.replaceState({}, document.title, "/");
+
     if (error) {
-      window.history.replaceState({}, document.title, "/");
       sessionStorage.setItem("ncblast-oauth-error", "Challonge error: " + (errorDesc || error));
       sessionStorage.setItem("ncblast-oauth-had-error", "1");
       return;
     }
 
-    // Implicit flow: token arrives in the URL hash fragment
-    const hash = new URLSearchParams(window.location.hash.slice(1));
-    const token = hash.get("access_token");
-    if (!token) {
-      // No token, no error — clean boot, clear any stale pending flag
-      try { sessionStorage.removeItem("ncblast-oauth-pending"); } catch(_) {}
-      return;
-    }
-
-    // Clear the token from the URL immediately (hash fragments aren't sent to servers,
-    // but we still clean up for tidiness and to prevent double-processing on refresh)
-    window.history.replaceState({}, document.title, "/");
+    const WORKER = "https://challonge-proxy.danny61734.workers.dev";
     sessionStorage.setItem("ncblast-oauth-pending", "1");
 
-    // Call /me.json directly from the browser — no Cloudflare Worker in the middle,
-    // so no Content-Type injection, no CORS issue (Challonge allows browser calls with Bearer)
-    fetch("https://api.challonge.com/v2.1/me.json", {
-      headers: { "Authorization": "Bearer " + token, "Accept": "application/json" },
+    // Step 1: Worker exchanges code for token
+    fetch(`${WORKER}/auth/exchange`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, redirect_uri: "https://ncblast.pages.dev" }),
     })
     .then(r => r.json())
-    .then(me => {
-      sessionStorage.removeItem("ncblast-oauth-pending");
-      const username = me?.data?.attributes?.username || me?.user?.username || me?.username || null;
-      if (username) {
-        sessionStorage.setItem("ncblast-auth-token", token);
-        sessionStorage.setItem("ncblast-auth-user", username);
-        sessionStorage.setItem("ncblast-oauth-done", "1");
-        try { localStorage.setItem("ncblast-saved-username", username); } catch(_) {}
-      } else {
-        sessionStorage.setItem("ncblast-oauth-error", "Challonge login succeeded but username was missing. Body: " + JSON.stringify(me).slice(0, 200));
+    .then(d => {
+      if (!d.ok || !d.access_token) {
+        sessionStorage.removeItem("ncblast-oauth-pending");
+        sessionStorage.setItem("ncblast-oauth-error", d.error || "Token exchange failed");
         sessionStorage.setItem("ncblast-oauth-had-error", "1");
+        return;
       }
+      const token = d.access_token;
+      // Step 2: Browser calls /me.json directly — avoids CF Worker Content-Type injection
+      return fetch("https://api.challonge.com/v2.1/me.json", {
+        headers: { "Authorization": "Bearer " + token, "Accept": "application/json" },
+      })
+      .then(r => { if (!r.ok) throw new Error("me.json HTTP " + r.status); return r.json(); })
+      .then(me => {
+        sessionStorage.removeItem("ncblast-oauth-pending");
+        const username = me?.data?.attributes?.username || me?.user?.username || me?.username || null;
+        if (username) {
+          sessionStorage.setItem("ncblast-auth-token", token);
+          sessionStorage.setItem("ncblast-auth-user", username);
+          sessionStorage.setItem("ncblast-oauth-done", "1");
+          try { localStorage.setItem("ncblast-saved-username", username); } catch(_) {}
+        } else {
+          sessionStorage.setItem("ncblast-oauth-error", "Got token but no username. Body: " + JSON.stringify(me).slice(0, 150));
+          sessionStorage.setItem("ncblast-oauth-had-error", "1");
+        }
+      });
     })
     .catch(e => {
       sessionStorage.removeItem("ncblast-oauth-pending");
@@ -282,7 +292,7 @@ function useChallongeAuth() {
       const oauthState = Math.random().toString(36).slice(2) + Date.now().toString(36);
       try { sessionStorage.setItem("ncblast-oauth-state", oauthState); } catch(_) {}
       const res = await fetch(
-        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&state=${encodeURIComponent(oauthState)}`,
+        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&state=${encodeURIComponent(oauthState)}`,
         { signal: AbortSignal.timeout(8000) }
       );
       const data = await res.json();
