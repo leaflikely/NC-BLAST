@@ -745,26 +745,16 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
     workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>setCachedList([]));
   }, []);
 
-  // When OAuth completes, verify judge access for the selected slug
+  // When OAuth completes, load participants — access is granted by Challonge itself
   useEffect(() => {
     if (auth.state !== "done" || !selectedSlug) return;
-    const token = sessionStorage.getItem("ncblast-auth-token");
+    const verifiedUsername = auth.username || sessionStorage.getItem("ncblast-auth-user") || "";
     setVerifying(true); setAuthError(null);
-    fetch(`${OVERLAY_WORKER}/judge/verify`, {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ token, slug: selectedSlug }), signal: AbortSignal.timeout(8000),
-    }).then(r => r.json()).then(async d => {
-      if (!d.ok) {
-        setAuthError(d.error || "You are not listed as a judge for this event.");
-        setVerifying(false);
-        return;
-      }
-      const verifiedUsername = d.username;
-      // Save for pre-selection as judge name
-      try { localStorage.setItem(KEYS.lastJudge, verifiedUsername); } catch(_) {}
-      if (onJudgeVerified) onJudgeVerified(verifiedUsername);
-      // Load participants
+    (async () => {
       try {
+        // Save for pre-selection as judge name
+        try { localStorage.setItem(KEYS.lastJudge, verifiedUsername); } catch(_) {}
+        if (onJudgeVerified) onJudgeVerified(verifiedUsername);
         const data = await workerGet(`/?slug=${encodeURIComponent(selectedSlug)}`);
         const extractP = (p) => p.participant || p;
         const participants = (data.participants||[]).map(p=>(extractP(p).display_name||extractP(p).username||extractP(p).name||"").trim()).filter(Boolean);
@@ -785,7 +775,7 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
         setConfig(c => ({...c, tournamentName: selectedName}));
       } catch(e) { setAuthError(e.message || "Failed to load participants."); }
       setVerifying(false);
-    }).catch(() => { setAuthError("Connection error."); setVerifying(false); });
+    })();
   }, [auth.state, selectedSlug]);
 
   const handleSelect = (t) => {
@@ -5462,68 +5452,7 @@ function OrgApp({onSwitchRole}) {
   const pingPollRef = useRef(null);
   const liveSlotRef = useRef(null);
   const afterRef = useRef(0); // timestamp: only poll for pings newer than this
-  const [orgTab, setOrgTab] = useState("matches"); // "matches" | "judges"
 
-  // ── Judge management state ────────────────────────────────────────
-  const [judgeMeta, setJudgeMeta] = useState(null); // { judges:[], headJudges:[] }
-  const [judgeParticipants, setJudgeParticipants] = useState([]); // player name list for this event
-  const [judgeLoading, setJudgeLoading] = useState(false);
-  const [judgeError, setJudgeError] = useState(null);
-  const [newHJInput, setNewHJInput] = useState(""); // head judge username input
-
-  const loadJudgeMeta = async (s) => {
-    setJudgeLoading(true); setJudgeError(null);
-    try {
-      const [metaRes, partRes] = await Promise.all([
-        workerGet(`/judges/get?slug=${encodeURIComponent(s)}`),
-        workerGet(`/?slug=${encodeURIComponent(s)}`),
-      ]);
-      setJudgeMeta({ judges: metaRes.judges||[], headJudges: metaRes.headJudges||[] });
-      const extractP = (p) => p.participant || p;
-      const names = (partRes.participants||[])
-        .map(p=>(extractP(p).display_name||extractP(p).username||extractP(p).name||"").trim())
-        .filter(Boolean);
-      setJudgeParticipants([...new Set(names)]);
-    } catch(e) { setJudgeError(e.message||"Failed to load judge data."); }
-    finally { setJudgeLoading(false); }
-  };
-
-  const saveJudges = async (newJudges, newHeadJudges) => {
-    const token = sessionStorage.getItem("ncblast-auth-token");
-    setJudgeLoading(true); setJudgeError(null);
-    try {
-      const res = await fetch(`${OVERLAY_WORKER}/judges/set`, {
-        method:"POST",
-        headers:{"Content-Type":"application/json","X-Auth-Token":token||""},
-        body: JSON.stringify({ slug, judges: newJudges, headJudges: newHeadJudges, username: sessionStorage.getItem("ncblast-auth-user") }),
-        signal: AbortSignal.timeout(8000),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error||"Save failed");
-      setJudgeMeta({ judges: newJudges, headJudges: newHeadJudges });
-    } catch(e) { setJudgeError(e.message); }
-    finally { setJudgeLoading(false); }
-  };
-
-  const toggleJudge = (name) => {
-    if (!judgeMeta) return;
-    const current = judgeMeta.judges;
-    const next = current.includes(name) ? current.filter(j=>j!==name) : [...current, name];
-    saveJudges(next, judgeMeta.headJudges);
-  };
-
-  const addHeadJudge = () => {
-    const username = newHJInput.trim().toLowerCase();
-    if (!username || !judgeMeta) return;
-    if (judgeMeta.headJudges.includes(username)) { setNewHJInput(""); return; }
-    saveJudges(judgeMeta.judges, [...judgeMeta.headJudges, username]);
-    setNewHJInput("");
-  };
-
-  const removeHeadJudge = (username) => {
-    if (!judgeMeta) return;
-    saveJudges(judgeMeta.judges, judgeMeta.headJudges.filter(u=>u!==username));
-  };
 
   // ── When a tournament is selected, start polling ─────────────────
   useEffect(() => {
@@ -5539,7 +5468,6 @@ function OrgApp({onSwitchRole}) {
       finally { setLoadingPairings(false); }
     };
     loadPairings();
-    loadJudgeMeta(slug);
 
     // Poll live match slots every 5s
     const pollLive = async () => {
@@ -5699,89 +5627,13 @@ function OrgApp({onSwitchRole}) {
         </button>
       </div>
 
-      {/* ── Tab bar ────────────────────────────────────────────── */}
-      <div style={{display:"flex",borderBottom:"2px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
-        {[["matches","📋 Matches"],["judges","⚖️ Judges"]].map(([id,label])=>(
-          <button key={id} onClick={()=>setOrgTab(id)} style={{
-            flex:1,padding:"10px 0",border:"none",background:"none",
-            fontSize:13,fontWeight:orgTab===id?800:600,
-            fontFamily:"'Outfit',sans-serif",cursor:"pointer",
-            color:orgTab===id?"#EA580C":"var(--text-muted)",
-            borderBottom:orgTab===id?"2px solid #EA580C":"2px solid transparent",
-            marginBottom:-2,
-          }}>{label}</button>
-        ))}
-      </div>
+
 
       {/* ── Body ───────────────────────────────────────────────── */}
       <div style={{flex:1,overflowY:"auto",padding:"12px 14px 32px"}}>
 
-      {/* ── Judges tab ─────────────────────────────────────────── */}
-      {orgTab === "judges" && (
-        <div>
-          <div style={{marginBottom:20}}>
-            <p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:"0 0 4px"}}>Judge Access</p>
-            <p style={{fontSize:11,color:"var(--text-muted)",margin:"0 0 12px",lineHeight:1.5}}>
-              Toggle which players are allowed to judge this event. Their Challonge username must match their name in the roster.
-            </p>
-            {judgeLoading && <p style={{fontSize:13,color:"var(--text-muted)"}}>Saving…</p>}
-            {judgeError && <p style={{fontSize:12,color:"#EF4444",marginBottom:8}}>⚠ {judgeError}</p>}
-            {judgeParticipants.length === 0 && !judgeLoading && (
-              <p style={{fontSize:12,color:"var(--text-faint)"}}>No participants loaded yet.</p>
-            )}
-            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-              {judgeParticipants.map(name => {
-                const isJudge = judgeMeta?.judges?.includes(name);
-                return (
-                  <button key={name} onClick={()=>toggleJudge(name)} disabled={judgeLoading}
-                    style={{
-                      padding:"8px 14px",borderRadius:10,border:"2px solid",
-                      borderColor:isJudge?"#EA580C":"var(--border2)",
-                      background:isJudge?"#EA580C10":"var(--surface2)",
-                      color:isJudge?"#EA580C":"var(--text-secondary)",
-                      fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",
-                      cursor:judgeLoading?"not-allowed":"pointer",
-                    }}>
-                    {isJudge?"⚖️ ":""}{name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div style={{borderTop:"1px solid var(--border)",paddingTop:16}}>
-            <p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:"0 0 4px"}}>Head Judges</p>
-            <p style={{fontSize:11,color:"var(--text-muted)",margin:"0 0 12px",lineHeight:1.5}}>
-              Head judges can access Organizer View for this event. Enter their Challonge usernames.
-            </p>
-            {(judgeMeta?.headJudges||[]).map(u => (
-              <div key={u} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",borderRadius:8,background:"var(--surface2)",marginBottom:6,border:"1px solid var(--border)"}}>
-                <span style={{fontSize:13,fontWeight:700,color:"var(--text-primary)"}}>{u}</span>
-                <button onClick={()=>removeHeadJudge(u)} disabled={judgeLoading}
-                  style={{fontSize:11,fontWeight:700,color:"#EF4444",background:"none",border:"none",cursor:"pointer",padding:"2px 6px"}}>
-                  Remove
-                </button>
-              </div>
-            ))}
-            <div style={{display:"flex",gap:8,marginTop:8}}>
-              <input
-                value={newHJInput}
-                onChange={e=>setNewHJInput(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&addHeadJudge()}
-                placeholder="challonge username"
-                style={{flex:1,padding:"9px 12px",borderRadius:10,border:"1px solid var(--border2)",background:"var(--input-bg)",color:"var(--text-primary)",fontSize:13,fontFamily:"'Outfit',sans-serif",outline:"none"}}
-              />
-              <button onClick={addHeadJudge} disabled={!newHJInput.trim()||judgeLoading}
-                style={{padding:"0 14px",borderRadius:10,border:"none",background:"#22C55E",color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-                Add
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Matches tab ────────────────────────────────────────── */}
-      {orgTab === "matches" && <React.Fragment>
+      {/* ── Matches ────────────────────────────────────────────── */}
+      <React.Fragment>
 
         {/* Round header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -5874,7 +5726,7 @@ function OrgApp({onSwitchRole}) {
             <p style={{fontSize:12,color:"var(--text-faint)"}}>All matches may be complete, or the round hasn't started yet.</p>
           </div>
         )}
-      </React.Fragment>}
+      </React.Fragment>
       </div>
 
       {/* ── Ping notification modal (must be manually dismissed) ── */}
