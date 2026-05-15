@@ -736,7 +736,12 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
   const [selectedName, setSelectedName] = useState("");
   const [loadError, setLoadError] = useState(null);
 
-  // Auth flow for the selected event
+  // Device mode: null=not chosen yet, "solo"=one judge, "shared"=two judges
+  const [deviceMode, setDeviceMode] = useState(null);
+  // Shared mode: track Judge A login before starting Judge B
+  const [judgeAUsername, setJudgeAUsername] = useState(null); // set after A completes
+
+  // Auth flow — one hook, used sequentially for solo and both A/B in shared
   const auth = useChallongeAuth();
   const [verifying, setVerifying] = useState(false);
   const [authError, setAuthError] = useState(null);
@@ -745,72 +750,130 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
     workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>setCachedList([]));
   }, []);
 
-  // When OAuth completes, load participants — access is granted by Challonge itself
-  useEffect(() => {
-    if (auth.state !== "done" || !selectedSlug) return;
-    const verifiedUsername = auth.username || sessionStorage.getItem("ncblast-auth-user") || "";
+  // Helper: load participants and fire callbacks after login(s) complete
+  const finalizeLogin = async (usernameA, usernameB) => {
     setVerifying(true); setAuthError(null);
-    (async () => {
-      try {
-        // Save for pre-selection as judge name
-        try { localStorage.setItem(KEYS.lastJudge, verifiedUsername); } catch(_) {}
-        if (onJudgeVerified) onJudgeVerified(verifiedUsername);
-        const data = await workerGet(`/?slug=${encodeURIComponent(selectedSlug)}`);
-        const extractP = (p) => p.participant || p;
-        const participants = (data.participants||[]).map(p=>(extractP(p).display_name||extractP(p).username||extractP(p).name||"").trim()).filter(Boolean);
-        if (!participants.length) throw new Error("No participants found.");
-        const participantMap = {};
-        (data.participants||[]).forEach(p => {
-          const part = extractP(p);
-          const name = (part.display_name||part.username||part.name||"").trim();
-          const id = part.id;
-          if (name && id) {
-            participantMap[name] = id;
-            if (Array.isArray(part.group_player_ids)) {
-              part.group_player_ids.forEach(gid => { if(gid) participantMap[`__gid__${gid}`] = id; });
-            }
+    try {
+      try { localStorage.setItem(KEYS.lastJudge, usernameA); } catch(_) {}
+      if (onJudgeVerified) onJudgeVerified(
+        usernameB ? { mode:"shared", judgeA:usernameA, judgeB:usernameB } : usernameA
+      );
+      const data = await workerGet(`/?slug=${encodeURIComponent(selectedSlug)}`);
+      const extractP = (p) => p.participant || p;
+      const participants = (data.participants||[]).map(p=>(extractP(p).display_name||extractP(p).username||extractP(p).name||"").trim()).filter(Boolean);
+      if (!participants.length) throw new Error("No participants found.");
+      const participantMap = {};
+      (data.participants||[]).forEach(p => {
+        const part = extractP(p);
+        const name = (part.display_name||part.username||part.name||"").trim();
+        const id = part.id;
+        if (name && id) {
+          participantMap[name] = id;
+          if (Array.isArray(part.group_player_ids)) {
+            part.group_player_ids.forEach(gid => { if(gid) participantMap[`__gid__${gid}`] = id; });
           }
-        });
-        if (onChallongeImport) onChallongeImport(selectedSlug, participantMap, participants);
-        setConfig(c => ({...c, tournamentName: selectedName}));
-      } catch(e) { setAuthError(e.message || "Failed to load participants."); }
-      setVerifying(false);
-    })();
-  }, [auth.state, selectedSlug]);
+        }
+      });
+      if (onChallongeImport) onChallongeImport(selectedSlug, participantMap, participants);
+      setConfig(c => ({...c, tournamentName: selectedName}));
+    } catch(e) { setAuthError(e.message || "Failed to load participants."); }
+    setVerifying(false);
+  };
+
+  // When OAuth completes, handle solo or shared flow
+  useEffect(() => {
+    if (auth.state !== "done" || !selectedSlug || !deviceMode) return;
+    const username = auth.username || sessionStorage.getItem("ncblast-auth-user") || "";
+    if (deviceMode === "solo") {
+      finalizeLogin(username, null);
+    } else {
+      // Shared mode
+      if (!judgeAUsername) {
+        // Judge A just finished — save and reset for Judge B
+        setJudgeAUsername(username);
+        auth.reset();
+      } else {
+        // Judge B just finished — finalize
+        finalizeLogin(judgeAUsername, username);
+      }
+    }
+  }, [auth.state, selectedSlug, deviceMode]);
 
   const handleSelect = (t) => {
     setSelectedSlug(t.slug);
     setSelectedName(t.name || t.slug);
     setAuthError(null);
-    auth.reset(); // clears any previous login state so the button shows fresh
+    setDeviceMode(null);
+    setJudgeAUsername(null);
+    auth.reset();
   };
 
-  // Show Challonge login screen when a slug is selected and auth hasn't completed
-  if (selectedSlug && (auth.state === "idle" || auth.state === "polling" || auth.state === "error")) {
+  // ── Device mode picker (shown after selecting an event) ──
+  if (selectedSlug && !deviceMode) {
+    return (
+      <div style={{marginTop:12}}>
+        <div style={{padding:"12px",borderRadius:12,background:"var(--surface2)",marginBottom:16,border:"1px solid var(--border)"}}>
+          <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px"}}>{selectedName}</p>
+          <p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>{selectedSlug}</p>
+        </div>
+        <p style={{fontSize:13,fontWeight:700,color:"var(--text-primary)",marginBottom:12,textAlign:"center"}}>How is this device being used?</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <button onClick={()=>setDeviceMode("solo")} style={{padding:"18px 8px",borderRadius:14,border:"2px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:6}}>📱</div>
+            <p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:"0 0 3px"}}>Solo Device</p>
+            <p style={{fontSize:10,color:"var(--text-muted)",margin:0}}>One judge per device</p>
+          </button>
+          <button onClick={()=>setDeviceMode("shared")} style={{padding:"18px 8px",borderRadius:14,border:"2px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:6}}>💊</div>
+            <p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:"0 0 3px"}}>Shared Tablet</p>
+            <p style={{fontSize:10,color:"var(--text-muted)",margin:0}}>Two judges share one device</p>
+          </button>
+        </div>
+        <button onClick={()=>{ setSelectedSlug(null); setAuthError(null); }}
+          style={{width:"100%",marginTop:10,padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          ← Back to event list
+        </button>
+      </div>
+    );
+  }
+
+  // ── Challonge login screen (solo or shared A/B) ──
+  const loginStep = deviceMode === "shared" ? (judgeAUsername ? "B" : "A") : null;
+  const loginTitle = deviceMode === "shared"
+    ? (judgeAUsername ? "Judge B — Log In" : "Judge A — Log In")
+    : "Judge Login";
+  const loginSubtitle = deviceMode === "shared"
+    ? (judgeAUsername
+        ? `Judge A: ${judgeAUsername} ✓  Now log in as Judge B.`
+        : `Log in as the first judge for "${selectedName}".`)
+    : `Log in with Challonge to access "${selectedName}".`;
+
+  if (selectedSlug && deviceMode && (auth.state === "idle" || auth.state === "polling" || auth.state === "error" || auth.state === "navigating")) {
     return (
       <div style={{marginTop:12}}>
         <div style={{padding:"12px",borderRadius:12,background:"var(--surface2)",marginBottom:12,border:"1px solid var(--border)"}}>
           <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px"}}>{selectedName}</p>
-          <p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>{selectedSlug}</p>
+          {judgeAUsername && <p style={{fontSize:11,color:"#15803D",fontWeight:700,margin:"3px 0 0"}}>⚖️ Judge A: {judgeAUsername} ✓</p>}
         </div>
         <ChallongeLoginScreen
           auth={auth}
-          title="Judge Login"
-          subtitle={`Log in with Challonge to verify your access to "${selectedName}".`}
-          onCancel={() => { setSelectedSlug(null); auth.reset(); setAuthError(null); }}
+          title={loginTitle}
+          subtitle={loginSubtitle}
+          onCancel={() => { setSelectedSlug(null); setDeviceMode(null); setJudgeAUsername(null); auth.reset(); setAuthError(null); }}
         />
       </div>
     );
   }
 
-  if (selectedSlug && (auth.state === "done" || verifying)) {
+  if (selectedSlug && deviceMode && (auth.state === "done" || auth.state === "confirm" || auth.state === "exchanging" || verifying)) {
     return (
       <div style={{marginTop:12,padding:"14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)"}}>
-        {verifying && <p style={{fontSize:13,color:"var(--text-muted)"}}>⏳ Verifying judge access…</p>}
+        {verifying && <p style={{fontSize:13,color:"var(--text-muted)"}}>⏳ Loading tournament…</p>}
+        {!verifying && auth.state !== "idle" && !authError && <p style={{fontSize:13,color:"var(--text-muted)"}}>⏳ Signing in…</p>}
         {!verifying && authError && (
           <>
             <p style={{fontSize:13,color:"#EF4444",fontWeight:600,marginBottom:8}}>⚠ {authError}</p>
-            <button onClick={() => { setSelectedSlug(null); auth.reset(); setAuthError(null); }}
+            <button onClick={() => { setSelectedSlug(null); setDeviceMode(null); setJudgeAUsername(null); auth.reset(); setAuthError(null); }}
               style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
               ← Back to event list
             </button>
@@ -1860,10 +1923,11 @@ function ShuffleTimerInner({onDismiss}){
   );
 }
 
-function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheetsStatus,onBack,onMainMenu,onDownloadCSV,onSendSheets,onOpenLib,dark,toggleDark,challongeSlug,challongeParticipants}) {
+function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsStatus,setSheetsStatus,onBack,onMainMenu,onDownloadCSV,onSendSheets,onOpenLib,dark,toggleDark,challongeSlug,challongeParticipants}) {
   const [phase,setPhase] = useState("pick");
   const [abandonConfirm,setAbandonConfirm] = useState(false);
   const [overBackConfirm,setOverBackConfirm] = useState(false);
+  const [sharedJudgePicker,setSharedJudgePicker] = useState(false); // show who-is-judging prompt
   const [p1,setP1] = useState(null);
   const [p2,setP2] = useState(null);
   const [d1,setD1] = useState([emptyCombo(),emptyCombo(),emptyCombo()]);
@@ -2247,7 +2311,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     }
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
+  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
 
   // Navigation helpers
   // Unified back navigation — context-aware, no stale closure issues
@@ -2977,6 +3041,31 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   }
 
   if(phase==="pick"){
+    // ── Shared tablet: who is judging this match? ──────────────────────────
+    if(sharedJudges && config.tm && sharedJudgePicker) {
+      return (
+        <div style={{...S.page,maxHeight:"100dvh",overflowY:"auto",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:"32px 24px"}}>
+          <p style={{fontSize:13,fontWeight:800,color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:1,margin:0}}>Shared Tablet</p>
+          <h1 style={{fontSize:22,fontWeight:900,color:"var(--text-primary)",margin:0,textAlign:"center"}}>Who is judging this match?</h1>
+          <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 8px",textAlign:"center"}}>{p1} vs {p2}</p>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,width:"100%",maxWidth:360}}>
+            <button onClick={()=>{ setJudge(sharedJudges.judgeA); setSharedJudgePicker(false); }}
+              style={{padding:"24px 12px",borderRadius:16,border:"2px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"center"}}>
+              <div style={{fontSize:28,marginBottom:6}}>⚖️</div>
+              <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px"}}>Judge A</p>
+              <p style={{fontSize:12,color:"var(--text-muted)",margin:0}}>{sharedJudges.judgeA}</p>
+            </button>
+            <button onClick={()=>{ setJudge(sharedJudges.judgeB); setSharedJudgePicker(false); }}
+              style={{padding:"24px 12px",borderRadius:16,border:"2px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"center"}}>
+              <div style={{fontSize:28,marginBottom:6}}>⚖️</div>
+              <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px"}}>Judge B</p>
+              <p style={{fontSize:12,color:"var(--text-muted)",margin:0}}>{sharedJudges.judgeB}</p>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     const playersSelected = p1 && p2;
     const step = !p1 ? 1 : !p2 ? 2 : (config.tm && !judge.trim()) ? 3 : "done";
     const stepLabel = step===1?"Select P1":step===2?"Select P2":step===3?"Select Judge on Duty":"Ready";
@@ -3028,6 +3117,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       // NOT the real participant.id — Challonge validates winner_id against the match's player IDs directly.
       setChallongeP1ParticipantId(match.player1_id || null);
       setChallongeP2ParticipantId(match.player2_id || null);
+      // Shared tablet: ask which judge is handling this match
+      if (sharedJudges && config.tm) { setJudge(""); setSharedJudgePicker(true); }
     };
 
     return (
@@ -5453,8 +5544,49 @@ function OrgApp({onSwitchRole}) {
   const liveSlotRef = useRef(null);
   const afterRef = useRef(0); // timestamp: only poll for pings newer than this
 
+  // ── Head judge management state ───────────────────────────────────
+  const [headJudges, setHeadJudges] = useState([]);
+  const [hjLoading, setHjLoading] = useState(false);
+  const [hjError, setHjError] = useState(null);
+  const [newHJInput, setNewHJInput] = useState("");
 
-  // ── When a tournament is selected, start polling ─────────────────
+  const loadHeadJudges = async (s) => {
+    setHjLoading(true); setHjError(null);
+    try {
+      const res = await workerGet(`/judges/get?slug=${encodeURIComponent(s)}`);
+      setHeadJudges(res.headJudges || []);
+    } catch(e) { setHjError(e.message || "Failed to load head judges."); }
+    finally { setHjLoading(false); }
+  };
+
+  const saveHeadJudges = async (newList) => {
+    const token = sessionStorage.getItem("ncblast-auth-token");
+    setHjLoading(true); setHjError(null);
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/judges/set`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json","X-Auth-Token":token||""},
+        body: JSON.stringify({ slug, headJudges: newList, username: sessionStorage.getItem("ncblast-auth-user") }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error||"Save failed");
+      setHeadJudges(newList);
+    } catch(e) { setHjError(e.message); }
+    finally { setHjLoading(false); }
+  };
+
+  const addHeadJudge = () => {
+    const username = newHJInput.trim().toLowerCase();
+    if (!username) return;
+    if (headJudges.includes(username)) { setNewHJInput(""); return; }
+    saveHeadJudges([...headJudges, username]);
+    setNewHJInput("");
+  };
+
+  const removeHeadJudge = (username) => {
+    saveHeadJudges(headJudges.filter(u => u !== username));
+  };
   useEffect(() => {
     if (!slug) return;
 
@@ -5468,6 +5600,7 @@ function OrgApp({onSwitchRole}) {
       finally { setLoadingPairings(false); }
     };
     loadPairings();
+    loadHeadJudges(slug);
 
     // Poll live match slots every 5s
     const pollLive = async () => {
@@ -5631,6 +5764,38 @@ function OrgApp({onSwitchRole}) {
 
       {/* ── Body ───────────────────────────────────────────────── */}
       <div style={{flex:1,overflowY:"auto",padding:"12px 14px 32px"}}>
+
+      {/* ── Head Judges ────────────────────────────────────────── */}
+      <div style={{marginBottom:16,padding:"12px 14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)"}}>
+        <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px"}}>Head Judges</p>
+        <p style={{fontSize:10,color:"var(--text-muted)",margin:"0 0 10px",lineHeight:1.5}}>
+          Challonge usernames that can access Organizer View for this event.
+        </p>
+        {hjLoading && <p style={{fontSize:12,color:"var(--text-muted)"}}>Saving…</p>}
+        {hjError && <p style={{fontSize:11,color:"#EF4444",marginBottom:6}}>⚠ {hjError}</p>}
+        {headJudges.map(u => (
+          <div key={u} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 10px",borderRadius:8,background:"var(--surface)",marginBottom:5,border:"1px solid var(--border)"}}>
+            <span style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>{u}</span>
+            <button onClick={()=>removeHeadJudge(u)} disabled={hjLoading}
+              style={{fontSize:11,fontWeight:700,color:"#EF4444",background:"none",border:"none",cursor:"pointer",padding:"2px 6px"}}>
+              Remove
+            </button>
+          </div>
+        ))}
+        <div style={{display:"flex",gap:8,marginTop:headJudges.length>0?8:0}}>
+          <input
+            value={newHJInput}
+            onChange={e=>setNewHJInput(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&addHeadJudge()}
+            placeholder="challonge username"
+            style={{flex:1,padding:"8px 10px",borderRadius:9,border:"1px solid var(--border2)",background:"var(--input-bg)",color:"var(--text-primary)",fontSize:12,fontFamily:"'Outfit',sans-serif",outline:"none"}}
+          />
+          <button onClick={addHeadJudge} disabled={!newHJInput.trim()||hjLoading}
+            style={{padding:"0 12px",borderRadius:9,border:"none",background:"#22C55E",color:"#fff",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+            Add
+          </button>
+        </div>
+      </div>
 
       {/* ── Matches ────────────────────────────────────────────── */}
       <React.Fragment>
@@ -6771,6 +6936,7 @@ function BeyJudgeApp() {
   const [players,setPlayers] = useState([]);
   const [libOpen,setLibOpen] = useState(false);
   const [judge,setJudge] = useState(()=>{ try{return localStorage.getItem(KEYS.lastJudge)||"";}catch{return "";} });
+  const [sharedJudges,setSharedJudges] = useState(null); // null | { judgeA:string, judgeB:string }
   const [sheetsStatus,setSheetsStatus] = useState(null);
   const [challongeSlug,setChallongeSlug] = useState("");
   const [challongeParticipants,setChallongeParticipants] = useState({});
@@ -6901,9 +7067,19 @@ function BeyJudgeApp() {
           </div>
         </div>
       )}
-      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap,names)=>{setJudgeEventDeleted(false);setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});if(names&&names.length){const fresh=[...new Set(names)];setPlayers(fresh);sSave(KEYS.players,fresh);}}} onJudgeVerified={(username)=>{setJudge(username);try{localStorage.setItem(KEYS.lastJudge,username);}catch{};}}/>}
+      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap,names)=>{setJudgeEventDeleted(false);setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});if(names&&names.length){const fresh=[...new Set(names)];setPlayers(fresh);sSave(KEYS.players,fresh);}}} onJudgeVerified={(payload)=>{
+        if (payload && typeof payload === "object" && payload.mode === "shared") {
+          setSharedJudges({ judgeA: payload.judgeA, judgeB: payload.judgeB });
+          setJudge(""); // will be chosen per-match
+          try{localStorage.setItem(KEYS.lastJudge, payload.judgeA);}catch{}
+        } else {
+          setSharedJudges(null);
+          setJudge(payload||"");
+          try{localStorage.setItem(KEYS.lastJudge, payload||"");}catch{}
+        }
+      }}/>}
       {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}} tournamentMode={config.tm}/>}
-      {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
+      {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sharedJudges={sharedJudges} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
     </div>
   );
 }
