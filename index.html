@@ -78,6 +78,10 @@
 const { useState, useEffect, useRef, useCallback } = React;
 
 // ── OAuth callback detection ──────────────────────────────────────────────
+// Runs before React mounts. Detects an OAuth redirect (code in URL), exchanges
+// the code for a token, fetches the username from Challonge directly (browser
+// can reach /v2/me.json even though the Worker can't), then signals the waiting
+// tab via postMessage (desktop popup) or localStorage (mobile new tab).
 (function handleOAuthCallback() {
   try {
     const params = new URLSearchParams(window.location.search);
@@ -90,62 +94,82 @@ const { useState, useEffect, useRef, useCallback } = React;
       return;
     }
 
+    // We're an OAuth callback page — hide app UI immediately so nothing flashes
+    // before this window closes or shows a "you can close this tab" message.
+    document.documentElement.style.display = "none";
     window.history.replaceState({}, document.title, "/");
 
-    // If we're in a popup (opened by the main tab), send result back via postMessage
-    // and close — the main tab never reloads, so its state is fully intact.
+    // The OAuth state param is "sessionId.randomSuffix" — sessionId routes the
+    // message back to the right hook instance (prevents two popups cross-firing).
+    const oauthStateParam = params.get("state") || "";
+    const sessionId = oauthStateParam.split(".")[0] || "";
+
     const isPopup = !!window.opener;
 
-    const sendToOpener = (msg) => {
-      // The OAuth state param is "sessionId.randomSuffix" — extract sessionId so the
-      // right hook instance handles this message (prevents two popups cross-firing)
-      const oauthStateParam = params.get("state") || "";
-      const sessionId = oauthStateParam.split(".")[0] || "";
-      try { window.opener.postMessage({ type: "ncblast-oauth-result", sessionId, ...msg }, window.location.origin); } catch(_) {}
-      try { window.close(); } catch(_) {}
+    const signalResult = (msg) => {
+      if (isPopup) {
+        // Desktop: send via postMessage and close immediately
+        try { window.opener.postMessage({ type: "ncblast-oauth-result", sessionId, ...msg }, window.location.origin); } catch(_) {}
+        try { window.close(); } catch(_) {}
+      } else {
+        // Mobile/new-tab: write to localStorage so the original tab's poller picks it up
+        try { localStorage.setItem("ncblast-oauth-result:" + sessionId, JSON.stringify({ ...msg, sessionId, ts: Date.now() })); } catch(_) {}
+        // Show a "you can close this tab" message instead of the app
+        document.documentElement.style.display = "";
+        document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#94a3b8;padding:32px;text-align:center;">' +
+          '<div style="font-size:40px;margin-bottom:16px">' + (msg.ok ? "✅" : "❌") + '</div>' +
+          '<p style="font-size:18px;font-weight:700;color:' + (msg.ok ? "#22c55e" : "#ef4444") + ';margin:0 0 8px">' + (msg.ok ? "Logged in as " + msg.username : "Login failed") + '</p>' +
+          '<p style="font-size:14px;margin:0">' + (msg.ok ? "You can close this tab and return to NC BLAST." : (msg.error || "")) + '</p>' +
+          '</div>';
+      }
     };
 
     if (error) {
-      if (isPopup) { sendToOpener({ ok: false, error: "Challonge error: " + (errorDesc || error) }); return; }
-      sessionStorage.setItem("ncblast-oauth-error", "Challonge error: " + (errorDesc || error));
-      sessionStorage.setItem("ncblast-oauth-had-error", "1");
+      signalResult({ ok: false, error: "Challonge error: " + (errorDesc || error) });
       return;
     }
 
     const WORKER = "https://challonge-proxy.danny61734.workers.dev";
 
-    if (!isPopup) { sessionStorage.setItem("ncblast-oauth-pending", "1"); }
-
-    fetch(`${WORKER}/auth/exchange`, {
+    // Exchange code for token, then resolve username via Challonge /v2/me.json
+    // (browser can reach this endpoint; the Worker cannot due to Content-Type issues)
+    fetch(WORKER + "/auth/exchange", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code, redirect_uri: "https://ncblast.pages.dev" }),
     })
-    .then(r => r.json())
-    .then(d => {
-      if (isPopup) {
-        if (d.ok && d.access_token) { sendToOpener({ ok: true, token: d.access_token }); }
-        else { sendToOpener({ ok: false, error: d.error || "Login failed" }); }
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok || !d.access_token) {
+        signalResult({ ok: false, error: d.error || "Login failed" });
         return;
       }
-      sessionStorage.removeItem("ncblast-oauth-pending");
-      if (d.ok && d.access_token) {
-        sessionStorage.setItem("ncblast-auth-token", d.access_token);
-        sessionStorage.setItem("ncblast-oauth-needs-username", "1");
-      } else {
-        sessionStorage.setItem("ncblast-oauth-error", d.error || "Login failed");
-        sessionStorage.setItem("ncblast-oauth-had-error", "1");
-      }
+      var token = d.access_token;
+      // Fetch username directly from Challonge
+      return fetch("https://api.challonge.com/v2/me.json", {
+        headers: { "Authorization": "Bearer " + token, "Accept": "application/json" }
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(me) {
+        var username = (me && me.data && me.data.attributes && me.data.attributes.username)
+          || (me && me.user && me.user.username)
+          || (me && me.username)
+          || null;
+        if (username) {
+          signalResult({ ok: true, token: token, username: username.trim().toLowerCase() });
+        } else {
+          signalResult({ ok: false, error: "Couldn't read username from Challonge." });
+        }
+      })
+      .catch(function(e) {
+        signalResult({ ok: false, error: "Couldn't verify account: " + (e.message || "network error") });
+      });
     })
-    .catch(e => {
-      if (isPopup) { sendToOpener({ ok: false, error: e.message || "Connection error" }); return; }
-      sessionStorage.removeItem("ncblast-oauth-pending");
-      sessionStorage.setItem("ncblast-oauth-error", e.message || "Connection error");
-      sessionStorage.setItem("ncblast-oauth-had-error", "1");
+    .catch(function(e) {
+      signalResult({ ok: false, error: e.message || "Connection error" });
     });
   } catch(_) {}
 })();
-
 /* ═══════════════════════════════════════
    VIEWPORT SCALE
 ═══════════════════════════════════════ */
@@ -368,84 +392,38 @@ function useChallongeAuthPopup() {
   const [state, setState]       = React.useState("idle");
   const [username, setUsername] = React.useState(null);
   const [errorMsg, setErrorMsg] = React.useState("");
-  const [token, setToken]       = React.useState(null);
-  const [usernameInput, setUsernameInput] = React.useState(() => {
-    try { return localStorage.getItem("ncblast-saved-username") || ""; } catch(_) { return ""; }
-  });
-  const popupRef    = React.useRef(null);
-  const pollRef     = React.useRef(null);
-  const stateRef    = React.useRef(state);
-  // Unique ID per hook instance so two popups don't cross-fire each other's messages
+  const popupRef     = React.useRef(null);
+  const pollRef      = React.useRef(null); // popup-closed watcher or localStorage poller
+  const stateRef     = React.useRef(state);
+  // Unique ID per hook instance — routes messages/localStorage entries to the right hook
   const sessionIdRef = React.useRef(Math.random().toString(36).slice(2));
   React.useEffect(() => { stateRef.current = state; }, [state]);
 
-  const doConfirm = React.useCallback(async (tok, claimedUsername) => {
-    setState("confirming");
-    try {
-      const res = await fetch(`${OVERLAY_WORKER}/auth/confirm`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: tok, username: claimedUsername.trim().toLowerCase() }),
-      });
-      const d = await res.json();
-      if (d.ok) {
-        try { localStorage.setItem("ncblast-saved-username", d.username); } catch(_) {}
-        setUsername(d.username);
-        setState("done");
-      } else {
-        setErrorMsg(d.error || "Confirmation failed.");
-        setState("error");
-      }
-    } catch(e) {
-      setErrorMsg(e.message || "Connection error.");
-      setState("error");
-    }
+  // Handle a completed login result (from either postMessage or localStorage)
+  const handleResult = React.useCallback((msg) => {
+    clearInterval(pollRef.current);
+    if (!msg.ok) { setErrorMsg(msg.error || "Login failed."); setState("error"); return; }
+    setUsername(msg.username);
+    setState("done");
   }, []);
 
-  // Listen for postMessage from the popup — only handle messages tagged with our sessionId
+  // Listen for postMessage from popup (desktop)
   React.useEffect(() => {
-    const onMessage = async (e) => {
+    const onMessage = (e) => {
       if (e.origin !== window.location.origin) return;
       if (!e.data || e.data.type !== "ncblast-oauth-result") return;
-      if (e.data.sessionId !== sessionIdRef.current) return; // ignore other popup's messages
-      clearInterval(pollRef.current);
-      if (!e.data.ok) {
-        setErrorMsg(e.data.error || "Login failed.");
-        setState("error");
-        return;
-      }
-      const tok = e.data.token;
-      setToken(tok);
-      // Never auto-confirm with a saved username — always ask manually so two different
-      // accounts can log in on the same shared device without one stealing the other's session
-      setState("confirm");
-      setUsernameInput(""); // clear so user types fresh
+      if (e.data.sessionId !== sessionIdRef.current) return;
+      handleResult(e.data);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [doConfirm]);
-
-  // Poll to detect if popup was closed without completing
-  React.useEffect(() => {
-    if (state !== "waiting") return;
-    pollRef.current = setInterval(() => {
-      if (popupRef.current && popupRef.current.closed && stateRef.current === "waiting") {
-        clearInterval(pollRef.current);
-        setErrorMsg("Login window was closed."); setState("error");
-      }
-    }, 500);
-    return () => clearInterval(pollRef.current);
-  }, [state]);
-
-  const confirm = React.useCallback((claimedUsername) => {
-    if (!token || !claimedUsername) return;
-    doConfirm(token, claimedUsername);
-  }, [token, doConfirm]);
+  }, [handleResult]);
 
   const start = React.useCallback(async () => {
     setErrorMsg(""); setState("waiting");
+    // Clear any stale localStorage result for this session
+    try { localStorage.removeItem("ncblast-oauth-result:" + sessionIdRef.current); } catch(_) {}
     try {
-      // Embed our sessionId in the OAuth state param so the popup echoes it back
       const oauthState = sessionIdRef.current + "." + Math.random().toString(36).slice(2);
       const res = await fetch(
         `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent("https://ncblast.pages.dev")}&response_type=code&state=${encodeURIComponent(oauthState)}`,
@@ -456,25 +434,47 @@ function useChallongeAuthPopup() {
       const w = 520, h = 640;
       const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
       const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
-      popupRef.current = window.open(data.url, `challonge-login-${sessionIdRef.current}`, `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
-      if (!popupRef.current) {
+      const popup = window.open(data.url, `ncblast-login-${sessionIdRef.current}`, `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+      popupRef.current = popup;
+
+      // Poll: check for popup closed (desktop) or localStorage result (mobile new tab)
+      pollRef.current = setInterval(() => {
+        // Check localStorage first (works for both desktop and mobile new tab)
+        try {
+          const raw = localStorage.getItem("ncblast-oauth-result:" + sessionIdRef.current);
+          if (raw) {
+            localStorage.removeItem("ncblast-oauth-result:" + sessionIdRef.current);
+            const msg = JSON.parse(raw);
+            handleResult(msg);
+            return;
+          }
+        } catch(_) {}
+        // On desktop: also check if popup was closed without completing
+        if (popup && popup.closed && stateRef.current === "waiting") {
+          clearInterval(pollRef.current);
+          setErrorMsg("Login window was closed."); setState("error");
+        }
+      }, 400);
+
+      if (!popup) {
+        // Popup blocked — fall back to same-tab navigation (rare)
         window.location.href = data.url;
       }
     } catch(e) {
       setErrorMsg("Couldn't reach the server. Try again.");
       setState("error");
     }
-  }, []);
+  }, [handleResult]);
 
   const reset = React.useCallback(() => {
     clearInterval(pollRef.current);
+    try { localStorage.removeItem("ncblast-oauth-result:" + sessionIdRef.current); } catch(_) {}
     if (popupRef.current && !popupRef.current.closed) { try { popupRef.current.close(); } catch(_) {} }
-    setState("idle"); setUsername(null); setErrorMsg(""); setToken(null); setUsernameInput("");
+    setState("idle"); setUsername(null); setErrorMsg("");
   }, []);
 
-  return { state, username, usernameInput, setUsernameInput, errorMsg, start, reset, confirm };
+  return { state, username, errorMsg, start, reset };
 }
-
 /* ═══════════════════════════════════════
    CHALLONGE LOGIN SCREEN
    Reusable UI for the device-flow login.
@@ -978,7 +978,6 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
 
   // ── Inline login step UI ────────────────────────────────────────────────
   const LoginStep = ({ auth, label, sub, showADone }) => {
-    const busy = auth.state === "waiting" || auth.state === "confirming";
     return (
       <div style={{padding:"14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)",marginBottom:10}}>
         {showADone && <p style={{fontSize:11,color:"#15803D",fontWeight:700,margin:"0 0 8px"}}>⚖️ Judge A: {judgeAUsername} ✓</p>}
@@ -989,23 +988,10 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
             Log in with Challonge →
           </button>
         )}
-        {busy && (
+        {auth.state === "waiting" && (
           <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0"}}>
             <div style={{width:18,height:18,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
-            <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>{auth.state === "waiting" ? "Waiting for login window…" : "Verifying…"}</p>
-          </div>
-        )}
-        {auth.state === "confirm" && (
-          <div>
-            <p style={{fontSize:12,color:"var(--text-primary)",fontWeight:700,margin:"0 0 6px"}}>✅ Logged in! Enter your Challonge username:</p>
-            <div style={{display:"flex",gap:6}}>
-              <input type="text" placeholder="your-challonge-username" value={auth.usernameInput}
-                onChange={e=>auth.setUsernameInput(e.target.value)}
-                onKeyDown={e=>{if(e.key==="Enter"&&auth.usernameInput.trim())auth.confirm(auth.usernameInput.trim());}}
-                style={{flex:1,padding:"9px 10px",borderRadius:9,border:"1.5px solid var(--border2)",background:"var(--surface)",color:"var(--text-primary)",fontSize:13,fontFamily:"'Outfit',sans-serif",outline:"none"}} autoFocus/>
-              <button onClick={()=>{if(auth.usernameInput.trim())auth.confirm(auth.usernameInput.trim());}} disabled={!auth.usernameInput.trim()}
-                style={{padding:"0 14px",borderRadius:9,border:"none",background:"#EA580C",color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>OK</button>
-            </div>
+            <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>Waiting for Challonge login…</p>
           </div>
         )}
         {auth.state === "done" && <p style={{fontSize:13,color:"#15803D",fontWeight:700,margin:0}}>✅ {auth.username}</p>}
