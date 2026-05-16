@@ -131,8 +131,8 @@ const { useState, useEffect, useRef, useCallback } = React;
 
     const WORKER = "https://challonge-proxy.danny61734.workers.dev";
 
-    // Exchange code for token, then resolve username via Challonge /v2/me.json
-    // (browser can reach this endpoint; the Worker cannot due to Content-Type issues)
+    // Exchange code for token, then resolve username via Challonge's me endpoint.
+    // We try v1 and v2 variants since we can't verify the exact shape without live testing.
     fetch(WORKER + "/auth/exchange", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -145,25 +145,42 @@ const { useState, useEffect, useRef, useCallback } = React;
         return;
       }
       var token = d.access_token;
-      // Fetch username directly from Challonge
-      return fetch("https://api.challonge.com/v2/me.json", {
-        headers: { "Authorization": "Bearer " + token, "Accept": "application/json" }
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(me) {
-        var username = (me && me.data && me.data.attributes && me.data.attributes.username)
-          || (me && me.user && me.user.username)
-          || (me && me.username)
-          || null;
-        if (username) {
-          signalResult({ ok: true, token: token, username: username.trim().toLowerCase() });
-        } else {
-          signalResult({ ok: false, error: "Couldn't read username from Challonge." });
+      // Try v1 first (most likely format for OAuth Bearer), then v2
+      var endpoints = [
+        "https://api.challonge.com/v1/me.json",
+        "https://api.challonge.com/v2/me.json",
+      ];
+      var tryNext = function(idx) {
+        if (idx >= endpoints.length) {
+          signalResult({ ok: false, error: "Login succeeded but couldn't read your Challonge username. Check the browser console for details." });
+          return;
         }
-      })
-      .catch(function(e) {
-        signalResult({ ok: false, error: "Couldn't verify account: " + (e.message || "network error") });
-      });
+        fetch(endpoints[idx], {
+          headers: { "Authorization": "Bearer " + token, "Accept": "application/json" }
+        })
+        .then(function(r) { return r.text(); })
+        .then(function(text) {
+          console.log("[BLAST] me endpoint " + endpoints[idx] + " raw response:", text);
+          var me;
+          try { me = JSON.parse(text); } catch(_) { tryNext(idx + 1); return; }
+          // Try every known shape Challonge might use
+          var username =
+            (me && me.username) ||                                    // flat: { username: "..." }
+            (me && me.user && me.user.username) ||                    // v1: { user: { username } }
+            (me && me.data && me.data.attributes && me.data.attributes.username) || // v2 json:api
+            (me && me.data && me.data.username) ||                    // v2 flat data
+            (me && me.current_user && me.current_user.username) ||    // possible variant
+            null;
+          if (username) {
+            signalResult({ ok: true, token: token, username: username.trim().toLowerCase() });
+          } else {
+            console.warn("[BLAST] me endpoint shape not recognized:", me);
+            tryNext(idx + 1);
+          }
+        })
+        .catch(function() { tryNext(idx + 1); });
+      };
+      tryNext(0);
     })
     .catch(function(e) {
       signalResult({ ok: false, error: e.message || "Connection error" });
