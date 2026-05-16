@@ -7151,7 +7151,7 @@ function BeyJudgeApp() {
   const [parts,setParts] = useState({blades:[],ratchets:[],bits:[]});
   const [players,setPlayers] = useState([]);
   const [libOpen,setLibOpen] = useState(false);
-  const [judge,setJudge] = useState(()=>{ try{return localStorage.getItem(KEYS.lastJudge)||"";}catch{return "";} });
+  const [judge,setJudge] = useState(""); // Never pre-populate from storage — only set after a successful login in this session
   const [sharedJudges,setSharedJudges] = useState(null); // null | { judgeA:string, judgeB:string }
   const [sheetsStatus,setSheetsStatus] = useState(null);
   const [challongeSlug,setChallongeSlug] = useState("");
