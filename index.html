@@ -131,9 +131,9 @@ const { useState, useEffect, useRef, useCallback } = React;
 
     const WORKER = "https://challonge-proxy.danny61734.workers.dev";
 
-    // Exchange code for token, then resolve username from Challonge.
-    // We try v1 and v2 me endpoints since we don't know which shape the token uses.
-    // The raw response is sent back in the error so it shows up in the NC BLAST UI.
+    // Exchange code for token, then call Worker /auth/me to resolve the username.
+    // The Worker makes the Challonge API call server-side — avoids the browser
+    // Content-Type injection issue that causes Challonge to return 415.
     fetch(WORKER + "/auth/exchange", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -146,38 +146,23 @@ const { useState, useEffect, useRef, useCallback } = React;
         return;
       }
       var token = d.access_token;
-      var endpoints = [
-        "https://api.challonge.com/v1/me.json",
-        "https://api.challonge.com/v2/me.json",
-      ];
-      function tryNext(idx, lastRaw) {
-        if (idx >= endpoints.length) {
-          signalResult({ ok: false, error: "Got token but couldn't read username. Response was: " + (lastRaw || "(empty)").slice(0, 400) });
-          return;
+      // Ask the Worker to resolve the username — it calls Challonge from the server side
+      return fetch(WORKER + "/auth/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: token }),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(me) {
+        if (me.ok && me.username) {
+          signalResult({ ok: true, token: token, username: me.username });
+        } else {
+          signalResult({ ok: false, error: me.error || "Couldn't read username from Challonge." });
         }
-        fetch(endpoints[idx], {
-          headers: { "Authorization": "Bearer " + token }
-        })
-        .then(function(r) { return r.text(); })
-        .then(function(text) {
-          var me;
-          try { me = JSON.parse(text); } catch(_) { tryNext(idx + 1, text); return; }
-          var username =
-            (me && me.username) ||
-            (me && me.user && me.user.username) ||
-            (me && me.data && me.data.attributes && me.data.attributes.username) ||
-            (me && me.data && me.data.username) ||
-            (me && me.current_user && me.current_user.username) ||
-            null;
-          if (username) {
-            signalResult({ ok: true, token: token, username: username.trim().toLowerCase() });
-          } else {
-            tryNext(idx + 1, text);
-          }
-        })
-        .catch(function(e) { tryNext(idx + 1, e.message); });
-      }
-      tryNext(0);
+      })
+      .catch(function(e) {
+        signalResult({ ok: false, error: "Username lookup failed: " + (e.message || "network error") });
+      });
     })
     .catch(function(e) {
       signalResult({ ok: false, error: e.message || "Connection error" });
