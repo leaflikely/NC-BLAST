@@ -146,6 +146,15 @@ const { useState, useEffect, useRef, useCallback } = React;
         return;
       }
       var token = d.access_token;
+      // If Challonge included the username in the token exchange response, use it directly.
+      if (d.username) {
+        signalResult({ ok: true, token: token, username: d.username });
+        return;
+      }
+      // Username not in exchange response — show debug info and fall through to /auth/me attempt.
+      if (d.debugKeys) {
+        console.warn("[NC BLAST] Token exchange response fields:", d.debugKeys);
+      }
       // Ask the Worker to resolve the username — it calls Challonge from the server side
       return fetch(WORKER + "/auth/me", {
         method: "POST",
