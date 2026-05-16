@@ -131,8 +131,9 @@ const { useState, useEffect, useRef, useCallback } = React;
 
     const WORKER = "https://challonge-proxy.danny61734.workers.dev";
 
-    // Exchange code for token, then resolve username via Challonge's me endpoint.
-    // We try v1 and v2 variants since we can't verify the exact shape without live testing.
+    // Exchange code for token, then resolve username from Challonge.
+    // We try v1 and v2 me endpoints since we don't know which shape the token uses.
+    // The raw response is sent back in the error so it shows up in the NC BLAST UI.
     fetch(WORKER + "/auth/exchange", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -145,14 +146,13 @@ const { useState, useEffect, useRef, useCallback } = React;
         return;
       }
       var token = d.access_token;
-      // Try v1 first (most likely format for OAuth Bearer), then v2
       var endpoints = [
         "https://api.challonge.com/v1/me.json",
         "https://api.challonge.com/v2/me.json",
       ];
-      var tryNext = function(idx) {
+      function tryNext(idx, lastRaw) {
         if (idx >= endpoints.length) {
-          signalResult({ ok: false, error: "Login succeeded but couldn't read your Challonge username. Check the browser console for details." });
+          signalResult({ ok: false, error: "Got token but couldn't read username. Response was: " + (lastRaw || "(empty)").slice(0, 400) });
           return;
         }
         fetch(endpoints[idx], {
@@ -160,26 +160,23 @@ const { useState, useEffect, useRef, useCallback } = React;
         })
         .then(function(r) { return r.text(); })
         .then(function(text) {
-          console.log("[BLAST] me endpoint " + endpoints[idx] + " raw response:", text);
           var me;
-          try { me = JSON.parse(text); } catch(_) { tryNext(idx + 1); return; }
-          // Try every known shape Challonge might use
+          try { me = JSON.parse(text); } catch(_) { tryNext(idx + 1, text); return; }
           var username =
-            (me && me.username) ||                                    // flat: { username: "..." }
-            (me && me.user && me.user.username) ||                    // v1: { user: { username } }
-            (me && me.data && me.data.attributes && me.data.attributes.username) || // v2 json:api
-            (me && me.data && me.data.username) ||                    // v2 flat data
-            (me && me.current_user && me.current_user.username) ||    // possible variant
+            (me && me.username) ||
+            (me && me.user && me.user.username) ||
+            (me && me.data && me.data.attributes && me.data.attributes.username) ||
+            (me && me.data && me.data.username) ||
+            (me && me.current_user && me.current_user.username) ||
             null;
           if (username) {
             signalResult({ ok: true, token: token, username: username.trim().toLowerCase() });
           } else {
-            console.warn("[BLAST] me endpoint shape not recognized:", me);
-            tryNext(idx + 1);
+            tryNext(idx + 1, text);
           }
         })
-        .catch(function() { tryNext(idx + 1); });
-      };
+        .catch(function(e) { tryNext(idx + 1, e.message); });
+      }
       tryNext(0);
     })
     .catch(function(e) {
