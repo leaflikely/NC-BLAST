@@ -97,7 +97,11 @@ const { useState, useEffect, useRef, useCallback } = React;
     const isPopup = !!window.opener;
 
     const sendToOpener = (msg) => {
-      try { window.opener.postMessage({ type: "ncblast-oauth-result", ...msg }, window.location.origin); } catch(_) {}
+      // The OAuth state param is "sessionId.randomSuffix" — extract sessionId so the
+      // right hook instance handles this message (prevents two popups cross-firing)
+      const oauthStateParam = params.get("state") || "";
+      const sessionId = oauthStateParam.split(".")[0] || "";
+      try { window.opener.postMessage({ type: "ncblast-oauth-result", sessionId, ...msg }, window.location.origin); } catch(_) {}
       try { window.close(); } catch(_) {}
     };
 
@@ -368,9 +372,11 @@ function useChallongeAuthPopup() {
   const [usernameInput, setUsernameInput] = React.useState(() => {
     try { return localStorage.getItem("ncblast-saved-username") || ""; } catch(_) { return ""; }
   });
-  const popupRef = React.useRef(null);
-  const pollRef  = React.useRef(null);
-  const stateRef = React.useRef(state);
+  const popupRef    = React.useRef(null);
+  const pollRef     = React.useRef(null);
+  const stateRef    = React.useRef(state);
+  // Unique ID per hook instance so two popups don't cross-fire each other's messages
+  const sessionIdRef = React.useRef(Math.random().toString(36).slice(2));
   React.useEffect(() => { stateRef.current = state; }, [state]);
 
   const doConfirm = React.useCallback(async (tok, claimedUsername) => {
@@ -383,7 +389,6 @@ function useChallongeAuthPopup() {
       });
       const d = await res.json();
       if (d.ok) {
-        try { sessionStorage.setItem("ncblast-auth-token", tok); } catch(_) {}
         try { localStorage.setItem("ncblast-saved-username", d.username); } catch(_) {}
         setUsername(d.username);
         setState("done");
@@ -397,11 +402,12 @@ function useChallongeAuthPopup() {
     }
   }, []);
 
-  // Listen for postMessage from the popup
+  // Listen for postMessage from the popup — only handle messages tagged with our sessionId
   React.useEffect(() => {
     const onMessage = async (e) => {
       if (e.origin !== window.location.origin) return;
       if (!e.data || e.data.type !== "ncblast-oauth-result") return;
+      if (e.data.sessionId !== sessionIdRef.current) return; // ignore other popup's messages
       clearInterval(pollRef.current);
       if (!e.data.ok) {
         setErrorMsg(e.data.error || "Login failed.");
@@ -410,18 +416,16 @@ function useChallongeAuthPopup() {
       }
       const tok = e.data.token;
       setToken(tok);
-      const saved = (() => { try { return localStorage.getItem("ncblast-saved-username") || ""; } catch(_) { return ""; } })();
-      if (saved) {
-        await doConfirm(tok, saved);
-      } else {
-        setState("confirm");
-      }
+      // Never auto-confirm with a saved username — always ask manually so two different
+      // accounts can log in on the same shared device without one stealing the other's session
+      setState("confirm");
+      setUsernameInput(""); // clear so user types fresh
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [doConfirm]);
 
-  // Poll to detect if the popup was closed without completing
+  // Poll to detect if popup was closed without completing
   React.useEffect(() => {
     if (state !== "waiting") return;
     pollRef.current = setInterval(() => {
@@ -441,7 +445,8 @@ function useChallongeAuthPopup() {
   const start = React.useCallback(async () => {
     setErrorMsg(""); setState("waiting");
     try {
-      const oauthState = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      // Embed our sessionId in the OAuth state param so the popup echoes it back
+      const oauthState = sessionIdRef.current + "." + Math.random().toString(36).slice(2);
       const res = await fetch(
         `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent("https://ncblast.pages.dev")}&response_type=code&state=${encodeURIComponent(oauthState)}`,
         { signal: AbortSignal.timeout(8000) }
@@ -451,9 +456,8 @@ function useChallongeAuthPopup() {
       const w = 520, h = 640;
       const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
       const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
-      popupRef.current = window.open(data.url, "challonge-login", `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+      popupRef.current = window.open(data.url, `challonge-login-${sessionIdRef.current}`, `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
       if (!popupRef.current) {
-        // Popup blocked — fall back to same-tab navigation
         window.location.href = data.url;
       }
     } catch(e) {
@@ -465,7 +469,7 @@ function useChallongeAuthPopup() {
   const reset = React.useCallback(() => {
     clearInterval(pollRef.current);
     if (popupRef.current && !popupRef.current.closed) { try { popupRef.current.close(); } catch(_) {} }
-    setState("idle"); setUsername(null); setErrorMsg(""); setToken(null);
+    setState("idle"); setUsername(null); setErrorMsg(""); setToken(null); setUsernameInput("");
   }, []);
 
   return { state, username, usernameInput, setUsernameInput, errorMsg, start, reset, confirm };
@@ -1090,7 +1094,7 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
 /* ═══════════════════════════════════════
    SCREEN 1 — FORMAT
 ═══════════════════════════════════════ */
-function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,onSwitchRole,challongeSlug,onChallongeImport,onJudgeVerified,sharedJudges,judge,onLogout}) {
+function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,onSwitchRole,challongeSlug,onChallongeImport,onJudgeVerified}) {
   const [showGuide,setShowGuide] = useState(false);
   const total=parts.blades.length+parts.ratchets.length+parts.bits.length;
   const hasLib=total>0;
@@ -1175,13 +1179,6 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,o
       {onSwitchRole&&(
         <button onClick={onSwitchRole} style={{display:"block",width:"100%",marginTop:10,padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"transparent",color:"var(--text-faint)",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
           ↩ Switch View
-        </button>
-      )}
-      {onLogout && (judge || sharedJudges) && (
-        <button onClick={onLogout} style={{display:"block",width:"100%",marginTop:8,padding:"9px 0",borderRadius:10,border:"2px solid var(--border)",background:"transparent",color:"var(--text-faint)",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-          {sharedJudges
-            ? `🚪 Log out (${sharedJudges.judgeA} & ${sharedJudges.judgeB})`
-            : `🚪 Log out (${judge})`}
         </button>
       )}
     </div>
@@ -5720,6 +5717,7 @@ function OrgApp({onSwitchRole}) {
 
   // ── Head judge management state ───────────────────────────────────
   const [headJudges, setHeadJudges] = useState([]);
+  const [orgOwnerUsername, setOrgOwnerUsername] = useState(null); // the tournament owner
   const [hjLoading, setHjLoading] = useState(false);
   const [hjError, setHjError] = useState(null);
   const [newHJInput, setNewHJInput] = useState("");
@@ -5729,6 +5727,7 @@ function OrgApp({onSwitchRole}) {
     try {
       const res = await workerGet(`/judges/get?slug=${encodeURIComponent(s)}`);
       setHeadJudges(res.headJudges || []);
+      setOrgOwnerUsername(res.orgUsername || null);
     } catch(e) { setHjError(e.message || "Failed to load head judges."); }
     finally { setHjLoading(false); }
   };
@@ -5750,17 +5749,6 @@ function OrgApp({onSwitchRole}) {
     finally { setHjLoading(false); }
   };
 
-  const addHeadJudge = () => {
-    const username = newHJInput.trim().toLowerCase();
-    if (!username) return;
-    if (headJudges.includes(username)) { setNewHJInput(""); return; }
-    saveHeadJudges([...headJudges, username]);
-    setNewHJInput("");
-  };
-
-  const removeHeadJudge = (username) => {
-    saveHeadJudges(headJudges.filter(u => u !== username));
-  };
   useEffect(() => {
     if (!slug) return;
 
@@ -5940,36 +5928,83 @@ function OrgApp({onSwitchRole}) {
       <div style={{flex:1,overflowY:"auto",padding:"12px 14px 32px"}}>
 
       {/* ── Head Judges ────────────────────────────────────────── */}
-      <div style={{marginBottom:16,padding:"12px 14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)"}}>
-        <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px"}}>Head Judges</p>
-        <p style={{fontSize:10,color:"var(--text-muted)",margin:"0 0 10px",lineHeight:1.5}}>
-          Challonge usernames that can access Organizer View for this event.
-        </p>
-        {hjLoading && <p style={{fontSize:12,color:"var(--text-muted)"}}>Saving…</p>}
-        {hjError && <p style={{fontSize:11,color:"#EF4444",marginBottom:6}}>⚠ {hjError}</p>}
-        {headJudges.map(u => (
-          <div key={u} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 10px",borderRadius:8,background:"var(--surface)",marginBottom:5,border:"1px solid var(--border)"}}>
-            <span style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>{u}</span>
-            <button onClick={()=>removeHeadJudge(u)} disabled={hjLoading}
-              style={{fontSize:11,fontWeight:700,color:"#EF4444",background:"none",border:"none",cursor:"pointer",padding:"2px 6px"}}>
-              Remove
-            </button>
+      {(() => {
+        const currentUser = (() => { try { return (sessionStorage.getItem("ncblast-auth-user") || "").toLowerCase(); } catch(_) { return ""; } })();
+        const isOwner = orgOwnerUsername && currentUser === orgOwnerUsername.toLowerCase();
+        // Build participant name list from pairings data
+        const rosterNames = [...new Set(
+          (pairings||[]).flatMap(m => [m.player1_name, m.player2_name].filter(Boolean))
+        )].sort();
+        return (
+          <div style={{marginBottom:16,padding:"12px 14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+              <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0}}>Head Judges</p>
+              {orgOwnerUsername && <p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>Owner: {orgOwnerUsername}</p>}
+            </div>
+            <p style={{fontSize:10,color:"var(--text-muted)",margin:"0 0 10px",lineHeight:1.5}}>
+              Can access Organizer View for this event. Only the tournament owner can manage this list.
+            </p>
+            {hjLoading && <p style={{fontSize:12,color:"var(--text-muted)"}}>Saving…</p>}
+            {hjError && <p style={{fontSize:11,color:"#EF4444",marginBottom:6}}>⚠ {hjError}</p>}
+            {headJudges.length === 0 && !hjLoading && (
+              <p style={{fontSize:11,color:"var(--text-faint)",marginBottom:8}}>No head judges set.</p>
+            )}
+            {headJudges.map(u => (
+              <div key={u} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 10px",borderRadius:8,background:"var(--surface)",marginBottom:5,border:"1px solid var(--border)"}}>
+                <span style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>{u}</span>
+                {isOwner && (
+                  <button onClick={()=>saveHeadJudges(headJudges.filter(x=>x!==u))} disabled={hjLoading}
+                    style={{fontSize:11,fontWeight:700,color:"#EF4444",background:"none",border:"none",cursor:"pointer",padding:"2px 6px"}}>
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
+            {isOwner && (
+              <div style={{marginTop:10}}>
+                {/* Roster picker */}
+                {rosterNames.length > 0 && (
+                  <>
+                    <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 6px"}}>Add from roster</p>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+                      {rosterNames.filter(n => !headJudges.includes(n.toLowerCase())).map(n => (
+                        <button key={n} onClick={()=>{
+                          const u = n.toLowerCase();
+                          if (!headJudges.includes(u)) saveHeadJudges([...headJudges, u]);
+                        }} disabled={hjLoading} style={{
+                          padding:"6px 12px",borderRadius:9,border:"1.5px solid var(--border2)",
+                          background:"var(--surface)",color:"var(--text-secondary)",
+                          fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"
+                        }}>+ {n}</button>
+                      ))}
+                      {rosterNames.filter(n => !headJudges.includes(n.toLowerCase())).length === 0 && (
+                        <p style={{fontSize:11,color:"var(--text-faint)",margin:0}}>All roster players are already head judges.</p>
+                      )}
+                    </div>
+                  </>
+                )}
+                {/* Manual username input for non-roster judges */}
+                <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 6px"}}>Add by Challonge username</p>
+                <div style={{display:"flex",gap:8}}>
+                  <input value={newHJInput} onChange={e=>setNewHJInput(e.target.value)}
+                    onKeyDown={e=>{if(e.key==="Enter"&&newHJInput.trim()){const u=newHJInput.trim().toLowerCase();if(!headJudges.includes(u))saveHeadJudges([...headJudges,u]);setNewHJInput("");}}}
+                    placeholder="challonge username"
+                    style={{flex:1,padding:"8px 10px",borderRadius:9,border:"1px solid var(--border2)",background:"var(--input-bg)",color:"var(--text-primary)",fontSize:12,fontFamily:"'Outfit',sans-serif",outline:"none"}}
+                  />
+                  <button onClick={()=>{const u=newHJInput.trim().toLowerCase();if(u&&!headJudges.includes(u))saveHeadJudges([...headJudges,u]);setNewHJInput("");}}
+                    disabled={!newHJInput.trim()||hjLoading}
+                    style={{padding:"0 12px",borderRadius:9,border:"none",background:"#22C55E",color:"#fff",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                    Add
+                  </button>
+                </div>
+              </div>
+            )}
+            {!isOwner && orgOwnerUsername && (
+              <p style={{fontSize:10,color:"var(--text-faint)",marginTop:6,fontStyle:"italic"}}>Only {orgOwnerUsername} can edit this list.</p>
+            )}
           </div>
-        ))}
-        <div style={{display:"flex",gap:8,marginTop:headJudges.length>0?8:0}}>
-          <input
-            value={newHJInput}
-            onChange={e=>setNewHJInput(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&addHeadJudge()}
-            placeholder="challonge username"
-            style={{flex:1,padding:"8px 10px",borderRadius:9,border:"1px solid var(--border2)",background:"var(--input-bg)",color:"var(--text-primary)",fontSize:12,fontFamily:"'Outfit',sans-serif",outline:"none"}}
-          />
-          <button onClick={addHeadJudge} disabled={!newHJInput.trim()||hjLoading}
-            style={{padding:"0 12px",borderRadius:9,border:"none",background:"#22C55E",color:"#fff",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-            Add
-          </button>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* ── Matches ────────────────────────────────────────────── */}
       <React.Fragment>
@@ -7005,7 +7040,8 @@ function PlayerApp({onSwitchRole}){
 ═══════════════════════════════════════ */
 const ROLE_KEY = "ncblast-role-v1";
 
-function RolePicker({onSelect}) {
+function RolePicker({onSelect, judge, sharedJudges, onLogout}) {
+  const loggedIn = sharedJudges ? `${sharedJudges.judgeA} & ${sharedJudges.judgeB}` : (judge || null);
   return (
     <div style={{
       minHeight:"100vh", display:"flex", flexDirection:"column",
@@ -7063,6 +7099,18 @@ function RolePicker({onSelect}) {
         }}>
           📋 An Organizer
         </button>
+
+        {loggedIn && onLogout && (
+          <button onClick={onLogout} style={{
+            padding:"12px 0", borderRadius:12,
+            border:"2px solid var(--border)",
+            background:"transparent",
+            color:"var(--text-faint)", fontSize:12, fontWeight:600,
+            fontFamily:"'Outfit',sans-serif", cursor:"pointer", marginTop:4,
+          }}>
+            🚪 Log out ({loggedIn})
+          </button>
+        )}
       </div>
 
       <p style={{
@@ -7221,7 +7269,13 @@ function BeyJudgeApp() {
 
 
   // Branch on role in the render — no early returns before hooks
-  if(!role) return <RolePicker onSelect={chooseRole}/>;
+  if(!role) return <RolePicker onSelect={chooseRole} judge={judge} sharedJudges={sharedJudges} onLogout={()=>{
+    setJudge(""); setSharedJudges(null);
+    setChallongeSlug(""); setChallongeParticipants({});
+    setConfig(c=>({...c,tournamentName:""}));
+    sSave(KEYS.challongeMap,{});
+    try{sessionStorage.removeItem("ncblast-auth-token");sessionStorage.removeItem("ncblast-auth-user");}catch{}
+  }}/>;
   if(role==="player") return <PlayerApp onSwitchRole={()=>chooseRole(null)}/>;
   if(role==="org") return <OrgApp onSwitchRole={()=>chooseRole(null)}/>;
 
@@ -7251,12 +7305,6 @@ function BeyJudgeApp() {
           setJudge(payload||"");
           try{localStorage.setItem(KEYS.lastJudge, payload||"");}catch{}
         }
-      }} judge={judge} sharedJudges={sharedJudges} onLogout={()=>{
-        setJudge(""); setSharedJudges(null);
-        setChallongeSlug(""); setChallongeParticipants({});
-        setConfig(c=>({...c,tournamentName:""}));
-        sSave(KEYS.challongeMap,{});
-        try{sessionStorage.removeItem("ncblast-auth-token");sessionStorage.removeItem("ncblast-auth-user");}catch{}
       }}/>}
       {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}} tournamentMode={config.tm}/>}
       {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sharedJudges={sharedJudges} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
