@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-12 | session: combo bleed fix, judge dual-player save fix, ComboTab Worker KV primary source, PlayerApp hook order fix, Bullet Griffon player deck builder, event deletion notifications, deck badge, Clear Previous Combos button, cap saved combos to 3 most recent across rounds, quick combo duplicate part fix, TO alert reason+stadium buttons, remove localStorage combo storage (Worker KV only), filter incomplete combos before player-side push, fix Bullet Griffon ratchet skip stale state bug in DeckBuilder, fix BG combo dropped on fetch (comboReady filter), refresh combos on Build Decks tap, fix long-name KV key mismatch (player view now uses tn() to match judge key) -->
+<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth restored to working state — auto-confirm from saved username, role restored after redirect -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -67,6 +67,7 @@
   /* Player view classes */
   @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+  @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
   .fade-in{animation:fadeIn 0.3s ease both;}
   .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22C55E;animation:pulse 1.5s ease infinite;margin-right:5px;}
 </style>
@@ -76,6 +77,107 @@
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
 
+// ── OAuth callback detection ──────────────────────────────────────────────
+// Runs before React mounts. Detects an OAuth redirect (code in URL), exchanges
+// the code for a token, fetches the username from Challonge directly (browser
+// can reach /v2/me.json even though the Worker can't), then signals the waiting
+// tab via postMessage (desktop popup) or localStorage (mobile new tab).
+(function handleOAuthCallback() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const code  = params.get("code");
+    const error = params.get("error");
+    const errorDesc = params.get("error_description");
+
+    if (!code && !error) {
+      try { sessionStorage.removeItem("ncblast-oauth-pending"); } catch(_) {}
+      return;
+    }
+
+    // We're an OAuth callback page — hide app UI immediately so nothing flashes
+    // before this window closes or shows a "you can close this tab" message.
+    document.documentElement.style.display = "none";
+    window.history.replaceState({}, document.title, "/");
+
+    // The OAuth state param is "sessionId.randomSuffix" — sessionId routes the
+    // message back to the right hook instance (prevents two popups cross-firing).
+    const oauthStateParam = params.get("state") || "";
+    const sessionId = oauthStateParam.split(".")[0] || "";
+
+    const isPopup = !!window.opener;
+
+    const signalResult = (msg) => {
+      if (isPopup) {
+        // Desktop: send via postMessage and close immediately
+        try { window.opener.postMessage({ type: "ncblast-oauth-result", sessionId, ...msg }, window.location.origin); } catch(_) {}
+        try { window.close(); } catch(_) {}
+      } else {
+        // Mobile/new-tab: write to localStorage so the original tab's poller picks it up
+        try { localStorage.setItem("ncblast-oauth-result:" + sessionId, JSON.stringify({ ...msg, sessionId, ts: Date.now() })); } catch(_) {}
+        // Show a "you can close this tab" message instead of the app
+        document.documentElement.style.display = "";
+        document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#94a3b8;padding:32px;text-align:center;">' +
+          '<div style="font-size:40px;margin-bottom:16px">' + (msg.ok ? "✅" : "❌") + '</div>' +
+          '<p style="font-size:18px;font-weight:700;color:' + (msg.ok ? "#22c55e" : "#ef4444") + ';margin:0 0 8px">' + (msg.ok ? "Logged in as " + msg.username : "Login failed") + '</p>' +
+          '<p style="font-size:14px;margin:0">' + (msg.ok ? "You can close this tab and return to NC BLAST." : (msg.error || "")) + '</p>' +
+          '</div>';
+      }
+    };
+
+    if (error) {
+      signalResult({ ok: false, error: "Challonge error: " + (errorDesc || error) });
+      return;
+    }
+
+    const WORKER = "https://challonge-proxy.danny61734.workers.dev";
+
+    // Exchange code for token, then call Worker /auth/me to resolve the username.
+    // The Worker makes the Challonge API call server-side — avoids the browser
+    // Content-Type injection issue that causes Challonge to return 415.
+    fetch(WORKER + "/auth/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, redirect_uri: "https://ncblast.pages.dev" }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok || !d.access_token) {
+        signalResult({ ok: false, error: d.error || "Login failed" });
+        return;
+      }
+      var token = d.access_token;
+      // If Challonge included the username in the token exchange response, use it directly.
+      if (d.username) {
+        signalResult({ ok: true, token: token, username: d.username });
+        return;
+      }
+      // Username not in exchange response — show debug info and fall through to /auth/me attempt.
+      if (d.debugKeys) {
+        console.warn("[NC BLAST] Token exchange response fields:", d.debugKeys);
+      }
+      // Ask the Worker to resolve the username — it calls Challonge from the server side
+      return fetch(WORKER + "/auth/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: token }),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(me) {
+        if (me.ok && me.username) {
+          signalResult({ ok: true, token: token, username: me.username });
+        } else {
+          signalResult({ ok: false, error: me.error || "Couldn't read username from Challonge." });
+        }
+      })
+      .catch(function(e) {
+        signalResult({ ok: false, error: "Username lookup failed: " + (e.message || "network error") });
+      });
+    })
+    .catch(function(e) {
+      signalResult({ ok: false, error: e.message || "Connection error" });
+    });
+  } catch(_) {}
+})();
 /* ═══════════════════════════════════════
    VIEWPORT SCALE
 ═══════════════════════════════════════ */
@@ -108,9 +210,414 @@ function useScale() {
 /* ═══════════════════════════════════════
    PERSISTENT STORAGE — localStorage
 ═══════════════════════════════════════ */
-const KEYS = { parts: "bx-library-v10", players: "bx-roster-v2", combos: "bx-combos-v1", matchLog: "bx-matchlog-v1", challongeMap: "bx-challonge-map-v1", overlaySlot: "bx-overlay-slot-v1" };
+const KEYS = { parts: "bx-library-v10", players: "bx-roster-v2", combos: "bx-combos-v1", matchLog: "bx-matchlog-v1", challongeMap: "bx-challonge-map-v1", overlaySlot: "bx-overlay-slot-v1", lastJudge: "ncblast-last-judge-v1" };
 const OVERLAY_WORKER = "https://challonge-proxy.danny61734.workers.dev";
 const COMBO_CACHE_TTL = 60 * 60 * 1000; // 1 hour in ms
+
+/* ═══════════════════════════════════════
+   CHALLONGE OAUTH HOOK
+   Handles the device-flow login sequence.
+   Usage: const auth = useChallongeAuth();
+   auth.state: "idle" | "polling" | "done" | "error"
+   auth.userCode: string shown to user
+   auth.verificationUri: URL to open
+   auth.username: resolved Challonge username (when done)
+   auth.start(): kick off the flow
+   auth.reset(): go back to idle
+═══════════════════════════════════════ */
+function useChallongeAuth() {
+  const REDIRECT_URI = "https://ncblast.pages.dev";
+
+  // Only treat sessionStorage flags as valid if we JUST came back from Challonge.
+  // "just came back" = ncblast-oauth-pending was set (IIFE is running or just finished).
+  // A stale ncblast-oauth-error from a previous session should NOT init as "error" —
+  // that would show the error screen with a Back button that sends to main menu.
+  const justReturned = (() => {
+    try {
+      return sessionStorage.getItem("ncblast-oauth-pending")        === "1" ||
+             sessionStorage.getItem("ncblast-oauth-done")           === "1" ||
+             sessionStorage.getItem("ncblast-oauth-had-error")      === "1" ||
+             sessionStorage.getItem("ncblast-oauth-needs-username") === "1";
+    } catch(_) { return false; }
+  })();
+
+  const initState = (() => {
+    if (!justReturned) return "idle";
+    try {
+      if (sessionStorage.getItem("ncblast-oauth-pending")        === "1") return "exchanging";
+      if (sessionStorage.getItem("ncblast-oauth-needs-username") === "1") return "confirm";
+      if (sessionStorage.getItem("ncblast-oauth-done")           === "1") return "done";
+      if (sessionStorage.getItem("ncblast-oauth-had-error")      === "1") return "error";
+    } catch(_) {}
+    return "idle";
+  })();
+
+  const initError = (() => {
+    try {
+      if (sessionStorage.getItem("ncblast-oauth-had-error") === "1")
+        return sessionStorage.getItem("ncblast-oauth-error") || "Challonge returned an error.";
+    } catch(_) {}
+    return "";
+  })();
+
+  const initUser = (() => {
+    if (!justReturned) return null;
+    try { return sessionStorage.getItem("ncblast-auth-user") || null; } catch(_) { return null; }
+  })();
+
+  const [state, setState]       = React.useState(initState);
+  const [username, setUsername] = React.useState(initUser);
+  const [errorMsg, setErrorMsg] = React.useState(initError);
+  const pollRef = React.useRef(null);
+
+  React.useEffect(() => {
+    try {
+      sessionStorage.removeItem("ncblast-oauth-done");
+      if (initState !== "error") {
+        sessionStorage.removeItem("ncblast-oauth-error");
+        sessionStorage.removeItem("ncblast-oauth-had-error");
+      }
+      if (initState !== "done" && initState !== "confirm") {
+        sessionStorage.removeItem("ncblast-auth-token");
+        sessionStorage.removeItem("ncblast-auth-user");
+      }
+    } catch(_) {}
+  }, []);
+
+  // Poll while exchange is in flight
+  React.useEffect(() => {
+    if (state !== "exchanging") return;
+    pollRef.current = setInterval(() => {
+      try {
+        if (sessionStorage.getItem("ncblast-oauth-pending") !== "1") {
+          clearInterval(pollRef.current);
+          const needsUser = sessionStorage.getItem("ncblast-oauth-needs-username") === "1";
+          const user = sessionStorage.getItem("ncblast-auth-user");
+          const err  = sessionStorage.getItem("ncblast-oauth-error");
+          sessionStorage.removeItem("ncblast-oauth-error");
+          sessionStorage.removeItem("ncblast-oauth-pending");
+          if (needsUser) { setState("confirm"); }
+          else if (user) { setUsername(user); setState("done"); }
+          else { setErrorMsg(err || "Login failed."); setState("error"); }
+        }
+      } catch(_) { clearInterval(pollRef.current); setState("error"); setErrorMsg("Login failed."); }
+    }, 300);
+    return () => clearInterval(pollRef.current);
+  }, [state]);
+
+  const confirm = React.useCallback(async (claimedUsername) => {
+    const token = sessionStorage.getItem("ncblast-auth-token");
+    if (!token || !claimedUsername) return;
+    setState("exchanging");
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/auth/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, username: claimedUsername.trim().toLowerCase() }),
+      });
+      const d = await res.json();
+      sessionStorage.removeItem("ncblast-oauth-needs-username");
+      if (d.ok) {
+        sessionStorage.setItem("ncblast-auth-user", d.username);
+        sessionStorage.setItem("ncblast-oauth-done", "1");
+        try { localStorage.setItem("ncblast-saved-username", d.username); } catch(_) {}
+        setUsername(d.username);
+        setState("done");
+      } else {
+        setErrorMsg(d.error || "Confirmation failed.");
+        setState("error");
+      }
+    } catch(e) {
+      setErrorMsg(e.message || "Connection error.");
+      setState("error");
+    }
+  }, []);
+
+  const reset = React.useCallback(() => {
+    clearInterval(pollRef.current);
+    try {
+      sessionStorage.removeItem("ncblast-auth-token");
+      sessionStorage.removeItem("ncblast-auth-user");
+      sessionStorage.removeItem("ncblast-oauth-pending");
+      sessionStorage.removeItem("ncblast-oauth-done");
+      sessionStorage.removeItem("ncblast-oauth-error");
+      sessionStorage.removeItem("ncblast-oauth-had-error");
+      sessionStorage.removeItem("ncblast-oauth-needs-username");
+    } catch(_) {}
+    setState("idle");
+    setUsername(null);
+    setErrorMsg("");
+  }, []);
+  const start = React.useCallback(async () => {
+    setErrorMsg("");
+    setState("navigating");
+    try { sessionStorage.removeItem("ncblast-oauth-error"); sessionStorage.removeItem("ncblast-oauth-had-error"); } catch(_) {}
+    // Ask Worker for the authorize URL (keeps client_id server-side)
+    try {
+      // Generate a fresh random state value each attempt — forces Challonge to treat it as new.
+      const oauthState = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      try { sessionStorage.setItem("ncblast-oauth-state", oauthState); } catch(_) {}
+      const res = await fetch(
+        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&state=${encodeURIComponent(oauthState)}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      const data = await res.json();
+      if (!data.url) throw new Error(data.error || "No URL returned");
+      // Navigate the current tab — works on all browsers including mobile Safari
+      window.location.href = data.url;
+    } catch(e) {
+      setErrorMsg("Couldn't reach the server. Try again.");
+      setState("error");
+    }
+  }, []);
+
+  React.useEffect(() => () => clearInterval(pollRef.current), []);
+
+  // Auto-confirm using saved username — no manual entry for returning users
+  React.useEffect(() => {
+    if (state !== "confirm") return;
+    try {
+      const saved = localStorage.getItem("ncblast-saved-username");
+      if (saved) confirm(saved);
+    } catch(_) {}
+  }, [state]);
+
+  return { state, username, errorMsg, start, reset, confirm };
+}
+
+/* ═══════════════════════════════════════
+   CHALLONGE AUTH — POPUP VARIANT
+   Opens a small browser window for login instead of redirecting the whole tab.
+   The popup exchanges the code, posts the token back, then closes itself.
+   The main tab's state is never lost — no page reload needed.
+
+   auth.state: "idle" | "waiting" | "confirm" | "confirming" | "done" | "error"
+   auth.username: resolved username (when done)
+   auth.start(): open the popup
+   auth.reset(): go back to idle
+═══════════════════════════════════════ */
+function useChallongeAuthPopup() {
+  const [state, setState]       = React.useState("idle");
+  const [username, setUsername] = React.useState(null);
+  const [errorMsg, setErrorMsg] = React.useState("");
+  const popupRef     = React.useRef(null);
+  const pollRef      = React.useRef(null); // popup-closed watcher or localStorage poller
+  const stateRef     = React.useRef(state);
+  const pendingRef   = React.useRef(null); // holds result while waiting for user to confirm
+  // Unique ID per hook instance — routes messages/localStorage entries to the right hook
+  const sessionIdRef = React.useRef(Math.random().toString(36).slice(2));
+  React.useEffect(() => { stateRef.current = state; }, [state]);
+
+  // Handle a completed login result (from either postMessage or localStorage).
+  // Goes to "confirm" state so the judge can verify the account before it's accepted.
+  const handleResult = React.useCallback((msg) => {
+    clearInterval(pollRef.current);
+    if (!msg.ok) { setErrorMsg(msg.error || "Login failed."); setState("error"); return; }
+    // Store result and token for later — don't finalize until confirmed
+    pendingRef.current = msg;
+    try {
+      // Write to sessionStorage now so org view can reuse the session
+      if (msg.token) sessionStorage.setItem("ncblast-auth-token", msg.token);
+      if (msg.username) sessionStorage.setItem("ncblast-auth-user", msg.username);
+    } catch(_) {}
+    setUsername(msg.username);
+    setState("confirm"); // show "Log in as X?" screen
+  }, []);
+
+  // Judge confirms the detected account — finalize login
+  const confirm = React.useCallback(() => {
+    if (!pendingRef.current) return;
+    setState("done");
+  }, []);
+
+  // Judge rejects the detected account — show instructions to switch Challonge accounts
+  const retry = React.useCallback(() => {
+    pendingRef.current = null;
+    setUsername(null);
+    setState("wrong");
+  }, []);
+
+  // Listen for postMessage from popup (desktop)
+  React.useEffect(() => {
+    const onMessage = (e) => {
+      if (e.origin !== window.location.origin) return;
+      if (!e.data || e.data.type !== "ncblast-oauth-result") return;
+      if (e.data.sessionId !== sessionIdRef.current) return;
+      handleResult(e.data);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [handleResult]);
+
+  const start = React.useCallback(async () => {
+    setErrorMsg(""); setState("waiting");
+    // Clear any stale localStorage result for this session
+    try { localStorage.removeItem("ncblast-oauth-result:" + sessionIdRef.current); } catch(_) {}
+    try {
+      const oauthState = sessionIdRef.current + "." + Math.random().toString(36).slice(2);
+      const res = await fetch(
+        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent("https://ncblast.pages.dev")}&response_type=code&state=${encodeURIComponent(oauthState)}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      const data = await res.json();
+      if (!data.url) throw new Error(data.error || "No URL returned");
+      const w = 520, h = 640;
+      const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
+      const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
+      const popup = window.open(data.url, `ncblast-login-${sessionIdRef.current}`, `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+      popupRef.current = popup;
+
+      // Poll: check for popup closed (desktop) or localStorage result (mobile new tab)
+      pollRef.current = setInterval(() => {
+        // Check localStorage first (works for both desktop and mobile new tab)
+        try {
+          const raw = localStorage.getItem("ncblast-oauth-result:" + sessionIdRef.current);
+          if (raw) {
+            localStorage.removeItem("ncblast-oauth-result:" + sessionIdRef.current);
+            const msg = JSON.parse(raw);
+            handleResult(msg);
+            return;
+          }
+        } catch(_) {}
+        // On desktop: also check if popup was closed without completing
+        if (popup && popup.closed && stateRef.current === "waiting") {
+          clearInterval(pollRef.current);
+          setErrorMsg("Login window was closed."); setState("error");
+        }
+      }, 400);
+
+      if (!popup) {
+        // Popup blocked — fall back to same-tab navigation (rare)
+        window.location.href = data.url;
+      }
+    } catch(e) {
+      setErrorMsg("Couldn't reach the server. Try again.");
+      setState("error");
+    }
+  }, [handleResult]);
+
+  const reset = React.useCallback(() => {
+    clearInterval(pollRef.current);
+    pendingRef.current = null;
+    try { localStorage.removeItem("ncblast-oauth-result:" + sessionIdRef.current); } catch(_) {}
+    if (popupRef.current && !popupRef.current.closed) { try { popupRef.current.close(); } catch(_) {} }
+    setState("idle"); setUsername(null); setErrorMsg("");
+  }, []);
+
+  return { state, username, errorMsg, start, reset, confirm, retry };
+}
+/* ═══════════════════════════════════════
+   CHALLONGE LOGIN SCREEN
+   Reusable UI for the device-flow login.
+   Props:
+     auth        — result of useChallongeAuth()
+     title       — heading text
+     subtitle    — subheading text
+     onCancel    — back/cancel callback
+═══════════════════════════════════════ */
+function ChallongeLoginScreen({ auth, title, subtitle, onCancel }) {
+  const [usernameInput, setUsernameInput] = React.useState(() => {
+    try { return localStorage.getItem("ncblast-saved-username") || ""; } catch(_) { return ""; }
+  });
+  return (
+    <div style={{
+      minHeight:"100vh", display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center",
+      background:"var(--bg)", padding:"32px 24px", fontFamily:"'Outfit',sans-serif"
+    }}>
+      <div style={{width:"100%", maxWidth:340}}>
+        <div style={{textAlign:"center", marginBottom:28}}>
+          <div style={{fontSize:40, marginBottom:10}}>🔗</div>
+          <h2 style={{fontSize:22, fontWeight:900, color:"var(--text-primary)", margin:"0 0 6px"}}>{title}</h2>
+          {subtitle && <p style={{fontSize:13, color:"var(--text-muted)", margin:0, lineHeight:1.5}}>{subtitle}</p>}
+        </div>
+
+        {auth.state === "idle" && (
+          <button onClick={auth.start} style={{
+            width:"100%", padding:"18px 0", borderRadius:14, border:"none",
+            background:"linear-gradient(135deg,#EA580C,#DC2626)",
+            color:"#fff", fontSize:16, fontWeight:900,
+            fontFamily:"'Outfit',sans-serif", cursor:"pointer",
+            boxShadow:"0 8px 24px rgba(234,88,12,0.35)", marginBottom:14,
+          }}>
+            Log in with Challonge
+          </button>
+        )}
+
+        {(auth.state === "navigating" || auth.state === "exchanging") && (
+          <div style={{textAlign:"center", marginBottom:16}}>
+            <div style={{
+              background:"var(--surface)", borderRadius:16, padding:"24px 20px",
+              border:"2px solid #EA580C", marginBottom:16,
+            }}>
+              <div style={{width:40, height:40, margin:"0 auto 14px", borderRadius:"50%",
+                border:"3px solid var(--border2)", borderTopColor:"#EA580C",
+                animation:"spin 1s linear infinite"}}/>
+              <p style={{fontSize:14, fontWeight:800, color:"var(--text-primary)", margin:"0 0 6px"}}>
+                {auth.state === "navigating" ? "Opening Challonge…" : "Completing login…"}
+              </p>
+              <p style={{fontSize:12, color:"var(--text-muted)", margin:0, lineHeight:1.5}}>
+                {auth.state === "navigating"
+                  ? "You'll be taken to Challonge to log in, then brought back here automatically."
+                  : "Verifying your account, just a moment."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {auth.state === "confirm" && (
+          <div style={{marginBottom:16}}>
+            <div style={{background:"var(--surface)", borderRadius:14, padding:"18px 16px", border:"2px solid #EA580C", marginBottom:14}}>
+              <p style={{fontSize:13, fontWeight:700, color:"var(--text-primary)", margin:"0 0 6px"}}>✅ Challonge login successful!</p>
+              <p style={{fontSize:12, color:"var(--text-muted)", margin:"0 0 14px", lineHeight:1.5}}>Enter your Challonge username to finish.</p>
+              <input type="text" placeholder="your-challonge-username" value={usernameInput}
+                onChange={e => setUsernameInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && usernameInput.trim()) auth.confirm(usernameInput.trim()); }}
+                style={{width:"100%", padding:"11px 12px", borderRadius:10, boxSizing:"border-box",
+                  border:"1.5px solid var(--border2)", background:"var(--surface2)",
+                  color:"var(--text-primary)", fontSize:14, fontFamily:"'Outfit',sans-serif",
+                  outline:"none", marginBottom:10}} autoFocus />
+              <button onClick={() => { if (usernameInput.trim()) auth.confirm(usernameInput.trim()); }}
+                disabled={!usernameInput.trim()}
+                style={{width:"100%", padding:"13px 0", borderRadius:12, border:"none",
+                  background:usernameInput.trim()?"#EA580C":"var(--border2)",
+                  color:"#fff", fontSize:14, fontWeight:800,
+                  fontFamily:"'Outfit',sans-serif", cursor:usernameInput.trim()?"pointer":"default"}}>Confirm</button>
+            </div>
+          </div>
+        )}
+
+        {auth.state === "done" && (
+          <div style={{textAlign:"center", marginBottom:16}}>
+            <div style={{fontSize:40, marginBottom:8}}>✅</div>
+            <p style={{fontSize:16, fontWeight:800, color:"#22C55E", margin:"0 0 4px"}}>Logged in!</p>
+            <p style={{fontSize:13, color:"var(--text-muted)"}}>{auth.username}</p>
+          </div>
+        )}
+
+        {auth.state === "error" && (
+          <div style={{marginBottom:16}}>
+            <p style={{fontSize:13, color:"#EF4444", textAlign:"center", fontWeight:600, marginBottom:14}}>
+              ⚠ {auth.errorMsg}
+            </p>
+            <button onClick={auth.start} style={{
+              width:"100%", padding:"14px 0", borderRadius:12, border:"none",
+              background:"#EA580C", color:"#fff", fontSize:14, fontWeight:800,
+              fontFamily:"'Outfit',sans-serif", cursor:"pointer", marginBottom:10,
+            }}>Try Again</button>
+          </div>
+        )}
+
+        <button onClick={onCancel} style={{
+          width:"100%", padding:"12px 0", borderRadius:12,
+          border:"2px solid var(--border)", background:"none",
+          color:"var(--text-muted)", fontSize:13, fontWeight:700,
+          fontFamily:"'Outfit',sans-serif", cursor:"pointer",
+        }}>← Back</button>
+      </div>
+    </div>
+  );
+}
 
 // Push a player's combos to the Worker KV so other devices can load them
 async function pushComboCacheToWorker(playerName, combos) {
@@ -397,75 +904,249 @@ function LibraryManager({parts,setParts,onClose}) {
 /* ═══════════════════════════════════════
    CACHED EVENT PICKER (used in FormatScreen TM mode)
 ═══════════════════════════════════════ */
-function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport}) {
-  const [cachedList, setCachedList] = useState(null); // null=loading, []=empty
-  const [pinSlug, setPinSlug] = useState(null);
-  const [pinDisplayName, setPinDisplayName] = useState("");
-  const [pinError, setPinError] = useState(null);
-  const [pinLoading, setPinLoading] = useState(false);
-  const [loadError, setLoadError] = useState(null);
+function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport, onJudgeVerified}) {
+  const [cachedList, setCachedList] = useState(null);
+  const [selectedSlug, setSelectedSlug] = useState(null);
+  const [selectedName, setSelectedName] = useState("");
+  const [deviceMode, setDeviceMode]     = useState(null); // null | "solo" | "shared"
+  const [judgeAUsername, setJudgeAUsername] = useState(null); // set after Judge A logs in (Challonge)
+  const [judgeBUsername, setJudgeBUsername] = useState(null); // set after Judge B picked from roster
+  const [judgeBSearch, setJudgeBSearch]     = useState("");   // filter for Judge B name picker
+
+  // Popup-based auth — Judge A only. Judge B is selected from the player roster.
+  const authA = useChallongeAuthPopup();
+  const [verifying, setVerifying] = useState(false);
+  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
     workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>setCachedList([]));
   }, []);
 
-  const handleSelect = (t) => {
-    setPinSlug(t.slug);
-    setPinDisplayName(t.name || t.slug);
-    setPinError(null); setLoadError(null);
-  };
-
-  const handlePin = async (pin) => {
-    setPinLoading(true); setPinError(null);
+  const finalizeLogin = async (slug, name, usernameA, usernameB) => {
+    setVerifying(true); setAuthError(null);
     try {
-      const res = await fetch(`${OVERLAY_WORKER}/pin/verify`, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({slug: pinSlug, pin}), signal: AbortSignal.timeout(8000),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) { setPinError("Incorrect PIN."); setPinLoading(false); return; }
-    } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
-    // Load participants
-    try {
-      const data = await workerGet(`/?slug=${encodeURIComponent(pinSlug)}`);
+      try { localStorage.setItem(KEYS.lastJudge, usernameA); } catch(_) {}
+      if (onJudgeVerified) onJudgeVerified(
+        usernameB ? { mode:"shared", judgeA:usernameA, judgeB:usernameB } : usernameA
+      );
+      const data = await workerGet(`/?slug=${encodeURIComponent(slug)}`);
       const extractP = (p) => p.participant || p;
       const participants = (data.participants||[]).map(p=>(extractP(p).display_name||extractP(p).username||extractP(p).name||"").trim()).filter(Boolean);
       if (!participants.length) throw new Error("No participants found.");
-      // Build participant ID map
       const participantMap = {};
       (data.participants||[]).forEach(p => {
         const part = extractP(p);
-        const name = (part.display_name||part.username||part.name||"").trim();
+        const n = (part.display_name||part.username||part.name||"").trim();
         const id = part.id;
-        if (name && id) {
-          participantMap[name] = id;
+        if (n && id) {
+          participantMap[n] = id;
           if (Array.isArray(part.group_player_ids)) {
             part.group_player_ids.forEach(gid => { if(gid) participantMap[`__gid__${gid}`] = id; });
           }
         }
       });
-      if (onChallongeImport) onChallongeImport(pinSlug, participantMap, participants);
-      setConfig(c => ({...c, tournamentName: pinDisplayName}));
-      setPinLoading(false); setPinSlug(null);
-    } catch(e) { setLoadError(e.message||"Failed to load."); setPinLoading(false); }
+      if (onChallongeImport) onChallongeImport(slug, participantMap, participants);
+      setConfig(c => ({...c, tournamentName: name}));
+    } catch(e) { setAuthError(e.message || "Failed to load participants."); }
+    setVerifying(false);
   };
 
-  if (pinSlug) {
+  // Solo: finalize when authA completes
+  useEffect(() => {
+    if (deviceMode !== "solo" || authA.state !== "done" || !selectedSlug) return;
+    finalizeLogin(selectedSlug, selectedName, authA.username, null);
+  }, [authA.state, deviceMode, selectedSlug]);
+
+  // Shared: when A completes, record username so Judge B picker appears
+  useEffect(() => {
+    if (deviceMode !== "shared" || authA.state !== "done" || judgeAUsername) return;
+    setJudgeAUsername(authA.username);
+  }, [authA.state, deviceMode]);
+
+  // Shared: finalize when Judge B is picked from roster
+  useEffect(() => {
+    if (deviceMode !== "shared" || !judgeBUsername || !judgeAUsername || !selectedSlug) return;
+    finalizeLogin(selectedSlug, selectedName, judgeAUsername, judgeBUsername);
+  }, [judgeBUsername, judgeAUsername, deviceMode, selectedSlug]);
+
+  const handleSelect = (t) => {
+    setSelectedSlug(t.slug); setSelectedName(t.name || t.slug);
+    setAuthError(null); setDeviceMode(null);
+    setJudgeAUsername(null); setJudgeBUsername(null); setJudgeBSearch("");
+    authA.reset();
+  };
+
+  const handleCancel = () => {
+    setSelectedSlug(null); setSelectedName(""); setDeviceMode(null);
+    setJudgeAUsername(null); setJudgeBUsername(null); setJudgeBSearch("");
+    setAuthError(null); authA.reset();
+  };
+
+  // ── Device mode picker ──────────────────────────────────────────────────
+  if (selectedSlug && !deviceMode) {
     return (
       <div style={{marginTop:12}}>
-        <PinModal
-          title="Tournament PIN"
-          subtitle={`Enter the PIN for "${pinDisplayName}" to link it.`}
-          onSubmit={handlePin}
-          onCancel={()=>{ setPinSlug(null); setPinError(null); setLoadError(null); }}
-          error={pinError || loadError}
-          loading={pinLoading}
-        />
+        <div style={{padding:"12px",borderRadius:12,background:"var(--surface2)",marginBottom:16,border:"1px solid var(--border)"}}>
+          <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px"}}>{selectedName}</p>
+          <p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>{selectedSlug}</p>
+        </div>
+        <p style={{fontSize:13,fontWeight:700,color:"var(--text-primary)",marginBottom:12,textAlign:"center"}}>How is this device being used?</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <button onClick={()=>setDeviceMode("solo")} style={{padding:"18px 8px",borderRadius:14,border:"2px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:6}}>📱</div>
+            <p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:"0 0 3px"}}>Solo Device</p>
+            <p style={{fontSize:10,color:"var(--text-muted)",margin:0}}>One judge per device</p>
+          </button>
+          <button onClick={()=>setDeviceMode("shared")} style={{padding:"18px 8px",borderRadius:14,border:"2px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:6}}>💊</div>
+            <p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:"0 0 3px"}}>Shared Tablet</p>
+            <p style={{fontSize:10,color:"var(--text-muted)",margin:0}}>Two judges share one device</p>
+          </button>
+        </div>
+        <button onClick={handleCancel} style={{width:"100%",marginTop:10,padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          ← Back to event list
+        </button>
       </div>
     );
   }
 
-  // Show currently linked event if one is selected
+  // ── Inline login step UI ────────────────────────────────────────────────
+  const LoginStep = ({ auth, label, sub, showADone }) => {
+    return (
+      <div style={{padding:"14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)",marginBottom:10}}>
+        {showADone && <p style={{fontSize:11,color:"#15803D",fontWeight:700,margin:"0 0 8px"}}>⚖️ Judge A: {judgeAUsername} ✓</p>}
+        <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 4px"}}>{label}</p>
+        {sub && <p style={{fontSize:11,color:"var(--text-muted)",margin:"0 0 10px",lineHeight:1.4}}>{sub}</p>}
+        {auth.state === "idle" && (
+          <button onClick={auth.start} style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:"linear-gradient(135deg,#EA580C,#DC2626)",color:"#fff",fontSize:14,fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+            Log in with Challonge →
+          </button>
+        )}
+        {auth.state === "waiting" && (
+          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0"}}>
+            <div style={{width:18,height:18,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
+            <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>Waiting for Challonge login…</p>
+          </div>
+        )}
+        {auth.state === "confirm" && (
+          <div style={{background:"var(--surface)",borderRadius:10,padding:"12px",border:"2px solid #EA580C"}}>
+            <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 4px"}}>Log in as this account?</p>
+            <p style={{fontSize:13,fontWeight:900,color:"#EA580C",margin:"0 0 10px"}}>{auth.username}</p>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={auth.confirm} style={{flex:1,padding:"9px 0",borderRadius:9,border:"none",background:"#EA580C",color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                ✓ Yes, that's me
+              </button>
+              <button onClick={auth.retry} style={{flex:1,padding:"9px 0",borderRadius:9,border:"2px solid var(--border2)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                ✗ Wrong account
+              </button>
+            </div>
+          </div>
+        )}
+        {auth.state === "wrong" && (
+          <div style={{background:"var(--surface)",borderRadius:10,padding:"12px",border:"2px solid var(--border2)"}}>
+            <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 6px"}}>Switch Challonge accounts first</p>
+            <p style={{fontSize:11,color:"var(--text-muted)",margin:"0 0 12px",lineHeight:1.5}}>
+              Open <strong style={{color:"var(--text-secondary)"}}>challonge.com</strong> in another tab, log out, then log into the correct account. Come back here when done.
+            </p>
+            <button onClick={auth.reset} style={{width:"100%",padding:"9px 0",borderRadius:9,border:"none",background:"linear-gradient(135deg,#EA580C,#DC2626)",color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              Try Again →
+            </button>
+          </div>
+        )}
+        {auth.state === "done" && <p style={{fontSize:13,color:"#15803D",fontWeight:700,margin:0}}>✅ {auth.username}</p>}
+        {auth.state === "error" && (
+          <div>
+            <p style={{fontSize:12,color:"#EF4444",margin:"0 0 6px"}}>⚠ {auth.errorMsg}</p>
+            <button onClick={auth.reset} style={{fontSize:12,fontWeight:700,color:"#EA580C",background:"none",border:"none",cursor:"pointer",padding:0}}>Try again</button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  if (selectedSlug && deviceMode) {
+    if (verifying || authError) {
+      return (
+        <div style={{padding:"14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)",marginTop:12}}>
+          {verifying && <p style={{fontSize:13,color:"var(--text-muted)"}}>⏳ Loading tournament…</p>}
+          {authError && (
+            <>
+              <p style={{fontSize:13,color:"#EF4444",fontWeight:600,marginBottom:8}}>⚠ {authError}</p>
+              <button onClick={handleCancel} style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>← Back</button>
+            </>
+          )}
+        </div>
+      );
+    }
+    // Shared mode — Judge B name picker (after Judge A logged in)
+    if (deviceMode === "shared" && judgeAUsername) {
+      const roster = (() => {
+        try { return JSON.parse(localStorage.getItem(KEYS.players) || "[]"); } catch(_) { return []; }
+      })();
+      const filtered = judgeBSearch
+        ? roster.filter(n => n.toLowerCase().includes(judgeBSearch.toLowerCase()))
+        : roster;
+      return (
+        <div style={{marginTop:12}}>
+          <div style={{padding:"10px 12px",borderRadius:10,background:"var(--surface2)",marginBottom:12,border:"1px solid var(--border)"}}>
+            <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0}}>{selectedName}</p>
+            <p style={{fontSize:10,color:"#15803D",fontWeight:700,margin:"3px 0 0"}}>⚖️ Judge A: {judgeAUsername} ✓</p>
+          </div>
+          <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",marginBottom:8}}>Select Judge B</p>
+          <p style={{fontSize:11,color:"var(--text-muted)",margin:"0 0 10px",lineHeight:1.4}}>
+            Pick from the event roster. Challonge submissions will appear under Judge A's account.
+          </p>
+          <div style={{position:"relative",marginBottom:10}}>
+            <input
+              type="text" placeholder="Search players…" value={judgeBSearch}
+              onChange={e => setJudgeBSearch(e.target.value)}
+              style={{width:"100%",boxSizing:"border-box",padding:"9px 12px 9px 32px",borderRadius:10,
+                border:"1.5px solid var(--border2)",background:"var(--surface2)",
+                color:"var(--text-primary)",fontSize:13,fontFamily:"'Outfit',sans-serif",outline:"none"}}
+            />
+            <svg style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",opacity:0.35}} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            {judgeBSearch && <button onClick={() => setJudgeBSearch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#94A3B8",cursor:"pointer",fontSize:14,lineHeight:1}}>✕</button>}
+          </div>
+          {filtered.length === 0 && (
+            <p style={{fontSize:12,color:"var(--text-muted)",textAlign:"center",margin:"12px 0"}}>
+              {judgeBSearch ? `No players matching "${judgeBSearch}"` : "No players in roster yet."}
+            </p>
+          )}
+          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:260,overflowY:"auto"}}>
+            {filtered.map(name => (
+              <button key={name} onClick={() => setJudgeBUsername(name)}
+                style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"2px solid var(--border)",
+                  background:"var(--surface2)",color:"var(--text-primary)",fontSize:13,fontWeight:700,
+                  fontFamily:"'Outfit',sans-serif",cursor:"pointer",textAlign:"left"}}>
+                {name}
+              </button>
+            ))}
+          </div>
+          <button onClick={handleCancel} style={{width:"100%",marginTop:10,padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+            ← Back to event list
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{marginTop:12}}>
+        <div style={{padding:"10px 12px",borderRadius:10,background:"var(--surface2)",marginBottom:12,border:"1px solid var(--border)"}}>
+          <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0}}>{selectedName}</p>
+        </div>
+        {deviceMode === "solo" ? (
+          <LoginStep auth={authA} label="Judge Login" sub={`Log in with Challonge to access "${selectedName}".`} />
+        ) : (
+          <LoginStep auth={authA} label="Judge A — Log In" sub={`Log in with Challonge. Challonge submissions will appear under this account.`} />
+        )}
+        <button onClick={handleCancel} style={{width:"100%",marginTop:4,padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          ← Back to event list
+        </button>
+      </div>
+    );
+  }
+
+  // Show currently linked event
   if (config.tournamentName && challongeSlug) {
     return (
       <div style={{marginTop:12,padding:"10px 12px",borderRadius:10,border:"2px solid #7C3AED40",background:"#7C3AED08"}}>
@@ -494,18 +1175,17 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport}
         <button key={t.slug} onClick={()=>handleSelect(t)}
           style={{display:"block",width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface2)",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif",marginBottom:6}}>
           <p style={{fontSize:13,fontWeight:700,color:"var(--text-primary)",margin:0}}>{t.name||t.slug}</p>
-          <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>{t.slug} · 🔒 PIN required</p>
+          <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>{t.slug} · 🔗 Challonge login required</p>
         </button>
       ))}
       {!config.tournamentName?.trim() && <p style={{...S.hint,color:"#7C3AED",marginTop:6}}>Select an event to continue</p>}
     </div>
   );
 }
-
 /* ═══════════════════════════════════════
    SCREEN 1 — FORMAT
 ═══════════════════════════════════════ */
-function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,onSwitchRole,challongeSlug,onChallongeImport}) {
+function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,onSwitchRole,challongeSlug,onChallongeImport,onJudgeVerified}) {
   const [showGuide,setShowGuide] = useState(false);
   const total=parts.blades.length+parts.ratchets.length+parts.bits.length;
   const hasLib=total>0;
@@ -574,6 +1254,7 @@ function FormatScreen({config,setConfig,parts,onNext,onOpenLib,dark,toggleDark,o
           <CachedEventPicker
             config={config} setConfig={setConfig}
             challongeSlug={challongeSlug} onChallongeImport={onChallongeImport}
+            onJudgeVerified={onJudgeVerified}
           />
         )}
 
@@ -745,21 +1426,9 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
 
   const loadFromCache = (slug) => {
     setJudgePinSlug(slug); setJudgePinError(null);
-    setJudgePinMode("verify"); setCachedOpen(false);
-  };
-
-  const handleJudgePinVerify = async (pin) => {
-    setJudgePinLoading(true); setJudgePinError(null);
-    try {
-      const res = await fetch(`${OVERLAY_WORKER}/pin/verify`, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({slug: judgePinSlug, pin}), signal: AbortSignal.timeout(8000),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) { setJudgePinError("Incorrect PIN."); setJudgePinLoading(false); return; }
-    } catch(e) { setJudgePinError("Connection error."); setJudgePinLoading(false); return; }
-    setJudgePinLoading(false); setJudgePinMode(null);
-    await doLoadFromCache(judgePinSlug);
+    setCachedOpen(false);
+    // No PIN needed — just load directly
+    doLoadFromCache(slug);
   };
 
   const handleJudgeDeleteRequest = (slug) => {
@@ -767,15 +1436,17 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
     setJudgePinMode("delete"); setCachedOpen(false);
   };
 
-  const handleJudgeDeleteConfirm = async (pin) => {
+  const handleJudgeDeleteConfirm = async () => {
     setJudgePinLoading(true); setJudgePinError(null);
+    const token = sessionStorage.getItem("ncblast-auth-token");
     try {
       const res = await fetch(`${OVERLAY_WORKER}/delete`, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({slug: judgePinSlug, masterPin: pin}), signal: AbortSignal.timeout(8000),
+        method:"POST",
+        headers:{"Content-Type":"application/json","X-Auth-Token":token||""},
+        body: JSON.stringify({slug: judgePinSlug}), signal: AbortSignal.timeout(8000),
       });
       const data = await res.json();
-      if (!res.ok || !data.ok) { setJudgePinError(data.error || "Incorrect master PIN."); setJudgePinLoading(false); return; }
+      if (!res.ok || !data.ok) { setJudgePinError(data.error || "Not authorized to delete this event."); setJudgePinLoading(false); return; }
     } catch(e) { setJudgePinError("Connection error."); setJudgePinLoading(false); return; }
     setJudgePinLoading(false); setJudgePinMode(null);
     setCachedTournaments(prev => Array.isArray(prev) ? prev.filter(t => t.slug !== judgePinSlug) : prev);
@@ -955,15 +1626,22 @@ function PlayersScreen({players,setPlayers,onNext,onBack,onChallongeImport,tourn
 
   return (
     <div style={{...S.page,height:"100dvh",overflowY:"auto"}}>
-      {judgePinMode==="verify"&&judgePinSlug&&(
-        <PinModal title="Tournament PIN" subtitle={`Enter the PIN to load "${judgePinSlug}".`}
-          onSubmit={handleJudgePinVerify} onCancel={()=>setJudgePinMode(null)}
-          error={judgePinError} loading={judgePinLoading}/>
-      )}
       {judgePinMode==="delete"&&judgePinSlug&&(
-        <PinModal title="Master PIN Required" subtitle={`Enter the master PIN to remove "${judgePinSlug}" from the cache.`}
-          onSubmit={handleJudgeDeleteConfirm} onCancel={()=>setJudgePinMode(null)}
-          error={judgePinError} loading={judgePinLoading}/>
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.8)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+          <div style={{background:"var(--surface)",borderRadius:20,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"2px solid #EF4444"}}>
+            <p style={{fontSize:17,fontWeight:900,color:"var(--text-primary)",margin:"0 0 8px"}}>Delete Tournament?</p>
+            <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 16px",lineHeight:1.5}}>Remove <strong>{judgePinSlug}</strong> from the NC BLAST cache. You must be the organizer of this event.</p>
+            {judgePinError && <p style={{fontSize:12,color:"#EF4444",marginBottom:8,fontWeight:600}}>{judgePinError}</p>}
+            <button onClick={handleJudgeDeleteConfirm} disabled={judgePinLoading}
+              style={{display:"block",width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:"#EF4444",color:"#fff",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:judgePinLoading?"not-allowed":"pointer",marginBottom:8}}>
+              {judgePinLoading?"Deleting…":"Yes, Delete"}
+            </button>
+            <button onClick={()=>setJudgePinMode(null)} disabled={judgePinLoading}
+              style={{display:"block",width:"100%",padding:"9px 0",borderRadius:12,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
       <button style={S.back} onClick={onBack}>{IC.back} Format</button>
       <h1 style={S.title}>Player Roster</h1>
@@ -1507,10 +2185,11 @@ function ShuffleTimerInner({onDismiss}){
   );
 }
 
-function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheetsStatus,onBack,onMainMenu,onDownloadCSV,onSendSheets,onOpenLib,dark,toggleDark,challongeSlug,challongeParticipants}) {
+function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsStatus,setSheetsStatus,onBack,onMainMenu,onDownloadCSV,onSendSheets,onOpenLib,dark,toggleDark,challongeSlug,challongeParticipants}) {
   const [phase,setPhase] = useState("pick");
   const [abandonConfirm,setAbandonConfirm] = useState(false);
   const [overBackConfirm,setOverBackConfirm] = useState(false);
+  const [sharedJudgePicker,setSharedJudgePicker] = useState(false); // show who-is-judging prompt
   const [p1,setP1] = useState(null);
   const [p2,setP2] = useState(null);
   const [d1,setD1] = useState([emptyCombo(),emptyCombo(),emptyCombo()]);
@@ -1894,7 +2573,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
     }
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
+  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
 
   // Navigation helpers
   // Unified back navigation — context-aware, no stale closure issues
@@ -2624,6 +3303,31 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
   }
 
   if(phase==="pick"){
+    // ── Shared tablet: who is judging this match? ──────────────────────────
+    if(sharedJudges && config.tm && sharedJudgePicker) {
+      return (
+        <div style={{...S.page,maxHeight:"100dvh",overflowY:"auto",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:"32px 24px"}}>
+          <p style={{fontSize:13,fontWeight:800,color:"var(--text-muted)",textTransform:"uppercase",letterSpacing:1,margin:0}}>Shared Tablet</p>
+          <h1 style={{fontSize:22,fontWeight:900,color:"var(--text-primary)",margin:0,textAlign:"center"}}>Who is judging this match?</h1>
+          <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 8px",textAlign:"center"}}>{p1} vs {p2}</p>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,width:"100%",maxWidth:360}}>
+            <button onClick={()=>{ setJudge(sharedJudges.judgeA); setSharedJudgePicker(false); }}
+              style={{padding:"24px 12px",borderRadius:16,border:"2px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"center"}}>
+              <div style={{fontSize:28,marginBottom:6}}>⚖️</div>
+              <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px"}}>Judge A</p>
+              <p style={{fontSize:12,color:"var(--text-muted)",margin:0}}>{sharedJudges.judgeA}</p>
+            </button>
+            <button onClick={()=>{ setJudge(sharedJudges.judgeB); setSharedJudgePicker(false); }}
+              style={{padding:"24px 12px",borderRadius:16,border:"2px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"center"}}>
+              <div style={{fontSize:28,marginBottom:6}}>⚖️</div>
+              <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px"}}>Judge B</p>
+              <p style={{fontSize:12,color:"var(--text-muted)",margin:0}}>{sharedJudges.judgeB}</p>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     const playersSelected = p1 && p2;
     const step = !p1 ? 1 : !p2 ? 2 : (config.tm && !judge.trim()) ? 3 : "done";
     const stepLabel = step===1?"Select P1":step===2?"Select P2":step===3?"Select Judge on Duty":"Ready";
@@ -2675,6 +3379,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sheetsStatus,setSheets
       // NOT the real participant.id — Challonge validates winner_id against the match's player IDs directly.
       setChallongeP1ParticipantId(match.player1_id || null);
       setChallongeP2ParticipantId(match.player2_id || null);
+      // Shared tablet: ask which judge is handling this match
+      if (sharedJudges && config.tm) { setJudge(""); setSharedJudgePicker(true); }
     };
 
     return (
@@ -5060,6 +5766,41 @@ function PinModal({title, subtitle, onSubmit, onCancel, error, loading}) {
 /* ═══════════════════════════════════════
    ORGANIZER APP
 ═══════════════════════════════════════ */
+function OrgConfirmUsername({ auth }) {
+  if (auth.state === "wrong") {
+    return (
+      <div style={{marginBottom:14,background:"var(--surface)",borderRadius:14,padding:"16px",border:"2px solid var(--border2)"}}>
+        <p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:"0 0 6px"}}>Switch Challonge accounts first</p>
+        <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 14px",lineHeight:1.5}}>
+          Open <strong style={{color:"var(--text-secondary)"}}>challonge.com</strong> in another tab, log out, then log into the correct account. Come back here when ready.
+        </p>
+        <button onClick={auth.reset}
+          style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",
+            background:"linear-gradient(135deg,#EA580C,#DC2626)",color:"#fff",fontSize:13,fontWeight:800,
+            fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>Try Again →</button>
+      </div>
+    );
+  }
+  return (
+    <div style={{marginBottom:14}}>
+      <div style={{background:"var(--surface)",borderRadius:14,padding:"16px",border:"2px solid #EA580C",marginBottom:10}}>
+        <p style={{fontSize:13,fontWeight:700,color:"var(--text-primary)",margin:"0 0 4px"}}>Log in as this account?</p>
+        <p style={{fontSize:16,fontWeight:900,color:"#EA580C",margin:"0 0 14px"}}>{auth.username}</p>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={auth.confirm}
+            style={{flex:1,padding:"12px 0",borderRadius:10,border:"none",
+              background:"#EA580C",color:"#fff",fontSize:13,fontWeight:800,
+              fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>✓ Yes, that's me</button>
+          <button onClick={auth.retry}
+            style={{flex:1,padding:"12px 0",borderRadius:10,border:"2px solid var(--border2)",
+              background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,
+              fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>✗ Wrong account</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrgApp({onSwitchRole}) {
   const [slug, setSlug] = useState(null);           // active tournament slug
   const [tourneyName, setTourneyName] = useState(""); // display name
@@ -5073,11 +5814,44 @@ function OrgApp({onSwitchRole}) {
   const liveSlotRef = useRef(null);
   const afterRef = useRef(0); // timestamp: only poll for pings newer than this
 
-  // ── When a tournament is selected, start polling ─────────────────
+  // ── Head judge management state ───────────────────────────────────
+  const [headJudges, setHeadJudges] = useState([]);
+  const [orgOwnerUsername, setOrgOwnerUsername] = useState(null); // the tournament owner
+  const [hjLoading, setHjLoading] = useState(false);
+  const [hjError, setHjError] = useState(null);
+  const [newHJInput, setNewHJInput] = useState("");
+
+  const loadHeadJudges = async (s) => {
+    setHjLoading(true); setHjError(null);
+    try {
+      const res = await workerGet(`/judges/get?slug=${encodeURIComponent(s)}`);
+      setHeadJudges(res.headJudges || []);
+      setOrgOwnerUsername(res.orgUsername || null);
+    } catch(e) { setHjError(e.message || "Failed to load head judges."); }
+    finally { setHjLoading(false); }
+  };
+
+  const saveHeadJudges = async (newList) => {
+    const token = sessionStorage.getItem("ncblast-auth-token");
+    setHjLoading(true); setHjError(null);
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/judges/set`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json","X-Auth-Token":token||""},
+        body: JSON.stringify({ slug, headJudges: newList, username: sessionStorage.getItem("ncblast-auth-user") }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error||"Save failed");
+      setHeadJudges(newList);
+    } catch(e) { setHjError(e.message); }
+    finally { setHjLoading(false); }
+  };
+
   useEffect(() => {
     if (!slug) return;
 
-    // Load pairings once
+    // Load pairings and judge meta once
     const loadPairings = async () => {
       setLoadingPairings(true); setPairingsError(null);
       try {
@@ -5087,6 +5861,7 @@ function OrgApp({onSwitchRole}) {
       finally { setLoadingPairings(false); }
     };
     loadPairings();
+    loadHeadJudges(slug);
 
     // Poll live match slots every 5s
     const pollLive = async () => {
@@ -5246,8 +6021,92 @@ function OrgApp({onSwitchRole}) {
         </button>
       </div>
 
+
+
       {/* ── Body ───────────────────────────────────────────────── */}
       <div style={{flex:1,overflowY:"auto",padding:"12px 14px 32px"}}>
+
+      {/* ── Head Judges ────────────────────────────────────────── */}
+      {(() => {
+        const currentUser = (() => { try { return (sessionStorage.getItem("ncblast-auth-user") || "").toLowerCase(); } catch(_) { return ""; } })();
+        const isOwner = orgOwnerUsername && currentUser === orgOwnerUsername.toLowerCase();
+        // Build participant name list from pairings data
+        const rosterNames = [...new Set(
+          (pairings||[]).flatMap(m => [m.player1_name, m.player2_name].filter(Boolean))
+        )].sort();
+        return (
+          <div style={{marginBottom:16,padding:"12px 14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+              <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0}}>Head Judges</p>
+              {orgOwnerUsername && <p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>Owner: {orgOwnerUsername}</p>}
+            </div>
+            <p style={{fontSize:10,color:"var(--text-muted)",margin:"0 0 10px",lineHeight:1.5}}>
+              Can access Organizer View for this event. Only the tournament owner can manage this list.
+            </p>
+            {hjLoading && <p style={{fontSize:12,color:"var(--text-muted)"}}>Saving…</p>}
+            {hjError && <p style={{fontSize:11,color:"#EF4444",marginBottom:6}}>⚠ {hjError}</p>}
+            {headJudges.length === 0 && !hjLoading && (
+              <p style={{fontSize:11,color:"var(--text-faint)",marginBottom:8}}>No head judges set.</p>
+            )}
+            {headJudges.map(u => (
+              <div key={u} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 10px",borderRadius:8,background:"var(--surface)",marginBottom:5,border:"1px solid var(--border)"}}>
+                <span style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>{u}</span>
+                {isOwner && (
+                  <button onClick={()=>saveHeadJudges(headJudges.filter(x=>x!==u))} disabled={hjLoading}
+                    style={{fontSize:11,fontWeight:700,color:"#EF4444",background:"none",border:"none",cursor:"pointer",padding:"2px 6px"}}>
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
+            {isOwner && (
+              <div style={{marginTop:10}}>
+                {/* Roster picker */}
+                {rosterNames.length > 0 && (
+                  <>
+                    <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 6px"}}>Add from roster</p>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+                      {rosterNames.filter(n => !headJudges.includes(n.toLowerCase())).map(n => (
+                        <button key={n} onClick={()=>{
+                          const u = n.toLowerCase();
+                          if (!headJudges.includes(u)) saveHeadJudges([...headJudges, u]);
+                        }} disabled={hjLoading} style={{
+                          padding:"6px 12px",borderRadius:9,border:"1.5px solid var(--border2)",
+                          background:"var(--surface)",color:"var(--text-secondary)",
+                          fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"
+                        }}>+ {n}</button>
+                      ))}
+                      {rosterNames.filter(n => !headJudges.includes(n.toLowerCase())).length === 0 && (
+                        <p style={{fontSize:11,color:"var(--text-faint)",margin:0}}>All roster players are already head judges.</p>
+                      )}
+                    </div>
+                  </>
+                )}
+                {/* Manual username input for non-roster judges */}
+                <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 6px"}}>Add by Challonge username</p>
+                <div style={{display:"flex",gap:8}}>
+                  <input value={newHJInput} onChange={e=>setNewHJInput(e.target.value)}
+                    onKeyDown={e=>{if(e.key==="Enter"&&newHJInput.trim()){const u=newHJInput.trim().toLowerCase();if(!headJudges.includes(u))saveHeadJudges([...headJudges,u]);setNewHJInput("");}}}
+                    placeholder="challonge username"
+                    style={{flex:1,padding:"8px 10px",borderRadius:9,border:"1px solid var(--border2)",background:"var(--input-bg)",color:"var(--text-primary)",fontSize:12,fontFamily:"'Outfit',sans-serif",outline:"none"}}
+                  />
+                  <button onClick={()=>{const u=newHJInput.trim().toLowerCase();if(u&&!headJudges.includes(u))saveHeadJudges([...headJudges,u]);setNewHJInput("");}}
+                    disabled={!newHJInput.trim()||hjLoading}
+                    style={{padding:"0 12px",borderRadius:9,border:"none",background:"#22C55E",color:"#fff",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                    Add
+                  </button>
+                </div>
+              </div>
+            )}
+            {!isOwner && orgOwnerUsername && (
+              <p style={{fontSize:10,color:"var(--text-faint)",marginTop:6,fontStyle:"italic"}}>Only {orgOwnerUsername} can edit this list.</p>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── Matches ────────────────────────────────────────────── */}
+      <React.Fragment>
 
         {/* Round header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -5340,6 +6199,7 @@ function OrgApp({onSwitchRole}) {
             <p style={{fontSize:12,color:"var(--text-faint)"}}>All matches may be complete, or the round hasn't started yet.</p>
           </div>
         )}
+      </React.Fragment>
       </div>
 
       {/* ── Ping notification modal (must be manually dismissed) ── */}
@@ -5383,52 +6243,77 @@ function OrgApp({onSwitchRole}) {
 
 /* ── Org Tournament Select ────────────────────────────────────────── */
 function OrgTournamentSelect({onSelect, onSwitchRole}) {
-  const [linkInput, setLinkInput] = useState("");
-  const [cachedList, setCachedList] = useState([]);
-  const [loadingList, setLoadingList] = useState(true);
-  const [loadingLink, setLoadingLink] = useState(false);
-  const [error, setError] = useState(null);
-  // PIN state: null | "master_for_create" | "set_tournament" | "open_tournament" | "master_for_delete"
-  const [pinMode, setPinMode] = useState(null);
-  const [pinError, setPinError] = useState(null);
-  const [pinLoading, setPinLoading] = useState(false);
-  const [pendingSlug, setPendingSlug] = useState(null);
-  const [pendingName, setPendingName] = useState(null);
-  const [pendingDisplayName, setPendingDisplayName] = useState(""); // human-readable name org enters
+  // ── Auth state ────────────────────────────────────────────────────
+  // On mount, check if there's already a valid session from this browser session.
+  const [authStep, setAuthStep] = useState("checking"); // checking | login | verified | not_org
+  const [orgUsername, setOrgUsername] = useState(null);
+  // Use popup variant so OAuth doesn't replace the current page with "close this tab" message
+  const auth = useChallongeAuthPopup();
 
+  // On mount, try to reuse a session token if one was stored
   useEffect(() => {
-    const load = async () => {
-      setLoadingList(true);
-      try { const data = await workerGet("/list"); setCachedList(data.tournaments || []); }
-      catch(_) { setCachedList([]); }
-      finally { setLoadingList(false); }
-    };
-    load();
+    const token = sessionStorage.getItem("ncblast-auth-token");
+    const user  = sessionStorage.getItem("ncblast-auth-user");
+    if (token && user) {
+      // Verify it's still an authorized org user
+      fetch(`${OVERLAY_WORKER}/org/verify`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({token, username: user}), signal: AbortSignal.timeout(8000),
+      }).then(r => r.json()).then(d => {
+        if (d.ok) { setOrgUsername(d.username); setAuthStep("verified"); }
+        else { sessionStorage.removeItem("ncblast-auth-token"); sessionStorage.removeItem("ncblast-auth-user"); setAuthStep("login"); }
+      }).catch(() => setAuthStep("login"));
+    } else {
+      setAuthStep("login");
+    }
   }, []);
 
-  const refreshList = async () => {
-    try {
-      const data = await workerGet("/list");
-      console.log("[BLAST] /list response:", JSON.stringify(data.tournaments));
-      setCachedList(data.tournaments || []);
-    } catch(e) { console.error("[BLAST] /list failed:", e.message); }
-  };
-
-  const verifyPin = async (slug, pin) => {
-    const res = await fetch(`${OVERLAY_WORKER}/pin/verify`, {
+  // When the OAuth flow completes, verify the user is on the org whitelist
+  useEffect(() => {
+    if (auth.state !== "done" || !auth.username) return;
+    const token = sessionStorage.getItem("ncblast-auth-token");
+    fetch(`${OVERLAY_WORKER}/org/verify`, {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({slug, pin}), signal: AbortSignal.timeout(8000),
-    });
-    return await res.json();
+      body: JSON.stringify({token, username: auth.username}), signal: AbortSignal.timeout(8000),
+    }).then(r => r.json()).then(d => {
+      if (d.ok) { setOrgUsername(d.username); setAuthStep("verified"); }
+      else { setAuthStep("not_org"); }
+    }).catch(() => { setAuthStep("not_org"); });
+  }, [auth.state, auth.username]);
+
+  // ── Tournament list state ─────────────────────────────────────────
+  const [cachedList, setCachedList]     = useState([]);
+  const [loadingList, setLoadingList]   = useState(false);
+  const [linkInput, setLinkInput]       = useState("");
+  const [loadingLink, setLoadingLink]   = useState(false);
+  const [linkError, setLinkError]       = useState(null);
+  const [displayName, setDisplayName]   = useState("");
+  const [addStep, setAddStep]           = useState(null); // null | "name" | "adding"
+  const [pendingSlug, setPendingSlug]   = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // slug | null
+  const [deleting, setDeleting]         = useState(false);
+  // Whitelist management
+  const [whitelistPanel, setWhitelistPanel] = useState(false);
+  const [whitelistData, setWhitelistData]   = useState(null);
+  const [masterKeyInput, setMasterKeyInput] = useState("");
+  const [wlError, setWlError]               = useState(null);
+  const [wlLoading, setWlLoading]           = useState(false);
+  const [newOrgInput, setNewOrgInput]       = useState("");
+
+  const refreshList = async () => {
+    setLoadingList(true);
+    try { const d = await workerGet("/list"); setCachedList(d.tournaments || []); }
+    catch(_) { setCachedList([]); }
+    finally { setLoadingList(false); }
   };
 
-  // Step 1: org pastes link → ask for master PIN
-  const handleLinkSubmit = () => {
-    setError(null);
-    const raw = linkInput.trim();
-    let slug = raw;
+  useEffect(() => { if (authStep === "verified") refreshList(); }, [authStep]);
+
+  // ── Parse slug from Challonge URL ────────────────────────────────
+  const parseSlug = (raw) => {
+    let slug = raw.trim();
     try {
-      const u = new URL(raw.startsWith("http") ? raw : "https://" + raw);
+      const u = new URL(slug.startsWith("http") ? slug : "https://" + slug);
       const cleanPath = u.pathname.replace(/\/(participants|standings|teams|matches).*$/i, "");
       const parts = cleanPath.replace(/^\/|\/$/g, "").split("/").filter(Boolean);
       const subdomain = u.hostname.split(".")[0];
@@ -5436,172 +6321,333 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
       const pathSlug = parts[parts.length - 1] || parts[0];
       slug = isCommunity ? `${subdomain}-${pathSlug}` : pathSlug;
     } catch(_) {}
-    if (!slug) { setError("Enter a valid Challonge link."); return; }
-    console.log("[BLAST] Parsed slug:", slug);
-    setPendingSlug(slug); setPendingName(slug);
-    setPinError(null); setPinMode("master_for_create");
+    return slug;
   };
 
-  // Step 2: master verified → cache tournament → prompt for tournament PIN
-  const handleMasterForCreate = async (pin) => {
-    setPinLoading(true); setPinError(null);
-    try {
-      const data = await verifyPin(pendingSlug, pin);
-      if (!data.ok || !data.master) { setPinError("Incorrect master PIN."); setPinLoading(false); return; }
-      sessionStorage.setItem("ncblast-master-session", pin);
-    } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
-    try {
-      const raw = await fetch(`${OVERLAY_WORKER}/?slug=${encodeURIComponent(pendingSlug)}`);
-      const data = await raw.json();
-      console.log("[BLAST] /?slug= response:", JSON.stringify({status: raw.status, fromCache: data.fromCache, count: (data.participants||[]).length, indexCount: data.indexCount, kvWriteError: data.kvWriteError, errors: data.errors, error: data.error}));
-      if(!raw.ok) throw new Error(data.error || data.errors?.[0] || `HTTP ${raw.status}`);
-      if(data.errors) throw new Error(data.errors[0]||"Challonge error");
-      setPendingName(data.tournamentName || data.name || pendingSlug);
-    } catch(e) { console.error("[BLAST] /?slug= failed:", e.message); setPinError("Couldn't load that tournament: "+e.message); setPinLoading(false); return; }
-    setPinLoading(false); setPendingDisplayName(""); setPinMode("name_tournament"); setPinError(null);
+  const handleLinkSubmit = () => {
+    setLinkError(null);
+    const slug = parseSlug(linkInput);
+    if (!slug) { setLinkError("Enter a valid Challonge link."); return; }
+    setPendingSlug(slug);
+    setDisplayName("");
+    setAddStep("name");
   };
 
-  // Step 2b: org enters a display name for the tournament
-  const handleNameSubmit = () => {
-    const name = pendingDisplayName.trim();
-    if (!name) { setPinError("Enter a name for this tournament."); return; }
-    setPinError(null); setPinMode("set_tournament");
-  };
-
-  // Step 3: set tournament-specific PIN
-  const handleSetTournamentPin = async (pin) => {
-    setPinLoading(true); setPinError(null);
-    const masterPin = sessionStorage.getItem("ncblast-master-session");
-    if (!masterPin) { setPinError("Session expired. Start over."); setPinLoading(false); return; }
+  const handleAddTournament = async () => {
+    const name = displayName.trim();
+    if (!name) { setLinkError("Enter a display name."); return; }
+    setAddStep("adding"); setLinkError(null);
+    const token = sessionStorage.getItem("ncblast-auth-token");
     try {
-      const res = await fetch(`${OVERLAY_WORKER}/pin/set`, {
+      const res = await fetch(`${OVERLAY_WORKER}/org/tournament/add`, {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({slug: pendingSlug, pin, masterPin}), signal: AbortSignal.timeout(8000),
+        body: JSON.stringify({ slug: pendingSlug, name, orgToken: token, username: sessionStorage.getItem("ncblast-auth-user") }),
+        signal: AbortSignal.timeout(15000),
       });
       const data = await res.json();
-      if (!res.ok || !data.ok) { setPinError(data.error || "Failed to set PIN."); setPinLoading(false); return; }
-    } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
-    const masterPinForName = sessionStorage.getItem("ncblast-master-session") || "";
-    sessionStorage.removeItem("ncblast-master-session");
-    // Save the display name to the server (fire and forget — list refresh will pick it up)
-    const displayName = pendingDisplayName.trim() || pendingName || pendingSlug;
-    try {
-      await fetch(`${OVERLAY_WORKER}/name/set`, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({slug: pendingSlug, name: displayName, masterPin: masterPinForName}),
-        signal: AbortSignal.timeout(5000),
-      });
-    } catch(_) {}
-    setPinLoading(false); setPinMode(null);
-    await refreshList();
-    onSelect(pendingSlug, displayName);
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setAddStep(null); setLinkInput(""); setPendingSlug(null); setDisplayName("");
+      await refreshList();
+      onSelect(pendingSlug, name);
+    } catch(e) { setLinkError("Couldn't add tournament: " + e.message); setAddStep("name"); }
   };
 
-  // Open cached tournament → verify tournament PIN
-  const handleOpenCached = (t) => {
-    setPendingSlug(t.slug); setPendingName(t.name || t.slug);
-    setPinError(null); setPinMode("open_tournament");
-  };
-
-  const handleVerifyForOpen = async (pin) => {
-    setPinLoading(true); setPinError(null);
-    try {
-      const data = await verifyPin(pendingSlug, pin);
-      if (!data.ok) { setPinError("Incorrect PIN."); setPinLoading(false); return; }
-    } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
-    setPinLoading(false); setPinMode(null);
-    onSelect(pendingSlug, pendingName);
-  };
-
-  // Delete → require master PIN
-  const handleDeleteRequest = (t) => {
-    setPendingSlug(t.slug); setPendingName(t.name || t.slug);
-    setPinError(null); setPinMode("master_for_delete");
-  };
-
-  const handleMasterForDelete = async (pin) => {
-    setPinLoading(true); setPinError(null);
+  const handleDelete = async (slug) => {
+    setDeleting(true);
+    const token = sessionStorage.getItem("ncblast-auth-token");
     try {
       const res = await fetch(`${OVERLAY_WORKER}/delete`, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({slug: pendingSlug, masterPin: pin}), signal: AbortSignal.timeout(8000),
+        method:"POST", headers:{"Content-Type":"application/json","X-Auth-Token":token},
+        body: JSON.stringify({ slug }),
+        signal: AbortSignal.timeout(10000),
       });
       const data = await res.json();
-      if (!res.ok || !data.ok) { setPinError(data.error || "Incorrect master PIN."); setPinLoading(false); return; }
-    } catch(e) { setPinError("Connection error."); setPinLoading(false); return; }
-    setPinLoading(false); setPinMode(null);
-    setCachedList(prev => prev.filter(t => t.slug !== pendingSlug));
+      if (!res.ok || !data.ok) throw new Error(data.error || "Delete failed");
+      setCachedList(prev => prev.filter(t => t.slug !== slug));
+      setDeleteConfirm(null);
+    } catch(e) { alert("Delete failed: " + e.message); }
+    finally { setDeleting(false); }
   };
 
+  // ── Whitelist management ─────────────────────────────────────────
+  const loadWhitelist = async (key) => {
+    setWlLoading(true); setWlError(null);
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/org/whitelist`, {
+        headers:{"X-Master-Key": key}, signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Unauthorized");
+      setWhitelistData(data.whitelist || []);
+    } catch(e) { setWlError(e.message); setWhitelistData(null); }
+    finally { setWlLoading(false); }
+  };
+
+  const handleWlAdd = async () => {
+    const username = newOrgInput.trim().toLowerCase();
+    if (!username) return;
+    setWlLoading(true); setWlError(null);
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/org/whitelist/add`, {
+        method:"POST", headers:{"Content-Type":"application/json","X-Master-Key":masterKeyInput},
+        body: JSON.stringify({username}), signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Failed");
+      setNewOrgInput("");
+      await loadWhitelist(masterKeyInput);
+    } catch(e) { setWlError(e.message); setWlLoading(false); }
+  };
+
+  const handleWlRemove = async (username) => {
+    setWlLoading(true); setWlError(null);
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/org/whitelist/remove`, {
+        method:"POST", headers:{"Content-Type":"application/json","X-Master-Key":masterKeyInput},
+        body: JSON.stringify({username}), signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Failed");
+      await loadWhitelist(masterKeyInput);
+    } catch(e) { setWlError(e.message); setWlLoading(false); }
+  };
+
+  // ── Auth screens ──────────────────────────────────────────────────
+  if (authStep === "checking") {
+    return (
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--bg)"}}>
+        <p style={{color:"var(--text-muted)",fontSize:14}}>Checking session…</p>
+      </div>
+    );
+  }
+
+  if (authStep === "login") {
+    return (
+      <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 24px",fontFamily:"'Outfit',sans-serif"}}>
+        <div style={{width:"100%",maxWidth:340}}>
+          <div style={{textAlign:"center",marginBottom:20}}>
+            <div style={{fontSize:40,marginBottom:10}}>🔗</div>
+            <h2 style={{fontSize:22,fontWeight:900,color:"var(--text-primary)",margin:"0 0 6px"}}>Organizer Login</h2>
+            <p style={{fontSize:13,color:"var(--text-muted)",margin:0,lineHeight:1.5}}>Log in with your Challonge account to access Organizer View.</p>
+          </div>
+
+          {auth.state === "idle" && (
+            <button onClick={auth.start} style={{
+              width:"100%",padding:"18px 0",borderRadius:14,border:"none",
+              background:"linear-gradient(135deg,#EA580C,#DC2626)",
+              color:"#fff",fontSize:16,fontWeight:900,
+              fontFamily:"'Outfit',sans-serif",cursor:"pointer",
+              boxShadow:"0 8px 24px rgba(234,88,12,0.35)",marginBottom:14,
+            }}>Log in with Challonge</button>
+          )}
+          {auth.state === "waiting" && (
+            <div style={{textAlign:"center",marginBottom:16}}>
+              <div style={{width:36,height:36,margin:"0 auto 12px",borderRadius:"50%",
+                border:"3px solid var(--border2)",borderTopColor:"#EA580C",
+                animation:"spin 1s linear infinite"}}/>
+              <p style={{fontSize:13,color:"var(--text-muted)"}}>Waiting for Challonge login…</p>
+            </div>
+          )}
+          {(auth.state === "confirm" || auth.state === "wrong") && (
+            <OrgConfirmUsername auth={auth} />
+          )}
+          {auth.state === "error" && (
+            <div style={{marginBottom:14}}>
+              <p style={{fontSize:13,color:"#EF4444",textAlign:"center",fontWeight:600,marginBottom:12}}>⚠ {auth.errorMsg}</p>
+              <button onClick={auth.start} style={{
+                width:"100%",padding:"14px 0",borderRadius:12,border:"none",
+                background:"#EA580C",color:"#fff",fontSize:14,fontWeight:800,
+                fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:10,
+              }}>Try Again</button>
+            </div>
+          )}
+          {auth.state === "done" && (
+            <p style={{fontSize:13,color:"#22C55E",textAlign:"center",fontWeight:700,marginBottom:14}}>✅ {auth.username} — verifying…</p>
+          )}
+          <button onClick={onSwitchRole} style={{
+            width:"100%",padding:"12px 0",borderRadius:12,
+            border:"2px solid var(--border)",background:"none",
+            color:"var(--text-muted)",fontSize:13,fontWeight:700,
+            fontFamily:"'Outfit',sans-serif",cursor:"pointer",
+          }}>← Back</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (authStep === "not_org") {
+    return (
+      <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"var(--bg)",padding:"32px 24px",fontFamily:"'Outfit',sans-serif"}}>
+        <div style={{fontSize:40,marginBottom:12}}>🚫</div>
+        <h2 style={{fontSize:20,fontWeight:900,color:"var(--text-primary)",margin:"0 0 8px",textAlign:"center"}}>Not Authorized</h2>
+        <p style={{fontSize:13,color:"var(--text-muted)",textAlign:"center",lineHeight:1.6,maxWidth:300,marginBottom:24}}>
+          Your Challonge account (<strong style={{color:"var(--text-primary)"}}>{auth.username}</strong>) is not on the organizer list. Ask a dev team member to add you.
+        </p>
+        <button onClick={() => { auth.reset(); setAuthStep("login"); }} style={{padding:"13px 28px",borderRadius:12,border:"none",background:"#EA580C",color:"#fff",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:12}}>
+          Try a Different Account
+        </button>
+        <button onClick={onSwitchRole} style={{padding:"10px 28px",borderRadius:12,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          ← Back
+        </button>
+      </div>
+    );
+  }
+
+  // ── "Name tournament" modal ───────────────────────────────────────
+  if (addStep === "name" || addStep === "adding") {
+    return (
+      <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"var(--bg)",padding:"32px 24px",fontFamily:"'Outfit',sans-serif"}}>
+        <div style={{width:"100%",maxWidth:340}}>
+          <h2 style={{fontSize:20,fontWeight:900,color:"var(--text-primary)",margin:"0 0 6px"}}>Name This Tournament</h2>
+          <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:6,lineHeight:1.5}}>Slug: <code style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"#EA580C"}}>{pendingSlug}</code></p>
+          <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:16,lineHeight:1.5}}>This name is shown to judges in the app.</p>
+          <input
+            autoFocus
+            value={displayName}
+            onChange={e=>setDisplayName(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&handleAddTournament()}
+            placeholder="e.g. NorCal Spring Open 2025"
+            style={{width:"100%",padding:"11px 13px",borderRadius:10,border:`2px solid ${linkError?"#EF4444":"var(--border2)"}`,background:"var(--surface2)",color:"var(--text-primary)",fontSize:14,fontFamily:"'Outfit',sans-serif",outline:"none",marginBottom:8,boxSizing:"border-box"}}
+          />
+          {linkError && <p style={{fontSize:11,color:"#EF4444",marginBottom:8}}>{linkError}</p>}
+          <button onClick={handleAddTournament} disabled={!displayName.trim()||addStep==="adding"}
+            style={{width:"100%",padding:"13px 0",borderRadius:11,border:"none",background:displayName.trim()&&addStep!=="adding"?"#EA580C":"var(--surface3)",color:displayName.trim()&&addStep!=="adding"?"#fff":"var(--text-faint)",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:displayName.trim()&&addStep!=="adding"?"pointer":"not-allowed",marginBottom:10}}>
+            {addStep==="adding"?"Adding…":"Add to NC BLAST →"}
+          </button>
+          <button onClick={()=>{setAddStep(null);setLinkError(null);}} style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main select screen ────────────────────────────────────────────
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",fontFamily:"'Outfit',sans-serif",display:"flex",flexDirection:"column"}}>
-      {pinMode==="master_for_create"&&<PinModal title="Master PIN Required" subtitle={`Enter the master PIN to add a new tournament.\nSlug: ${pendingSlug}`} onSubmit={handleMasterForCreate} onCancel={()=>setPinMode(null)} error={pinError} loading={pinLoading}/>}
-      {pinMode==="name_tournament"&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.7)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 20px"}}>
-          <div style={{background:"var(--surface)",borderRadius:18,width:"100%",maxWidth:360,padding:"24px 20px",boxShadow:"0 16px 48px rgba(0,0,0,0.4)"}}>
-            <p style={{fontSize:16,fontWeight:900,color:"var(--text-primary)",marginBottom:4}}>Name This Tournament</p>
-            <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:16,lineHeight:1.5}}>This name is shown to judges and players. It also appears in the Sheets data.</p>
-            <input
-              autoFocus
-              value={pendingDisplayName}
-              onChange={e=>{ setPendingDisplayName(e.target.value); setPinError(null); }}
-              onKeyDown={e=>e.key==="Enter"&&handleNameSubmit()}
-              placeholder="e.g. NorCal Spring Open 2025"
-              style={{width:"100%",padding:"11px 13px",borderRadius:10,border:`2px solid ${pinError?"#EF4444":"var(--border2)"}`,background:"var(--surface2)",color:"var(--text-primary)",fontSize:14,fontFamily:"'Outfit',sans-serif",outline:"none",marginBottom:8}}
-            />
-            {pinError&&<p style={{fontSize:11,color:"#EF4444",marginBottom:8}}>{pinError}</p>}
-            <button onClick={handleNameSubmit} disabled={!pendingDisplayName.trim()}
-              style={{width:"100%",padding:"13px 0",borderRadius:11,border:"none",background:pendingDisplayName.trim()?"#EA580C":"var(--surface3)",color:pendingDisplayName.trim()?"#fff":"var(--text-faint)",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:pendingDisplayName.trim()?"pointer":"not-allowed",marginBottom:8}}>
-              Next: Set PIN →
+
+      {/* Delete confirm modal */}
+      {deleteConfirm && (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.8)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+          <div style={{background:"var(--surface)",borderRadius:18,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"2px solid #EF4444"}}>
+            <p style={{fontSize:16,fontWeight:900,color:"var(--text-primary)",marginBottom:8}}>Delete Tournament?</p>
+            <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:20,lineHeight:1.5}}>This removes <strong>{cachedList.find(t=>t.slug===deleteConfirm)?.name||deleteConfirm}</strong> from the NC BLAST cache. Active judges will be notified.</p>
+            <button onClick={()=>handleDelete(deleteConfirm)} disabled={deleting}
+              style={{width:"100%",padding:"13px 0",borderRadius:11,border:"none",background:"#EF4444",color:"#fff",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:deleting?"not-allowed":"pointer",marginBottom:10}}>
+              {deleting?"Deleting…":"Yes, Delete"}
             </button>
-            <button onClick={()=>{setPinMode(null);sessionStorage.removeItem("ncblast-master-session");setPinError(null);}}
-              style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+            <button onClick={()=>setDeleteConfirm(null)} style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
               Cancel
             </button>
           </div>
         </div>
       )}
-      {pinMode==="set_tournament"&&<PinModal title="Set Tournament PIN" subtitle={`Choose a 4-digit PIN for "${pendingDisplayName.trim()||pendingName}". Judges and players will need this to access the event.`} onSubmit={handleSetTournamentPin} onCancel={()=>{setPinMode(null);sessionStorage.removeItem("ncblast-master-session");}} error={pinError} loading={pinLoading}/>}
-      {pinMode==="open_tournament"&&<PinModal title="Tournament PIN" subtitle={`Enter the PIN for "${pendingName}".`} onSubmit={handleVerifyForOpen} onCancel={()=>setPinMode(null)} error={pinError} loading={pinLoading}/>}
-      {pinMode==="master_for_delete"&&<PinModal title="Master PIN Required" subtitle={`Enter the master PIN to delete "${pendingName}".`} onSubmit={handleMasterForDelete} onCancel={()=>setPinMode(null)} error={pinError} loading={pinLoading}/>}
 
+      {/* Whitelist manager modal */}
+      {whitelistPanel && (
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.85)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 20px",overflowY:"auto"}}>
+          <div style={{background:"var(--surface)",borderRadius:18,width:"100%",maxWidth:360,padding:"24px 20px",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"1px solid var(--border)"}}>
+            <p style={{fontSize:16,fontWeight:900,color:"var(--text-primary)",marginBottom:4}}>Organizer Whitelist</p>
+            <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:14,lineHeight:1.5}}>Paste the master key to view and manage who can access Organizer View.</p>
+            {!whitelistData ? (
+              <>
+                <input
+                  type="password"
+                  value={masterKeyInput}
+                  onChange={e=>setMasterKeyInput(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&loadWhitelist(masterKeyInput)}
+                  placeholder="Master Key"
+                  style={{width:"100%",padding:"11px 13px",borderRadius:10,border:`2px solid ${wlError?"#EF4444":"var(--border2)"}`,background:"var(--surface2)",color:"var(--text-primary)",fontSize:14,fontFamily:"'JetBrains Mono',monospace",outline:"none",marginBottom:8,boxSizing:"border-box"}}
+                />
+                {wlError && <p style={{fontSize:11,color:"#EF4444",marginBottom:8}}>{wlError}</p>}
+                <button onClick={()=>loadWhitelist(masterKeyInput)} disabled={!masterKeyInput.trim()||wlLoading}
+                  style={{width:"100%",padding:"12px 0",borderRadius:11,border:"none",background:"#EA580C",color:"#fff",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:10}}>
+                  {wlLoading?"Loading…":"Unlock"}
+                </button>
+              </>
+            ) : (
+              <>
+                <div style={{marginBottom:14}}>
+                  {whitelistData.length === 0 && <p style={{fontSize:12,color:"var(--text-faint)"}}>No organizers listed yet.</p>}
+                  {whitelistData.map(e => (
+                    <div key={e.username} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",borderRadius:8,background:"var(--surface2)",marginBottom:6,border:"1px solid var(--border)"}}>
+                      <span style={{fontSize:13,fontWeight:700,color:"var(--text-primary)"}}>{e.username}</span>
+                      <button onClick={()=>handleWlRemove(e.username)} disabled={wlLoading}
+                        style={{fontSize:11,fontWeight:700,color:"#EF4444",background:"none",border:"none",cursor:"pointer",padding:"2px 6px"}}>
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"flex",gap:8,marginBottom:10}}>
+                  <input
+                    value={newOrgInput}
+                    onChange={e=>setNewOrgInput(e.target.value)}
+                    onKeyDown={e=>e.key==="Enter"&&handleWlAdd()}
+                    placeholder="challonge username"
+                    style={{flex:1,padding:"9px 12px",borderRadius:10,border:"1px solid var(--border2)",background:"var(--input-bg)",color:"var(--text-primary)",fontSize:13,fontFamily:"'Outfit',sans-serif",outline:"none"}}
+                  />
+                  <button onClick={handleWlAdd} disabled={!newOrgInput.trim()||wlLoading}
+                    style={{padding:"0 14px",borderRadius:10,border:"none",background:"#22C55E",color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                    Add
+                  </button>
+                </div>
+                {wlError && <p style={{fontSize:11,color:"#EF4444",marginBottom:8}}>{wlError}</p>}
+              </>
+            )}
+            <button onClick={()=>{setWhitelistPanel(false);setMasterKeyInput("");setWhitelistData(null);setWlError(null);setNewOrgInput("");}}
+              style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
       <div style={{background:"var(--surface)",borderBottom:"1px solid var(--border)",padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
         <button onClick={onSwitchRole} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",lineHeight:1,padding:"2px 4px"}}>←</button>
-        <div>
+        <div style={{flex:1,minWidth:0}}>
           <p style={{fontSize:11,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:0}}>Organizer View</p>
-          <p style={{fontSize:14,fontWeight:900,color:"var(--text-primary)",margin:0}}>Select Tournament</p>
+          <p style={{fontSize:14,fontWeight:900,color:"var(--text-primary)",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            Select Tournament <span style={{fontSize:11,color:"#EA580C",fontWeight:700}}>({orgUsername})</span>
+          </p>
         </div>
+        <button onClick={()=>setWhitelistPanel(true)} title="Manage organizer access"
+          style={{background:"none",border:"1px solid var(--border)",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,color:"var(--text-muted)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          🔑 Access
+        </button>
       </div>
 
       <div style={{flex:1,padding:"16px 14px 32px"}}>
+        {/* Add tournament */}
         <div style={{background:"var(--surface)",borderRadius:14,padding:"14px",marginBottom:20,border:"1px solid var(--border)"}}>
           <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",marginBottom:4}}>Load from Challonge link</p>
-          <p style={{fontSize:11,color:"var(--text-muted)",marginBottom:8}}>Requires master PIN · Sets a new event PIN</p>
+          <p style={{fontSize:11,color:"var(--text-muted)",marginBottom:8}}>Logged in as <strong>{orgUsername}</strong> · Will be set as organizer</p>
           <div style={{display:"flex",gap:8}}>
             <input value={linkInput} onChange={e=>setLinkInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLinkSubmit()}
               placeholder="challonge.com/ncbl-eventname"
-              style={{flex:1,borderRadius:10,border:"1px solid var(--border2)",background:"var(--input-bg)",padding:"9px 12px",fontSize:13,fontFamily:"'Outfit',sans-serif",outline:"none"}}/>
+              style={{flex:1,borderRadius:10,border:"1px solid var(--border2)",background:"var(--input-bg)",padding:"9px 12px",fontSize:13,fontFamily:"'Outfit',sans-serif",outline:"none",color:"var(--text-primary)"}}/>
             <button onClick={handleLinkSubmit} disabled={loadingLink||!linkInput.trim()}
               style={{borderRadius:10,border:"none",background:"#EA580C",color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",padding:"0 16px",cursor:loadingLink||!linkInput.trim()?"not-allowed":"pointer",opacity:loadingLink||!linkInput.trim()?0.6:1}}>
               {loadingLink?"…":"Go"}
             </button>
           </div>
-          {error&&<p style={{fontSize:11,color:"#EF4444",marginTop:8}}>{error}</p>}
+          {linkError && <p style={{fontSize:11,color:"#EF4444",marginTop:8}}>{linkError}</p>}
         </div>
 
         <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",marginBottom:10}}>Recently cached</p>
-        {loadingList&&<p style={{fontSize:13,color:"var(--text-muted)"}}>Loading…</p>}
-        {!loadingList&&cachedList.length===0&&(
+        {loadingList && <p style={{fontSize:13,color:"var(--text-muted)"}}>Loading…</p>}
+        {!loadingList && cachedList.length === 0 && (
           <p style={{fontSize:12,color:"var(--text-faint)"}}>No cached tournaments. Use the link field above to add one.</p>
         )}
-        {cachedList.map(t=>(
+        {cachedList.map(t => (
           <div key={t.slug} style={{display:"flex",gap:8,marginBottom:8,alignItems:"stretch"}}>
-            <button onClick={()=>handleOpenCached(t)}
+            <button onClick={()=>onSelect(t.slug, t.name||t.slug)}
               style={{flex:1,padding:"12px 14px",borderRadius:12,border:"1px solid var(--border)",background:"var(--surface)",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
               <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0}}>{t.name||t.slug}</p>
-              <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>{t.slug} · 🔒 PIN required</p>
+              <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>{t.slug}{t.orgUsername ? ` · org: ${t.orgUsername}` : ""}</p>
             </button>
-            <button onClick={()=>handleDeleteRequest(t)}
+            <button onClick={()=>setDeleteConfirm(t.slug)}
               style={{padding:"0 14px",borderRadius:12,border:"1px solid #EF444440",background:"#EF444408",cursor:"pointer",color:"#EF4444",fontFamily:"'Outfit',sans-serif",fontSize:12,fontWeight:700,flexShrink:0}}>
               Delete
             </button>
@@ -6087,7 +7133,8 @@ function PlayerApp({onSwitchRole}){
 ═══════════════════════════════════════ */
 const ROLE_KEY = "ncblast-role-v1";
 
-function RolePicker({onSelect}) {
+function RolePicker({onSelect, judge, sharedJudges, onLogout}) {
+  const loggedIn = sharedJudges ? `${sharedJudges.judgeA} & ${sharedJudges.judgeB}` : (judge || null);
   return (
     <div style={{
       minHeight:"100vh", display:"flex", flexDirection:"column",
@@ -6118,15 +7165,23 @@ function RolePicker({onSelect}) {
           ⚖️ A Judge
         </button>
 
-        <button onClick={()=>onSelect("player")} style={{
-          padding:"20px 0", borderRadius:16,
-          border:"2px solid #334155",
-          background:"#1E293B",
-          color:"#F1F5F9", fontSize:18, fontWeight:900,
-          fontFamily:"'Outfit',sans-serif", cursor:"pointer",
-        }}>
-          🏆 A Player
-        </button>
+        <div style={{position:"relative"}}>
+          <button disabled style={{
+            width:"100%", padding:"20px 0", borderRadius:16,
+            border:"2px solid #1E293B",
+            background:"#0F172A",
+            color:"#334155", fontSize:18, fontWeight:900,
+            fontFamily:"'Outfit',sans-serif", cursor:"not-allowed",
+          }}>
+            🏆 A Player
+          </button>
+          <span style={{
+            position:"absolute", top:"50%", right:16, transform:"translateY(-50%)",
+            fontSize:10, fontWeight:800, color:"#475569",
+            background:"#1E293B", borderRadius:6, padding:"3px 8px",
+            textTransform:"uppercase", letterSpacing:0.8,
+          }}>Coming Soon</span>
+        </div>
 
         <button onClick={()=>onSelect("org")} style={{
           padding:"20px 0", borderRadius:16,
@@ -6137,6 +7192,18 @@ function RolePicker({onSelect}) {
         }}>
           📋 An Organizer
         </button>
+
+        {loggedIn && onLogout && (
+          <button onClick={onLogout} style={{
+            padding:"12px 0", borderRadius:12,
+            border:"2px solid var(--border)",
+            background:"transparent",
+            color:"var(--text-faint)", fontSize:12, fontWeight:600,
+            fontFamily:"'Outfit',sans-serif", cursor:"pointer", marginTop:4,
+          }}>
+            🚪 Log out ({loggedIn})
+          </button>
+        )}
       </div>
 
       <p style={{
@@ -6168,9 +7235,14 @@ function BeyJudgeApp() {
     document.body.classList.toggle("dark",dark);
   },[dark]);
 
-  // Role — always at top, never after a conditional return
-  const [role,setRole] = useState(null);
-  const chooseRole = (r) => setRole(r);
+  // Role — restore from sessionStorage if we just came back from OAuth redirect
+  const [role,setRole] = useState(() => {
+    try { return sessionStorage.getItem("ncblast-pending-role") || null; } catch(_) { return null; }
+  });
+  const chooseRole = (r) => {
+    setRole(r);
+    try { sessionStorage.setItem("ncblast-pending-role", r); } catch(_) {}
+  };
 
   // All judge-side state declared unconditionally (React rules require this)
   const [screen,setScreen] = useState("format");
@@ -6178,7 +7250,8 @@ function BeyJudgeApp() {
   const [parts,setParts] = useState({blades:[],ratchets:[],bits:[]});
   const [players,setPlayers] = useState([]);
   const [libOpen,setLibOpen] = useState(false);
-  const [judge,setJudge] = useState("");
+  const [judge,setJudge] = useState(""); // Never pre-populate from storage — only set after a successful login in this session
+  const [sharedJudges,setSharedJudges] = useState(null); // null | { judgeA:string, judgeB:string }
   const [sheetsStatus,setSheetsStatus] = useState(null);
   const [challongeSlug,setChallongeSlug] = useState("");
   const [challongeParticipants,setChallongeParticipants] = useState({});
@@ -6289,7 +7362,13 @@ function BeyJudgeApp() {
 
 
   // Branch on role in the render — no early returns before hooks
-  if(!role) return <RolePicker onSelect={chooseRole}/>;
+  if(!role) return <RolePicker onSelect={chooseRole} judge={judge} sharedJudges={sharedJudges} onLogout={()=>{
+    setJudge(""); setSharedJudges(null);
+    setChallongeSlug(""); setChallongeParticipants({});
+    setConfig(c=>({...c,tournamentName:""}));
+    sSave(KEYS.challongeMap,{});
+    try{sessionStorage.removeItem("ncblast-auth-token");sessionStorage.removeItem("ncblast-auth-user");}catch{}
+  }}/>;
   if(role==="player") return <PlayerApp onSwitchRole={()=>chooseRole(null)}/>;
   if(role==="org") return <OrgApp onSwitchRole={()=>chooseRole(null)}/>;
 
@@ -6309,9 +7388,19 @@ function BeyJudgeApp() {
           </div>
         </div>
       )}
-      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap,names)=>{setJudgeEventDeleted(false);setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});if(names&&names.length){const fresh=[...new Set(names)];setPlayers(fresh);sSave(KEYS.players,fresh);}}}/>}
+      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap,names)=>{setJudgeEventDeleted(false);setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});if(names&&names.length){const fresh=[...new Set(names)];setPlayers(fresh);sSave(KEYS.players,fresh);}}} onJudgeVerified={(payload)=>{
+        if (payload && typeof payload === "object" && payload.mode === "shared") {
+          setSharedJudges({ judgeA: payload.judgeA, judgeB: payload.judgeB });
+          setJudge(""); // will be chosen per-match
+          try{localStorage.setItem(KEYS.lastJudge, payload.judgeA);}catch{}
+        } else {
+          setSharedJudges(null);
+          setJudge(payload||"");
+          try{localStorage.setItem(KEYS.lastJudge, payload||"");}catch{}
+        }
+      }}/>}
       {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}} tournamentMode={config.tm}/>}
-      {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
+      {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sharedJudges={sharedJudges} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
     </div>
   );
 }
