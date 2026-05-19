@@ -908,12 +908,14 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
   const [cachedList, setCachedList] = useState(null);
   const [selectedSlug, setSelectedSlug] = useState(null);
   const [selectedName, setSelectedName] = useState("");
-  const [deviceMode, setDeviceMode]     = useState(null); // null | "solo" | "shared"
-  const [judgeAUsername, setJudgeAUsername] = useState(null); // set after Judge A logs in (Challonge)
-  const [judgeBUsername, setJudgeBUsername] = useState(null); // set after Judge B picked from roster
-  const [judgeBManual, setJudgeBManual]     = useState(false); // show manual name entry input
-  const [judgeBInput, setJudgeBInput]       = useState("");    // manual name entry value
-  const [duoRoster, setDuoRoster]           = useState(null);  // {names, pmap} loaded after Judge A login
+  const [deviceMode, setDeviceMode]         = useState(null);  // null | "solo" | "shared"
+  const [judgeAChallonge, setJudgeAChallonge] = useState(null); // Challonge username from OAuth (used for API calls)
+  const [judgeAName, setJudgeAName]           = useState(null); // bracket display name chosen from roster
+  const [judgeBName, setJudgeBName]           = useState(null); // bracket display name chosen from roster
+  const [duoStep, setDuoStep]                 = useState(null); // null | "pickA" | "pickB"
+  const [duoManual, setDuoManual]             = useState(false);// show manual name entry input
+  const [duoManualInput, setDuoManualInput]   = useState("");   // manual entry value
+  const [duoRoster, setDuoRoster]             = useState(null); // {names, pmap} loaded after Judge A login
   const [duoRosterLoading, setDuoRosterLoading] = useState(false);
 
   // Popup-based auth — Judge A only. Judge B is selected from the player roster.
@@ -974,35 +976,37 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
     finalizeLogin(selectedSlug, selectedName, authA.username, null);
   }, [authA.state, deviceMode, selectedSlug]);
 
-  // Shared: when A completes, record username and pre-fetch roster for Judge B picker
+  // Shared: when authA completes, record Challonge username, fetch roster, start name-picker
   useEffect(() => {
-    if (deviceMode !== "shared" || authA.state !== "done" || judgeAUsername) return;
-    setJudgeAUsername(authA.username);
+    if (deviceMode !== "shared" || authA.state !== "done" || judgeAChallonge) return;
+    setJudgeAChallonge(authA.username);
+    setDuoStep("pickA");
     setDuoRosterLoading(true);
     fetchParticipants(selectedSlug)
       .then(r => { setDuoRoster(r); setDuoRosterLoading(false); })
-      .catch(() => { setDuoRoster([]); setDuoRosterLoading(false); });
+      .catch(() => { setDuoRoster(null); setDuoRosterLoading(false); });
   }, [authA.state, deviceMode]);
 
-  // Shared: finalize when Judge B is picked from roster
+  // Shared: finalize when both bracket names are chosen
   useEffect(() => {
-    if (deviceMode !== "shared" || !judgeBUsername || !judgeAUsername || !selectedSlug) return;
-    finalizeLogin(selectedSlug, selectedName, judgeAUsername, judgeBUsername, duoRoster);
-  }, [judgeBUsername, judgeAUsername, deviceMode, selectedSlug]);
+    if (deviceMode !== "shared" || !judgeAName || !judgeBName || !judgeAChallonge || !selectedSlug) return;
+    finalizeLogin(selectedSlug, selectedName, judgeAName, judgeBName, duoRoster);
+  }, [judgeAName, judgeBName, judgeAChallonge, deviceMode, selectedSlug]);
+
+  const resetDuoState = () => {
+    setJudgeAChallonge(null); setJudgeAName(null); setJudgeBName(null);
+    setDuoStep(null); setDuoManual(false); setDuoManualInput(""); setDuoRoster(null);
+  };
 
   const handleSelect = (t) => {
     setSelectedSlug(t.slug); setSelectedName(t.name || t.slug);
     setAuthError(null); setDeviceMode(null);
-    setJudgeAUsername(null); setJudgeBUsername(null);
-    setJudgeBManual(false); setJudgeBInput(""); setDuoRoster(null);
-    authA.reset();
+    resetDuoState(); authA.reset();
   };
 
   const handleCancel = () => {
     setSelectedSlug(null); setSelectedName(""); setDeviceMode(null);
-    setJudgeAUsername(null); setJudgeBUsername(null);
-    setJudgeBManual(false); setJudgeBInput(""); setDuoRoster(null);
-    setAuthError(null); authA.reset();
+    resetDuoState(); setAuthError(null); authA.reset();
   };
 
   // ── Device mode picker ──────────────────────────────────────────────────
@@ -1101,30 +1105,59 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
         </div>
       );
     }
-    // Shared mode — Judge B name picker (after Judge A logged in)
-    if (deviceMode === "shared" && judgeAUsername) {
+    // Shared mode — two-step name picker (after Judge A logged in via Challonge)
+    if (deviceMode === "shared" && judgeAChallonge && (duoStep === "pickA" || duoStep === "pickB")) {
       const roster = (duoRoster && duoRoster.names) || [];
+      const pickingA = duoStep === "pickA";
+      const exclude = pickingA ? null : judgeAName; // hide already-chosen name in step 2
+      const visibleRoster = exclude ? roster.filter(n => n !== exclude) : roster;
+
+      const handlePick = (name) => {
+        if (pickingA) { setJudgeAName(name); setDuoStep("pickB"); setDuoManual(false); setDuoManualInput(""); }
+        else { setJudgeBName(name); }
+      };
+      const handleManualConfirm = () => {
+        const v = duoManualInput.trim(); if (!v) return;
+        handlePick(v);
+      };
+
       return (
         <div style={{marginTop:12}}>
           <div style={{padding:"10px 12px",borderRadius:10,background:"var(--surface2)",marginBottom:12,border:"1px solid var(--border)"}}>
             <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0}}>{selectedName}</p>
-            <p style={{fontSize:10,color:"#15803D",fontWeight:700,margin:"3px 0 0"}}>⚖️ Judge A: {judgeAUsername} ✓</p>
+            <p style={{fontSize:10,color:"#94A3B8",margin:"3px 0 0"}}>Logged in as {judgeAChallonge}</p>
           </div>
-          <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",marginBottom:4}}>Select Judge B</p>
-          <p style={{fontSize:11,color:"var(--text-muted)",margin:"0 0 10px",lineHeight:1.4}}>
-            Challonge submissions will appear under Judge A's account.
+
+          {/* Step indicator */}
+          <div style={{display:"flex",gap:6,marginBottom:12}}>
+            {["Judge A","Judge B"].map((label,i) => {
+              const done = (i === 0 && judgeAName) || (i === 1 && judgeBName);
+              const active = (i === 0 && pickingA) || (i === 1 && !pickingA);
+              return (
+                <div key={label} style={{flex:1,padding:"7px 0",borderRadius:9,textAlign:"center",
+                  background: done ? "#15803D18" : active ? "#EA580C18" : "var(--surface2)",
+                  border: `2px solid ${done ? "#15803D" : active ? "#EA580C" : "var(--border)"}` }}>
+                  <p style={{fontSize:10,fontWeight:800,color: done ? "#15803D" : active ? "#EA580C" : "var(--text-faint)",margin:0}}>
+                    {done ? `✓ ${i===0?judgeAName:judgeBName}` : label}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",marginBottom:8}}>
+            {pickingA ? "Who are you in the bracket?" : `Who is ${judgeAName}'s partner?`}
           </p>
+
           {duoRosterLoading ? (
-            <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 0"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",marginBottom:8}}>
               <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
-              <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>Loading event roster…</p>
+              <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>Loading roster…</p>
             </div>
-          ) : roster.length === 0 ? (
-            <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 10px"}}>No roster loaded — use manual entry below.</p>
-          ) : (
-            <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:240,overflowY:"auto",marginBottom:10}}>
-              {roster.map(name => (
-                <button key={name} onClick={() => setJudgeBUsername(name)}
+          ) : visibleRoster.length > 0 ? (
+            <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:220,overflowY:"auto",marginBottom:10}}>
+              {visibleRoster.map(name => (
+                <button key={name} onClick={() => handlePick(name)}
                   style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"2px solid var(--border)",
                     background:"var(--surface2)",color:"var(--text-primary)",fontSize:13,fontWeight:700,
                     fontFamily:"'Outfit',sans-serif",cursor:"pointer",textAlign:"left"}}>
@@ -1132,34 +1165,44 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
                 </button>
               ))}
             </div>
+          ) : !duoManual && (
+            <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 10px"}}>No roster loaded.</p>
           )}
-          {judgeBManual ? (
+
+          {duoManual ? (
             <div style={{marginBottom:10}}>
-              <input autoFocus type="text" placeholder="Judge B name…" value={judgeBInput}
-                onChange={e => setJudgeBInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && judgeBInput.trim()) setJudgeBUsername(judgeBInput.trim()); }}
+              <input autoFocus type="text" placeholder="Enter name…" value={duoManualInput}
+                onChange={e => setDuoManualInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handleManualConfirm(); }}
                 style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,
                   border:"1.5px solid var(--border2)",background:"var(--surface2)",
-                  color:"var(--text-primary)",fontSize:13,fontFamily:"'Outfit',sans-serif",outline:"none",marginBottom:6}}
+                  color:"var(--text-primary)",fontSize:13,fontFamily:"'Outfit',sans-serif",
+                  outline:"none",marginBottom:6}}
               />
-              <button onClick={() => { if (judgeBInput.trim()) setJudgeBUsername(judgeBInput.trim()); }}
-                disabled={!judgeBInput.trim()}
-                style={{width:"100%",padding:"10px 0",borderRadius:10,border:"none",
-                  background:judgeBInput.trim()?"#EA580C":"var(--border2)",
-                  color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",
-                  cursor:judgeBInput.trim()?"pointer":"default"}}>
-                Confirm Name
-              </button>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={() => { setDuoManual(false); setDuoManualInput(""); }}
+                  style={{flex:1,padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",
+                    background:"none",color:"var(--text-muted)",fontSize:12,fontWeight:700,
+                    fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>Cancel</button>
+                <button onClick={handleManualConfirm} disabled={!duoManualInput.trim()}
+                  style={{flex:2,padding:"10px 0",borderRadius:10,border:"none",
+                    background:duoManualInput.trim()?"#EA580C":"var(--border2)",
+                    color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",
+                    cursor:duoManualInput.trim()?"pointer":"default"}}>Confirm</button>
+              </div>
             </div>
           ) : (
-            <button onClick={() => setJudgeBManual(true)}
+            <button onClick={() => setDuoManual(true)}
               style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px dashed var(--border2)",
                 background:"none",color:"var(--text-muted)",fontSize:12,fontWeight:700,
                 fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:10}}>
               ✏️ Manual Name Entry
             </button>
           )}
-          <button onClick={handleCancel} style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+
+          <button onClick={handleCancel} style={{width:"100%",padding:"10px 0",borderRadius:10,
+            border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",
+            fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
             ← Back to event list
           </button>
         </div>
@@ -1174,7 +1217,7 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
         {deviceMode === "solo" ? (
           <LoginStep auth={authA} label="Judge Login" sub={`Log in with Challonge to access "${selectedName}".`} />
         ) : (
-          <LoginStep auth={authA} label="Judge A — Log In" sub={`Log in with Challonge. Challonge submissions will appear under this account.`} />
+          <LoginStep auth={authA} label="Challonge Login" sub="One judge logs in. You'll both pick your bracket names next." />
         )}
         <button onClick={handleCancel} style={{width:"100%",marginTop:4,padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
           ← Back to event list
