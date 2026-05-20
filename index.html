@@ -912,6 +912,7 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
   const [judgeAChallonge, setJudgeAChallonge] = useState(null); // Challonge username from OAuth (used for API calls)
   const [judgeAName, setJudgeAName]           = useState(null); // bracket display name chosen from roster
   const [judgeBName, setJudgeBName]           = useState(null); // bracket display name chosen from roster
+  const [soloName, setSoloName]               = useState(null); // bracket display name chosen in solo mode
   const [duoStep, setDuoStep]                 = useState(null); // null | "pickA" | "pickB"
   const [duoManual, setDuoManual]             = useState(false);// show manual name entry input
   const [duoManualInput, setDuoManualInput]   = useState("");   // manual entry value
@@ -922,6 +923,7 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
   const authA = useChallongeAuthPopup();
   const [verifying, setVerifying] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const [permissionStatus, setPermissionStatus] = useState(null); // null | "checking" | "permitted" | "denied"
 
   useEffect(() => {
     workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>setCachedList([]));
@@ -948,8 +950,31 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
   };
 
   const finalizeLogin = async (slug, name, usernameA, usernameB, preloadedRoster) => {
-    setVerifying(true); setAuthError(null);
+    setVerifying(true); setAuthError(null); setPermissionStatus("checking");
     try {
+      // Check if the logged-in Challonge account is permitted for this tournament
+      const challongeUser = sessionStorage.getItem("ncblast-auth-user");
+      const challongeToken = sessionStorage.getItem("ncblast-auth-token");
+      if (challongeUser && challongeToken) {
+        try {
+          const permRes = await fetch(`${OVERLAY_WORKER}/auth/confirm`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: challongeToken, username: challongeUser, slug }),
+          });
+          const permData = await permRes.json();
+          if (permData.permitted === false) {
+            setPermissionStatus("denied");
+            setAuthError(`@${challongeUser} is not on the access list for this tournament. Ask the organizer to add you.`);
+            setVerifying(false);
+            return;
+          }
+          setPermissionStatus("permitted");
+        } catch(_) {
+          // Network error on permission check — allow through but don't mark as permitted
+          setPermissionStatus(null);
+        }
+      }
       try { localStorage.setItem(KEYS.lastJudge, usernameA); } catch(_) {}
       if (onJudgeVerified) onJudgeVerified(
         usernameB ? { mode:"shared", judgeA:usernameA, judgeB:usernameB } : usernameA
@@ -970,11 +995,20 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
     setVerifying(false);
   };
 
-  // Solo: finalize when authA completes
+  // Solo: when authA completes, fetch roster and show name picker
   useEffect(() => {
-    if (deviceMode !== "solo" || authA.state !== "done" || !selectedSlug) return;
-    finalizeLogin(selectedSlug, selectedName, authA.username, null);
+    if (deviceMode !== "solo" || authA.state !== "done" || !selectedSlug || duoRoster || duoRosterLoading) return;
+    setDuoRosterLoading(true);
+    fetchParticipants(selectedSlug)
+      .then(r => { setDuoRoster(r); setDuoRosterLoading(false); })
+      .catch(() => { setDuoRoster(null); setDuoRosterLoading(false); });
   }, [authA.state, deviceMode, selectedSlug]);
+
+  // Solo: finalize when name is chosen
+  useEffect(() => {
+    if (deviceMode !== "solo" || !soloName || !selectedSlug) return;
+    finalizeLogin(selectedSlug, selectedName, soloName, null, duoRoster);
+  }, [soloName, deviceMode, selectedSlug]);
 
   // Shared: when authA completes, record Challonge username, fetch roster, start name-picker
   useEffect(() => {
@@ -995,7 +1029,7 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
 
   const resetDuoState = () => {
     setJudgeAChallonge(null); setJudgeAName(null); setJudgeBName(null);
-    setDuoStep(null); setDuoManual(false); setDuoManualInput(""); setDuoRoster(null);
+    setSoloName(null); setDuoStep(null); setDuoManual(false); setDuoManualInput(""); setDuoRoster(null);
   };
 
   const handleSelect = (t) => {
@@ -1095,9 +1129,30 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
     if (verifying || authError) {
       return (
         <div style={{padding:"14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)",marginTop:12}}>
-          {verifying && <p style={{fontSize:13,color:"var(--text-muted)"}}>⏳ Loading tournament…</p>}
+          {verifying && (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
+                <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>
+                  {permissionStatus === "checking" ? "Checking tournament access…" : "Loading tournament…"}
+                </p>
+              </div>
+              {permissionStatus === "permitted" && (
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:9,background:"#15803D18",border:"1.5px solid #15803D"}}>
+                  <span style={{fontSize:15}}>✅</span>
+                  <p style={{fontSize:12,fontWeight:700,color:"#15803D",margin:0}}>Access granted — loading…</p>
+                </div>
+              )}
+            </div>
+          )}
           {authError && (
             <>
+              {permissionStatus === "denied" && (
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:9,background:"#EF444418",border:"1.5px solid #EF4444",marginBottom:10}}>
+                  <span style={{fontSize:15}}>🚫</span>
+                  <p style={{fontSize:12,fontWeight:700,color:"#EF4444",margin:0}}>Not on access list</p>
+                </div>
+              )}
               <p style={{fontSize:13,color:"#EF4444",fontWeight:600,marginBottom:8}}>⚠ {authError}</p>
               <button onClick={handleCancel} style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>← Back</button>
             </>
@@ -1105,6 +1160,76 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
         </div>
       );
     }
+    // Solo mode — name picker (after authA completes, before finalizing)
+    if (deviceMode === "solo" && authA.state === "done" && !soloName) {
+      const roster = (duoRoster && duoRoster.names) || [];
+      const handleSoloPick = (name) => { setSoloName(name); };
+      const handleSoloManualConfirm = () => { const v = duoManualInput.trim(); if (!v) return; setSoloName(v); };
+      return (
+        <div style={{marginTop:12}}>
+          <div style={{padding:"10px 12px",borderRadius:10,background:"var(--surface2)",marginBottom:12,border:"1px solid var(--border)"}}>
+            <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0}}>{selectedName}</p>
+            <p style={{fontSize:10,color:"#94A3B8",margin:"3px 0 0"}}>Logged in as {authA.username}</p>
+          </div>
+          <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",marginBottom:8}}>Who are you in the bracket?</p>
+          {duoRosterLoading ? (
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",marginBottom:8}}>
+              <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
+              <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>Loading roster…</p>
+            </div>
+          ) : roster.length > 0 ? (
+            <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:260,overflowY:"auto",marginBottom:10}}>
+              {roster.map(name => (
+                <button key={name} onClick={() => handleSoloPick(name)}
+                  style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"2px solid var(--border)",
+                    background:"var(--surface2)",color:"var(--text-primary)",fontSize:13,fontWeight:700,
+                    fontFamily:"'Outfit',sans-serif",cursor:"pointer",textAlign:"left"}}>
+                  {name}
+                </button>
+              ))}
+            </div>
+          ) : !duoManual && (
+            <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 10px"}}>No roster loaded.</p>
+          )}
+          {duoManual ? (
+            <div style={{marginBottom:10}}>
+              <input autoFocus type="text" placeholder="Enter your name…" value={duoManualInput}
+                onChange={e => setDuoManualInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") handleSoloManualConfirm(); }}
+                style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,
+                  border:"1.5px solid var(--border2)",background:"var(--surface2)",
+                  color:"var(--text-primary)",fontSize:13,fontFamily:"'Outfit',sans-serif",
+                  outline:"none",marginBottom:6}}
+              />
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={() => { setDuoManual(false); setDuoManualInput(""); }}
+                  style={{flex:1,padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",
+                    background:"none",color:"var(--text-muted)",fontSize:12,fontWeight:700,
+                    fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>Cancel</button>
+                <button onClick={handleSoloManualConfirm} disabled={!duoManualInput.trim()}
+                  style={{flex:2,padding:"10px 0",borderRadius:10,border:"none",
+                    background:duoManualInput.trim()?"#EA580C":"var(--border2)",
+                    color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",
+                    cursor:duoManualInput.trim()?"pointer":"default"}}>Confirm</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setDuoManual(true)}
+              style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px dashed var(--border2)",
+                background:"none",color:"var(--text-muted)",fontSize:12,fontWeight:700,
+                fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:10}}>
+              ✏️ Manual Name Entry
+            </button>
+          )}
+          <button onClick={handleCancel} style={{width:"100%",padding:"10px 0",borderRadius:10,
+            border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",
+            fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+            ← Back to event list
+          </button>
+        </div>
+      );
+    }
+
     // Shared mode — two-step name picker (after Judge A logged in via Challonge)
     if (deviceMode === "shared" && judgeAChallonge && (duoStep === "pickA" || duoStep === "pickB")) {
       const roster = (duoRoster && duoRoster.names) || [];
@@ -3409,25 +3534,22 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     }
 
     const playersSelected = p1 && p2;
-    const step = !p1 ? 1 : !p2 ? 2 : (config.tm && !judge.trim()) ? 3 : "done";
-    const stepLabel = step===1?"Select P1":step===2?"Select P2":step===3?"Select Judge on Duty":"Ready";
-    const stepColor = step===1?"#2563EB":step===2?"#DC2626":step===3?"#B45309":"#15803D";
+    const step = !p1 ? 1 : !p2 ? 2 : "done";
+    const stepLabel = step===1?"Select P1":step===2?"Select P2":"Ready";
+    const stepColor = step===1?"#2563EB":step===2?"#DC2626":"#15803D";
 
     const handleNameClick = (name) => {
       const tname = tn(name);
       const isP1 = tname===p1 || name===p1;
       const isP2 = tname===p2 || name===p2;
-      const isJudge = config.tm && (name===judge || tname===judge);
-
       // Always deselect if already assigned — never affects other roles
       if(isP1){ setP1(null); return; }
       if(isP2){ setP2(null); return; }
-      if(isJudge){ setJudge(""); setManualJudge(false); return; }
 
-      // Unassigned name: fill first open slot in priority order p1 → p2 → judge
+
+      // Unassigned name: fill first open slot p1 → p2
       if(!p1){ setP1(tname); return; }
       if(!p2){ setP2(tname); return; }
-      if(config.tm && !judge.trim()){ setJudge(tname); return; }
       // All slots full — do nothing
     };
 
@@ -3508,69 +3630,22 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                 );
               })}
             </div>
-            {config.tm&&step===3&&(
-              <div style={{marginTop:10,borderTop:"1px solid var(--border)",paddingTop:10}}>
-                {!manualJudge?(
-                  <button onClick={()=>setManualJudge(true)} style={{...S.upBtn,marginBottom:0,justifyContent:"center"}}>
-                    Name not present — enter manually
-                  </button>
-                ):(
-                  <JudgeInput style={{...S.inp,width:"100%",borderColor:"#F59E0B60",color:"var(--text-primary)"}} value={judge} onCommit={v=>{setJudge(v);setManualJudge(false);}} onClear={()=>{setJudge("");setManualJudge(false);}}/>
-                )}
-              </div>
-            )}
+
           </div>
         )}
 
         {/* ── ACTIVE MATCHES TAB ── */}
         {pickTab==="active"&&(()=>{
-          // Judge conflict: judge is one of the selected players
-          const judgeIsPlayer = judge.trim() && (judge===p1||judge===p2||tn(judge)===p1||tn(judge)===p2);
-
-          // canProceed: match selected + judge chosen (if tm) + no conflict
-          const activeCanProceed = challongeMatchId&&p1&&p2&&(!config.tm||judge.trim())&&!judgeIsPlayer;
+          // canProceed: match selected only (judge is handled by sharedJudgePicker per match)
+          const activeCanProceed = challongeMatchId&&p1&&p2;
 
           return (
             <div>
-              {/* ── Judge picker — always shown first ── */}
-              <div style={{...S.card,marginBottom:8}}>
-                <p style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,marginBottom:8,textTransform:"uppercase"}}>
-                  {config.tm ? "1. Select Judge on Duty" : "Judge (optional)"}
-                </p>
-                {!manualJudge ? (
-                  <div>
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))",gap:6,marginBottom:8}}>
-                      {[...players].sort((a,b)=>a.localeCompare(b)).map(name=>{
-                        const isJudge = judge===name;
-                        return (
-                          <button key={name} type="button" onClick={()=>setJudge(isJudge?"":name)}
-                            style={{padding:"10px 6px",borderRadius:9,fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",border:`2px solid ${isJudge?"#B45309":"var(--border)"}`,background:isJudge?"#F59E0B":"var(--surface2)",color:isJudge?"#fff":"var(--text-primary)"}}>
-                            {tn(name)}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <button type="button" onClick={()=>setManualJudge(true)} style={{...S.upBtn,marginBottom:0,justifyContent:"center",fontSize:11}}>
-                      Name not present — enter manually
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{display:"flex",gap:8}}>
-                    <JudgeInput style={{...S.inp,flex:1,borderColor:"#F59E0B60",color:"var(--text-primary)"}} value={judge} onCommit={v=>{setJudge(v);}} onClear={()=>{setJudge("");setManualJudge(false);}}/>
-                    <button type="button" onClick={()=>{setManualJudge(false);setJudge("");}}
-                      style={{padding:"0 12px",borderRadius:9,border:"2px solid var(--border)",background:"var(--surface2)",color:"var(--text-muted)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",flexShrink:0}}>
-                      ✕
-                    </button>
-                  </div>
-                )}
-                {judge.trim()&&<p style={{fontSize:11,color:"#B45309",fontWeight:600,marginTop:8}}>⚖️ Judge: {judge}</p>}
-              </div>
-
               {/* ── Match list ── */}
               <div style={{...S.card,marginBottom:8}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                   <p style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,textTransform:"uppercase",margin:0}}>
-                    {config.tm ? "2. Select Match" : "Select Match"}
+                    Select Match
                   </p>
                   <button type="button" onClick={fetchActiveMatches}
                     style={{fontSize:12,fontWeight:700,color:"#1D4ED8",background:"#1D4ED820",border:"2px solid #1D4ED840",borderRadius:10,padding:"7px 14px",cursor:"pointer",fontFamily:"'Outfit',sans-serif",display:"flex",alignItems:"center",gap:5}}>
@@ -3593,19 +3668,14 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                   const name1 = match.player1_name || `ID:${match.player1_id}`;
                   const name2 = match.player2_name || `ID:${match.player2_id}`;
                   const isSelected = challongeMatchId===match.id;
-                  const judgeConflict = judge.trim()&&(
-                    judge===name1||judge===name2||tn(judge)===tn(name1)||tn(judge)===tn(name2)
-                  );
                   return (
                     <div key={mi} style={{marginBottom:mi<activeMatches.length-1?8:0}}>
                       <button type="button"
-                        disabled={judgeConflict}
-                        onClick={()=>!judgeConflict&&selectActivePairing(match)}
+                        onClick={()=>selectActivePairing(match)}
                         style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"12px 14px",borderRadius:10,
-                          border:`2px solid ${judgeConflict?"var(--border)":isSelected?"#1D4ED8":"var(--border)"}`,
-                          background:judgeConflict?"var(--surface3)":isSelected?"#1D4ED820":"var(--surface2)",
-                          opacity:judgeConflict?0.5:1,
-                          cursor:judgeConflict?"not-allowed":"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
+                          border:`2px solid ${isSelected?"#1D4ED8":"var(--border)"}`,
+                          background:isSelected?"#1D4ED820":"var(--surface2)",
+                          cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
                         <div>
                           <div style={{fontSize:13,fontWeight:800,color:judgeConflict?"var(--text-disabled)":"var(--text-primary)"}}>{tn(name1)} <span style={{fontWeight:400}}>vs</span> {tn(name2)}</div>
                           <div style={{fontSize:10,color:"var(--text-muted)",marginTop:2}}>Round {match.round} · Match #{match.suggested_play_order||mi+1}</div>
@@ -5900,6 +5970,8 @@ function OrgApp({onSwitchRole}) {
   const [hjLoading, setHjLoading] = useState(false);
   const [hjError, setHjError] = useState(null);
   const [newHJInput, setNewHJInput] = useState("");
+  const [judgePresence, setJudgePresence] = useState([]); // [{username, loggedInAt}]
+  const presencePollRef = useRef(null);
 
   const loadHeadJudges = async (s) => {
     setHjLoading(true); setHjError(null);
@@ -5909,6 +5981,13 @@ function OrgApp({onSwitchRole}) {
       setOrgOwnerUsername(res.orgUsername || null);
     } catch(e) { setHjError(e.message || "Failed to load head judges."); }
     finally { setHjLoading(false); }
+  };
+
+  const pollPresence = async (s) => {
+    try {
+      const res = await workerGet(`/judges/presence?slug=${encodeURIComponent(s)}`);
+      setJudgePresence(res.presence || []);
+    } catch(_) {}
   };
 
   const saveHeadJudges = async (newList) => {
@@ -5954,6 +6033,10 @@ function OrgApp({onSwitchRole}) {
     pollLive();
     liveSlotRef.current = setInterval(pollLive, 5000);
 
+    // Poll judge presence every 15s
+    pollPresence(slug);
+    presencePollRef.current = setInterval(() => pollPresence(slug), 15000);
+
     // Long-poll for pings
     const pollPings = async () => {
       try {
@@ -5976,6 +6059,7 @@ function OrgApp({onSwitchRole}) {
 
     return () => {
       clearInterval(liveSlotRef.current);
+      clearInterval(presencePollRef.current);
       clearTimeout(pingPollRef.current);
     };
   }, [slug]);
@@ -6128,17 +6212,29 @@ function OrgApp({onSwitchRole}) {
             {headJudges.length === 0 && !hjLoading && (
               <p style={{fontSize:11,color:"var(--text-faint)",marginBottom:8}}>No head judges set.</p>
             )}
-            {headJudges.map(u => (
-              <div key={u} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 10px",borderRadius:8,background:"var(--surface)",marginBottom:5,border:"1px solid var(--border)"}}>
-                <span style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>{u}</span>
-                {isOwner && (
-                  <button onClick={()=>saveHeadJudges(headJudges.filter(x=>x!==u))} disabled={hjLoading}
-                    style={{fontSize:11,fontWeight:700,color:"#EF4444",background:"none",border:"none",cursor:"pointer",padding:"2px 6px"}}>
-                    Remove
-                  </button>
-                )}
-              </div>
-            ))}
+            {headJudges.map(u => {
+              const ul = u.toLowerCase();
+              const isPresent = judgePresence.some(p => p.username === ul);
+              const isJudging = liveSlots.some(s => s.state && (s.state.judge||"").toLowerCase() === ul);
+              // Yellow = actively judging, Green = logged in but not judging, Red = not logged in
+              const statusColor = isJudging ? "#F59E0B" : isPresent ? "#22C55E" : "#EF4444";
+              const statusLabel = isJudging ? "Judging" : isPresent ? "Online" : "Offline";
+              return (
+                <div key={u} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 10px",borderRadius:8,background:"var(--surface)",marginBottom:5,border:`1.5px solid ${statusColor}40`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{width:8,height:8,borderRadius:"50%",background:statusColor,flexShrink:0}}/>
+                    <span style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>{u}</span>
+                    <span style={{fontSize:9,fontWeight:800,color:statusColor,textTransform:"uppercase",letterSpacing:0.5}}>{statusLabel}</span>
+                  </div>
+                  {isOwner && (
+                    <button onClick={()=>saveHeadJudges(headJudges.filter(x=>x!==u))} disabled={hjLoading}
+                      style={{fontSize:11,fontWeight:700,color:"#EF4444",background:"none",border:"none",cursor:"pointer",padding:"2px 6px"}}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+              );
+            })}
             {isOwner && (
               <div style={{marginTop:10}}>
                 {/* Roster picker */}
@@ -6257,7 +6353,12 @@ function OrgApp({onSwitchRole}) {
                   {live && !isShuffling && (
                     <p style={{fontSize:12,fontWeight:700,color:"#22C55E",margin:"3px 0 0"}}>
                       {(live.pts||[0,0])[0]} – {(live.pts||[0,0])[1]}
-                      {live.judge && <span style={{fontSize:10,fontWeight:500,color:"var(--text-muted)",marginLeft:8}}>Judge: {live.judge}</span>}
+                      {live.sets && (live.sets[0]>0||live.sets[1]>0) && (
+                        <span style={{fontSize:10,fontWeight:600,color:"var(--text-muted)",marginLeft:6}}>
+                          (Set {(live.sets[0]||0)+1+(live.sets[1]||0) > 1 ? `${live.sets[0]||0}–${live.sets[1]||0}` : "1"})
+                        </span>
+                      )}
+                      {live.judge && <span style={{fontSize:10,fontWeight:500,color:"var(--text-muted)",marginLeft:8}}>⚖️ {live.judge}</span>}
                     </p>
                   )}
                   {isShuffling && live && live.judge && (
