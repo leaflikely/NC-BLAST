@@ -3556,6 +3556,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         const d = await res.json();
         if (d.ok) {
           setUnderwayStatus("ok");
+          console.log("[BLAST] markMatchUnderway ok — usedToken:", d.usedToken, "usedFallback:", d.usedFallback);
         } else {
           setUnderwayStatus("error");
           console.warn("[BLAST] markMatchUnderway failed:", d.status, d.data);
