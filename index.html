@@ -2730,9 +2730,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       ? setScores.map(s=>`${s.p1}-${s.p2}`).join(",")
       : `${p1Score}-${p2Score}`;
     try {
+      const judgeToken = sessionStorage.getItem("ncblast-auth-token") || "";
+      const judgeUser  = sessionStorage.getItem("ncblast-auth-user") || "";
       const res = await fetch(`https://challonge-proxy.danny61734.workers.dev/submit`, {
         method: "POST",
-        headers: {"Content-Type":"application/json"},
+        headers: {"Content-Type":"application/json", "X-Auth-Token": judgeToken, "X-Auth-User": judgeUser},
         body: JSON.stringify({
           slug: challongeSlug,
           matchId,
@@ -3548,9 +3550,10 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       setUnderwayStatus("checking");
       try {
         const judgeToken = sessionStorage.getItem("ncblast-auth-token") || "";
+        const judgeUser  = sessionStorage.getItem("ncblast-auth-user") || "";
         const res = await fetch(`${OVERLAY_WORKER}/match/underway`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Auth-Token": judgeToken },
+          headers: { "Content-Type": "application/json", "X-Auth-Token": judgeToken, "X-Auth-User": judgeUser },
           body: JSON.stringify({ slug: challongeSlug, matchId }),
         });
         const d = await res.json();
