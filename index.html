@@ -952,28 +952,18 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
   const finalizeLogin = async (slug, name, usernameA, usernameB, preloadedRoster) => {
     setVerifying(true); setAuthError(null); setPermissionStatus("checking");
     try {
-      // Check if the logged-in Challonge account is permitted for this tournament
+      // Record presence so org view can show login status, and confirm token is valid
       const challongeUser = sessionStorage.getItem("ncblast-auth-user");
       const challongeToken = sessionStorage.getItem("ncblast-auth-token");
       if (challongeUser && challongeToken) {
         try {
-          const permRes = await fetch(`${OVERLAY_WORKER}/auth/confirm`, {
+          await fetch(`${OVERLAY_WORKER}/auth/confirm`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ token: challongeToken, username: challongeUser, slug }),
           });
-          const permData = await permRes.json();
-          if (permData.permitted === false) {
-            setPermissionStatus("denied");
-            setAuthError(`@${challongeUser} is not on the access list for this tournament. Ask the organizer to add you.`);
-            setVerifying(false);
-            return;
-          }
-          setPermissionStatus("permitted");
-        } catch(_) {
-          // Network error on permission check — allow through but don't mark as permitted
-          setPermissionStatus(null);
-        }
+          setPermissionStatus("ok");
+        } catch(_) { setPermissionStatus(null); }
       }
       try { localStorage.setItem(KEYS.lastJudge, usernameA); } catch(_) {}
       if (onJudgeVerified) onJudgeVerified(
@@ -1130,29 +1120,13 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
       return (
         <div style={{padding:"14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)",marginTop:12}}>
           {verifying && (
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
-                <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>
-                  {permissionStatus === "checking" ? "Checking tournament access…" : "Loading tournament…"}
-                </p>
-              </div>
-              {permissionStatus === "permitted" && (
-                <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:9,background:"#15803D18",border:"1.5px solid #15803D"}}>
-                  <span style={{fontSize:15}}>✅</span>
-                  <p style={{fontSize:12,fontWeight:700,color:"#15803D",margin:0}}>Access granted — loading…</p>
-                </div>
-              )}
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
+              <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>Loading tournament…</p>
             </div>
           )}
           {authError && (
             <>
-              {permissionStatus === "denied" && (
-                <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:9,background:"#EF444418",border:"1.5px solid #EF4444",marginBottom:10}}>
-                  <span style={{fontSize:15}}>🚫</span>
-                  <p style={{fontSize:12,fontWeight:700,color:"#EF4444",margin:0}}>Not on access list</p>
-                </div>
-              )}
               <p style={{fontSize:13,color:"#EF4444",fontWeight:600,marginBottom:8}}>⚠ {authError}</p>
               <button onClick={handleCancel} style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>← Back</button>
             </>
@@ -2758,9 +2732,10 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       ? setScores.map(s=>`${s.p1}-${s.p2}`).join(",")
       : `${p1Score}-${p2Score}`;
     try {
+      const judgeToken = sessionStorage.getItem("ncblast-auth-token") || "";
       const res = await fetch(`https://challonge-proxy.danny61734.workers.dev/submit`, {
         method: "POST",
-        headers: {"Content-Type":"application/json"},
+        headers: {"Content-Type":"application/json", "X-Auth-Token": judgeToken},
         body: JSON.stringify({
           slug: challongeSlug,
           matchId,
