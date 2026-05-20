@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-14 | session: OAuth restored to working state — auto-confirm from saved username, role restored after redirect -->
+<!-- NC BLAST index.html | last updated: 2026-05-20 | session: Challonge submit switched to v2.1 Bearer auth for judge attribution -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2740,6 +2740,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           matchId,
           scores_csv: scoresCsv,
           winner_id: winnerChallongeId,
+          p1_id: challongeP1ParticipantId,
+          p2_id: challongeP2ParticipantId,
         }),
         signal: AbortSignal.timeout(10000),
       });
