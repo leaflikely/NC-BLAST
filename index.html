@@ -3547,9 +3547,10 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       if (!challongeSlug || !matchId) return;
       setUnderwayStatus("checking");
       try {
+        const judgeToken = sessionStorage.getItem("ncblast-auth-token") || "";
         const res = await fetch(`${OVERLAY_WORKER}/match/underway`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Auth-Token": judgeToken },
           body: JSON.stringify({ slug: challongeSlug, matchId }),
         });
         const d = await res.json();
