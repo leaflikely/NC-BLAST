@@ -3652,14 +3652,13 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                           background:isSelected?"#1D4ED820":"var(--surface2)",
                           cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
                         <div>
-                          <div style={{fontSize:13,fontWeight:800,color:judgeConflict?"var(--text-disabled)":"var(--text-primary)"}}>{tn(name1)} <span style={{fontWeight:400}}>vs</span> {tn(name2)}</div>
+                          <div style={{fontSize:13,fontWeight:800,color:"var(--text-primary)"}}>{tn(name1)} <span style={{fontWeight:400}}>vs</span> {tn(name2)}</div>
                           <div style={{fontSize:10,color:"var(--text-muted)",marginTop:2}}>Round {match.round} · Match #{match.suggested_play_order||mi+1}</div>
-                          {judgeConflict&&<div style={{fontSize:10,color:"#DC2626",fontWeight:700,marginTop:3}}>⚠️ Judge is a player in this match</div>}
                         </div>
-                        {!judgeConflict&&(isSelected
+                        {isSelected
                           ? <span style={{fontSize:11,fontWeight:800,color:"#1D4ED8",flexShrink:0,marginLeft:8}}>✓ Selected</span>
                           : <span style={{fontSize:11,fontWeight:700,color:"var(--text-muted)",flexShrink:0,marginLeft:8}}>Select →</span>
-                        )}
+                        }
                       </button>
                     </div>
                   );
@@ -3669,11 +3668,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
               {/* ── Build Decks — shown as soon as a match is selected ── */}
               {challongeMatchId&&(
                 <div>
-                  {judgeIsPlayer&&(
-                    <div style={{padding:"10px 14px",borderRadius:10,background:"#DC262615",border:"1px solid #DC262640",marginBottom:8,fontSize:12,fontWeight:600,color:"#DC2626",textAlign:"center"}}>
-                      ⚠️ The selected judge is playing in this match. Please select a different judge.
-                    </div>
-                  )}
                   <button style={{...S.pri,margin:0,opacity:activeCanProceed?1:0.4}} disabled={!activeCanProceed}
                     onClick={()=>{refreshCombos();setMatchStartIdx(log.length);setFuture([]);setDeckReview(false);setPhase("deck");}}>
                     Build Decks →
