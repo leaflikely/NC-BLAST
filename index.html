@@ -3592,7 +3592,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           body: JSON.stringify({ slug: challongeSlug, matchId }),
         });
         const d = await res.json();
-        console.log("[BLAST] markMatchUnderway", { status: res.status, ok: d.ok, denied: d.denied });
+        console.log("[BLAST] markMatchUnderway", { status: res.status, ok: d.ok, denied: d.denied, challongeStatus: d.status, preview: d.data || d.preview });
+        if (d.denied) console.warn("[BLAST] markMatchUnderway: account does not have Challonge admin access for this tournament");
+        if (d.ok) console.log("[BLAST] markMatchUnderway: success — judge name should appear in Challonge activity log");
       } catch(e) { console.warn("[BLAST] markMatchUnderway failed", e.message); }
     };
 
