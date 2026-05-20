@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-20 | session: Challonge submit+underway switched to v2.1 Bearer auth; verbose underway debug log -->
+<!-- NC BLAST index.html | last updated: 2026-05-20 | session: Challonge submit+underway use v1 OAuth token header for judge attribution -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2740,8 +2740,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           matchId,
           scores_csv: scoresCsv,
           winner_id: winnerChallongeId,
-          p1_id: challongeP1ParticipantId,
-          p2_id: challongeP2ParticipantId,
         }),
         signal: AbortSignal.timeout(10000),
       });
@@ -3561,7 +3559,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         const d = await res.json();
         if (d.ok) {
           setUnderwayStatus("ok");
-          console.log("[BLAST] markMatchUnderway ok —", JSON.stringify(d));
+          console.log("[BLAST] markMatchUnderway ok — usedToken:", d.usedToken, "usedFallback:", d.usedFallback, d.tokenStatus ? `(tokenStatus: ${d.tokenStatus})` : "");
         } else {
           setUnderwayStatus("error");
           console.warn("[BLAST] markMatchUnderway failed:", d.status, d.data);
