@@ -2458,6 +2458,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const [challongeP1ParticipantId,setChallongeP1ParticipantId] = useState(null);
   const [challongeP2ParticipantId,setChallongeP2ParticipantId] = useState(null);
   const [challongeSubmitStatus,setChallongeSubmitStatus] = useState(null);
+  const [underwayStatus,setUnderwayStatus] = useState(null); // null | "checking" | "ok" | "denied" | "error"
   const [pendingFinish,setPendingFinish] = useState(null); // {pi, fin} — selected but not yet confirmed
   const [overlaySlot,setOverlaySlot] = useState(()=>{ try{return parseInt(localStorage.getItem(KEYS.overlaySlot)||"0",10)||0;}catch{return 0;} }); // 0 = disabled, 1-4 = slot number
   const [workerCombos,setWorkerCombos] = useState({}); // { playerName: [combo,...] } loaded from Worker KV
@@ -2790,7 +2791,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     }
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
+  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setUnderwayStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
 
   // Navigation helpers
   // Unified back navigation — context-aware, no stale closure issues
@@ -3585,6 +3586,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     const markMatchUnderway = async (matchId) => {
       const token = sessionStorage.getItem("ncblast-auth-token");
       if (!token || !challongeSlug || !matchId) return;
+      setUnderwayStatus("checking");
       try {
         const res = await fetch(`${OVERLAY_WORKER}/match/underway`, {
           method: "POST",
@@ -3592,10 +3594,21 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           body: JSON.stringify({ slug: challongeSlug, matchId }),
         });
         const d = await res.json();
-        console.log("[BLAST] markMatchUnderway", { status: res.status, ok: d.ok, denied: d.denied, challongeStatus: d.status, preview: d.data || d.preview });
-        if (d.denied) console.warn("[BLAST] markMatchUnderway: account does not have Challonge admin access for this tournament");
-        if (d.ok) console.log("[BLAST] markMatchUnderway: success — judge name should appear in Challonge activity log");
-      } catch(e) { console.warn("[BLAST] markMatchUnderway failed", e.message); }
+        console.log("[BLAST] markMatchUnderway full response:", JSON.stringify(d, null, 2));
+        if (d.ok) {
+          setUnderwayStatus("ok");
+          console.log("[BLAST] markMatchUnderway: success via", d.method, "— judge name should appear in Challonge activity log");
+        } else if (d.denied) {
+          setUnderwayStatus("denied");
+          console.warn("[BLAST] markMatchUnderway: account does not have Challonge admin access");
+        } else {
+          setUnderwayStatus("error");
+          console.warn("[BLAST] markMatchUnderway: unexpected response", d);
+        }
+      } catch(e) {
+        setUnderwayStatus("error");
+        console.warn("[BLAST] markMatchUnderway failed", e.message);
+      }
     };
 
     // Select a pairing from an active Challonge match
@@ -3612,7 +3625,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       // NOT the real participant.id — Challonge validates winner_id against the match's player IDs directly.
       setChallongeP1ParticipantId(match.player1_id || null);
       setChallongeP2ParticipantId(match.player2_id || null);
-      // Mark match as in progress on Challonge (fire-and-forget, logs judge's name in activity log)
+      // Mark match as in progress on Challonge — verifies admin access and logs judge's name
+      setUnderwayStatus(null);
       markMatchUnderway(match.id);
       // Shared tablet: ask which judge is handling this match
       if (sharedJudges && config.tm) { setJudge(""); setSharedJudgePicker(true); }
@@ -3723,10 +3737,38 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                 })}
               </div>
 
-              {/* ── Build Decks — shown as soon as a match is selected ── */}
+              {/* ── Build Decks — shown after match selected, gated on underway check ── */}
               {challongeMatchId&&(
-                <div>
-                  <button style={{...S.pri,margin:0,opacity:activeCanProceed?1:0.4}} disabled={!activeCanProceed}
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
+                  {/* Underway / permission status indicator */}
+                  {underwayStatus==="checking"&&(
+                    <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",borderRadius:9,background:"var(--surface2)",border:"1.5px solid var(--border)"}}>
+                      <div style={{width:12,height:12,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
+                      <p style={{fontSize:12,color:"var(--text-muted)",margin:0,fontWeight:600}}>Verifying Challonge access…</p>
+                    </div>
+                  )}
+                  {underwayStatus==="ok"&&(
+                    <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",borderRadius:9,background:"#15803D18",border:"1.5px solid #15803D"}}>
+                      <span style={{fontSize:13}}>✅</span>
+                      <p style={{fontSize:12,color:"#15803D",margin:0,fontWeight:700}}>Challonge access confirmed — match marked in progress</p>
+                    </div>
+                  )}
+                  {underwayStatus==="denied"&&(
+                    <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",borderRadius:9,background:"#EF444418",border:"1.5px solid #EF4444"}}>
+                      <span style={{fontSize:13}}>🚫</span>
+                      <p style={{fontSize:12,color:"#EF4444",margin:0,fontWeight:700}}>No Challonge admin access — score submission will fail</p>
+                    </div>
+                  )}
+                  {underwayStatus==="error"&&(
+                    <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",borderRadius:9,background:"#F59E0B18",border:"1.5px solid #F59E0B"}}>
+                      <span style={{fontSize:13}}>⚠️</span>
+                      <p style={{fontSize:12,color:"#F59E0B",margin:0,fontWeight:700}}>Could not verify access — check console for details</p>
+                    </div>
+                  )}
+                  {/* Build Decks — blocked while checking, blocked on denied, allowed otherwise */}
+                  <button style={{...S.pri,margin:0,
+                    opacity:(activeCanProceed&&underwayStatus!=="checking"&&underwayStatus!=="denied")?1:0.4}}
+                    disabled={!activeCanProceed||underwayStatus==="checking"||underwayStatus==="denied"}
                     onClick={()=>{refreshCombos();setMatchStartIdx(log.length);setFuture([]);setDeckReview(false);setPhase("deck");}}>
                     Build Decks →
                   </button>
