@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-20 | session: Challonge submit+underway use v1 OAuth token header for judge attribution -->
+<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge accountability log — scorelog KV push on Challonge submit, org view Match Log section, Sheets judgeLog tab -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2748,6 +2748,23 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       if(!res.ok || data.errors) throw new Error(data.errors?.[0] || JSON.stringify(data.errors) || `HTTP ${res.status}`);
       setChallongeSubmitStatus("ok");
       fetchActiveMatches();
+      // Push to judge accountability log in Worker KV (fire-and-forget, never blocks submit)
+      const winnerIsP1 = String(winnerChallongeId) === String(challongeP1ParticipantId);
+      fetch(`${OVERLAY_WORKER}/scorelog/push`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: challongeSlug,
+          judge: judge || "",
+          p1: p1 || "",
+          p2: p2 || "",
+          p1Sets: p1Score,
+          p2Sets: p2Score,
+          winner: winnerIsP1 ? (p1 || "") : (p2 || ""),
+          challongeMatchId: matchId,
+          scoredAt: Date.now(),
+        }),
+      }).catch(() => {}); // ignore errors — log is best-effort
     } catch(err) {
       setChallongeSubmitStatus(err.message || "error");
     }
@@ -3559,7 +3576,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         const d = await res.json();
         if (d.ok) {
           setUnderwayStatus("ok");
-          console.log("[BLAST] markMatchUnderway ok — usedToken:", d.usedToken, "usedFallback:", d.usedFallback, d.tokenStatus ? `(tokenStatus: ${d.tokenStatus})` : "");
+          console.log("[BLAST] markMatchUnderway ok —", JSON.stringify(d));
         } else {
           setUnderwayStatus("error");
           console.warn("[BLAST] markMatchUnderway failed:", d.status, d.data);
@@ -4064,7 +4081,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                     setJudgeSubmitModal(false);
                     setConfirmState({...cs,judgeok:true});
                     if(submitSheetsCheck){
-                      onSendSheets(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf});
+                      onSendSheets(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf,judge,challongeMatchId,challongeSlug});
                     } else {
                       onDownloadCSV(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf});
                     }
@@ -5982,9 +5999,8 @@ function OrgApp({onSwitchRole}) {
   const [pairings, setPairings] = useState(null);    // all matches for current round
   const [loadingPairings, setLoadingPairings] = useState(false);
   const [pairingsError, setPairingsError] = useState(null);
-  const pingPollRef = useRef(null);
-  const liveSlotRef = useRef(null);
-  const afterRef = useRef(0); // timestamp: only poll for pings newer than this
+  const [scoreLog, setScoreLog] = useState([]);       // judge accountability log entries
+  const [scoreLogLoading, setScoreLogLoading] = useState(false);
 
   // ── Head judge management state ───────────────────────────────────
   const [headJudges, setHeadJudges] = useState([]);
@@ -6042,6 +6058,17 @@ function OrgApp({onSwitchRole}) {
       finally { setLoadingPairings(false); }
     };
     loadPairings();
+
+    // Load judge accountability log
+    const loadScoreLog = async () => {
+      setScoreLogLoading(true);
+      try {
+        const data = await workerGet(`/scorelog/list?slug=${encodeURIComponent(slug)}`);
+        setScoreLog((data.entries || []).slice().reverse()); // newest first
+      } catch(_) { setScoreLog([]); }
+      finally { setScoreLogLoading(false); }
+    };
+    loadScoreLog();
     loadHeadJudges(slug);
 
     // Poll live match slots every 5s
@@ -6403,6 +6430,57 @@ function OrgApp({onSwitchRole}) {
           </div>
         )}
       </React.Fragment>
+
+      {/* ── Judge Accountability Log ───────────────────────────── */}
+      <div style={{marginTop:8}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div>
+            <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:1,margin:0}}>Judge Log</p>
+            <h2 style={{fontSize:18,fontWeight:900,color:"var(--text-primary)",margin:0}}>Scored Matches</h2>
+          </div>
+          <button onClick={async()=>{
+            setScoreLogLoading(true);
+            try { const d = await workerGet(`/scorelog/list?slug=${encodeURIComponent(slug)}`); setScoreLog((d.entries||[]).slice().reverse()); } catch(_){}
+            finally { setScoreLogLoading(false); }
+          }} disabled={scoreLogLoading} style={{background:"none",border:"2px solid var(--border)",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,color:"var(--text-muted)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+            {scoreLogLoading?"…":"↻"}
+          </button>
+        </div>
+
+        {scoreLogLoading && scoreLog.length === 0 && (
+          <p style={{fontSize:12,color:"var(--text-muted)"}}>Loading…</p>
+        )}
+        {!scoreLogLoading && scoreLog.length === 0 && (
+          <div style={{textAlign:"center",padding:"24px 0",color:"var(--text-muted)"}}>
+            <p style={{fontSize:28,marginBottom:8}}>📋</p>
+            <p style={{fontSize:13,fontWeight:700}}>No matches logged yet.</p>
+            <p style={{fontSize:11,color:"var(--text-faint)"}}>Entries appear here after judges submit scores to Challonge.</p>
+          </div>
+        )}
+        {scoreLog.map(e => {
+          const t = new Date(e.scoredAt);
+          const timeStr = t.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+          return (
+            <div key={e.id} style={{borderRadius:11,marginBottom:7,border:"1px solid var(--border)",background:"var(--surface)",padding:"10px 12px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {e.p1} <span style={{color:"var(--text-faint)",fontWeight:400}}>vs</span> {e.p2}
+                  </p>
+                  <p style={{fontSize:11,fontWeight:700,color:"var(--text-secondary)",margin:"0 0 3px"}}>
+                    {e.p1Sets}–{e.p2Sets} · Winner: <span style={{color:"#22C55E"}}>{e.winner}</span>
+                  </p>
+                  <p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>
+                    ⚖️ {e.judge||"Unknown judge"}{e.challongeMatchId ? ` · Match #${e.challongeMatchId}` : ""}
+                  </p>
+                </div>
+                <p style={{fontSize:10,color:"var(--text-faint)",margin:0,flexShrink:0,paddingTop:2}}>{timeStr}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       </div>
 
       {/* ── Ping notification modal (must be manually dismissed) ── */}
@@ -7551,10 +7629,34 @@ function BeyJudgeApp() {
       ];
     });
 
+    // Sheet 3: one row per match for judge accountability
+    // Format the submission timestamp as PST
+    const now = new Date();
+    const nowPST = new Date(now.toLocaleString("en-US",{timeZone:"America/Los_Angeles"}));
+    const ph = nowPST.getHours(), pm = nowPST.getMinutes();
+    const pampm = ph>=12?"pm":"am", ph12 = ph%12||12;
+    const pmm = String(pm).padStart(2,"0");
+    const pmo = String(nowPST.getMonth()+1).padStart(2,"0");
+    const pdy = String(nowPST.getDate()).padStart(2,"0");
+    const pyr = nowPST.getFullYear();
+    const submitTime = `${pmo}/${pdy}/${pyr} ${ph12}:${pmm}${pampm}`;
+    const judgeLog = [[
+      submitTime,
+      meta.judge || "",
+      meta.config?.tournamentName || "",
+      meta.p1 || "",
+      meta.p2 || "",
+      (meta.sets||[0,0])[0],
+      (meta.sets||[0,0])[1],
+      meta.winner || "",
+      meta.challongeMatchId || "",
+      meta.challongeSlug || "",
+    ]];
+
     try {
       const resp = await fetch(SHEETS_URL, {
         method:"POST",
-        body: JSON.stringify({rows, battleRows}),
+        body: JSON.stringify({rows, battleRows, judgeLog}),
       });
       const result = await resp.json();
       setSheetsStatus(result.status==="ok"?"success":"error");
