@@ -923,7 +923,7 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
   const authA = useChallongeAuthPopup();
   const [verifying, setVerifying] = useState(false);
   const [authError, setAuthError] = useState(null);
-  const [permissionStatus, setPermissionStatus] = useState(null); // null | "checking" | "permitted" | "denied"
+
 
   useEffect(() => {
     workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>setCachedList([]));
@@ -950,35 +950,17 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
   };
 
   const finalizeLogin = async (slug, name, usernameA, usernameB, preloadedRoster) => {
-    setVerifying(true); setAuthError(null); setPermissionStatus("checking");
+    setVerifying(true); setAuthError(null);
     try {
-      // Probe Challonge access and record presence for org view status
+      // Ping presence so org view can show login status — no access gating here
       const challongeUser = sessionStorage.getItem("ncblast-auth-user");
       const challongeToken = sessionStorage.getItem("ncblast-auth-token");
       if (challongeUser && challongeToken) {
-        try {
-          // Fire probe and presence ping in parallel
-          const [probeRes] = await Promise.all([
-            fetch(`${OVERLAY_WORKER}/auth/probe`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "X-Auth-Token": challongeToken },
-              body: JSON.stringify({ slug }),
-            }),
-            fetch(`${OVERLAY_WORKER}/auth/confirm`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ token: challongeToken, username: challongeUser, slug }),
-            }).catch(()=>{}),
-          ]);
-          const probeData = await probeRes.json();
-          if (probeData.denied) {
-            setPermissionStatus("denied");
-            setAuthError(`@${challongeUser} does not have edit access to this tournament on Challonge. Ask the organizer to grant you admin access under the tournament's Permissions tab.`);
-            setVerifying(false);
-            return;
-          }
-          setPermissionStatus(probeData.permitted ? "permitted" : "unknown");
-        } catch(_) { setPermissionStatus("unknown"); }
+        fetch(`${OVERLAY_WORKER}/auth/confirm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: challongeToken, username: challongeUser, slug }),
+        }).catch(()=>{});
       }
       try { localStorage.setItem(KEYS.lastJudge, usernameA); } catch(_) {}
       if (onJudgeVerified) onJudgeVerified(
@@ -1135,35 +1117,13 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
       return (
         <div style={{padding:"14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)",marginTop:12}}>
           {verifying && (
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
-                <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>
-                  {permissionStatus==="checking"||permissionStatus===null ? "Verifying Challonge access…" : "Loading tournament…"}
-                </p>
-              </div>
-              {permissionStatus==="permitted" && (
-                <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:9,background:"#15803D18",border:"1.5px solid #15803D"}}>
-                  <span style={{fontSize:14}}>✅</span>
-                  <p style={{fontSize:12,fontWeight:700,color:"#15803D",margin:0}}>Challonge access confirmed</p>
-                </div>
-              )}
-              {permissionStatus==="unknown" && (
-                <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:9,background:"#F59E0B18",border:"1.5px solid #F59E0B"}}>
-                  <span style={{fontSize:14}}>⚠️</span>
-                  <p style={{fontSize:12,fontWeight:700,color:"#F59E0B",margin:0}}>Access check inconclusive — proceeding</p>
-                </div>
-              )}
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
+              <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>Loading tournament…</p>
             </div>
           )}
           {authError && (
             <>
-              {permissionStatus==="denied" && (
-                <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",borderRadius:9,background:"#EF444418",border:"1.5px solid #EF4444",marginBottom:10}}>
-                  <span style={{fontSize:16}}>🚫</span>
-                  <p style={{fontSize:12,fontWeight:700,color:"#EF4444",margin:0}}>No Challonge admin access</p>
-                </div>
-              )}
               <p style={{fontSize:13,color:"#EF4444",fontWeight:600,marginBottom:8}}>⚠ {authError}</p>
               <button onClick={handleCancel} style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>← Back</button>
             </>
