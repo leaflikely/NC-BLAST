@@ -1135,11 +1135,25 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
       return (
         <div style={{padding:"14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)",marginTop:12}}>
           {verifying && (
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
-              <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>
-                {permissionStatus==="checking"||!permissionStatus ? "Verifying tournament access…" : "Loading tournament…"}
-              </p>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
+                <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>
+                  {permissionStatus==="checking"||permissionStatus===null ? "Verifying Challonge access…" : "Loading tournament…"}
+                </p>
+              </div>
+              {permissionStatus==="permitted" && (
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:9,background:"#15803D18",border:"1.5px solid #15803D"}}>
+                  <span style={{fontSize:14}}>✅</span>
+                  <p style={{fontSize:12,fontWeight:700,color:"#15803D",margin:0}}>Challonge access confirmed</p>
+                </div>
+              )}
+              {permissionStatus==="unknown" && (
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:9,background:"#F59E0B18",border:"1.5px solid #F59E0B"}}>
+                  <span style={{fontSize:14}}>⚠️</span>
+                  <p style={{fontSize:12,fontWeight:700,color:"#F59E0B",margin:0}}>Access check inconclusive — proceeding</p>
+                </div>
+              )}
             </div>
           )}
           {authError && (
@@ -2755,10 +2769,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       ? setScores.map(s=>`${s.p1}-${s.p2}`).join(",")
       : `${p1Score}-${p2Score}`;
     try {
-      const judgeToken = sessionStorage.getItem("ncblast-auth-token") || "";
       const res = await fetch(`https://challonge-proxy.danny61734.workers.dev/submit`, {
         method: "POST",
-        headers: {"Content-Type":"application/json", "X-Auth-Token": judgeToken},
+        headers: {"Content-Type":"application/json"},
         body: JSON.stringify({
           slug: challongeSlug,
           matchId,
@@ -2768,7 +2781,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         signal: AbortSignal.timeout(10000),
       });
       const data = await res.json();
-      if(!res.ok || data.errors) throw new Error(data.errors?.[0] || `HTTP ${res.status}`);
+      console.log("[BLAST] submitChallongeScore response", { status: res.status, data });
+      if(!res.ok || data.errors) throw new Error(data.errors?.[0] || JSON.stringify(data.errors) || `HTTP ${res.status}`);
       setChallongeSubmitStatus("ok");
       fetchActiveMatches();
     } catch(err) {
@@ -3565,6 +3579,23 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     const canProceed = p1 && p2 && (!config.tm || judge.trim());
     const hasChallonge = !!challongeSlug;
 
+    // Mark a match as in progress on Challonge using the judge's OAuth token.
+    // This attributes the action to the judge's account in the Challonge activity log,
+    // and verifies they have admin permissions (non-admins will get a silent failure).
+    const markMatchUnderway = async (matchId) => {
+      const token = sessionStorage.getItem("ncblast-auth-token");
+      if (!token || !challongeSlug || !matchId) return;
+      try {
+        const res = await fetch(`${OVERLAY_WORKER}/match/underway`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Auth-Token": token },
+          body: JSON.stringify({ slug: challongeSlug, matchId }),
+        });
+        const d = await res.json();
+        console.log("[BLAST] markMatchUnderway", { status: res.status, ok: d.ok, denied: d.denied });
+      } catch(e) { console.warn("[BLAST] markMatchUnderway failed", e.message); }
+    };
+
     // Select a pairing from an active Challonge match
     const selectActivePairing = (match) => {
       const idMap = challongeParticipants || {};
@@ -3579,6 +3610,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       // NOT the real participant.id — Challonge validates winner_id against the match's player IDs directly.
       setChallongeP1ParticipantId(match.player1_id || null);
       setChallongeP2ParticipantId(match.player2_id || null);
+      // Mark match as in progress on Challonge (fire-and-forget, logs judge's name in activity log)
+      markMatchUnderway(match.id);
       // Shared tablet: ask which judge is handling this match
       if (sharedJudges && config.tm) { setJudge(""); setSharedJudgePicker(true); }
     };
