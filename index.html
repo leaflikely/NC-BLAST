@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge accountability log — scorelog KV push on Challonge submit, org view Match Log section, Sheets judgeLog tab -->
+<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge accountability log — scorelog KV push on Challonge submit, org view Match Log section, Sheets judgeLog tab; org view liveSlotRef+pingPollRef declared -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6010,6 +6010,8 @@ function OrgApp({onSwitchRole}) {
   const [newHJInput, setNewHJInput] = useState("");
   const [judgePresence, setJudgePresence] = useState([]); // [{username, loggedInAt}]
   const presencePollRef = useRef(null);
+  const liveSlotRef = useRef(null);
+  const pingPollRef = useRef(null);
 
   const loadHeadJudges = async (s) => {
     setHjLoading(true); setHjError(null);
