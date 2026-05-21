@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge accountability log — scorelog KV push on Challonge submit, org view Match Log section, Sheets judgeLog tab; org view liveSlotRef+pingPollRef declared -->
+<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge whitelist — org view UI + per-slug KV gating + login check; pushOverlay throttled; org view refs fixed -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -952,7 +952,7 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
   const finalizeLogin = async (slug, name, usernameA, usernameB, preloadedRoster) => {
     setVerifying(true); setAuthError(null);
     try {
-      // Ping presence so org view can show login status — no access gating here
+      // Ping presence so org view can show login status, and store token in KV
       const challongeUser = sessionStorage.getItem("ncblast-auth-user");
       const challongeToken = sessionStorage.getItem("ncblast-auth-token");
       if (challongeUser && challongeToken) {
@@ -962,6 +962,33 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
           body: JSON.stringify({ token: challongeToken, username: challongeUser, slug }),
         }).catch(()=>{});
       }
+
+      // Whitelist check — only run if the judge is logged in via OAuth.
+      // If no Challonge login, skip the check (non-OAuth judges aren't verified).
+      if (challongeUser && challongeToken) {
+        try {
+          const wlRes = await fetch(
+            `${OVERLAY_WORKER}/judge-whitelist/check?slug=${encodeURIComponent(slug)}&username=${encodeURIComponent(challongeUser)}`,
+            { headers: { "X-Auth-Token": challongeToken }, signal: AbortSignal.timeout(6000) }
+          );
+          const wlData = await wlRes.json();
+          if (wlData.ok && !wlData.allowed) {
+            const reason = wlData.reason === "token_mismatch"
+              ? "Token mismatch — log out and log back in."
+              : `Your Challonge account (${challongeUser}) is not on the judge list for this tournament.`;
+            throw new Error(reason);
+          }
+          // If whitelist is empty (no usernames set), we allow through — org hasn't configured it yet.
+        } catch(e) {
+          if (e.name === "AbortError") {
+            // Whitelist check timed out — allow through to avoid blocking judges on network issues
+            console.warn("[BLAST] Whitelist check timed out — allowing through");
+          } else {
+            throw e; // Blocked — surface the error
+          }
+        }
+      }
+
       try { localStorage.setItem(KEYS.lastJudge, usernameA); } catch(_) {}
       if (onJudgeVerified) onJudgeVerified(
         usernameB ? { mode:"shared", judgeA:usernameA, judgeB:usernameB } : usernameA
@@ -2449,6 +2476,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   // Drag state for height sliders
   const dragRef = useRef(null); // {section, startY, startH, startH2} — startH2 = neighbour below
   const rafRef = useRef(null); // requestAnimationFrame handle for drag throttling
+  const pushOverlayDebounceRef = useRef(0); // timestamp of last pushOverlay call — throttles to 1/500ms
   const scoreBlockSectionRef = useRef(null);   // for reliable height read on drag start
   const comboDisplaySectionRef = useRef(null);
   const comboPickerSectionRef = useRef(null);
@@ -2663,6 +2691,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   };
 
   const pushOverlay = (extraState={}) => {
+    // Throttle: never fire more than once per 500ms. Prevents runaway loops
+    // if something triggers pushOverlay in a tight re-render cycle.
+    const now = Date.now();
+    if(now - pushOverlayDebounceRef.current < 500) return;
+    pushOverlayDebounceRef.current = now;
     const activeComboOf = (deck, idx) => {
       const c = idx !== null ? deck[idx] : null;
       return c?.blade ? {blade:c.blade,ratchet:c.ratchet,bit:c.bit} : null;
@@ -6009,6 +6042,12 @@ function OrgApp({onSwitchRole}) {
   const [hjError, setHjError] = useState(null);
   const [newHJInput, setNewHJInput] = useState("");
   const [judgePresence, setJudgePresence] = useState([]); // [{username, loggedInAt}]
+
+  // ── Judge whitelist state ─────────────────────────────────────────
+  const [judgeWhitelist, setJudgeWhitelist] = useState([]);   // usernames allowed to score
+  const [jwLoading, setJwLoading] = useState(false);
+  const [jwError, setJwError] = useState(null);
+  const [jwInput, setJwInput] = useState("");                  // textarea paste input
   const presencePollRef = useRef(null);
   const liveSlotRef = useRef(null);
   const pingPollRef = useRef(null);
@@ -6047,6 +6086,37 @@ function OrgApp({onSwitchRole}) {
     finally { setHjLoading(false); }
   };
 
+  const loadJudgeWhitelist = async (s) => {
+    setJwLoading(true); setJwError(null);
+    try {
+      const res = await workerGet(`/judge-whitelist/get?slug=${encodeURIComponent(s)}`);
+      setJudgeWhitelist(res.usernames || []);
+      setJwInput((res.usernames || []).join("\n"));
+    } catch(e) { setJwError(e.message || "Failed to load judge whitelist."); }
+    finally { setJwLoading(false); }
+  };
+
+  const saveJudgeWhitelist = async () => {
+    const masterKey = sessionStorage.getItem("ncblast-master-key") || prompt("Enter master key:");
+    if (!masterKey) return;
+    const usernames = jwInput.split(/[\n,]+/).map(u => u.trim().toLowerCase()).filter(Boolean);
+    setJwLoading(true); setJwError(null);
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/judge-whitelist/set`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Master-Key": masterKey },
+        body: JSON.stringify({ slug, usernames }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Save failed");
+      setJudgeWhitelist(data.usernames);
+      setJwInput(data.usernames.join("\n"));
+      try { sessionStorage.setItem("ncblast-master-key", masterKey); } catch(_) {}
+    } catch(e) { setJwError(e.message); }
+    finally { setJwLoading(false); }
+  };
+
   useEffect(() => {
     if (!slug) return;
 
@@ -6072,6 +6142,7 @@ function OrgApp({onSwitchRole}) {
     };
     loadScoreLog();
     loadHeadJudges(slug);
+    loadJudgeWhitelist(slug);
 
     // Poll live match slots every 5s
     const pollLive = async () => {
@@ -6331,6 +6402,39 @@ function OrgApp({onSwitchRole}) {
           </div>
         );
       })()}
+
+      {/* ── Judge Whitelist ─────────────────────────────────────── */}
+      <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",marginBottom:14,border:"1px solid var(--border)"}}>
+        <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 4px"}}>Judge Whitelist</p>
+        <p style={{fontSize:10,color:"var(--text-muted)",margin:"0 0 10px",lineHeight:1.5}}>
+          Only judges on this list can log in and score matches. One Challonge username per line. Requires master key to save.
+        </p>
+        {jwLoading && <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 6px"}}>Saving…</p>}
+        {jwError && <p style={{fontSize:11,color:"#EF4444",margin:"0 0 6px"}}>⚠ {jwError}</p>}
+        {judgeWhitelist.length === 0 && !jwLoading && (
+          <p style={{fontSize:11,color:"var(--text-faint)",margin:"0 0 8px"}}>No judges whitelisted — all logins will be blocked.</p>
+        )}
+        {judgeWhitelist.length > 0 && (
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+            {judgeWhitelist.map(u => (
+              <div key={u} style={{padding:"4px 10px",borderRadius:20,background:"var(--surface)",border:"1.5px solid var(--border2)",fontSize:11,fontWeight:700,color:"var(--text-secondary)"}}>
+                {u}
+              </div>
+            ))}
+          </div>
+        )}
+        <textarea
+          value={jwInput}
+          onChange={e => setJwInput(e.target.value)}
+          placeholder={"challongeusername1\nchallongeusername2\nchallongeusername3"}
+          rows={4}
+          style={{width:"100%",padding:"8px 10px",borderRadius:9,border:"1px solid var(--border2)",background:"var(--input-bg)",color:"var(--text-primary)",fontSize:12,fontFamily:"'Outfit',sans-serif",outline:"none",resize:"vertical",boxSizing:"border-box",marginBottom:8}}
+        />
+        <button onClick={saveJudgeWhitelist} disabled={jwLoading}
+          style={{width:"100%",padding:"9px 0",borderRadius:9,border:"none",background:"#3B82F6",color:"#fff",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",opacity:jwLoading?0.5:1}}>
+          Save Whitelist
+        </button>
+      </div>
 
       {/* ── Matches ────────────────────────────────────────────── */}
       <React.Fragment>
