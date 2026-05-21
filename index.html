@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge whitelist — org view UI + per-slug KV gating + login check; pushOverlay throttled; org view refs fixed -->
+<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge whitelist — org view UI, per-slug KV gating, login check, green confirmation toast; pushOverlay throttled; org view refs fixed -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -923,6 +923,7 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
   const authA = useChallongeAuthPopup();
   const [verifying, setVerifying] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const [whitelistConfirm, setWhitelistConfirm] = useState(null); // username string shown on successful whitelist check
 
 
   useEffect(() => {
@@ -977,6 +978,11 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
               ? "Token mismatch — log out and log back in."
               : `Your Challonge account (${challongeUser}) is not on the judge list for this tournament.`;
             throw new Error(reason);
+          }
+          // Whitelist check passed — show confirmation with the matched username
+          if (wlData.ok && wlData.allowed) {
+            setWhitelistConfirm(challongeUser);
+            setTimeout(() => setWhitelistConfirm(null), 4000);
           }
           // If whitelist is empty (no usernames set), we allow through — org hasn't configured it yet.
         } catch(e) {
@@ -1140,13 +1146,22 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
   };
 
   if (selectedSlug && deviceMode) {
-    if (verifying || authError) {
+    if (verifying || authError || whitelistConfirm) {
       return (
         <div style={{padding:"14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)",marginTop:12}}>
           {verifying && (
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
               <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>Loading tournament…</p>
+            </div>
+          )}
+          {whitelistConfirm && !verifying && (
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,background:"#14532D",border:"1.5px solid #22C55E",marginBottom:authError?8:0}}>
+              <span style={{fontSize:18,flexShrink:0}}>✅</span>
+              <div>
+                <p style={{fontSize:13,fontWeight:800,color:"#22C55E",margin:"0 0 1px"}}>Verified on whitelist</p>
+                <p style={{fontSize:11,color:"#86EFAC",margin:0}}>Logged in as <strong>{whitelistConfirm}</strong></p>
+              </div>
             </div>
           )}
           {authError && (
