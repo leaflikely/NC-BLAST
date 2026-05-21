@@ -6097,22 +6097,22 @@ function OrgApp({onSwitchRole}) {
   };
 
   const saveJudgeWhitelist = async () => {
-    const masterKey = sessionStorage.getItem("ncblast-master-key") || prompt("Enter master key:");
-    if (!masterKey) return;
+    const token = sessionStorage.getItem("ncblast-auth-token");
+    const username = sessionStorage.getItem("ncblast-auth-user");
+    if (!token || !username) { setJwError("You must be logged in to save the whitelist."); return; }
     const usernames = jwInput.split(/[\n,]+/).map(u => u.trim().toLowerCase()).filter(Boolean);
     setJwLoading(true); setJwError(null);
     try {
       const res = await fetch(`${OVERLAY_WORKER}/judge-whitelist/set`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Master-Key": masterKey },
-        body: JSON.stringify({ slug, usernames }),
+        headers: { "Content-Type": "application/json", "X-Auth-Token": token },
+        body: JSON.stringify({ slug, usernames, username }),
         signal: AbortSignal.timeout(8000),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Save failed");
       setJudgeWhitelist(data.usernames);
       setJwInput(data.usernames.join("\n"));
-      try { sessionStorage.setItem("ncblast-master-key", masterKey); } catch(_) {}
     } catch(e) { setJwError(e.message); }
     finally { setJwLoading(false); }
   };
@@ -6407,7 +6407,7 @@ function OrgApp({onSwitchRole}) {
       <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",marginBottom:14,border:"1px solid var(--border)"}}>
         <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 4px"}}>Judge Whitelist</p>
         <p style={{fontSize:10,color:"var(--text-muted)",margin:"0 0 10px",lineHeight:1.5}}>
-          Only judges on this list can log in and score matches. One Challonge username per line. Requires master key to save.
+          Only judges on this list can log in and score matches. One Challonge username per line. Only the tournament organizer can save changes.
         </p>
         {jwLoading && <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 6px"}}>Saving…</p>}
         {jwError && <p style={{fontSize:11,color:"#EF4444",margin:"0 0 6px"}}>⚠ {jwError}</p>}
