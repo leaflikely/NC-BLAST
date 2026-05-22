@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge whitelist system + Judge Status bubbles; organizer name label with match indicator; debug 403 messages -->
+<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge whitelist system + Judge Status bubbles; heartbeat presence keeps bubbles accurate; organizer label; debug 403 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7694,6 +7694,23 @@ function BeyJudgeApp() {
   const [challongeParticipants,setChallongeParticipants] = useState({});
   const [judgeEventDeleted,setJudgeEventDeleted] = useState(false);
   const judgeDeletionRef = useRef(null);
+  const judgeHeartbeatRef = useRef(null);
+
+  // Heartbeat — keeps presence key alive in KV while this tab is open.
+  // Fires every 90s. When the tab closes the key expires after 2 minutes.
+  useEffect(() => {
+    const slug = challongeSlug;
+    const username = (()=>{ try { return sessionStorage.getItem("ncblast-auth-user") || ""; } catch(_){ return ""; }})();
+    if (!slug || !username) return;
+    const ping = () => fetch(`${OVERLAY_WORKER}/auth/heartbeat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, username }),
+    }).catch(() => {});
+    ping(); // fire immediately on mount
+    judgeHeartbeatRef.current = setInterval(ping, 90000);
+    return () => clearInterval(judgeHeartbeatRef.current);
+  }, [challongeSlug]);
 
   useEffect(()=>{
     if(!challongeSlug) return;
