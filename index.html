@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge whitelist — org view UI, per-slug KV gating, login check, green confirmation toast, Judge Status bubbles; pushOverlay throttled; org view refs fixed -->
+<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge whitelist system + Judge Status bubbles; organizer name label with match indicator; debug 403 messages -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -970,14 +970,11 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
         try {
           const wlRes = await fetch(
             `${OVERLAY_WORKER}/judge-whitelist/check?slug=${encodeURIComponent(slug)}&username=${encodeURIComponent(challongeUser)}`,
-            { headers: { "X-Auth-Token": challongeToken }, signal: AbortSignal.timeout(6000) }
+            { signal: AbortSignal.timeout(6000) }
           );
           const wlData = await wlRes.json();
           if (wlData.ok && !wlData.allowed) {
-            const reason = wlData.reason === "token_mismatch"
-              ? "Token mismatch — log out and log back in."
-              : `Your Challonge account (${challongeUser}) is not on the judge list for this tournament.`;
-            throw new Error(reason);
+            throw new Error(`Your Challonge account (${challongeUser}) is not on the judge list for this tournament.`);
           }
           // Whitelist check passed — show confirmation with the matched username
           if (wlData.ok && wlData.allowed) {
@@ -6339,7 +6336,12 @@ function OrgApp({onSwitchRole}) {
           <div style={{marginBottom:16,padding:"12px 14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
               <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0}}>Head Judges</p>
-              {orgOwnerUsername && <p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>Owner: {orgOwnerUsername}</p>}
+              {orgOwnerUsername && (
+                <p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>
+                  Organizer: <span style={{fontWeight:700,color:currentUser===orgOwnerUsername.toLowerCase()?"#22C55E":"var(--text-muted)"}}>{orgOwnerUsername}</span>
+                  {currentUser===orgOwnerUsername.toLowerCase()&&<span style={{color:"#22C55E"}}> ✓</span>}
+                </p>
+              )}
             </div>
             <p style={{fontSize:10,color:"var(--text-muted)",margin:"0 0 10px",lineHeight:1.5}}>
               Can access Organizer View for this event. Only the tournament owner can manage this list.
