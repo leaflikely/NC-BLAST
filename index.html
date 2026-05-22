@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge whitelist system + Judge Status bubbles; heartbeat presence keeps bubbles accurate; organizer label; debug 403 -->
+<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge whitelist system; Judges name list in org view; organizer label; debug 403 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6053,14 +6053,12 @@ function OrgApp({onSwitchRole}) {
   const [hjLoading, setHjLoading] = useState(false);
   const [hjError, setHjError] = useState(null);
   const [newHJInput, setNewHJInput] = useState("");
-  const [judgePresence, setJudgePresence] = useState([]); // [{username, loggedInAt}]
 
   // ── Judge whitelist state ─────────────────────────────────────────
   const [judgeWhitelist, setJudgeWhitelist] = useState([]);   // usernames allowed to score
   const [jwLoading, setJwLoading] = useState(false);
   const [jwError, setJwError] = useState(null);
   const [jwInput, setJwInput] = useState("");                  // textarea paste input
-  const presencePollRef = useRef(null);
   const liveSlotRef = useRef(null);
   const pingPollRef = useRef(null);
 
@@ -6074,12 +6072,6 @@ function OrgApp({onSwitchRole}) {
     finally { setHjLoading(false); }
   };
 
-  const pollPresence = async (s) => {
-    try {
-      const res = await workerGet(`/judges/presence?slug=${encodeURIComponent(s)}`);
-      setJudgePresence(res.presence || []);
-    } catch(_) {}
-  };
 
   const saveHeadJudges = async (newList) => {
     const token = sessionStorage.getItem("ncblast-auth-token");
@@ -6168,8 +6160,6 @@ function OrgApp({onSwitchRole}) {
     liveSlotRef.current = setInterval(pollLive, 5000);
 
     // Poll judge presence every 15s
-    pollPresence(slug);
-    presencePollRef.current = setInterval(() => pollPresence(slug), 15000);
 
     // Long-poll for pings
     const pollPings = async () => {
@@ -6193,7 +6183,6 @@ function OrgApp({onSwitchRole}) {
 
     return () => {
       clearInterval(liveSlotRef.current);
-      clearInterval(presencePollRef.current);
       clearTimeout(pingPollRef.current);
     };
   }, [slug]);
@@ -6351,29 +6340,17 @@ function OrgApp({onSwitchRole}) {
             {headJudges.length === 0 && !hjLoading && (
               <p style={{fontSize:11,color:"var(--text-faint)",marginBottom:8}}>No head judges set.</p>
             )}
-            {headJudges.map(u => {
-              const ul = u.toLowerCase();
-              const isPresent = judgePresence.some(p => p.username === ul);
-              const isJudging = liveSlots.some(s => s.state && (s.state.judge||"").toLowerCase() === ul);
-              // Yellow = actively judging, Green = logged in but not judging, Red = not logged in
-              const statusColor = isJudging ? "#F59E0B" : isPresent ? "#22C55E" : "#EF4444";
-              const statusLabel = isJudging ? "Judging" : isPresent ? "Online" : "Offline";
-              return (
-                <div key={u} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 10px",borderRadius:8,background:"var(--surface)",marginBottom:5,border:`1.5px solid ${statusColor}40`}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{width:8,height:8,borderRadius:"50%",background:statusColor,flexShrink:0}}/>
-                    <span style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>{u}</span>
-                    <span style={{fontSize:9,fontWeight:800,color:statusColor,textTransform:"uppercase",letterSpacing:0.5}}>{statusLabel}</span>
-                  </div>
-                  {isOwner && (
-                    <button onClick={()=>saveHeadJudges(headJudges.filter(x=>x!==u))} disabled={hjLoading}
-                      style={{fontSize:11,fontWeight:700,color:"#EF4444",background:"none",border:"none",cursor:"pointer",padding:"2px 6px"}}>
-                      Remove
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+            {headJudges.map(u => (
+              <div key={u} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 10px",borderRadius:8,background:"var(--surface)",marginBottom:5,border:"1.5px solid var(--border2)"}}>
+                <span style={{fontSize:12,fontWeight:700,color:"var(--text-primary)"}}>{u}</span>
+                {isOwner && (
+                  <button onClick={()=>saveHeadJudges(headJudges.filter(x=>x!==u))} disabled={hjLoading}
+                    style={{fontSize:11,fontWeight:700,color:"#EF4444",background:"none",border:"none",cursor:"pointer",padding:"2px 6px"}}>
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
             {isOwner && (
               <div style={{marginTop:10}}>
                 {/* Roster picker */}
@@ -6453,40 +6430,21 @@ function OrgApp({onSwitchRole}) {
         </button>
       </div>
 
-      {/* ── Judge Status ────────────────────────────────────────── */}
-      {judgeWhitelist.length > 0 && (() => {
-        const statusBubbles = judgeWhitelist.map(u => {
-          const ul = u.toLowerCase();
-          const isPresent = judgePresence.some(p => p.username === ul);
-          const isJudging = liveSlots.some(s => s.state && (s.state.judge || "").toLowerCase() === ul);
-          const color = isJudging ? "#F59E0B" : isPresent ? "#22C55E" : "#EF4444";
-          const label = isJudging ? "Judging" : isPresent ? "Online" : "Offline";
-          const bg    = isJudging ? "#451A03" : isPresent ? "#14532D" : "#1F0A0A";
-          return { u, color, label, bg };
-        });
-        return (
-          <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",marginBottom:14,border:"1px solid var(--border)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0}}>Judge Status</p>
-              <p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>
-                {statusBubbles.filter(b => b.label !== "Offline").length}/{judgeWhitelist.length} online
-              </p>
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-              {statusBubbles.map(({u, color, label, bg}) => (
-                <div key={u} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:20,background:bg,border:`1.5px solid ${color}`,flexShrink:0}}>
-                  <div style={{width:7,height:7,borderRadius:"50%",background:color,flexShrink:0,
-                    boxShadow: label !== "Offline" ? `0 0 6px ${color}` : "none"}}/>
-                  <span style={{fontSize:11,fontWeight:700,color:"var(--text-primary)"}}>{u}</span>
-                  <span style={{fontSize:9,fontWeight:800,color,textTransform:"uppercase",letterSpacing:0.5}}>{label}</span>
-                </div>
-              ))}
-            </div>
+      {/* ── Judges ─────────────────────────────────────────────── */}
+      {judgeWhitelist.length > 0 && (
+        <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",marginBottom:14,border:"1px solid var(--border)"}}>
+          <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 10px"}}>Judges</p>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {judgeWhitelist.map(u => (
+              <div key={u} style={{padding:"5px 12px",borderRadius:20,background:"var(--surface)",border:"1.5px solid var(--border2)",fontSize:11,fontWeight:700,color:"var(--text-secondary)"}}>
+                {u}
+              </div>
+            ))}
           </div>
-        );
-      })()}
+        </div>
+      )}
 
-      {/* ── Matches ────────────────────────────────────────────── */}
+      {/* ── Matches      {/* ── Matches ────────────────────────────────────────────── */}
       <React.Fragment>
 
         {/* Round header */}
@@ -7694,23 +7652,7 @@ function BeyJudgeApp() {
   const [challongeParticipants,setChallongeParticipants] = useState({});
   const [judgeEventDeleted,setJudgeEventDeleted] = useState(false);
   const judgeDeletionRef = useRef(null);
-  const judgeHeartbeatRef = useRef(null);
 
-  // Heartbeat — keeps presence key alive in KV while this tab is open.
-  // Fires every 90s. When the tab closes the key expires after 2 minutes.
-  useEffect(() => {
-    const slug = challongeSlug;
-    const username = (()=>{ try { return sessionStorage.getItem("ncblast-auth-user") || ""; } catch(_){ return ""; }})();
-    if (!slug || !username) return;
-    const ping = () => fetch(`${OVERLAY_WORKER}/auth/heartbeat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug, username }),
-    }).catch(() => {});
-    ping(); // fire immediately on mount
-    judgeHeartbeatRef.current = setInterval(ping, 90000);
-    return () => clearInterval(judgeHeartbeatRef.current);
-  }, [challongeSlug]);
 
   useEffect(()=>{
     if(!challongeSlug) return;
