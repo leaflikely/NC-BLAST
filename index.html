@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge whitelist — org view UI, per-slug KV gating, login check, green confirmation toast; pushOverlay throttled; org view refs fixed -->
+<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge whitelist — org view UI, per-slug KV gating, login check, green confirmation toast, Judge Status bubbles; pushOverlay throttled; org view refs fixed -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6450,6 +6450,39 @@ function OrgApp({onSwitchRole}) {
           Save Whitelist
         </button>
       </div>
+
+      {/* ── Judge Status ────────────────────────────────────────── */}
+      {judgeWhitelist.length > 0 && (() => {
+        const statusBubbles = judgeWhitelist.map(u => {
+          const ul = u.toLowerCase();
+          const isPresent = judgePresence.some(p => p.username === ul);
+          const isJudging = liveSlots.some(s => s.state && (s.state.judge || "").toLowerCase() === ul);
+          const color = isJudging ? "#F59E0B" : isPresent ? "#22C55E" : "#EF4444";
+          const label = isJudging ? "Judging" : isPresent ? "Online" : "Offline";
+          const bg    = isJudging ? "#451A03" : isPresent ? "#14532D" : "#1F0A0A";
+          return { u, color, label, bg };
+        });
+        return (
+          <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",marginBottom:14,border:"1px solid var(--border)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0}}>Judge Status</p>
+              <p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>
+                {statusBubbles.filter(b => b.label !== "Offline").length}/{judgeWhitelist.length} online
+              </p>
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+              {statusBubbles.map(({u, color, label, bg}) => (
+                <div key={u} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:20,background:bg,border:`1.5px solid ${color}`,flexShrink:0}}>
+                  <div style={{width:7,height:7,borderRadius:"50%",background:color,flexShrink:0,
+                    boxShadow: label !== "Offline" ? `0 0 6px ${color}` : "none"}}/>
+                  <span style={{fontSize:11,fontWeight:700,color:"var(--text-primary)"}}>{u}</span>
+                  <span style={{fontSize:9,fontWeight:800,color,textTransform:"uppercase",letterSpacing:0.5}}>{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Matches ────────────────────────────────────────────── */}
       <React.Fragment>
