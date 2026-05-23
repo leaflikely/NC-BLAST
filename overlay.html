@@ -334,17 +334,6 @@
 </head>
 <body>
 
-<button id="reset-btn" onclick="resetOverlay()" style="
-  position: fixed; top: 12px; right: 12px;
-  background: rgba(220,38,38,0.85); color: #fff;
-  border: none; border-radius: 8px;
-  padding: 8px 16px; font-size: 14px; font-weight: 700;
-  font-family: 'Barlow Condensed', sans-serif;
-  letter-spacing: 0.08em; text-transform: uppercase;
-  cursor: pointer; z-index: 9999;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-">⟳ Reset Overlay</button>
-
 <div id="widget">
   <div id="scale-wrap">
     <div class="card" id="main-card">
@@ -408,6 +397,17 @@
     </div><!-- .card -->
   </div><!-- #scale-wrap -->
 </div><!-- #widget -->
+
+<button id="reset-btn" onclick="resetOverlay()" style="
+  display: block; margin: 8px 0 0 0;
+  background: rgba(220,38,38,0.85); color: #fff;
+  border: none; border-radius: 8px;
+  padding: 8px 16px; font-size: 14px; font-weight: 700;
+  font-family: 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+">⟳ Reset Overlay</button>
 
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
