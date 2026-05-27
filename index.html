@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-26 | session: mobile login auto-confirm skip redirect screen -->
+<!-- NC BLAST index.html | last updated: 2026-05-26 | session: mobile login blank-tab flow no redirect -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -112,23 +112,16 @@ const { useState, useEffect, useRef, useCallback } = React;
         try { window.opener.postMessage({ type: "ncblast-oauth-result", sessionId, ...msg }, window.location.origin); } catch(_) {}
         try { window.close(); } catch(_) {}
       } else {
-        // Mobile: write result to a fixed localStorage key, then immediately redirect back.
-        // Using a fixed key (not sessionId-keyed) so the app finds it on load without
-        // needing to know which sessionId was used — the page reload wipes sessionId context.
+        // New-tab flow: write result to a fixed localStorage key so the original tab's
+        // poller picks it up. The original tab stays alive — no redirect needed.
+        // Show a "you can close this tab" message either way.
         try { localStorage.setItem("ncblast-oauth-result-mobile", JSON.stringify({ ...msg, ts: Date.now() })); } catch(_) {}
-        if (msg.ok) {
-          // Redirect immediately — the app checks this fixed key on mount
-          window.location.replace("/");
-        } else {
-          // On failure, show an error screen with a return link (can't auto-redirect usefully)
-          document.documentElement.style.display = "";
-          document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#94a3b8;padding:32px;text-align:center;">' +
-            '<div style="font-size:40px;margin-bottom:16px">❌</div>' +
-            '<p style="font-size:18px;font-weight:700;color:#ef4444;margin:0 0 8px">Login failed</p>' +
-            '<p style="font-size:14px;margin:0 0 28px">' + (msg.error || "An unknown error occurred.") + '</p>' +
-            '<a href="/" style="display:inline-block;padding:16px 32px;border-radius:14px;background:#334155;color:#fff;font-size:16px;font-weight:800;text-decoration:none;font-family:sans-serif;box-shadow:0 4px 16px rgba(0,0,0,0.4)">← Return to NC BLAST</a>' +
-            '</div>';
-        }
+        document.documentElement.style.display = "";
+        document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#94a3b8;padding:32px;text-align:center;">' +
+          '<div style="font-size:48px;margin-bottom:16px">' + (msg.ok ? "✅" : "❌") + '</div>' +
+          '<p style="font-size:20px;font-weight:800;color:' + (msg.ok ? "#22c55e" : "#ef4444") + ';margin:0 0 8px">' + (msg.ok ? "Logged in as " + msg.username : "Login failed") + '</p>' +
+          '<p style="font-size:14px;margin:0 0 0;color:#64748b">' + (msg.ok ? "You can close this tab and return to NC BLAST." : (msg.error || "An unknown error occurred.")) + '</p>' +
+          '</div>';
       }
     };
 
@@ -459,81 +452,17 @@ function useChallongeAuthPopup() {
     setState("wrong");
   }, []);
 
-  // Listen for postMessage from popup (desktop)
-  // On mount: check both the fixed mobile key and the sessionId-keyed entry.
-  // Mobile login writes to a fixed key ("ncblast-oauth-result-mobile") and redirects back
-  // immediately — no sessionId handoff needed. Desktop popup uses the sessionId-keyed path.
+  // On mount: discard any stale mobile result key left by a previous failed session.
+  // The active poller inside start() handles everything during a live login flow.
   React.useEffect(() => {
-    const sid = sessionIdRef.current;
-    // Check fixed mobile key first (written by same-tab redirect flow).
-    // Auto-confirm these results — the user just came back from Challonge's own login
-    // page, so there's no ambiguity about whose account it is. Skipping the confirm
-    // step also avoids the problem where the confirm UI isn't visible until after the
-    // user re-selects a tournament (page state was wiped by the redirect).
     try {
-      const mobileRaw = localStorage.getItem("ncblast-oauth-result-mobile");
-      if (mobileRaw) {
-        localStorage.removeItem("ncblast-oauth-result-mobile");
-        const mobileMsg = JSON.parse(mobileRaw);
-        if (mobileMsg.ok) {
-          try {
-            if (mobileMsg.token) sessionStorage.setItem("ncblast-auth-token", mobileMsg.token);
-            if (mobileMsg.username) sessionStorage.setItem("ncblast-auth-user", mobileMsg.username);
-          } catch(_) {}
-          pendingRef.current = mobileMsg;
-          setUsername(mobileMsg.username);
-          setState("done"); // skip confirm — user just came from Challonge's own login page
-        } else {
-          setErrorMsg(mobileMsg.error || "Login failed.");
-          setState("error");
-        }
-        return;
+      const stale = localStorage.getItem("ncblast-oauth-result-mobile");
+      if (stale) {
+        const parsed = JSON.parse(stale);
+        if (Date.now() - (parsed.ts || 0) > 120000) localStorage.removeItem("ncblast-oauth-result-mobile");
       }
     } catch(_) {}
-    // Then check sessionId-keyed entry (desktop popup or same-tab popup fallback)
-    try {
-      const raw = localStorage.getItem("ncblast-oauth-result:" + sid);
-      if (raw) {
-        localStorage.removeItem("ncblast-oauth-result:" + sid);
-        handleResult(JSON.parse(raw));
-        return;
-      }
-    } catch(_) {}
-    // Not found yet — poll briefly in case the callback tab writes it moments after we load
-    const deadline = Date.now() + 8000;
-    const recover = setInterval(() => {
-      if (Date.now() > deadline) { clearInterval(recover); return; }
-      try {
-        // Poll both keys — auto-confirm mobile results (same reason as mount-time check above)
-        const mobileRaw2 = localStorage.getItem("ncblast-oauth-result-mobile");
-        if (mobileRaw2) {
-          clearInterval(recover);
-          localStorage.removeItem("ncblast-oauth-result-mobile");
-          const mobileMsg2 = JSON.parse(mobileRaw2);
-          if (mobileMsg2.ok) {
-            try {
-              if (mobileMsg2.token) sessionStorage.setItem("ncblast-auth-token", mobileMsg2.token);
-              if (mobileMsg2.username) sessionStorage.setItem("ncblast-auth-user", mobileMsg2.username);
-            } catch(_) {}
-            pendingRef.current = mobileMsg2;
-            setUsername(mobileMsg2.username);
-            setState("done");
-          } else {
-            setErrorMsg(mobileMsg2.error || "Login failed.");
-            setState("error");
-          }
-          return;
-        }
-        const raw2 = localStorage.getItem("ncblast-oauth-result:" + sid);
-        if (raw2) {
-          clearInterval(recover);
-          localStorage.removeItem("ncblast-oauth-result:" + sid);
-          handleResult(JSON.parse(raw2));
-        }
-      } catch(_) { clearInterval(recover); }
-    }, 400);
-    return () => clearInterval(recover);
-  }, [handleResult]);
+  }, []);
 
   React.useEffect(() => {
     const onMessage = (e) => {
@@ -548,8 +477,14 @@ function useChallongeAuthPopup() {
 
   const start = React.useCallback(async () => {
     setErrorMsg(""); setState("waiting");
-    // Clear any stale localStorage result for this session
+    try { localStorage.removeItem("ncblast-oauth-result-mobile"); } catch(_) {}
     try { localStorage.removeItem("ncblast-oauth-result:" + sessionIdRef.current); } catch(_) {}
+
+    // Open a blank tab IMMEDIATELY — must happen synchronously during the tap handler,
+    // before any async work, or mobile browsers will block it as an unsolicited popup.
+    // We fill in the destination URL once the fetch completes.
+    const newTab = window.open("", "_blank");
+
     try {
       const oauthState = sessionIdRef.current + "." + Math.random().toString(36).slice(2);
       const res = await fetch(
@@ -558,38 +493,61 @@ function useChallongeAuthPopup() {
       );
       const data = await res.json();
       if (!data.url) throw new Error(data.error || "No URL returned");
-      const w = 520, h = 640;
-      const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
-      const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
-      const popup = window.open(data.url, `ncblast-login-${sessionIdRef.current}`, `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
-      popupRef.current = popup;
 
-      // Poll: check for popup closed (desktop) or localStorage result (mobile new tab)
+      if (newTab && !newTab.closed) {
+        // Send the blank tab to Challonge now that we have the URL
+        newTab.location.href = data.url;
+        popupRef.current = newTab;
+      } else {
+        // Tab was blocked or closed — fall back to same-tab navigation (last resort)
+        window.location.href = data.url;
+        return;
+      }
+
+      // Poll localStorage for the result written by the callback page.
+      // The original tab stays alive so this poller keeps running — no reload, no lost state.
       pollRef.current = setInterval(() => {
-        // Check localStorage first (works for both desktop and mobile new tab)
+        // Check fixed mobile key (new-tab flow)
         try {
-          const raw = localStorage.getItem("ncblast-oauth-result:" + sessionIdRef.current);
-          if (raw) {
-            localStorage.removeItem("ncblast-oauth-result:" + sessionIdRef.current);
-            const msg = JSON.parse(raw);
-            handleResult(msg);
+          const mobileRaw = localStorage.getItem("ncblast-oauth-result-mobile");
+          if (mobileRaw) {
+            clearInterval(pollRef.current);
+            localStorage.removeItem("ncblast-oauth-result-mobile");
+            const mobileMsg = JSON.parse(mobileRaw);
+            if (mobileMsg.ok) {
+              try {
+                if (mobileMsg.token) sessionStorage.setItem("ncblast-auth-token", mobileMsg.token);
+                if (mobileMsg.username) sessionStorage.setItem("ncblast-auth-user", mobileMsg.username);
+              } catch(_) {}
+              pendingRef.current = mobileMsg;
+              setUsername(mobileMsg.username);
+              setState("done");
+            } else {
+              setErrorMsg(mobileMsg.error || "Login failed.");
+              setState("error");
+            }
             return;
           }
         } catch(_) {}
-        // On desktop: also check if popup was closed without completing
-        if (popup && popup.closed && stateRef.current === "waiting") {
+        // Check sessionId-keyed key (desktop popup via postMessage fallback)
+        try {
+          const raw = localStorage.getItem("ncblast-oauth-result:" + sessionIdRef.current);
+          if (raw) {
+            clearInterval(pollRef.current);
+            localStorage.removeItem("ncblast-oauth-result:" + sessionIdRef.current);
+            handleResult(JSON.parse(raw));
+            return;
+          }
+        } catch(_) {}
+        // If the tab was closed without completing, surface an error
+        if (newTab && newTab.closed && stateRef.current === "waiting") {
           clearInterval(pollRef.current);
-          setErrorMsg("Login window was closed."); setState("error");
+          setErrorMsg("Login tab was closed."); setState("error");
         }
-      }, 400);
+      }, 600);
 
-      if (!popup) {
-        // Popup blocked — fall back to same-tab navigation
-        // Save sessionId so we can recover the result after the page reloads
-        try { sessionStorage.setItem("ncblast-popup-sessionid", sessionIdRef.current); } catch(_) {}
-        window.location.href = data.url;
-      }
     } catch(e) {
+      if (newTab && !newTab.closed) try { newTab.close(); } catch(_) {}
       setErrorMsg("Couldn't reach the server. Try again.");
       setState("error");
     }
