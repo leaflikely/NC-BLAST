@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-26 | session: parts library CX sections; shuffle timer hold-to-pause; mobile login recovery; shared parts library with master key -->
+<!-- NC BLAST index.html | last updated: 2026-05-26 | session: mobile login sessionId localStorage fix -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -114,6 +114,11 @@ const { useState, useEffect, useRef, useCallback } = React;
       } else {
         // Mobile/new-tab: write to localStorage so the original tab's poller picks it up
         try { localStorage.setItem("ncblast-oauth-result:" + sessionId, JSON.stringify({ ...msg, sessionId, ts: Date.now() })); } catch(_) {}
+        // Also save the sessionId itself to localStorage so the main app can recover it
+        // after the "Return to NC BLAST" link navigates back (sessionStorage is wiped on navigation)
+        if (msg.ok && sessionId) {
+          try { localStorage.setItem("ncblast-popup-sessionid", sessionId); } catch(_) {}
+        }
         // Show a "you can close this tab" message instead of the app
         document.documentElement.style.display = "";
         document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#94a3b8;padding:32px;text-align:center;">' +
@@ -409,8 +414,15 @@ function useChallongeAuthPopup() {
   // On reload after same-tab fallback, recover the saved sessionId so we can find the result
   const sessionIdRef = React.useRef((() => {
     try {
+      // Check sessionStorage first (same-tab popup fallback on desktop)
       const saved = sessionStorage.getItem("ncblast-popup-sessionid");
       if (saved) { sessionStorage.removeItem("ncblast-popup-sessionid"); return saved; }
+    } catch(_) {}
+    try {
+      // Check localStorage second — mobile writes it here before the "Return to NC BLAST"
+      // link navigates back, since sessionStorage is wiped on navigation
+      const saved = localStorage.getItem("ncblast-popup-sessionid");
+      if (saved) { localStorage.removeItem("ncblast-popup-sessionid"); return saved; }
     } catch(_) {}
     return Math.random().toString(36).slice(2);
   })());
