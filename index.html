@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-20 | session: judge whitelist system; Judges name list; organizer label; debug 403; claim button removed -->
+<!-- NC BLAST index.html | last updated: 2026-05-26 | session: parts library CX sections; shuffle timer hold-to-pause; mobile login recovery; shared parts library with master key -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -119,7 +119,8 @@ const { useState, useEffect, useRef, useCallback } = React;
         document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#94a3b8;padding:32px;text-align:center;">' +
           '<div style="font-size:40px;margin-bottom:16px">' + (msg.ok ? "✅" : "❌") + '</div>' +
           '<p style="font-size:18px;font-weight:700;color:' + (msg.ok ? "#22c55e" : "#ef4444") + ';margin:0 0 8px">' + (msg.ok ? "Logged in as " + msg.username : "Login failed") + '</p>' +
-          '<p style="font-size:14px;margin:0">' + (msg.ok ? "You can close this tab and return to NC BLAST." : (msg.error || "")) + '</p>' +
+          '<p style="font-size:14px;margin:0 0 28px">' + (msg.ok ? "Your login was recorded. Tap the button below to return to NC BLAST." : (msg.error || "")) + '</p>' +
+          '<a href="/" style="display:inline-block;padding:16px 32px;border-radius:14px;background:' + (msg.ok ? "linear-gradient(135deg,#ea580c,#dc2626)" : "#334155") + ';color:#fff;font-size:16px;font-weight:800;text-decoration:none;font-family:sans-serif;box-shadow:0 4px 16px rgba(0,0,0,0.4)">← Return to NC BLAST</a>' +
           '</div>';
       }
     };
@@ -405,7 +406,14 @@ function useChallongeAuthPopup() {
   const stateRef     = React.useRef(state);
   const pendingRef   = React.useRef(null); // holds result while waiting for user to confirm
   // Unique ID per hook instance — routes messages/localStorage entries to the right hook
-  const sessionIdRef = React.useRef(Math.random().toString(36).slice(2));
+  // On reload after same-tab fallback, recover the saved sessionId so we can find the result
+  const sessionIdRef = React.useRef((() => {
+    try {
+      const saved = sessionStorage.getItem("ncblast-popup-sessionid");
+      if (saved) { sessionStorage.removeItem("ncblast-popup-sessionid"); return saved; }
+    } catch(_) {}
+    return Math.random().toString(36).slice(2);
+  })());
   React.useEffect(() => { stateRef.current = state; }, [state]);
 
   // Handle a completed login result (from either postMessage or localStorage).
@@ -438,6 +446,34 @@ function useChallongeAuthPopup() {
   }, []);
 
   // Listen for postMessage from popup (desktop)
+  // On mount: if sessionId was recovered from sessionStorage (same-tab fallback just returned),
+  // immediately poll localStorage for the result rather than staying at idle.
+  React.useEffect(() => {
+    const sid = sessionIdRef.current;
+    try {
+      const raw = localStorage.getItem("ncblast-oauth-result:" + sid);
+      if (raw) {
+        localStorage.removeItem("ncblast-oauth-result:" + sid);
+        handleResult(JSON.parse(raw));
+        return;
+      }
+    } catch(_) {}
+    // Not found yet — poll briefly in case the callback tab writes it moments after we load
+    const deadline = Date.now() + 8000;
+    const recover = setInterval(() => {
+      if (Date.now() > deadline) { clearInterval(recover); return; }
+      try {
+        const raw2 = localStorage.getItem("ncblast-oauth-result:" + sid);
+        if (raw2) {
+          clearInterval(recover);
+          localStorage.removeItem("ncblast-oauth-result:" + sid);
+          handleResult(JSON.parse(raw2));
+        }
+      } catch(_) { clearInterval(recover); }
+    }, 400);
+    return () => clearInterval(recover);
+  }, [handleResult]);
+
   React.useEffect(() => {
     const onMessage = (e) => {
       if (e.origin !== window.location.origin) return;
@@ -487,7 +523,9 @@ function useChallongeAuthPopup() {
       }, 400);
 
       if (!popup) {
-        // Popup blocked — fall back to same-tab navigation (rare)
+        // Popup blocked — fall back to same-tab navigation
+        // Save sessionId so we can recover the result after the page reloads
+        try { sessionStorage.setItem("ncblast-popup-sessionid", sessionIdRef.current); } catch(_) {}
         window.location.href = data.url;
       }
     } catch(e) {
@@ -839,25 +877,141 @@ function LibraryManager({parts,setParts,onClose}) {
   const [inp,setInp] = useState("");
   const [libSearch,setLibSearch] = useState("");
   const fRef = useRef();
+
+  // Master key gate state
+  const [keyInput, setKeyInput] = useState("");
+  const [keyError, setKeyError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // Pending change waiting for key confirmation
+  const [pending, setPending] = useState(null);
+
   const TABS = [{k:"blades",l:"Blades",c:"#EA580C"},{k:"ratchets",l:"Ratchets",c:"#1D4ED8"},{k:"bits",l:"Bits",c:"#15803D"}];
   const ac = TABS.find(t=>t.k===tab)?.c||"#EA580C";
-  const add = () => { const v=inp.trim(); if(!v||parts[tab].includes(v))return; const n={...parts,[tab]:[...parts[tab],v].sort()}; setParts(n); sSave(KEYS.parts,n); setInp(""); };
-  const del = (cat,i) => { const n={...parts,[cat]:parts[cat].filter((_,j)=>j!==i)}; setParts(n); sSave(KEYS.parts,n); };
+
+  // Push parts to Worker with master key
+  const pushToServer = async (newParts, key) => {
+    const res = await fetch(`${OVERLAY_WORKER}/parts/set`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Master-Key": key },
+      body: JSON.stringify({ parts: newParts }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const d = await res.json();
+    if (!d.ok) throw new Error(d.error || "Save failed");
+  };
+
+  // Apply a confirmed change to server + local state
+  const applyChange = async (newParts) => {
+    setSaving(true); setKeyError("");
+    try {
+      await pushToServer(newParts, keyInput.trim());
+      setParts(newParts); sSave(KEYS.parts, newParts);
+      setPending(null); setKeyInput(""); setInp("");
+    } catch(e) {
+      setKeyError(e.message === "Invalid master key" ? "Wrong master key — try again." : "Couldn't save. Check your connection.");
+    } finally { setSaving(false); }
+  };
+
+  const requestAdd = () => {
+    const v = inp.trim();
+    if(!v || parts[tab].includes(v)) return;
+    const n = {...parts, [tab]:[...parts[tab],v].sort()};
+    setPending({ preview: n, label: `Add "${v}" to ${tab}` });
+  };
+
+  const requestDel = (cat, name) => {
+    const n = {...parts, [cat]:parts[cat].filter(x=>x!==name)};
+    setPending({ preview: n, label: `Remove "${name}" from ${cat}` });
+  };
+
+  const requestImport = (newParts) => {
+    const count = newParts.blades.length + newParts.ratchets.length + newParts.bits.length;
+    setPending({ preview: newParts, label: `Save ${count} parts to shared library` });
+  };
+
   const onFile = (e) => {
     const f=e.target.files[0]; if(!f)return;
     const r=new FileReader();
     r.onload=(ev)=>{
       const txt=ev.target.result;
-      try { const j=JSON.parse(txt); if(j.blades||j.ratchets||j.bits){ const m={blades:[...new Set([...parts.blades,...(j.blades||[])])].sort(),ratchets:[...new Set([...parts.ratchets,...(j.ratchets||[])])].sort(),bits:[...new Set([...parts.bits,...(j.bits||[])])].sort()}; setParts(m); sSave(KEYS.parts,m); return; } } catch{}
-      const lines=txt.split(/[\r\n]+/).map(l=>l.trim()).filter(Boolean);
+      try { const j=JSON.parse(txt); if(j.blades||j.ratchets||j.bits){ const m={blades:[...new Set([...parts.blades,...(j.blades||[])])].sort(),ratchets:[...new Set([...parts.ratchets,...(j.ratchets||[])])].sort(),bits:[...new Set([...parts.bits,...(j.bits||[])])].sort()}; requestImport(m); return; } } catch{}
+      const lines2=txt.split(/[\r\n]+/).map(l=>l.trim()).filter(Boolean);
       const np={blades:[...parts.blades],ratchets:[...parts.ratchets],bits:[...parts.bits]};
-      lines.forEach(line=>{ const [pre,...rest]=line.split(":"); if(rest.length){ const c=pre.toLowerCase().trim(); const name=rest.join(":").trim(); if(c.startsWith("blade")&&!np.blades.includes(name))np.blades.push(name); else if(c.startsWith("ratchet")&&!np.ratchets.includes(name))np.ratchets.push(name); else if(c.startsWith("bit")&&!np.bits.includes(name))np.bits.push(name); } else { if(!np[tab].includes(line))np[tab].push(line); } });
+      lines2.forEach(line=>{ const [pre,...rest]=line.split(":"); if(rest.length){ const c=pre.toLowerCase().trim(); const name=rest.join(":").trim(); if(c.startsWith("blade")&&!np.blades.includes(name))np.blades.push(name); else if(c.startsWith("ratchet")&&!np.ratchets.includes(name))np.ratchets.push(name); else if(c.startsWith("bit")&&!np.bits.includes(name))np.bits.push(name); } else { if(!np[tab].includes(line))np[tab].push(line); } });
       np.blades.sort(); np.ratchets.sort(); np.bits.sort();
-      setParts(np); sSave(KEYS.parts,np);
+      requestImport(np);
     };
     r.readAsText(f); e.target.value="";
   };
+
   const total=parts.blades.length+parts.ratchets.length+parts.bits.length;
+
+  // CX grouping for blades tab
+  const allCxNames = new Set([...CX_CHIPS,...CX_BLADES,...CXE_BLADES,...CXE_OVER_BLADES,...CX_ASSISTS]);
+  const standardBlades = parts.blades.filter(p=>!allCxNames.has(p));
+  const inLib = (list) => list.filter(p=>parts.blades.includes(p));
+  const libChips    = inLib(CX_CHIPS);
+  const libCxBlades = inLib([...CX_BLADES,...CXE_BLADES]);
+  const libAssists  = inLib([...CX_ASSISTS,...CXE_OVER_BLADES]);
+
+  const renderTag = (p, cat="blades") => (
+    <span key={p} style={{...S.ptag,borderColor:ac+"40",background:ac+"0C",color:ac}}>
+      {p}<button style={S.xBtn} onClick={()=>requestDel(cat,p)}>{IC.trash}</button>
+    </span>
+  );
+
+  const SectionHeader = ({label, count, color}) => (
+    <p style={{fontSize:10,fontWeight:800,color:color||ac,letterSpacing:1.5,textTransform:"uppercase",margin:"16px 0 6px",paddingBottom:4,borderBottom:`1px solid ${(color||ac)}30`}}>
+      {label} <span style={{fontWeight:600,opacity:0.7}}>({count})</span>
+    </p>
+  );
+
+  // ── Master key confirmation screen ──
+  if (pending) {
+    return (
+      <div style={{position:"fixed",inset:0,background:"var(--bg-solid)",zIndex:200,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 24px"}}>
+        <div style={{width:"100%",maxWidth:340}}>
+          <div style={{textAlign:"center",marginBottom:24}}>
+            <div style={{fontSize:36,marginBottom:8}}>🔐</div>
+            <h2 style={{fontSize:20,fontWeight:900,color:"var(--text-primary)",margin:"0 0 6px"}}>Confirm Change</h2>
+            <p style={{fontSize:13,color:"var(--text-muted)",margin:0,lineHeight:1.5}}>{pending.label}</p>
+          </div>
+          <div style={{background:"var(--surface)",borderRadius:14,padding:"16px",border:"1px solid var(--border)",marginBottom:16}}>
+            <p style={{fontSize:12,fontWeight:700,color:"var(--text-primary)",margin:"0 0 10px"}}>Enter Master Key to save for all devices</p>
+            <input
+              type="password"
+              placeholder="Master key…"
+              value={keyInput}
+              onChange={e=>{setKeyInput(e.target.value);setKeyError("");}}
+              onKeyDown={e=>{if(e.key==="Enter"&&keyInput.trim())applyChange(pending.preview);}}
+              autoFocus
+              style={{...S.inp,width:"100%",boxSizing:"border-box",marginBottom:keyError?8:0}}
+            />
+            {keyError && <p style={{fontSize:12,color:"#EF4444",fontWeight:600,margin:"6px 0 0"}}>{keyError}</p>}
+          </div>
+          <button
+            onClick={()=>applyChange(pending.preview)}
+            disabled={saving||!keyInput.trim()}
+            style={{width:"100%",padding:"14px 0",borderRadius:12,border:"none",
+              background:saving||!keyInput.trim()?"var(--border2)":"#EA580C",
+              color:"#fff",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",
+              cursor:saving||!keyInput.trim()?"not-allowed":"pointer",marginBottom:10}}>
+            {saving ? "Saving…" : "Save to All Devices →"}
+          </button>
+          <button
+            onClick={()=>{setPending(null);setKeyInput("");setKeyError("");}}
+            disabled={saving}
+            style={{width:"100%",padding:"12px 0",borderRadius:12,border:"2px solid var(--border)",
+              background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,
+              fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{position:"fixed",inset:0,background:"var(--bg-solid)",zIndex:200,overflowY:"auto"}}>
       <div style={{maxWidth:S.page.maxWidth,margin:"0 auto",padding:`20px 16px 40px`}}>
@@ -865,45 +1019,58 @@ function LibraryManager({parts,setParts,onClose}) {
           <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{color:"#EA580C"}}>{IC.db}</span><h1 style={{margin:0,fontSize:22,fontWeight:800,color:"var(--text-primary)"}}>Parts Library</h1></div>
           <button onClick={onClose} style={{background:"#F1F5F9",border:"none",borderRadius:10,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#64748B"}}>{IC.x}</button>
         </div>
+        <div style={{background:"#7C3AED10",border:"1px solid #7C3AED30",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12,color:"#5B21B6",fontWeight:500,lineHeight:1.5}}>
+          🌐 <strong>Shared library</strong> — changes apply to all devices. Master key required to add or remove parts.
+        </div>
         <div style={{background:"#EA580C10",border:"1px solid #EA580C30",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#9A3412",fontWeight:500,lineHeight:1.5}}>
-          <strong>{total} parts</strong> saved in your library.
+          <strong>{total} parts</strong> in the shared library.
         </div>
         <div style={S.tBar}>{TABS.map(t=>(<button key={t.k} onClick={()=>{setTab(t.k);setLibSearch("");}} style={{...S.tBtn,color:tab===t.k?t.c:"#94A3B8",fontWeight:tab===t.k?700:500,borderBottom:tab===t.k?`3px solid ${t.c}`:"3px solid transparent"}}>{t.l} <span style={{...S.bdg,background:t.c,opacity:tab===t.k?1:0.3}}>{parts[t.k].length}</span></button>))}</div>
-        {/* Search bar */}
         <div style={{marginBottom:10,position:"relative"}}>
-          <input
-            style={{...S.inp,width:"100%",paddingLeft:32,borderColor:ac+"40"}}
-            placeholder={`Search ${tab}...`}
-            value={libSearch}
-            onChange={e=>setLibSearch(e.target.value)}
-            autoComplete="off"
-          />
+          <input style={{...S.inp,width:"100%",paddingLeft:32,borderColor:ac+"40"}} placeholder={`Search ${tab}...`} value={libSearch} onChange={e=>setLibSearch(e.target.value)} autoComplete="off"/>
           <svg style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",opacity:0.35}} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={ac} strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           {libSearch&&<button onClick={()=>setLibSearch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#94A3B8",cursor:"pointer",fontSize:14,lineHeight:1}}>✕</button>}
         </div>
-        <div style={S.addR}><input style={S.inp} placeholder={`Add ${tab.slice(0,-1)}...`} value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button style={{...S.addB,background:ac}} onClick={add}>{IC.plus}</button></div>
+        <div style={S.addR}>
+          <input style={S.inp} placeholder={`Add ${tab.slice(0,-1)}…`} value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&requestAdd()}/>
+          <button style={{...S.addB,background:ac}} onClick={requestAdd}>{IC.plus}</button>
+        </div>
         <input type="file" ref={fRef} accept=".json,.csv,.txt" style={{display:"none"}} onChange={onFile}/>
         <button style={S.upBtn} onClick={()=>fRef.current.click()}>{IC.upload} Import Parts File</button>
-        <p style={S.hint}>{'JSON: {"blades":[], "ratchets":[], "bits":[]} or text one per line'}</p>
-        <div style={{...S.card,marginTop:8}}>
-          {(()=>{
-            const filtered = libSearch ? parts[tab].filter(p=>p.toLowerCase().includes(libSearch.toLowerCase())) : parts[tab];
-            if(filtered.length===0) return <p style={S.empty}>{libSearch?`No matches for "${libSearch}"`:(`No ${tab} in library`)}</p>;
-            return <div style={S.chs}>{filtered.map((p,i)=>{
-              const realIdx=parts[tab].indexOf(p);
-              return (<span key={i} style={{...S.ptag,borderColor:ac+"40",background:ac+"0C",color:ac}}>{p}<button style={S.xBtn} onClick={()=>del(tab,realIdx)}>{IC.trash}</button></span>);
-            })}</div>;
-          })()}
-        </div>
+        <p style={S.hint}>{"JSON: {\"blades\":[], \"ratchets\":[], \"bits\":[]} or text one per line"}</p>
+        {tab==="blades" && (()=>{
+          const search = libSearch.toLowerCase();
+          const filterList = list => search ? list.filter(p=>p.toLowerCase().includes(search)) : list;
+          const stdFiltered = filterList(standardBlades);
+          const chipFiltered = filterList(libChips);
+          const cxbFiltered  = filterList(libCxBlades);
+          const assFiltered  = filterList(libAssists);
+          const anyResult = stdFiltered.length||chipFiltered.length||cxbFiltered.length||assFiltered.length;
+          if(!anyResult) return <div style={{...S.card,marginTop:8}}><p style={S.empty}>{libSearch?`No matches for "${libSearch}"`:"No blades in library"}</p></div>;
+          return (
+            <div style={{...S.card,marginTop:8}}>
+              {stdFiltered.length>0&&(<><SectionHeader label="Standard Blades" count={stdFiltered.length} color="#EA580C"/><div style={S.chs}>{stdFiltered.map(p=>renderTag(p))}</div></>)}
+              {chipFiltered.length>0&&(<><SectionHeader label="CX — Gear Chips" count={chipFiltered.length} color="#7C3AED"/><div style={S.chs}>{chipFiltered.map(p=>renderTag(p))}</div></>)}
+              {cxbFiltered.length>0&&(<><SectionHeader label="CX — Blades" count={cxbFiltered.length} color="#7C3AED"/><div style={S.chs}>{cxbFiltered.map(p=>renderTag(p))}</div></>)}
+              {assFiltered.length>0&&(<><SectionHeader label="CX — Assist Blades" count={assFiltered.length} color="#7C3AED"/><div style={S.chs}>{assFiltered.map(p=>renderTag(p))}</div></>)}
+            </div>
+          );
+        })()}
+        {tab!=="blades" && (
+          <div style={{...S.card,marginTop:8}}>
+            {(()=>{
+              const filtered = libSearch ? parts[tab].filter(p=>p.toLowerCase().includes(libSearch.toLowerCase())) : parts[tab];
+              if(filtered.length===0) return <p style={S.empty}>{libSearch?`No matches for "${libSearch}"`:(`No ${tab} in library`)}</p>;
+              return <div style={S.chs}>{filtered.map((p)=>renderTag(p,tab))}</div>;
+            })()}
+          </div>
+        )}
         <button style={{...S.pri,marginTop:12}} onClick={onClose}>Done</button>
       </div>
     </div>
   );
 }
 
-/* ═══════════════════════════════════════
-   CACHED EVENT PICKER (used in FormatScreen TM mode)
-═══════════════════════════════════════ */
 function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport, onJudgeVerified}) {
   const [cachedList, setCachedList] = useState(null);
   const [selectedSlug, setSelectedSlug] = useState(null);
@@ -2297,10 +2464,16 @@ function ShuffleTimerInner({onDismiss}){
   const TOTAL = 60;
   const [seconds, setSeconds] = useState(TOTAL);
   const [expired, setExpired] = useState(false);
+  const [paused, setPaused] = useState(false);
   const intervalRef = useRef(null);
+  const pausedRef = useRef(false);
+
+  const pauseTimer  = () => { pausedRef.current = true;  setPaused(true);  };
+  const resumeTimer = () => { pausedRef.current = false; setPaused(false); };
 
   useEffect(()=>{
     intervalRef.current = setInterval(()=>{
+      if(pausedRef.current) return;
       setSeconds(s=>{
         if(s<=1){ clearInterval(intervalRef.current); setExpired(true); return 0; }
         return s-1;
@@ -2335,62 +2508,80 @@ function ShuffleTimerInner({onDismiss}){
     );
   }
 
+  const holdEvents = {
+    onMouseDown: pauseTimer, onMouseUp: resumeTimer, onMouseLeave: resumeTimer,
+    onTouchStart: e=>{e.preventDefault();pauseTimer();}, onTouchEnd: resumeTimer,
+  };
+
   return (
     <div style={{position:"fixed",inset:0,background:"var(--bg-solid)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:600,padding:"24px",gap:0}}>
       <p style={{fontSize:11,fontWeight:700,letterSpacing:3,color:"var(--text-muted)",textTransform:"uppercase",marginBottom:20}}>Shuffle Order Selection</p>
 
-      {/* Stopwatch SVG */}
-      <svg width="220" height="240" viewBox="0 0 220 260" style={{marginBottom:12}}>
-        {/* Watch body */}
-        <circle cx="110" cy="130" r="96" fill="var(--surface)" stroke="var(--border2)" strokeWidth="4"/>
-        {/* Crown / button at top */}
-        <rect x="96" y="28" width="28" height="12" rx="6" fill="var(--border2)"/>
-        <rect x="104" y="22" width="12" height="10" rx="4" fill="var(--border2)"/>
-        {/* Tick marks */}
-        {Array.from({length:60}).map((_,i)=>{
-          const angle = (i/60)*2*Math.PI - Math.PI/2;
-          const isMajor = i%5===0;
-          const r1 = isMajor ? 78 : 82;
-          const r2 = 90;
-          return <line key={i}
-            x1={110+r1*Math.cos(angle)} y1={130+r1*Math.sin(angle)}
-            x2={110+r2*Math.cos(angle)} y2={130+r2*Math.sin(angle)}
-            stroke={isMajor?"var(--text-secondary)":"var(--border2)"}
-            strokeWidth={isMajor?2:1}
-          />;
-        })}
-        {/* Elapsed arc (red sweep) */}
-        {elapsed > 0 && elapsed < 1 && (
-          <path
-            d={`M ${startX} ${startY} A ${R} ${R} 0 ${largeArc} 1 ${endX} ${endY}`}
-            fill="none" stroke="#EF4444" strokeWidth="6" strokeLinecap="round"
-            opacity="0.35"
+      {/* Stopwatch SVG — hold to pause */}
+      <div {...holdEvents} style={{cursor:"pointer",userSelect:"none",WebkitUserSelect:"none",touchAction:"none"}}>
+        <svg width="220" height="240" viewBox="0 0 220 260" style={{marginBottom:0,display:"block"}}>
+          {/* Watch body */}
+          <circle cx="110" cy="130" r="96" fill={paused?"#FEF9C3":"var(--surface)"} stroke={paused?"#CA8A04":"var(--border2)"} strokeWidth="4"/>
+          {/* Crown / button at top */}
+          <rect x="96" y="28" width="28" height="12" rx="6" fill="var(--border2)"/>
+          <rect x="104" y="22" width="12" height="10" rx="4" fill="var(--border2)"/>
+          {/* Tick marks */}
+          {Array.from({length:60}).map((_,i)=>{
+            const angle = (i/60)*2*Math.PI - Math.PI/2;
+            const isMajor = i%5===0;
+            const r1 = isMajor ? 78 : 82;
+            const r2 = 90;
+            return <line key={i}
+              x1={110+r1*Math.cos(angle)} y1={130+r1*Math.sin(angle)}
+              x2={110+r2*Math.cos(angle)} y2={130+r2*Math.sin(angle)}
+              stroke={isMajor?"var(--text-secondary)":"var(--border2)"}
+              strokeWidth={isMajor?2:1}
+            />;
+          })}
+          {/* Elapsed arc (red sweep) */}
+          {elapsed > 0 && elapsed < 1 && (
+            <path
+              d={`M ${startX} ${startY} A ${R} ${R} 0 ${largeArc} 1 ${endX} ${endY}`}
+              fill="none" stroke={paused?"#CA8A04":"#EF4444"} strokeWidth="6" strokeLinecap="round"
+              opacity="0.35"
+            />
+          )}
+          {elapsed >= 1 && (
+            <circle cx="110" cy="130" r={R} fill="none" stroke="#EF4444" strokeWidth="6" opacity="0.35"/>
+          )}
+          {/* Center dot */}
+          <circle cx="110" cy="130" r="5" fill="var(--text-secondary)"/>
+          {/* Second hand — grey when paused */}
+          <line
+            x1="110" y1="130"
+            x2={110 + 78*Math.cos(handDeg*Math.PI/180)}
+            y2={130 + 78*Math.sin(handDeg*Math.PI/180)}
+            stroke={paused?"#94A3B8":"#EF4444"} strokeWidth="2.5" strokeLinecap="round"
           />
-        )}
-        {elapsed >= 1 && (
-          <circle cx="110" cy="130" r={R} fill="none" stroke="#EF4444" strokeWidth="6" opacity="0.35"/>
-        )}
-        {/* Center dot */}
-        <circle cx="110" cy="130" r="5" fill="var(--text-secondary)"/>
-        {/* Second hand */}
-        <line
-          x1="110" y1="130"
-          x2={110 + 78*Math.cos(handDeg*Math.PI/180)}
-          y2={130 + 78*Math.sin(handDeg*Math.PI/180)}
-          stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round"
-        />
-        {/* Counter-weight tail */}
-        <line
-          x1="110" y1="130"
-          x2={110 - 18*Math.cos(handDeg*Math.PI/180)}
-          y2={130 - 18*Math.sin(handDeg*Math.PI/180)}
-          stroke="#EF4444" strokeWidth="3" strokeLinecap="round"
-        />
-      </svg>
+          {/* Counter-weight tail */}
+          <line
+            x1="110" y1="130"
+            x2={110 - 18*Math.cos(handDeg*Math.PI/180)}
+            y2={130 - 18*Math.sin(handDeg*Math.PI/180)}
+            stroke={paused?"#94A3B8":"#EF4444"} strokeWidth="3" strokeLinecap="round"
+          />
+          {/* Pause icon overlay */}
+          {paused && (
+            <g>
+              <rect x="98" y="117" width="9" height="26" rx="3" fill="#CA8A04" opacity="0.9"/>
+              <rect x="113" y="117" width="9" height="26" rx="3" fill="#CA8A04" opacity="0.9"/>
+            </g>
+          )}
+        </svg>
 
-      {/* Countdown number */}
-      <p style={{fontSize:64,fontWeight:900,color:"var(--text-primary)",lineHeight:1,marginBottom:4,fontVariantNumeric:"tabular-nums"}}>{seconds}</p>
-      <p style={{fontSize:13,fontWeight:600,color:"var(--text-muted)",marginBottom:36}}>seconds remaining</p>
+        {/* Countdown number — same hold target */}
+        <p {...holdEvents} style={{fontSize:64,fontWeight:900,color:paused?"#CA8A04":"var(--text-primary)",lineHeight:1,marginBottom:4,fontVariantNumeric:"tabular-nums",textAlign:"center",cursor:"pointer",userSelect:"none",WebkitUserSelect:"none"}}>{seconds}</p>
+      </div>
+
+      <p style={{fontSize:13,fontWeight:600,color:paused?"#CA8A04":"var(--text-muted)",marginBottom:4,marginTop:4}}>
+        {paused?"⏸ Paused — release to resume":"seconds remaining"}
+      </p>
+      <p style={{fontSize:10,fontWeight:600,color:"var(--text-faint)",marginBottom:32,letterSpacing:0.5}}>Hold clock to pause</p>
 
       <button onClick={onDismiss}
         style={{padding:"16px 40px",borderRadius:16,border:"none",background:"#22C55E",color:"#fff",fontSize:18,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",boxShadow:"0 4px 16px rgba(34,197,94,0.35)"}}>
@@ -7670,6 +7861,7 @@ function BeyJudgeApp() {
   },[challongeSlug]);
 
   useEffect(()=>{
+    // Load local cache immediately so the app is usable right away
     const saved=sGet(KEYS.parts,{});
     const merged=mergeWithDefaults(saved);
     setParts(merged); sSave(KEYS.parts,merged);
@@ -7677,6 +7869,16 @@ function BeyJudgeApp() {
     const savedMap = sGet(KEYS.challongeMap, {});
     if(savedMap.slug) setChallongeSlug(savedMap.slug);
     if(savedMap.participants) setChallongeParticipants(savedMap.participants);
+    // Then fetch the shared parts list from the Worker and replace local if found
+    fetch(`${OVERLAY_WORKER}/parts`, { signal: AbortSignal.timeout(6000) })
+      .then(r=>r.json())
+      .then(d=>{
+        if(d.ok && d.parts) {
+          const fresh = mergeWithDefaults(d.parts);
+          setParts(fresh); sSave(KEYS.parts, fresh);
+        }
+      })
+      .catch(()=>{}); // silently fall back to local cache on network failure
   },[]);
 
   const SHEETS_URL = "https://script.google.com/macros/s/AKfycbzvb5LkqMDXaMVJNFNQSf7dsUJK_0vbTfQ4gRRISGsRWg4mINvawLROxn0SaPqJ5o9E/exec";
