@@ -886,13 +886,14 @@ function LibraryManager({parts,setParts,onClose}) {
   // Pending change waiting for key confirmation
   const [pending, setPending] = useState(null);
 
-  // All 8 tabs. CX tabs all read/write from parts.blades underneath.
+  // All 9 tabs. CX tabs all read/write from parts.blades underneath.
   const TABS = [
     {k:"blades",       l:"Blades",         c:"#EA580C", src:"blades"},
+    {k:"crossover",    l:"Crossover",       c:"#EA580C", src:"blades"},
     {k:"gear_chips",   l:"Gear Chips",      c:"#7C3AED", src:"blades"},
     {k:"cx_blades",    l:"CX Blades",       c:"#7C3AED", src:"blades"},
     {k:"cxe_blades",   l:"CXE Blades",      c:"#7C3AED", src:"blades"},
-    {k:"cxe_over",     l:"CXE Over Blades", c:"#7C3AED", src:"blades"},
+    {k:"cxe_over",     l:"CXE Over",        c:"#7C3AED", src:"blades"},
     {k:"assist",       l:"Assist Blades",   c:"#7C3AED", src:"blades"},
     {k:"ratchets",     l:"Ratchets",        c:"#1D4ED8", src:"ratchets"},
     {k:"bits",         l:"Bits",            c:"#15803D", src:"bits"},
@@ -960,9 +961,11 @@ function LibraryManager({parts,setParts,onClose}) {
   const total=parts.blades.length+parts.ratchets.length+parts.bits.length;
 
   // CX part grouping — mirrors the deck builder step order exactly
-  const allCxNames = new Set([...CX_CHIPS,...CX_BLADES,...CXE_BLADES,...CXE_OVER_BLADES,...CX_ASSISTS]);
-  const standardBlades  = parts.blades.filter(p=>!allCxNames.has(p));
+  const allCxNames    = new Set([...CX_CHIPS,...CX_BLADES,...CXE_BLADES,...CXE_OVER_BLADES,...CX_ASSISTS]);
+  const allXoverNames = new Set(CROSSOVER_BLADES);
+  const standardBlades  = parts.blades.filter(p=>!allCxNames.has(p)&&!allXoverNames.has(p));
   const inLib = (list) => list.filter(p=>parts.blades.includes(p));
+  const libCrossover    = inLib(CROSSOVER_BLADES);
   const libChips        = inLib(CX_CHIPS);
   const libCxBlades     = inLib(CX_BLADES);
   const libCxeBlades    = inLib(CXE_BLADES);
@@ -970,6 +973,7 @@ function LibraryManager({parts,setParts,onClose}) {
   const libAssists      = inLib(CX_ASSISTS);
   const tabCount = (t) => {
     if(t.k==="blades")    return standardBlades.length;
+    if(t.k==="crossover") return libCrossover.length;
     if(t.k==="gear_chips")return libChips.length;
     if(t.k==="cx_blades") return libCxBlades.length;
     if(t.k==="cxe_blades")return libCxeBlades.length;
@@ -1049,8 +1053,8 @@ function LibraryManager({parts,setParts,onClose}) {
           <strong>{total} parts</strong> in the shared library.
         </div>
         <div style={{marginBottom:14}}>
-          {[TABS.slice(0,4), TABS.slice(4)].map((row,ri)=>(
-            <div key={ri} style={{display:"flex",borderBottom:ri===1?"2px solid #F1F5F9":"none"}}>
+          {[TABS.slice(0,3), TABS.slice(3,6), TABS.slice(6)].map((row,ri)=>(
+            <div key={ri} style={{display:"flex",borderBottom:ri===2?"2px solid #F1F5F9":"none"}}>
               {row.map(t=>(
                 <button key={t.k} onClick={()=>{setTab(t.k);setLibSearch("");}}
                   style={{...S.tBtn,flex:1,color:tab===t.k?t.c:"#94A3B8",fontWeight:tab===t.k?700:500,
@@ -1081,6 +1085,7 @@ function LibraryManager({parts,setParts,onClose}) {
           // For all CX blade sub-tabs: look up the right list, render flat
           const cxTabMap = {
             blades:     {list:standardBlades, label:"Standard Blades",    empty:"No standard blades in library"},
+            crossover:  {list:libCrossover,   label:"Crossover Blades",   empty:"No crossover blades in library"},
             gear_chips: {list:libChips,       label:"Gear Chips",         empty:"No gear chips in library"},
             cx_blades:  {list:libCxBlades,    label:"CX Blades",          empty:"No CX blades in library"},
             cxe_blades: {list:libCxeBlades,   label:"CXE Blades",         empty:"No CXE blades in library"},
@@ -1094,7 +1099,7 @@ function LibraryManager({parts,setParts,onClose}) {
               <div style={{...S.card,marginTop:8}}>
                 {filtered.length===0
                   ? <p style={S.empty}>{libSearch?`No matches for "${libSearch}"`:empty}</p>
-                  : <><SectionHeader label={label} count={filtered.length} color={tab==="blades"?"#EA580C":"#7C3AED"}/><div style={S.chs}>{filtered.map(p=>renderTag(p))}</div></>
+                  : <><SectionHeader label={label} count={filtered.length} color={(tab==="blades"||tab==="crossover")?"#EA580C":"#7C3AED"}/><div style={S.chs}>{filtered.map(p=>renderTag(p))}</div></>
                 }
               </div>
             );
