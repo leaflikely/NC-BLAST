@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-26 | session: mobile login fixed-key redirect flow -->
+<!-- NC BLAST index.html | last updated: 2026-05-26 | session: mobile login auto-confirm skip redirect screen -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -465,12 +465,28 @@ function useChallongeAuthPopup() {
   // immediately — no sessionId handoff needed. Desktop popup uses the sessionId-keyed path.
   React.useEffect(() => {
     const sid = sessionIdRef.current;
-    // Check fixed mobile key first (written by same-tab redirect flow)
+    // Check fixed mobile key first (written by same-tab redirect flow).
+    // Auto-confirm these results — the user just came back from Challonge's own login
+    // page, so there's no ambiguity about whose account it is. Skipping the confirm
+    // step also avoids the problem where the confirm UI isn't visible until after the
+    // user re-selects a tournament (page state was wiped by the redirect).
     try {
       const mobileRaw = localStorage.getItem("ncblast-oauth-result-mobile");
       if (mobileRaw) {
         localStorage.removeItem("ncblast-oauth-result-mobile");
-        handleResult(JSON.parse(mobileRaw));
+        const mobileMsg = JSON.parse(mobileRaw);
+        if (mobileMsg.ok) {
+          try {
+            if (mobileMsg.token) sessionStorage.setItem("ncblast-auth-token", mobileMsg.token);
+            if (mobileMsg.username) sessionStorage.setItem("ncblast-auth-user", mobileMsg.username);
+          } catch(_) {}
+          pendingRef.current = mobileMsg;
+          setUsername(mobileMsg.username);
+          setState("done"); // skip confirm — user just came from Challonge's own login page
+        } else {
+          setErrorMsg(mobileMsg.error || "Login failed.");
+          setState("error");
+        }
         return;
       }
     } catch(_) {}
@@ -488,12 +504,24 @@ function useChallongeAuthPopup() {
     const recover = setInterval(() => {
       if (Date.now() > deadline) { clearInterval(recover); return; }
       try {
-        // Poll both keys
+        // Poll both keys — auto-confirm mobile results (same reason as mount-time check above)
         const mobileRaw2 = localStorage.getItem("ncblast-oauth-result-mobile");
         if (mobileRaw2) {
           clearInterval(recover);
           localStorage.removeItem("ncblast-oauth-result-mobile");
-          handleResult(JSON.parse(mobileRaw2));
+          const mobileMsg2 = JSON.parse(mobileRaw2);
+          if (mobileMsg2.ok) {
+            try {
+              if (mobileMsg2.token) sessionStorage.setItem("ncblast-auth-token", mobileMsg2.token);
+              if (mobileMsg2.username) sessionStorage.setItem("ncblast-auth-user", mobileMsg2.username);
+            } catch(_) {}
+            pendingRef.current = mobileMsg2;
+            setUsername(mobileMsg2.username);
+            setState("done");
+          } else {
+            setErrorMsg(mobileMsg2.error || "Login failed.");
+            setState("error");
+          }
           return;
         }
         const raw2 = localStorage.getItem("ncblast-oauth-result:" + sid);
