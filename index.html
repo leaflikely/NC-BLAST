@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-26 | session: mobile login blank-tab flow no redirect -->
+<!-- NC BLAST index.html | last updated: 2026-05-26 | session: library add duplicate feedback; full save error surfacing -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -941,13 +941,24 @@ function LibraryManager({parts,setParts,onClose}) {
       setParts(newParts); sSave(KEYS.parts, newParts);
       setPending(null); setKeyInput(""); setInp("");
     } catch(e) {
-      setKeyError(e.message === "Invalid master key" ? "Wrong master key — try again." : "Couldn't save. Check your connection.");
+      if (e.message === "Invalid master key") {
+        setKeyError("Wrong master key — try again.");
+      } else {
+        setKeyError("Save failed: " + e.message);
+      }
     } finally { setSaving(false); }
   };
 
+  const [dupError, setDupError] = React.useState("");
   const requestAdd = () => {
     const v = inp.trim();
-    if(!v || parts[partsSrc].includes(v)) return;
+    if (!v) return;
+    if (parts[partsSrc].includes(v)) {
+      setDupError(`"${v}" is already in the library.`);
+      setTimeout(() => setDupError(""), 3000);
+      return;
+    }
+    setDupError("");
     const n = {...parts, [partsSrc]:[...parts[partsSrc],v].sort()};
     setPending({ preview: n, label: `Add "${v}" to ${curTab.l}` });
   };
@@ -1092,9 +1103,10 @@ function LibraryManager({parts,setParts,onClose}) {
           {libSearch&&<button onClick={()=>setLibSearch("")} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"#94A3B8",cursor:"pointer",fontSize:14,lineHeight:1}}>✕</button>}
         </div>
         <div style={S.addR}>
-          <input style={S.inp} placeholder={`Add to ${curTab.l}…`} value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&requestAdd()}/>
+          <input style={S.inp} placeholder={`Add to ${curTab.l}…`} value={inp} onChange={e=>{setInp(e.target.value);setDupError("");}} onKeyDown={e=>e.key==="Enter"&&requestAdd()}/>
           <button style={{...S.addB,background:ac}} onClick={requestAdd}>{IC.plus}</button>
         </div>
+        {dupError && <p style={{fontSize:12,color:"#EF4444",fontWeight:600,margin:"4px 0 0"}}>{dupError}</p>}
         <input type="file" ref={fRef} accept=".json,.csv,.txt" style={{display:"none"}} onChange={onFile}/>
         <button style={S.upBtn} onClick={()=>fRef.current.click()}>{IC.upload} Import Parts File</button>
         <p style={S.hint}>{"JSON: {\"blades\":[], \"ratchets\":[], \"bits\":[]} or text one per line"}</p>
