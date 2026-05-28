@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-26 | session: CX extras display fix; deck builder blank page fix -->
+<!-- NC BLAST index.html | last updated: 2026-05-26 | session: fix _deckCx scope crash; fix hook order; save confirmation banner -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -907,6 +907,8 @@ function LibraryManager({parts,setParts,onClose}) {
 
   // Pending change waiting for key confirmation
   const [pending, setPending] = useState(null);
+  const [saveOk, setSaveOk] = useState(false);
+  const [dupError, setDupError] = useState("");
 
   // All 9 tabs. CX tabs all read/write from parts.blades underneath.
   const TABS = [
@@ -943,6 +945,7 @@ function LibraryManager({parts,setParts,onClose}) {
       await pushToServer(newParts, keyInput.trim());
       setParts(newParts); sSave(KEYS.parts, newParts);
       setPending(null); setKeyInput(""); setInp("");
+      setSaveOk(true); setTimeout(()=>setSaveOk(false), 2500);
     } catch(e) {
       if (e.message === "Invalid master key") {
         setKeyError("Wrong master key — try again.");
@@ -952,7 +955,6 @@ function LibraryManager({parts,setParts,onClose}) {
     } finally { setSaving(false); }
   };
 
-  const [dupError, setDupError] = React.useState("");
   const requestAdd = () => {
     const v = inp.trim();
     if (!v) return;
@@ -1142,6 +1144,7 @@ function LibraryManager({parts,setParts,onClose}) {
           <button style={{...S.addB,background:ac}} onClick={requestAdd}>{IC.plus}</button>
         </div>
         {dupError && <p style={{fontSize:12,color:"#EF4444",fontWeight:600,margin:"4px 0 0"}}>{dupError}</p>}
+        {saveOk && <p style={{fontSize:12,color:"#22C55E",fontWeight:700,margin:"4px 0 0"}}>✓ Saved to library</p>}
         <input type="file" ref={fRef} accept=".json,.csv,.txt" style={{display:"none"}} onChange={onFile}/>
         <button style={S.upBtn} onClick={()=>fRef.current.click()}>{IC.upload} Import Parts File</button>
         <p style={S.hint}>{"JSON: {\"blades\":[], \"ratchets\":[], \"bits\":[]} or text one per line"}</p>
@@ -3185,6 +3188,14 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     );
   }
 
+  // ── CX/picker shared vars — computed once, used in both cxPicker and picker blocks ──
+  const _ex = parts.extras || {};
+  const _bl = parts.blades || [];
+  const _deckCxBlades   = [...new Set([...CX_BLADES,       ...(_ex.cx_blades ||[]).filter(b=>_bl.includes(b))])];
+  const _deckCxeBlades  = [...new Set([...CXE_BLADES,      ...(_ex.cxe_blades||[]).filter(b=>_bl.includes(b))])];
+  const _deckCxeOver    = [...new Set([...CXE_OVER_BLADES, ...(_ex.cxe_over  ||[]).filter(b=>_bl.includes(b))])];
+  const _deckAssists    = [...new Set([...CX_ASSISTS,      ...(_ex.assist    ||[]).filter(b=>_bl.includes(b))])];
+
   // ── CX Picker ──────────────────────────────────────────────────────────────
   if(cxPicker){
     const {step,who,slot,chip,blade,returnToReview} = cxPicker;
@@ -3232,14 +3243,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     };
 
     const stepLabels = {chip:"Gear Chip",blade:"Blade",over_blade:"Over Blade",assist:"Assist"};
-    // Merge hardcoded CX lists with user-added extras from the library.
-    // Hardcoded parts always show; user-added extras only show if they're in parts.blades.
-    const _ex = parts.extras || {};
-    const _bl = parts.blades || [];
-    const _deckCxBlades   = [...new Set([...CX_BLADES,          ...(_ex.cx_blades ||[]).filter(b=>_bl.includes(b))])];
-    const _deckCxeBlades  = [...new Set([...CXE_BLADES,         ...(_ex.cxe_blades||[]).filter(b=>_bl.includes(b))])];
-    const _deckCxeOver    = [...new Set([...CXE_OVER_BLADES,    ...(_ex.cxe_over  ||[]).filter(b=>_bl.includes(b))])];
-    const _deckAssists    = [...new Set([...CX_ASSISTS,         ...(_ex.assist    ||[]).filter(b=>_bl.includes(b))])];
     const stepOrder = ["chip","blade","over_blade","assist"];
     const progress = stepOrder.indexOf(step);
     const totalStepsInFlow = cxPicker?.isCXE ? 4 : 3;
