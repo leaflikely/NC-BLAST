@@ -4177,7 +4177,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
 
   // ── Shuffle Timer Screen ────────────────────────────────────────────────────
   if(shuffleTimer){
-    const dismissTimer = () => { pushOverlay({shuffling:false}); setShuffleTimer(null); setUsed1([]); setUsed2([]); setShuf(s=>s+1); };
+    const dismissTimer = () => { pushOverlay({shuffling:false}); setShuffleTimer(null); setUsed1([]); setUsed2([]); if(shuffleTimer==="active"){ setShuf(s=>s+1); } };
     return <ShuffleTimerInner onDismiss={dismissTimer}/>;
   }
 
@@ -4226,7 +4226,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                     setSideAssign({pickPriority:sidePicker.priority,p1Side,p2Side});
                     setCurrentSides({p1Side,p2Side});
                     setSidePicker(null);
-                    setShuffleTimer("active");
+                    setShuffleTimer("newset");
                     pushOverlay({shuffling:true, p1Side, p2Side});
                   }} style={{width:"100%",padding:"36px 0",borderRadius:20,border:`3px solid ${priorityColor}40`,background:`${priorityColor}0D`,color:priorityColor,fontSize:48,fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
                     {side} Side
