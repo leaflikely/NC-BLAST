@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-26 | session: fix _deckCx scope crash; fix hook order; save confirmation banner -->
+<!-- NC BLAST index.html | last updated: 2026-05-26 | session: library display simplified - all user parts show in Blades tab -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -792,9 +792,6 @@ function mergeWithDefaults(saved) {
     blades: mergeList(DEFAULT_PARTS.blades, saved.blades),
     ratchets: mergeList(DEFAULT_PARTS.ratchets, saved.ratchets),
     bits: mergeList(DEFAULT_PARTS.bits, saved.bits),
-    // extras: tracks which CX subtab user-added blades belong to, e.g. {cxe_over: ["Peak","Outer"]}
-    // Passed through as-is — no defaults to merge
-    extras: saved.extras || {},
   };
 }
 
@@ -958,40 +955,19 @@ function LibraryManager({parts,setParts,onClose}) {
   const requestAdd = () => {
     const v = inp.trim();
     if (!v) return;
-    // Check both the main list and any extras registered for this tab
-    const tabExtras = (parts.extras || {})[tab] || [];
-    if (parts[partsSrc].includes(v) || tabExtras.includes(v)) {
+    // Duplicate check: is this part already in the relevant list?
+    if (parts[partsSrc].includes(v)) {
       setDupError(`"${v}" is already in the library.`);
       setTimeout(() => setDupError(""), 3000);
       return;
     }
     setDupError("");
-    // For CX blade subtabs, also record which tab this blade belongs to
-    // so the library display can show it under the right section
-    const CX_SUBTABS = ["crossover","gear_chips","cx_blades","cxe_blades","cxe_over","assist"];
-    let newExtras = parts.extras || {};
-    if (CX_SUBTABS.includes(tab)) {
-      const existing = newExtras[tab] || [];
-      if (!existing.includes(v)) {
-        newExtras = {...newExtras, [tab]: [...existing, v].sort()};
-      }
-    }
-    const n = {...parts, [partsSrc]:[...parts[partsSrc],v].sort(), extras: newExtras};
+    const n = {...parts, [partsSrc]:[...parts[partsSrc],v].sort()};
     setPending({ preview: n, label: `Add "${v}" to ${curTab.l}` });
   };
 
   const requestDel = (cat, name) => {
-    // Remove from the main list
     const n = {...parts, [cat]:parts[cat].filter(x=>x!==name)};
-    // Also scrub from extras in case it was a user-added CX blade
-    if (cat === "blades" && n.extras) {
-      const cleaned = {};
-      for (const [k, v] of Object.entries(n.extras)) {
-        const filtered = v.filter(x => x !== name);
-        if (filtered.length) cleaned[k] = filtered;
-      }
-      n.extras = cleaned;
-    }
     setPending({ preview: n, label: `Remove "${name}"` });
   };
 
@@ -1018,25 +994,21 @@ function LibraryManager({parts,setParts,onClose}) {
   const total=parts.blades.length+parts.ratchets.length+parts.bits.length;
 
   // CX part grouping — mirrors the deck builder step order exactly
-  // extras: user-added blades recorded under a specific subtab key
   const ex = parts.extras || {};
-  // Library display: hardcoded members that are in parts.blades, PLUS user-added extras in parts.blades
-  const inLib = (list, extraKey) => {
-    const hardcoded = list.filter(p => parts.blades.includes(p));
-    const userAdded = (ex[extraKey]||[]).filter(p => parts.blades.includes(p));
-    return [...new Set([...hardcoded, ...userAdded])];
-  };
-  const libCrossover    = inLib(CROSSOVER_BLADES, "crossover");
-  const libChips        = inLib(CX_CHIPS,         "gear_chips");
-  const libCxBlades     = inLib(CX_BLADES,        "cx_blades");
-  const libCxeBlades    = inLib(CXE_BLADES,       "cxe_blades");
-  const libCxeOver      = inLib(CXE_OVER_BLADES,  "cxe_over");
-  const libAssists      = inLib(CX_ASSISTS,        "assist");
-  // All names claimed by a CX or crossover subtab (hardcoded + user extras)
-  const allCxNames    = new Set([...CX_CHIPS,...CX_BLADES,...CXE_BLADES,...CXE_OVER_BLADES,...CX_ASSISTS,
-                                  ...(ex.gear_chips||[]),...(ex.cx_blades||[]),...(ex.cxe_blades||[]),
-                                  ...(ex.cxe_over||[]),...(ex.assist||[])]);
-  const allXoverNames = new Set([...CROSSOVER_BLADES,...(ex.crossover||[])]);
+  // Library display uses only hardcoded constants to categorise blades into tabs.
+  // Any blade in parts.blades that isn't in a hardcoded CX/crossover list shows
+  // in the standard Blades tab — including all user-added parts regardless of which
+  // tab they were added from.
+  const inLib = (list) => list.filter(p => parts.blades.includes(p));
+  const libCrossover    = inLib(CROSSOVER_BLADES);
+  const libChips        = inLib(CX_CHIPS);
+  const libCxBlades     = inLib(CX_BLADES);
+  const libCxeBlades    = inLib(CXE_BLADES);
+  const libCxeOver      = inLib(CXE_OVER_BLADES);
+  const libAssists      = inLib(CX_ASSISTS);
+  // Anything not in any hardcoded CX or crossover set shows under standard Blades
+  const allCxNames    = new Set([...CX_CHIPS,...CX_BLADES,...CXE_BLADES,...CXE_OVER_BLADES,...CX_ASSISTS]);
+  const allXoverNames = new Set(CROSSOVER_BLADES);
   const standardBlades  = parts.blades.filter(p=>!allCxNames.has(p)&&!allXoverNames.has(p));
   const tabCount = (t) => {
     if(t.k==="blades")    return standardBlades.length;
