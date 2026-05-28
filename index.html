@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-26 | session: parts library extras system for user-added CX parts -->
+<!-- NC BLAST index.html | last updated: 2026-05-26 | session: CX extras display fix; deck builder blank page fix -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1018,10 +1018,11 @@ function LibraryManager({parts,setParts,onClose}) {
   // CX part grouping — mirrors the deck builder step order exactly
   // extras: user-added blades recorded under a specific subtab key
   const ex = parts.extras || {};
-  // Merge hardcoded list + user-added extras for each subtab, keeping only parts actually in parts.blades
+  // Library display: hardcoded members that are in parts.blades, PLUS user-added extras in parts.blades
   const inLib = (list, extraKey) => {
-    const combined = [...new Set([...list, ...(ex[extraKey]||[])])];
-    return combined.filter(p => parts.blades.includes(p));
+    const hardcoded = list.filter(p => parts.blades.includes(p));
+    const userAdded = (ex[extraKey]||[]).filter(p => parts.blades.includes(p));
+    return [...new Set([...hardcoded, ...userAdded])];
   };
   const libCrossover    = inLib(CROSSOVER_BLADES, "crossover");
   const libChips        = inLib(CX_CHIPS,         "gear_chips");
@@ -1029,7 +1030,7 @@ function LibraryManager({parts,setParts,onClose}) {
   const libCxeBlades    = inLib(CXE_BLADES,       "cxe_blades");
   const libCxeOver      = inLib(CXE_OVER_BLADES,  "cxe_over");
   const libAssists      = inLib(CX_ASSISTS,        "assist");
-  // All names claimed by a CX or crossover subtab
+  // All names claimed by a CX or crossover subtab (hardcoded + user extras)
   const allCxNames    = new Set([...CX_CHIPS,...CX_BLADES,...CXE_BLADES,...CXE_OVER_BLADES,...CX_ASSISTS,
                                   ...(ex.gear_chips||[]),...(ex.cx_blades||[]),...(ex.cxe_blades||[]),
                                   ...(ex.cxe_over||[]),...(ex.assist||[])]);
@@ -3231,12 +3232,14 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     };
 
     const stepLabels = {chip:"Gear Chip",blade:"Blade",over_blade:"Over Blade",assist:"Assist"};
-    // Merge hardcoded CX lists with user-added extras from the library
+    // Merge hardcoded CX lists with user-added extras from the library.
+    // Hardcoded parts always show; user-added extras only show if they're in parts.blades.
     const _ex = parts.extras || {};
-    const _deckCxBlades   = [...new Set([...CX_BLADES,   ...(_ex.cx_blades ||[])])].filter(b=>parts.blades.includes(b));
-    const _deckCxeBlades  = [...new Set([...CXE_BLADES,  ...(_ex.cxe_blades||[])])].filter(b=>parts.blades.includes(b));
-    const _deckCxeOver    = [...new Set([...CXE_OVER_BLADES,...(_ex.cxe_over||[])])].filter(b=>parts.blades.includes(b));
-    const _deckAssists    = [...new Set([...CX_ASSISTS,  ...(_ex.assist    ||[])])].filter(b=>parts.blades.includes(b));
+    const _bl = parts.blades || [];
+    const _deckCxBlades   = [...new Set([...CX_BLADES,          ...(_ex.cx_blades ||[]).filter(b=>_bl.includes(b))])];
+    const _deckCxeBlades  = [...new Set([...CXE_BLADES,         ...(_ex.cxe_blades||[]).filter(b=>_bl.includes(b))])];
+    const _deckCxeOver    = [...new Set([...CXE_OVER_BLADES,    ...(_ex.cxe_over  ||[]).filter(b=>_bl.includes(b))])];
+    const _deckAssists    = [...new Set([...CX_ASSISTS,         ...(_ex.assist    ||[]).filter(b=>_bl.includes(b))])];
     const stepOrder = ["chip","blade","over_blade","assist"];
     const progress = stepOrder.indexOf(step);
     const totalStepsInFlow = cxPicker?.isCXE ? 4 : 3;
@@ -5252,12 +5255,14 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[],
       if(returnToReview){ setStep({slot,cat:"ratchet",returnToReview:true}); return; }
       openStep({slot,cat:"ratchet"});
     };
-    // Merge hardcoded CX lists with user-added extras from the library
+    // Merge hardcoded CX lists with user-added extras from the library.
+    // Hardcoded parts always show; user-added extras only show if they're in parts.blades.
     const _dbEx = (parts && parts.extras) || {};
-    const _dbCxBlades  = [...new Set([...CX_BLADES,   ...(_dbEx.cx_blades ||[])])].filter(b=>(parts.blades||[]).includes(b));
-    const _dbCxeBlades = [...new Set([...CXE_BLADES,  ...(_dbEx.cxe_blades||[])])].filter(b=>(parts.blades||[]).includes(b));
-    const _dbCxeOver   = [...new Set([...CXE_OVER_BLADES,...(_dbEx.cxe_over||[])])].filter(b=>(parts.blades||[]).includes(b));
-    const _dbAssists   = [...new Set([...CX_ASSISTS,  ...(_dbEx.assist    ||[])])].filter(b=>(parts.blades||[]).includes(b));
+    const _dbBl = (parts && parts.blades) || [];
+    const _dbCxBlades  = [...new Set([...CX_BLADES,        ...(_dbEx.cx_blades ||[]).filter(b=>_dbBl.includes(b))])];
+    const _dbCxeBlades = [...new Set([...CXE_BLADES,       ...(_dbEx.cxe_blades||[]).filter(b=>_dbBl.includes(b))])];
+    const _dbCxeOver   = [...new Set([...CXE_OVER_BLADES,  ...(_dbEx.cxe_over  ||[]).filter(b=>_dbBl.includes(b))])];
+    const _dbAssists   = [...new Set([...CX_ASSISTS,       ...(_dbEx.assist    ||[]).filter(b=>_dbBl.includes(b))])];
 
     return (
       <div style={{position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",zIndex:10}}>
