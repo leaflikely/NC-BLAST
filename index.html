@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-26 | session: library debug display + display simplification -->
+<!-- NC BLAST index.html | last updated: 2026-05-26 | session: parts.cx system - CX tab additions save to correct category -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -783,15 +783,33 @@ const BLADE_COLORS = {
 };
 
 function mergeWithDefaults(saved) {
-  // Merge: defaults keep their order (pinned first), user extras appended alphabetically
+  // Merge: defaults keep their order (pinned first), user extras appended alphabetically.
+  // new Set deduplicates in case the stored data has duplicate entries.
   function mergeList(defaults, saved) {
-    const extras = (saved||[]).filter(x => !defaults.includes(x)).sort();
+    const deduped = [...new Set(saved||[])];
+    const extras = deduped.filter(x => !defaults.includes(x)).sort();
     return [...new Set([...defaults, ...extras])];
   }
+  // CX sub-lists: each category merges its hardcoded defaults with any saved extras
+  const savedCx = saved.cx || {};
+  const cx = {
+    crossover:  mergeList(CROSSOVER_BLADES,  savedCx.crossover),
+    gear_chips: mergeList(CX_CHIPS,          savedCx.gear_chips),
+    cx_blades:  mergeList(CX_BLADES,         savedCx.cx_blades),
+    cxe_blades: mergeList(CXE_BLADES,        savedCx.cxe_blades),
+    cxe_over:   mergeList(CXE_OVER_BLADES,   savedCx.cxe_over),
+    assist:     mergeList(CX_ASSISTS,         savedCx.assist),
+  };
+  // parts.blades stays as the flat union of everything (used by deck builder logic)
+  const allCxParts = [...new Set([
+    ...cx.crossover, ...cx.gear_chips, ...cx.cx_blades,
+    ...cx.cxe_blades, ...cx.cxe_over, ...cx.assist
+  ])];
   return {
-    blades: mergeList(DEFAULT_PARTS.blades, saved.blades),
+    blades: mergeList(DEFAULT_PARTS.blades, [...(saved.blades||[]), ...allCxParts]),
     ratchets: mergeList(DEFAULT_PARTS.ratchets, saved.ratchets),
     bits: mergeList(DEFAULT_PARTS.bits, saved.bits),
+    cx, // per-category lists for library display and deck builder pickers
   };
 }
 
@@ -952,22 +970,47 @@ function LibraryManager({parts,setParts,onClose}) {
     } finally { setSaving(false); }
   };
 
+  const CX_TAB_KEYS = ["crossover","gear_chips","cx_blades","cxe_blades","cxe_over","assist"];
   const requestAdd = () => {
     const v = inp.trim();
     if (!v) return;
-    // Duplicate check: is this part already in the relevant list?
-    if (parts[partsSrc].includes(v)) {
-      setDupError(`"${v}" is already in the library.`);
+    const isCxTab = CX_TAB_KEYS.includes(tab);
+    // Duplicate check against the right list
+    const currentList = isCxTab ? (parts.cx||{})[tab]||[] : parts[partsSrc]||[];
+    if (currentList.includes(v)) {
+      setDupError(`"${v}" is already in this category.`);
       setTimeout(() => setDupError(""), 3000);
       return;
     }
     setDupError("");
-    const n = {...parts, [partsSrc]:[...parts[partsSrc],v].sort()};
+    let n;
+    if (isCxTab) {
+      // Add to the specific CX sub-list and also to parts.blades (for deck builder logic)
+      const newCxList = [...new Set([...currentList, v])].sort();
+      const newCx = {...(parts.cx||{}), [tab]: newCxList};
+      const newBlades = [...new Set([...parts.blades, v])].sort();
+      n = {...parts, cx: newCx, blades: newBlades};
+    } else {
+      // Standard blades, ratchets, bits — write directly to the flat list
+      n = {...parts, [partsSrc]:[...new Set([...parts[partsSrc],v])].sort()};
+    }
     setPending({ preview: n, label: `Add "${v}" to ${curTab.l}` });
   };
 
   const requestDel = (cat, name) => {
-    const n = {...parts, [cat]:parts[cat].filter(x=>x!==name)};
+    // cat is the tab key for CX tabs, or "blades"/"ratchets"/"bits" for standard tabs
+    let n;
+    if (CX_TAB_KEYS.includes(cat)) {
+      // Remove from the CX sub-list and from parts.blades
+      const newCxList = ((parts.cx||{})[cat]||[]).filter(x=>x!==name);
+      const newCx = {...(parts.cx||{}), [cat]: newCxList};
+      // Only remove from parts.blades if no other CX category still uses this part
+      const stillUsed = CX_TAB_KEYS.some(k => k!==cat && ((parts.cx||{})[k]||[]).includes(name));
+      const newBlades = stillUsed ? parts.blades : parts.blades.filter(x=>x!==name);
+      n = {...parts, cx: newCx, blades: newBlades};
+    } else {
+      n = {...parts, [cat]: parts[cat].filter(x=>x!==name)};
+    }
     setPending({ preview: n, label: `Remove "${name}"` });
   };
 
@@ -993,23 +1036,18 @@ function LibraryManager({parts,setParts,onClose}) {
 
   const total=parts.blades.length+parts.ratchets.length+parts.bits.length;
 
-  // CX part grouping — mirrors the deck builder step order exactly
-  const ex = parts.extras || {};
-  // Library display uses only hardcoded constants to categorise blades into tabs.
-  // Any blade in parts.blades that isn't in a hardcoded CX/crossover list shows
-  // in the standard Blades tab — including all user-added parts regardless of which
-  // tab they were added from.
-  const inLib = (list) => list.filter(p => parts.blades.includes(p));
-  const libCrossover    = inLib(CROSSOVER_BLADES);
-  const libChips        = inLib(CX_CHIPS);
-  const libCxBlades     = inLib(CX_BLADES);
-  const libCxeBlades    = inLib(CXE_BLADES);
-  const libCxeOver      = inLib(CXE_OVER_BLADES);
-  const libAssists      = inLib(CX_ASSISTS);
-  // Anything not in any hardcoded CX or crossover set shows under standard Blades
-  const allCxNames    = new Set([...CX_CHIPS,...CX_BLADES,...CXE_BLADES,...CXE_OVER_BLADES,...CX_ASSISTS]);
-  const allXoverNames = new Set(CROSSOVER_BLADES);
-  const standardBlades  = parts.blades.filter(p=>!allCxNames.has(p)&&!allXoverNames.has(p));
+  // CX part grouping — read from parts.cx which merges hardcoded defaults with user additions
+  const cx = parts.cx || {};
+  const libCrossover = cx.crossover  || CROSSOVER_BLADES;
+  const libChips     = cx.gear_chips || CX_CHIPS;
+  const libCxBlades  = cx.cx_blades  || CX_BLADES;
+  const libCxeBlades = cx.cxe_blades || CXE_BLADES;
+  const libCxeOver   = cx.cxe_over   || CXE_OVER_BLADES;
+  const libAssists   = cx.assist     || CX_ASSISTS;
+  // Standard blades = everything in parts.blades not claimed by any CX/crossover category
+  const allCxNames    = new Set([...libChips,...libCxBlades,...libCxeBlades,...libCxeOver,...libAssists]);
+  const allXoverNames = new Set(libCrossover);
+  const standardBlades = parts.blades.filter(p=>!allCxNames.has(p)&&!allXoverNames.has(p));
   const tabCount = (t) => {
     if(t.k==="blades")    return standardBlades.length;
     if(t.k==="crossover") return libCrossover.length;
@@ -1117,15 +1155,7 @@ function LibraryManager({parts,setParts,onClose}) {
         </div>
         {dupError && <p style={{fontSize:12,color:"#EF4444",fontWeight:600,margin:"4px 0 0"}}>{dupError}</p>}
         {saveOk && <p style={{fontSize:12,color:"#22C55E",fontWeight:700,margin:"4px 0 0"}}>✓ Saved to library</p>}
-        {/* DEBUG: show non-default blades so we can verify what's stored */}
-        {(()=>{
-          const DEFAULT_BLADE_SET = new Set(DEFAULT_PARTS.blades);
-          const custom = parts.blades.filter(p => !DEFAULT_BLADE_SET.has(p));
-          if (!custom.length) return null;
-          return <p style={{fontSize:11,color:"#7C3AED",margin:"4px 0 0",wordBreak:"break-all"}}>
-            🔍 Custom blades in store: {custom.join(", ")}
-          </p>;
-        })()}
+
         <input type="file" ref={fRef} accept=".json,.csv,.txt" style={{display:"none"}} onChange={onFile}/>
         <button style={S.upBtn} onClick={()=>fRef.current.click()}>{IC.upload} Import Parts File</button>
         <p style={S.hint}>{"JSON: {\"blades\":[], \"ratchets\":[], \"bits\":[]} or text one per line"}</p>
@@ -1149,7 +1179,7 @@ function LibraryManager({parts,setParts,onClose}) {
               <div style={{...S.card,marginTop:8}}>
                 {filtered.length===0
                   ? <p style={S.empty}>{libSearch?`No matches for "${libSearch}"`:empty}</p>
-                  : <><SectionHeader label={label} count={filtered.length} color={(tab==="blades"||tab==="crossover")?"#EA580C":"#7C3AED"}/><div style={S.chs}>{filtered.map(p=>renderTag(p))}</div></>
+                  : <><SectionHeader label={label} count={filtered.length} color={(tab==="blades"||tab==="crossover")?"#EA580C":"#7C3AED"}/><div style={S.chs}>{filtered.map(p=>renderTag(p, tab))}</div></>
                 }
               </div>
             );
@@ -3169,13 +3199,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     );
   }
 
-  // ── CX/picker shared vars — computed once, used in both cxPicker and picker blocks ──
-  const _ex = parts.extras || {};
-  const _bl = parts.blades || [];
-  const _deckCxBlades   = [...new Set([...CX_BLADES,       ...(_ex.cx_blades ||[]).filter(b=>_bl.includes(b))])];
-  const _deckCxeBlades  = [...new Set([...CXE_BLADES,      ...(_ex.cxe_blades||[]).filter(b=>_bl.includes(b))])];
-  const _deckCxeOver    = [...new Set([...CXE_OVER_BLADES, ...(_ex.cxe_over  ||[]).filter(b=>_bl.includes(b))])];
-  const _deckAssists    = [...new Set([...CX_ASSISTS,      ...(_ex.assist    ||[]).filter(b=>_bl.includes(b))])];
+  // ── CX/picker shared vars — read from parts.cx which includes user additions ──
+  const _pcx = parts.cx || {};
+  const _deckCxBlades   = _pcx.cx_blades  || CX_BLADES;
+  const _deckCxeBlades  = _pcx.cxe_blades || CXE_BLADES;
+  const _deckCxeOver    = _pcx.cxe_over   || CXE_OVER_BLADES;
+  const _deckAssists    = _pcx.assist     || CX_ASSISTS;
 
   // ── CX Picker ──────────────────────────────────────────────────────────────
   if(cxPicker){
@@ -3191,7 +3220,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     otherBlades.forEach(name=>{
       const p = name.split(" ");
       // Determine if this is a CXE combo by checking if any word is a CXE blade
-      const _allCxeBlades = [...new Set([...CXE_BLADES,...((parts.extras||{}).cxe_blades||[])])];
+      const _allCxeBlades = (parts.cx||{}).cxe_blades || CXE_BLADES;
       const cxeIdx = p.findIndex(w=>_allCxeBlades.includes(w));
       if(cxeIdx>=0){
         // CXE: [Chip?] CxeBlade OverBlade Assist
@@ -5239,14 +5268,12 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[],
       if(returnToReview){ setStep({slot,cat:"ratchet",returnToReview:true}); return; }
       openStep({slot,cat:"ratchet"});
     };
-    // Merge hardcoded CX lists with user-added extras from the library.
-    // Hardcoded parts always show; user-added extras only show if they're in parts.blades.
-    const _dbEx = (parts && parts.extras) || {};
-    const _dbBl = (parts && parts.blades) || [];
-    const _dbCxBlades  = [...new Set([...CX_BLADES,        ...(_dbEx.cx_blades ||[]).filter(b=>_dbBl.includes(b))])];
-    const _dbCxeBlades = [...new Set([...CXE_BLADES,       ...(_dbEx.cxe_blades||[]).filter(b=>_dbBl.includes(b))])];
-    const _dbCxeOver   = [...new Set([...CXE_OVER_BLADES,  ...(_dbEx.cxe_over  ||[]).filter(b=>_dbBl.includes(b))])];
-    const _dbAssists   = [...new Set([...CX_ASSISTS,       ...(_dbEx.assist    ||[]).filter(b=>_dbBl.includes(b))])];
+    // Read CX lists from parts.cx which includes user additions
+    const _dbPcx = (parts && parts.cx) || {};
+    const _dbCxBlades  = _dbPcx.cx_blades  || CX_BLADES;
+    const _dbCxeBlades = _dbPcx.cxe_blades || CXE_BLADES;
+    const _dbCxeOver   = _dbPcx.cxe_over   || CXE_OVER_BLADES;
+    const _dbAssists   = _dbPcx.assist     || CX_ASSISTS;
 
     return (
       <div style={{position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",zIndex:10}}>
