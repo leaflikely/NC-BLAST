@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-26 | session: library display simplified - all user parts show in Blades tab -->
+<!-- NC BLAST index.html | last updated: 2026-05-26 | session: library debug display + display simplification -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1117,6 +1117,15 @@ function LibraryManager({parts,setParts,onClose}) {
         </div>
         {dupError && <p style={{fontSize:12,color:"#EF4444",fontWeight:600,margin:"4px 0 0"}}>{dupError}</p>}
         {saveOk && <p style={{fontSize:12,color:"#22C55E",fontWeight:700,margin:"4px 0 0"}}>✓ Saved to library</p>}
+        {/* DEBUG: show non-default blades so we can verify what's stored */}
+        {(()=>{
+          const DEFAULT_BLADE_SET = new Set(DEFAULT_PARTS.blades);
+          const custom = parts.blades.filter(p => !DEFAULT_BLADE_SET.has(p));
+          if (!custom.length) return null;
+          return <p style={{fontSize:11,color:"#7C3AED",margin:"4px 0 0",wordBreak:"break-all"}}>
+            🔍 Custom blades in store: {custom.join(", ")}
+          </p>;
+        })()}
         <input type="file" ref={fRef} accept=".json,.csv,.txt" style={{display:"none"}} onChange={onFile}/>
         <button style={S.upBtn} onClick={()=>fRef.current.click()}>{IC.upload} Import Parts File</button>
         <p style={S.hint}>{"JSON: {\"blades\":[], \"ratchets\":[], \"bits\":[]} or text one per line"}</p>
