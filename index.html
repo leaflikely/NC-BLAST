@@ -2737,7 +2737,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const [pts,setPts] = useState([0,0]);
   const [sets,setSets] = useState([0,0]);
   const [curSet,setCurSet] = useState(1);
-  const [shuf,setShuf] = useState(0);
+  const [shuf,setShuf] = useState(1);
   const [log,setLog] = useState(()=>sGet(KEYS.matchLog,[]));
   const [future,setFuture] = useState([]);
   const [matchStartIdx,setMatchStartIdx] = useState(0);
@@ -2895,7 +2895,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     const np = [Math.min(raw[0],cap), Math.min(raw[1],cap)];
 
     const entry = {
-      set:curSet,shuffle:shuf,round:log.slice(matchStartIdx).length+1,
+      set:curSet,shuffle:shuf,slot:log.slice(matchStartIdx).filter(e=>e.set===curSet).length+1,
       scorer:scoringPi===0?p1:p2,scorerIdx:scoringPi,judge:judge,penalty:fin.penalty||false,
       type:fin.id,typeName:fin.name,points:fin.p,
       p1Score:np[0],p2Score:np[1],p1Name:p1,p2Name:p2,
@@ -2922,7 +2922,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
         else {
           if(config.tm){const loserPi=1-scoringPi;setSideAssign({pickPriority:loserPi});setSidePicker({priority:loserPi});}
-          setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(s=>s+1);
+          setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(1);
           setLerStrikes([0,0]);
         }
       }
@@ -2940,7 +2940,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
       else {
         if(config.tm){ const loserPi=1-scoringPi; setSideAssign({pickPriority:loserPi}); setSidePicker({priority:loserPi}); }
-        setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(s=>s+1);
+        setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(1);
       }
     } else {
       if(nu1.length>=3&&nu2.length>=3){ if(config.tm){ setShuffleTimer("active"); pushOverlay({shuffling:true}); } else { setUsed1([]); setUsed2([]); setShuf(s=>s+1); } }
@@ -2974,7 +2974,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       const ns=[sets[0],sets[1]]; ns[n.scorerIdx]+=1; setSets(ns);
       setSetScores(ss=>[...ss,{p1:n.p1Score,p2:n.p2Score}]);
       if(ns[n.scorerIdx]>=need)setPhase("over");
-      else { setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(s=>s+1); }
+      else { setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(1); }
     }
   };
 
@@ -3136,7 +3136,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     }
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(0);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setUnderwayStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
+  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(1);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setUnderwayStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
 
   // Navigation helpers
   // Unified back navigation — context-aware, no stale closure issues
@@ -4386,7 +4386,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           <p style={{fontSize:12,fontWeight:700,color:"var(--text-primary)",marginBottom:8}}>Match History</p>
           {log.slice(matchStartIdx).map((e,i)=>(
             <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:i<log.slice(matchStartIdx).length-1?"1px solid #F1F5F9":"none"}}>
-              <span style={{fontSize:11,color:"var(--text-muted)"}}>B{e.round} · Set {e.set}{e.p1Side?` · ${e.p1Side}/${e.p2Side}`:""}</span>
+              <span style={{fontSize:11,color:"var(--text-muted)"}}>S{e.slot} · Set {e.set}{e.p1Side?` · ${e.p1Side}/${e.p2Side}`:""}</span>
               <span style={{fontSize:11,fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626"}}>{e.scorer} — {e.typeName} +{e.points}{e.penalty?" (pen)":""}</span>
               <span style={{fontSize:11,color:"var(--text-muted)"}}>{e.p1Score}–{e.p2Score}</span>
             </div>
@@ -4815,7 +4815,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                   if(lerLocked) return;
                   if(!hasStrike){
                     const strikeEntry = {
-                      set:curSet,shuffle:shuf,round:log.slice(matchStartIdx).length+1,
+                      set:curSet,shuffle:shuf,slot:log.slice(matchStartIdx).filter(e=>e.set===curSet).length+1,
                       scorer:side.ci===0?p1:p2,scorerIdx:side.ci,judge:judge,penalty:true,
                       type:"LER-STRIKE",typeName:"LER Strike",points:0,
                       p1Score:pts[0],p2Score:pts[1],p1Name:p1,p2Name:p2,
@@ -8029,8 +8029,8 @@ function BeyJudgeApp() {
 
   // Download CSV to device — always available, never sends to sheets
   const handleDownloadCSV = (roundLog,meta) => {
-    let csv="Round,Set,Shuffle,Judge,Tournament,Winner,WinnerCombo,FinishType,Points,Penalty,P1,P1Side,P1Score,P1Combo,P2,P2Side,P2Score,P2Combo,Timestamp\n";
-    roundLog.forEach(r=>{csv+=`${r.round},${r.set},${r.shuffle},"${r.judge||""}","${meta.config?.tournamentName||""}","${r.scorer}","${r.winnerCombo}",${r.type},${r.points},${r.penalty?1:0},"${r.p1Name}",${r.p1Side||""},"${r.p1Score}","${comboStr(r.p1Combo)}","${r.p2Name}",${r.p2Side||""},"${r.p2Score}","${comboStr(r.p2Combo)}",${r.time}\n`;});
+    let csv="Slot,Set,Shuffle,Judge,Tournament,Winner,WinnerCombo,FinishType,Points,Penalty,P1,P1Side,P1Score,P1Combo,P2,P2Side,P2Score,P2Combo,Timestamp\n";
+    roundLog.forEach(r=>{csv+=`${r.slot},${r.set},${r.shuffle},"${r.judge||""}","${meta.config?.tournamentName||""}","${r.scorer}","${r.winnerCombo}",${r.type},${r.points},${r.penalty?1:0},"${r.p1Name}",${r.p1Side||""},"${r.p1Score}","${comboStr(r.p1Combo)}","${r.p2Name}",${r.p2Side||""},"${r.p2Score}","${comboStr(r.p2Combo)}",${r.time}\n`;});
     const blob=new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob);
     const a=document.createElement("a"); a.href=url; a.download=`ncblast_${meta.p1||"p1"}_vs_${meta.p2||"p2"}_${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(url);
   };
@@ -8044,7 +8044,7 @@ function BeyJudgeApp() {
       meta.config?.tournamentName||"",
       `${r.p1Name} vs ${r.p2Name}`,
       r.p1Name, r.p1Side||"", r.p2Name, r.p2Side||"",
-      r.set, r.shuffle, r.round,
+      r.set, r.shuffle, r.slot,
       r.scorer, r.winnerCombo,
       r.typeName, r.points,
       r.penalty?1:0,
