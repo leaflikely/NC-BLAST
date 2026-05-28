@@ -4113,7 +4113,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                   <button style={{...S.pri,margin:0,
                     opacity:(activeCanProceed&&underwayStatus!=="checking")?1:0.4}}
                     disabled={!activeCanProceed||underwayStatus==="checking"}
-                    onClick={()=>{refreshCombos();setMatchStartIdx(log.length);setFuture([]);setDeckReview(false);setPhase("deck");}}>
+                    onClick={()=>{refreshCombos();setMatchStartIdx(log.length);setFuture([]);setCurSet(1);setShuf(1);setPts([0,0]);setSets([0,0]);setUsed1([]);setUsed2([]);setLerStrikes([0,0]);setSetScores([]);setDeckReview(false);setPhase("deck");}}>
                     Build Decks →
                   </button>
                 </div>
@@ -4122,7 +4122,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           );
         })()}
 
-        {pickTab==="roster"&&<button style={{...S.pri,opacity:canProceed?1:0.4}} disabled={!canProceed} onClick={()=>{refreshCombos();setMatchStartIdx(log.length);setFuture([]);setDeckReview(false);setPhase("deck");}}>Build Decks →</button>}
+        {pickTab==="roster"&&<button style={{...S.pri,opacity:canProceed?1:0.4}} disabled={!canProceed} onClick={()=>{refreshCombos();setMatchStartIdx(log.length);setFuture([]);setCurSet(1);setShuf(1);setPts([0,0]);setSets([0,0]);setUsed1([]);setUsed2([]);setLerStrikes([0,0]);setSetScores([]);setDeckReview(false);setPhase("deck");}}>Build Decks →</button>}
         {pickTab==="roster"&&config.tm&&playersSelected&&!judge.trim()&&<p style={{...S.hint,color:"#D97706"}}>Select the judge on duty to continue</p>}
       </div>
     );
