@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-05-26 | session: parts.cx system - CX tab additions save to correct category -->
+<!-- NC BLAST index.html | last updated: 2026-06-02 | session: match handoff QR feature - generating + receiving sides -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,6 +9,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html{font-size:16px;overscroll-behavior:none;}
@@ -2345,19 +2347,29 @@ function BottomBar({log,future,undo,redo,historyOpen,setHistoryOpen,p1,p2,onOpen
               </div>
             </div>
           )}
-          {log.slice().reverse().map((e,i)=>(
-            <div key={i} style={{padding:"10px 12px",borderRadius:10,marginBottom:8,background:e.scorerIdx===0?"#EFF6FF22":"#FEF2F222",borderLeft:`4px solid ${e.scorerIdx===0?"#2563EB":"#DC2626"}`}}>
+          {log.slice().reverse().map((e,i)=>{
+            const winnerName = e.scorerIdx===0 ? e.p1Name : e.p2Name;
+            const loserName  = e.scorerIdx===0 ? e.p2Name : e.p1Name;
+            const loserCombo = e.scorerIdx===0 ? comboStr(e.p2Combo) : comboStr(e.p1Combo);
+            const winnerColor = e.scorerIdx===0 ? "#2563EB" : "#DC2626";
+            return (
+            <div key={i} style={{padding:"10px 12px",borderRadius:10,marginBottom:8,background:e.scorerIdx===0?"#EFF6FF22":"#FEF2F222",borderLeft:`4px solid ${winnerColor}`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-                <span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626",fontSize:14}}>{e.scorer}</span>
+                <span style={{fontWeight:700,color:winnerColor,fontSize:14}}>{e.scorer}</span>
                 <span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)"}}>R{log.length-i} · Set {e.set} · Shuf {e.shuffle}</span>
               </div>
-              <div style={{fontSize:12,color:"var(--text-secondary)",marginBottom:2}}><span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626"}}>{e.typeName}</span> (+{e.points})</div>
-              <div style={{fontSize:11,color:"var(--text-muted)"}}>Won with: <span style={{fontWeight:600}}>{e.winnerCombo}</span></div>
-              <div style={{fontSize:11,color:"var(--text-muted)",marginTop:1}}>vs {e.scorerIdx===0?comboStr(e.p2Combo):comboStr(e.p1Combo)}</div>
-              {e.p1Side&&<div style={{fontSize:10,color:"var(--text-muted)",marginTop:1}}>{e.p1Name}: {e.p1Side} Side · {e.p2Name}: {e.p2Side} Side</div>}
-              <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2,fontWeight:600}}>{e.p1Name} {e.p1Score} – {e.p2Score} {e.p2Name}</div>
+              <div style={{fontSize:12,color:"var(--text-secondary)",marginBottom:4}}><span style={{fontWeight:700,color:winnerColor}}>{e.typeName}</span> (+{e.points})</div>
+              <div style={{fontSize:11,color:"var(--text-muted)",marginBottom:2}}>
+                <span style={{fontWeight:700,color:winnerColor}}>▲ {winnerName}:</span> <span style={{fontWeight:600}}>{e.winnerCombo}</span>
+              </div>
+              <div style={{fontSize:11,color:"var(--text-muted)",marginBottom:4}}>
+                <span style={{fontWeight:700,color:"var(--text-faint)"}}>▼ {loserName}:</span> <span style={{fontWeight:600}}>{loserCombo}</span>
+              </div>
+              {e.p1Side&&<div style={{fontSize:10,color:"var(--text-muted)",marginBottom:2}}>{e.p1Name}: {e.p1Side} Side · {e.p2Name}: {e.p2Side} Side</div>}
+              <div style={{fontSize:11,color:"var(--text-muted)",fontWeight:600}}>{e.p1Name} {e.p1Score} – {e.p2Score} {e.p2Name}</div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
       {historyOpen&&<div onClick={()=>setHistoryOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.2)",zIndex:99}}/>}
@@ -2797,6 +2809,17 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const [layoutEditMode,setLayoutEditMode] = useState(false); // height adjustment mode
   const [overlayModal,setOverlayModal] = useState(false); // stream slot picker modal
   const [pingModal,setPingModal] = useState(false); // Contact TO ping modal
+  const [handoffModal,setHandoffModal] = useState(false); // Match handoff QR generator
+  const [handoffToken,setHandoffToken] = useState(null);   // 6-char token written to KV
+  const [handoffPhase,setHandoffPhase] = useState(null);   // null | "generating" | "claimed"
+  const handoffQrRef = useRef(null);   // div where QR code renders
+  const handoffPollRef = useRef(null); // setInterval handle for claim polling
+  const [scannerOpen,setScannerOpen] = useState(false);         // camera QR scanner open
+  const [handoffPreview,setHandoffPreview] = useState(null);    // { p1, p2, pts, sets, curSet, token } preview card before accept
+  const scanVideoRef = useRef(null);   // <video> for getUserMedia stream
+  const scanCanvasRef = useRef(null);  // offscreen canvas for frame sampling
+  const scanIntervalRef = useRef(null);// setInterval handle for frame sampling
+  const scanStreamRef = useRef(null);  // MediaStream ref so we can stop it
   const [pingComment,setPingComment] = useState("");
   const [pingReason,setPingReason] = useState(null); // selected reason chip
   const [pingStadium,setPingStadium] = useState(null); // selected stadium number
@@ -2854,6 +2877,37 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
 
   // Auto-fetch active matches if we default to active tab
   useEffect(()=>{ if(challongeSlug) fetchActiveMatches(); },[]);
+
+  // ── Handoff QR render + poll effects ────────────────────────────────────
+  // When the modal opens with "generating" phase: render the QR code and start polling
+  useEffect(()=>{
+    if(!handoffModal || handoffPhase !== "generating" || !handoffToken) return;
+    // Small delay so the div is mounted before we try to render into it
+    const timer = setTimeout(()=>{
+      const el = handoffQrRef.current;
+      if(!el) return;
+      el.innerHTML = ""; // clear any previous render
+      try {
+        new QRCode(el, {
+          text: `https://ncblast.pages.dev?handoff=${handoffToken}`,
+          width: 240, height: 240,
+          colorDark: "#1E293B", colorLight: "#FFFFFF",
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+      } catch(e) { el.innerHTML = "<p style='color:red;font-size:12px'>QR error</p>"; }
+      startHandoffPoll(handoffToken);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [handoffModal, handoffPhase, handoffToken]);
+
+  // Cleanup: stop poll interval when modal closes
+  useEffect(()=>{
+    if(!handoffModal && handoffPollRef.current) {
+      clearInterval(handoffPollRef.current);
+      handoffPollRef.current = null;
+    }
+  }, [handoffModal]);
+  // ── End handoff effects ──────────────────────────────────────────────────
 
   // Load combos from Worker KV when player names are known (cross-device cache)
   useEffect(()=>{
@@ -3137,6 +3191,169 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   };
 
   const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(1);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setUnderwayStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
+
+  // ── Handoff helpers ──────────────────────────────────────────────────────
+  // Generates a random 6-character token (letters + numbers)
+  const makeHandoffToken = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+    let t = "";
+    for(let i=0;i<6;i++) t += chars[Math.floor(Math.random()*chars.length)];
+    return t;
+  };
+
+  // Opens the handoff QR screen: writes state to KV, starts polling for claim
+  const startHandoff = async () => {
+    const token = makeHandoffToken();
+    const state = {
+      p1, p2,
+      d1: d1.map(c=>({...c})),
+      d2: d2.map(c=>({...c})),
+      pts: [...pts],
+      sets: [...sets],
+      curSet, shuf,
+      log: [...log],
+      matchStartIdx,
+      challongeMatchId,
+      challongeP1ParticipantId,
+      challongeP2ParticipantId,
+      overlaySlot,
+      challongeSlug,
+      claimed: false,
+    };
+    try {
+      const res = await fetch("https://challonge-proxy.danny61734.workers.dev/handoff/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, state }),
+      });
+      if(!res.ok) { alert("Could not create handoff. Try again."); return; }
+    } catch(e) { alert("Network error creating handoff."); return; }
+    setHandoffToken(token);
+    setHandoffPhase("generating");
+    setHandoffModal(true);
+  };
+
+  // Cancels the handoff: deletes KV token, closes modal
+  const cancelHandoff = async (token) => {
+    if(token) {
+      try {
+        await fetch(`https://challonge-proxy.danny61734.workers.dev/handoff/cancel?token=${token}`, { method: "DELETE" });
+      } catch(e) { /* best effort */ }
+    }
+    if(handoffPollRef.current) { clearInterval(handoffPollRef.current); handoffPollRef.current = null; }
+    setHandoffToken(null);
+    setHandoffPhase(null);
+    setHandoffModal(false);
+  };
+
+  // Polls KV every 2.5s to check if the receiving judge has claimed the handoff
+  const startHandoffPoll = (token) => {
+    if(handoffPollRef.current) clearInterval(handoffPollRef.current);
+    handoffPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`https://challonge-proxy.danny61734.workers.dev/handoff/get?token=${token}`);
+        if(!res.ok) return; // token expired or gone — keep waiting
+        const data = await res.json();
+        if(data.claimed) {
+          clearInterval(handoffPollRef.current);
+          handoffPollRef.current = null;
+          setHandoffPhase("claimed");
+          setTimeout(() => { setHandoffModal(false); setHandoffToken(null); setHandoffPhase(null); reset(); }, 2000);
+        }
+      } catch(e) { /* network hiccup — keep polling */ }
+    }, 2500);
+  };
+
+  // Stops the camera scanner and clears its resources
+  const stopScanner = () => {
+    if(scanIntervalRef.current) { clearInterval(scanIntervalRef.current); scanIntervalRef.current = null; }
+    if(scanStreamRef.current) { scanStreamRef.current.getTracks().forEach(t=>t.stop()); scanStreamRef.current = null; }
+    setScannerOpen(false);
+  };
+
+  // Starts the camera and begins sampling frames for QR codes
+  const startScanner = async () => {
+    setScannerOpen(true);
+    setHandoffPreview(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      scanStreamRef.current = stream;
+      // Wait a tick for the video element to mount, then attach stream
+      setTimeout(() => {
+        if(scanVideoRef.current) {
+          scanVideoRef.current.srcObject = stream;
+          scanVideoRef.current.play();
+        }
+        scanIntervalRef.current = setInterval(() => {
+          const video = scanVideoRef.current;
+          const canvas = scanCanvasRef.current;
+          if(!video || !canvas || video.readyState < 2) return;
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(video, 0, 0);
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imgData.data, imgData.width, imgData.height);
+          if(code && code.data) {
+            const match = code.data.match(/[?&]handoff=([A-Za-z0-9]{6})/);
+            if(match) {
+              stopScanner();
+              handleHandoffScan(match[1]);
+            }
+          }
+        }, 250);
+      }, 300);
+    } catch(e) {
+      stopScanner();
+      alert("Camera access denied or unavailable.");
+    }
+  };
+
+  // Called when a valid handoff token is scanned — fetches preview from KV
+  const handleHandoffScan = async (token) => {
+    try {
+      const res = await fetch(`https://challonge-proxy.danny61734.workers.dev/handoff/get?token=${token}`);
+      if(!res.ok) { alert("Handoff expired or not found. Ask the other judge to try again."); return; }
+      const data = await res.json();
+      if(data.claimed) { alert("This handoff has already been claimed."); return; }
+      setHandoffPreview({ ...data, token });
+    } catch(e) { alert("Could not load handoff data."); }
+  };
+
+  // Called when receiving judge taps Accept — claims the token and loads the match state
+  const acceptHandoff = async (preview) => {
+    try {
+      const res = await fetch("https://challonge-proxy.danny61734.workers.dev/handoff/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: preview.token }),
+      });
+      if(!res.ok) { alert("Could not claim handoff. Try again."); return; }
+    } catch(e) { alert("Network error claiming handoff."); return; }
+
+    // Restore all match state from the payload
+    const judgeFromSession = (() => { try { return sessionStorage.getItem("ncblast-auth-user") || ""; } catch{ return ""; } })();
+    setP1(preview.p1);
+    setP2(preview.p2);
+    setD1(preview.d1 || [emptyCombo(),emptyCombo(),emptyCombo()]);
+    setD2(preview.d2 || [emptyCombo(),emptyCombo(),emptyCombo()]);
+    setPts(preview.pts || [0,0]);
+    setSets(preview.sets || [0,0]);
+    setCurSet(preview.curSet || 1);
+    setShuf(preview.shuf || 1);
+    setLog(preview.log || []);
+    setMatchStartIdx(preview.matchStartIdx || 0);
+    setChallongeMatchId(preview.challongeMatchId || null);
+    setChallongeP1ParticipantId(preview.challongeP1ParticipantId || null);
+    setChallongeP2ParticipantId(preview.challongeP2ParticipantId || null);
+    setOverlaySlot(preview.overlaySlot || 0);
+    if(judgeFromSession) setJudge(judgeFromSession);
+    setHandoffPreview(null);
+    setFuture([]);
+    setUnderwayStatus("ok"); // already marked underway by the generating judge
+    setPhase("battle");
+  };
+  // ── End handoff helpers ──────────────────────────────────────────────────
 
   // Navigation helpers
   // Unified back navigation — context-aware, no stale closure issues
@@ -4038,6 +4255,58 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
 
           return (
             <div>
+              {/* ── Camera QR scanner modal (receiving side) ── */}
+              {scannerOpen&&(
+                <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.96)",zIndex:200,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+                  <p style={{fontSize:16,fontWeight:900,color:"#fff",marginBottom:12}}>📷 Scan Handoff QR</p>
+                  <p style={{fontSize:12,color:"#94A3B8",marginBottom:16,textAlign:"center"}}>Point your camera at the QR code on the other judge's screen.</p>
+                  <div style={{position:"relative",width:260,height:260,borderRadius:16,overflow:"hidden",background:"#000",border:"3px solid #1D4ED8",marginBottom:20}}>
+                    <video ref={scanVideoRef} autoPlay playsInline muted style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    {/* Corner brackets for scan framing */}
+                    {[["0px","0px","border-top","border-left"],["0px","auto","border-top","border-right"],["auto","0px","border-bottom","border-left"],["auto","auto","border-bottom","border-right"]].map(([t,r,b1,b2],i)=>(
+                      <div key={i} style={{position:"absolute",top:t!=="auto"?8:undefined,bottom:t==="auto"?8:undefined,right:r!=="auto"?8:undefined,left:r==="auto"?undefined:8,width:28,height:28,borderColor:"#60A5FA",borderStyle:"solid",borderWidth:0,[b1.replace("border-","border"+b1.slice(6)+"Width")]:3,[b2.replace("border-","border"+b2.slice(6)+"Width")]:3,pointerEvents:"none"}}/>
+                    ))}
+                  </div>
+                  {/* Hidden canvas for frame processing */}
+                  <canvas ref={scanCanvasRef} style={{display:"none"}}/>
+                  <button onClick={stopScanner}
+                    style={{padding:"13px 32px",borderRadius:12,border:"none",background:"var(--surface2)",color:"var(--text-secondary)",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                    Cancel
+                  </button>
+                </div>
+              )}
+
+              {/* ── Handoff preview card (after scan, before accept) ── */}
+              {handoffPreview&&(
+                <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.92)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+                  <div style={{background:"var(--surface)",borderRadius:20,padding:"24px 20px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"1px solid var(--border)"}}>
+                    <p style={{fontSize:16,fontWeight:900,color:"var(--text-primary)",textAlign:"center",marginBottom:4}}>🔀 Accept Handoff?</p>
+                    <p style={{fontSize:12,color:"var(--text-secondary)",textAlign:"center",marginBottom:16}}>Review the match in progress before accepting.</p>
+                    <div style={{background:"var(--surface2)",borderRadius:12,padding:"14px 16px",marginBottom:16,border:"1px solid var(--border)"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                        <span style={{fontSize:14,fontWeight:800,color:"var(--text-primary)"}}>{handoffPreview.p1}</span>
+                        <span style={{fontSize:13,fontWeight:700,color:"#1D4ED8"}}>{handoffPreview.pts?handoffPreview.pts[0]:0} – {handoffPreview.pts?handoffPreview.pts[1]:0}</span>
+                        <span style={{fontSize:14,fontWeight:800,color:"var(--text-primary)"}}>{handoffPreview.p2}</span>
+                      </div>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--text-muted)"}}>
+                        <span>Sets: {handoffPreview.sets?handoffPreview.sets[0]:0} – {handoffPreview.sets?handoffPreview.sets[1]:0}</span>
+                        <span>Set {handoffPreview.curSet || 1} · Shuffle {handoffPreview.shuf || 1}</span>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",gap:10}}>
+                      <button onClick={()=>setHandoffPreview(null)}
+                        style={{flex:1,padding:"13px 0",borderRadius:12,border:"none",background:"var(--surface2)",color:"var(--text-secondary)",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                        Cancel
+                      </button>
+                      <button onClick={()=>acceptHandoff(handoffPreview)}
+                        style={{flex:2,padding:"13px 0",borderRadius:12,border:"none",background:"#1D4ED8",color:"#fff",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                        ✓ Accept Match
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* ── Match list ── */}
               <div style={{...S.card,marginBottom:8}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -4086,6 +4355,14 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                   );
                 })}
               </div>
+
+              {/* ── Scan Handoff — shown when no match is selected (receiving side) ── */}
+              {!challongeMatchId&&config.tm&&(
+                <button type="button" onClick={startScanner}
+                  style={{width:"100%",padding:"13px 0",borderRadius:12,border:"2px dashed var(--border2)",background:"transparent",color:"var(--text-secondary)",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:8}}>
+                  📷 Scan Handoff
+                </button>
+              )}
 
               {/* ── Build Decks — shown after match selected, gated on underway check ── */}
               {challongeMatchId&&(
@@ -4541,15 +4818,13 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   return (
     <ErrorBoundary><div style={{position:"fixed",inset:0,display:"flex",flexDirection:"column",background:"var(--bg-solid)",boxSizing:"border-box",overflow:"hidden"}}>
 
-      {/* ── Top strip: Back · pills │ 📡 ⠿ (expand) │ history · undo · redo · dark · swap ── */}
+      {/* ── Top strip: Back · pills │ 📡 🔀 ⠿ │ history · undo · redo · dark · swap ── */}
       <div style={{height:STRIP_H,display:"flex",alignItems:"center",gap:bp(4),padding:`0 ${bp(8)}px`,flexShrink:0,borderBottom:"1px solid var(--border)",background:config.tm?"#6D28D9":"var(--surface)"}}>
-        {/* Left: back + set pills */}
+        {/* Left: back + sets score pill */}
         <button style={{...S.back,marginBottom:0,flexShrink:0,fontSize:bf(12),color:config.tm?"#E9D5FF":undefined}} onClick={goBack}>{IC.back}</button>
-        {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),...(config.tm?{background:"rgba(255,255,255,0.18)",color:"#E9D5FF",border:"1px solid rgba(255,255,255,0.2)"}:{})}}>Set {curSet}/{config.bo}</span>}
-        <span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),...(config.tm?{background:"rgba(255,255,255,0.18)",color:"#E9D5FF",border:"1px solid rgba(255,255,255,0.2)"}:{})}}>B{battlesInThisSet}</span>
         {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),...(config.tm?{background:"rgba(255,255,255,0.18)",color:"#E9D5FF",border:"1px solid rgba(255,255,255,0.2)"}:{})}}>{dA.sets}–{dB.sets}</span>}
 
-        {/* Centre: 📡 + ⠿ — flex:1 so they fill the gap between pills and icon buttons */}
+        {/* Centre: 📡 + 🔀 (handoff, tm only) + ⠿ — flex:1 so they fill the gap between pills and icon buttons */}
         <div style={{flex:1,display:"flex",alignItems:"center",gap:bp(4),minWidth:0}}>
           {/* Stream overlay button */}
           <button type="button" onClick={()=>setOverlayModal(true)}
@@ -4557,6 +4832,14 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
             title="Stream overlay">
             {overlaySlot>0?`📡 ${overlaySlot}`:"📡"}
           </button>
+          {/* Handoff QR button — tournament mode only, requires an active Challonge match */}
+          {config.tm&&challongeMatchId&&(
+            <button type="button" onClick={()=>startHandoff()}
+              style={{flex:1,height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",color:"#E9D5FF",borderRadius:bp(6),fontSize:bf(13),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",lineHeight:1,minWidth:0}}
+              title="Hand off match to another judge">
+              🔀
+            </button>
+          )}
           {/* Contact TO button — only shown when a Challonge match is active */}
           {challongeMatchId&&challongeSlug&&(
             <button type="button" onClick={()=>setPingModal(true)}
@@ -5017,6 +5300,39 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         );
       })()}
 
+      {/* ── Handoff QR modal — generating side ── */}
+      {handoffModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.92)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+          <div style={{background:"var(--surface)",borderRadius:20,padding:"28px 22px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"1px solid var(--border)",textAlign:"center"}}>
+            {handoffPhase==="claimed"?(
+              <>
+                <div style={{fontSize:48,marginBottom:12}}>✅</div>
+                <p style={{fontSize:18,fontWeight:900,color:"var(--text-primary)",marginBottom:6}}>Handed off!</p>
+                <p style={{fontSize:13,color:"var(--text-secondary)"}}>Match transferred to the other judge.</p>
+              </>
+            ):(
+              <>
+                <p style={{fontSize:16,fontWeight:900,color:"var(--text-primary)",marginBottom:4}}>🔀 Hand Off Match</p>
+                <p style={{fontSize:12,color:"var(--text-secondary)",marginBottom:16,lineHeight:1.5}}>Have the receiving judge scan this QR code. This screen will close automatically once they accept.</p>
+                {/* QR code renders here */}
+                <div style={{display:"flex",justifyContent:"center",marginBottom:16}}>
+                  <div ref={handoffQrRef} style={{background:"#fff",padding:8,borderRadius:10,display:"inline-block",lineHeight:0}}/>
+                </div>
+                <p style={{fontSize:10,color:"var(--text-muted)",marginBottom:16,fontFamily:"'JetBrains Mono',monospace",letterSpacing:1}}>TOKEN: {handoffToken}</p>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginBottom:18}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",border:"2px solid #1D4ED8",borderTopColor:"transparent",animation:"spin 1s linear infinite",flexShrink:0}}/>
+                  <p style={{fontSize:12,color:"var(--text-muted)",margin:0}}>Waiting for receiving judge…</p>
+                </div>
+                <button onClick={()=>cancelHandoff(handoffToken)}
+                  style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:"var(--surface2)",color:"var(--text-secondary)",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                  Cancel
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Match history slide-over (kept from BottomBar, triggered by strip button) */}
       <div style={{position:"fixed",top:0,right:0,bottom:0,width:historyOpen?Math.min(340,window.innerWidth-40):0,background:"var(--surface)",boxShadow:historyOpen?"-4px 0 24px rgba(0,0,0,0.25)":"none",transition:"width 0.25s ease",overflow:"hidden",zIndex:100}}>
         <div style={{width:Math.min(340,window.innerWidth-40),padding:"20px 16px",overflowY:"auto",height:"100%"}}>
@@ -5046,17 +5362,29 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
             </div>
           )}
           {log.length===0&&<p style={{color:"var(--text-disabled)",fontSize:13,fontStyle:"italic"}}>No battles yet</p>}
-          {log.slice().reverse().map((e,i)=>(
-            <div key={i} style={{padding:"10px 12px",borderRadius:10,marginBottom:8,background:e.scorerIdx===0?"#EFF6FF22":"#FEF2F222",borderLeft:`4px solid ${e.scorerIdx===0?"#2563EB":"#DC2626"}`}}>
+          {log.slice().reverse().map((e,i)=>{
+            const winnerName = e.scorerIdx===0 ? e.p1Name : e.p2Name;
+            const loserName  = e.scorerIdx===0 ? e.p2Name : e.p1Name;
+            const loserCombo = e.scorerIdx===0 ? comboStr(e.p2Combo) : comboStr(e.p1Combo);
+            const winnerColor = e.scorerIdx===0 ? "#2563EB" : "#DC2626";
+            return (
+            <div key={i} style={{padding:"10px 12px",borderRadius:10,marginBottom:8,background:e.scorerIdx===0?"#EFF6FF22":"#FEF2F222",borderLeft:`4px solid ${winnerColor}`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-                <span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626",fontSize:14}}>{e.scorer}</span>
+                <span style={{fontWeight:700,color:winnerColor,fontSize:14}}>{e.scorer}</span>
                 <span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)"}}>R{log.length-i} · Set {e.set}</span>
               </div>
-              <div style={{fontSize:12,color:"var(--text-secondary)",marginBottom:2}}><span style={{fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626"}}>{e.typeName}</span> (+{e.points})</div>
-              <div style={{fontSize:11,color:"var(--text-muted)"}}>Won with: <span style={{fontWeight:600}}>{e.winnerCombo}</span></div>
-              <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2,fontWeight:600}}>{e.p1Name} {e.p1Score}–{e.p2Score} {e.p2Name}</div>
+              <div style={{fontSize:12,color:"var(--text-secondary)",marginBottom:4}}><span style={{fontWeight:700,color:winnerColor}}>{e.typeName}</span> (+{e.points})</div>
+              <div style={{fontSize:11,color:"var(--text-muted)",marginBottom:2}}>
+                <span style={{fontWeight:700,color:winnerColor}}>▲ {winnerName}:</span> <span style={{fontWeight:600}}>{e.winnerCombo}</span>
+              </div>
+              <div style={{fontSize:11,color:"var(--text-muted)",marginBottom:4}}>
+                <span style={{fontWeight:700,color:"var(--text-faint)"}}>▼ {loserName}:</span> <span style={{fontWeight:600}}>{loserCombo}</span>
+              </div>
+              {e.p1Side&&<div style={{fontSize:10,color:"var(--text-muted)",marginBottom:2}}>{e.p1Name}: {e.p1Side} · {e.p2Name}: {e.p2Side}</div>}
+              <div style={{fontSize:11,color:"var(--text-muted)",fontWeight:600}}>{e.p1Name} {e.p1Score}–{e.p2Score} {e.p2Name}</div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
       {historyOpen&&<div onClick={()=>setHistoryOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.2)",zIndex:99}}/>}
