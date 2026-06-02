@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-02 | session: inline jsQR + qrcodejs (cdnjs 403 fix); judge name in handoff accept -->
+<!-- NC BLAST index.html | last updated: 2026-06-02 | session: fix orgUsername loss (Worker TTL + overwrite); add emergency master-key claim in org view -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16894,6 +16894,11 @@ function OrgApp({onSwitchRole}) {
   const [hjError, setHjError] = useState(null);
   const [newHJInput, setNewHJInput] = useState("");
 
+  // ── Emergency ownership claim (master key only, shown when orgOwnerUsername is null) ─
+  const [claimInput, setClaimInput] = useState("");
+  const [claimLoading, setClaimLoading] = useState(false);
+  const [claimError, setClaimError] = useState(null);
+
   // ── Judge whitelist state ─────────────────────────────────────────
   const [judgeWhitelist, setJudgeWhitelist] = useState([]);   // usernames allowed to score
   const [jwLoading, setJwLoading] = useState(false);
@@ -16914,6 +16919,26 @@ function OrgApp({onSwitchRole}) {
       setOrgOwnerUsername(res.orgUsername || null);
     } catch(e) { setHjError(e.message || "Failed to load head judges."); }
     finally { setHjLoading(false); }
+  };
+
+  const claimOwnership = async () => {
+    if (!claimInput.trim() || !slug) return;
+    setClaimLoading(true); setClaimError(null);
+    try {
+      const currentUser = (sessionStorage.getItem("ncblast-auth-user") || "").trim().toLowerCase();
+      if (!currentUser) { setClaimError("No logged-in username found. Please re-login first."); return; }
+      const res = await fetch(`${OVERLAY_WORKER}/org/tournament/set-owner`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Master-Key": claimInput.trim() },
+        body: JSON.stringify({ slug, orgUsername: currentUser }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Claim failed");
+      setOrgOwnerUsername(data.orgUsername);
+      setClaimInput("");
+    } catch(e) { setClaimError(e.message || "Failed to claim ownership."); }
+    finally { setClaimLoading(false); }
   };
 
 
@@ -17252,11 +17277,25 @@ function OrgApp({onSwitchRole}) {
               )}
             </div>
             {!orgOwnerUsername && !hjLoading && (
-              <div style={{background:"#78350F20",border:"1px solid #F59E0B60",borderRadius:8,padding:"8px 10px",marginBottom:10}}>
-                <p style={{fontSize:10,color:"#92400E",fontWeight:700,margin:"0 0 2px"}}>Owner not set for this tournament</p>
-                <p style={{fontSize:10,color:"#92400E",margin:0,lineHeight:1.5}}>
-                  This event was imported before ownership tracking was added. Head judge and whitelist editing are disabled until an owner is assigned. Contact Leaf to run the set-owner fix command.
+              <div style={{background:"#78350F20",border:"1px solid #F59E0B60",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
+                <p style={{fontSize:10,color:"#92400E",fontWeight:700,margin:"0 0 4px"}}>⚠ No organizer on record</p>
+                <p style={{fontSize:10,color:"#92400E",margin:"0 0 10px",lineHeight:1.5}}>
+                  This event has no recorded organizer. You can claim ownership using the master key — your logged-in Challonge username will be set as organizer.
                 </p>
+                {claimError && <p style={{fontSize:10,color:"#EF4444",margin:"0 0 6px",fontWeight:700}}>⚠ {claimError}</p>}
+                <div style={{display:"flex",gap:8}}>
+                  <input
+                    value={claimInput}
+                    onChange={e=>setClaimInput(e.target.value)}
+                    placeholder="Enter master key…"
+                    type="password"
+                    style={{flex:1,padding:"8px 10px",borderRadius:9,border:"1px solid #F59E0B",background:"var(--input-bg)",color:"var(--text-primary)",fontSize:12,fontFamily:"'Outfit',sans-serif",outline:"none"}}
+                  />
+                  <button onClick={claimOwnership} disabled={claimLoading||!claimInput.trim()}
+                    style={{padding:"0 14px",borderRadius:9,border:"none",background:"#D97706",color:"#fff",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:(claimLoading||!claimInput.trim())?"not-allowed":"pointer",opacity:(claimLoading||!claimInput.trim())?0.5:1,flexShrink:0}}>
+                    {claimLoading ? "…" : "Claim"}
+                  </button>
+                </div>
               </div>
             )}
             <p style={{fontSize:10,color:"var(--text-muted)",margin:"0 0 10px",lineHeight:1.5}}>
@@ -17334,7 +17373,7 @@ function OrgApp({onSwitchRole}) {
           <div style={{background:"#78350F20",border:"1px solid #F59E0B60",borderRadius:8,padding:"8px 10px",marginBottom:10}}>
             <p style={{fontSize:10,color:"#92400E",fontWeight:700,margin:"0 0 2px"}}>Editing unavailable — no owner recorded</p>
             <p style={{fontSize:10,color:"#92400E",margin:0,lineHeight:1.5}}>
-              This event has no recorded organizer. Contact Leaf to run the set-owner fix before making whitelist changes.
+              Use the "Claim Ownership" tool in the Head Judges section above to restore access.
             </p>
           </div>
         )}
