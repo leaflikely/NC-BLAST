@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-02 | session: active matches bypass cache + roster sync always visible + QR URL handoff handler -->
+<!-- NC BLAST index.html | last updated: 2026-06-02 | session: scanner downsample+lock fix, URL handoff jumps to match screen -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2820,27 +2820,40 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const scanCanvasRef = useRef(null);  // offscreen canvas for frame sampling
   const scanIntervalRef = useRef(null);// setInterval handle for frame sampling
   const scanStreamRef = useRef(null);  // MediaStream ref so we can stop it
-  // useCallback ref: fires the moment the video element mounts in the DOM
-  // This sidesteps all the timing issues with useEffect — when the node exists, the stream is ready
+  const scanLockRef = useRef(false);   // prevents jsQR calls from piling up
+  // useCallback ref: fires the moment the video element mounts in the DOM.
+  // Attaches the stream and starts the scan loop immediately — no timing guesswork.
   const scanVideoCallbackRef = useCallback((node) => {
     scanVideoRef.current = node;
-    if(!node) return; // element unmounted
+    if(!node) return; // element unmounted — stop everything
     const stream = scanStreamRef.current;
     if(!stream) return;
     node.srcObject = stream;
     node.play().catch(()=>{});
-    // Start frame-sampling
     if(scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+    scanLockRef.current = false;
     scanIntervalRef.current = setInterval(()=>{
+      if(scanLockRef.current) return; // previous jsQR call still running — skip this tick
       const vid = scanVideoRef.current;
       const canvas = scanCanvasRef.current;
       if(!vid || !canvas || vid.readyState < 2 || vid.videoWidth === 0) return;
-      canvas.width = vid.videoWidth;
-      canvas.height = vid.videoHeight;
+      // Downsample to max 640px wide before passing to jsQR.
+      // Native camera resolution (often 1080p-4K) makes jsQR very slow on mobile.
+      const MAX_W = 640;
+      const scale = Math.min(1, MAX_W / vid.videoWidth);
+      const w = Math.round(vid.videoWidth * scale);
+      const h = Math.round(vid.videoHeight * scale);
+      canvas.width = w;
+      canvas.height = h;
       const ctx = canvas.getContext("2d");
-      ctx.drawImage(vid, 0, 0);
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imgData.data, imgData.width, imgData.height);
+      ctx.drawImage(vid, 0, 0, w, h);
+      const imgData = ctx.getImageData(0, 0, w, h);
+      scanLockRef.current = true;
+      // Run jsQR — synchronous but potentially slow, so lock prevents re-entry
+      let code = null;
+      try { code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "dontInvert" }); }
+      catch(_) {}
+      scanLockRef.current = false;
       if(code && code.data) {
         const m = code.data.match(/[?&]handoff=([A-Za-z0-9]{6})/);
         if(m) {
@@ -2850,7 +2863,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           handleHandoffScan(m[1]);
         }
       }
-    }, 250);
+    }, 300);
   }, []);
   const [pingComment,setPingComment] = useState("");
   const [pingReason,setPingReason] = useState(null); // selected reason chip
@@ -3312,6 +3325,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     if(scanIntervalRef.current) { clearInterval(scanIntervalRef.current); scanIntervalRef.current = null; }
     if(scanStreamRef.current) { scanStreamRef.current.getTracks().forEach(t=>t.stop()); scanStreamRef.current = null; }
     if(scanVideoRef.current) { scanVideoRef.current.srcObject = null; }
+    scanLockRef.current = false;
     setScannerOpen(false);
   };
 
@@ -8457,8 +8471,10 @@ function BeyJudgeApp() {
       try { sessionStorage.setItem("ncblast-pending-handoff", pendingHandoffToken); } catch(_) {}
       // Remove ?handoff= from URL bar so it doesn't linger or confuse refreshes
       window.history.replaceState({}, document.title, "/");
-      // Auto-select judge role so they land in MatchScreen
+      // Auto-select judge role AND jump straight to match screen
+      // (MatchScreen's on-mount effect will read the token and show the accept card)
       chooseRole("judge");
+      setScreen("match");
     }
 
     // Load local cache immediately so the app is usable right away
