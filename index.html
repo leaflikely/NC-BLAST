@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-02 | session: match handoff QR feature - generating + receiving sides -->
+<!-- NC BLAST index.html | last updated: 2026-06-02 | session: match handoff QR - fix scanner ref stability and video positioning -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2820,6 +2820,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const scanCanvasRef = useRef(null);  // offscreen canvas for frame sampling
   const scanIntervalRef = useRef(null);// setInterval handle for frame sampling
   const scanStreamRef = useRef(null);  // MediaStream ref so we can stop it
+  const scanBoxRef = useRef(null);     // the placeholder div the video visually fills
   const [pingComment,setPingComment] = useState("");
   const [pingReason,setPingReason] = useState(null); // selected reason chip
   const [pingStadium,setPingStadium] = useState(null); // selected stadium number
@@ -3268,46 +3269,81 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const stopScanner = () => {
     if(scanIntervalRef.current) { clearInterval(scanIntervalRef.current); scanIntervalRef.current = null; }
     if(scanStreamRef.current) { scanStreamRef.current.getTracks().forEach(t=>t.stop()); scanStreamRef.current = null; }
+    // Hide the video element
+    if(scanVideoRef.current) {
+      scanVideoRef.current.srcObject = null;
+      scanVideoRef.current.style.display = "none";
+    }
     setScannerOpen(false);
   };
 
-  // Starts the camera and begins sampling frames for QR codes
+  // Starts the camera — attaches stream to the always-mounted <video> element
   const startScanner = async () => {
-    setScannerOpen(true);
     setHandoffPreview(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       scanStreamRef.current = stream;
-      // Wait a tick for the video element to mount, then attach stream
-      setTimeout(() => {
-        if(scanVideoRef.current) {
-          scanVideoRef.current.srcObject = stream;
-          scanVideoRef.current.play();
-        }
-        scanIntervalRef.current = setInterval(() => {
-          const video = scanVideoRef.current;
-          const canvas = scanCanvasRef.current;
-          if(!video || !canvas || video.readyState < 2) return;
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(video, 0, 0);
-          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imgData.data, imgData.width, imgData.height);
-          if(code && code.data) {
-            const match = code.data.match(/[?&]handoff=([A-Za-z0-9]{6})/);
-            if(match) {
-              stopScanner();
-              handleHandoffScan(match[1]);
-            }
-          }
-        }, 250);
-      }, 300);
+      const video = scanVideoRef.current;
+      if(video) {
+        video.srcObject = stream;
+        video.play().catch(()=>{});
+      }
+      setScannerOpen(true); // open the overlay UI; the useEffect below will position the video
     } catch(e) {
-      stopScanner();
       alert("Camera access denied or unavailable.");
     }
   };
+
+  // When the scanner opens, position the video element over the placeholder box
+  // When it closes, hide it. This runs after the modal has painted.
+  useEffect(()=>{
+    const video = scanVideoRef.current;
+    if(!video) return;
+    if(!scannerOpen) {
+      video.style.display = "none";
+      return;
+    }
+    // Use requestAnimationFrame to wait until the modal and box are painted
+    const raf = requestAnimationFrame(()=>{
+      const box = scanBoxRef.current;
+      if(!box || !video) return;
+      const rect = box.getBoundingClientRect();
+      video.style.display = "block";
+      video.style.position = "fixed";
+      video.style.top = rect.top + "px";
+      video.style.left = rect.left + "px";
+      video.style.width = rect.width + "px";
+      video.style.height = rect.height + "px";
+      video.style.objectFit = "cover";
+      video.style.borderRadius = "13px"; // slightly inset from the border
+      video.style.zIndex = "200";
+      video.style.margin = "0";
+      // Start the frame-sampling interval once video is positioned
+      if(!scanIntervalRef.current) {
+        scanIntervalRef.current = setInterval(()=>{
+          const vid = scanVideoRef.current;
+          const canvas = scanCanvasRef.current;
+          if(!vid || !canvas || vid.readyState < 2 || vid.videoWidth === 0) return;
+          canvas.width = vid.videoWidth;
+          canvas.height = vid.videoHeight;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(vid, 0, 0);
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imgData.data, imgData.width, imgData.height);
+          if(code && code.data) {
+            const m = code.data.match(/[?&]handoff=([A-Za-z0-9]{6})/);
+            if(m) {
+              clearInterval(scanIntervalRef.current);
+              scanIntervalRef.current = null;
+              stopScanner();
+              handleHandoffScan(m[1]);
+            }
+          }
+        }, 250);
+      }
+    });
+    return ()=> cancelAnimationFrame(raf);
+  }, [scannerOpen]);
 
   // Called when a valid handoff token is scanned — fetches preview from KV
   const handleHandoffScan = async (token) => {
@@ -4260,17 +4296,17 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                 <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.96)",zIndex:200,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
                   <p style={{fontSize:16,fontWeight:900,color:"#fff",marginBottom:12}}>📷 Scan Handoff QR</p>
                   <p style={{fontSize:12,color:"#94A3B8",marginBottom:16,textAlign:"center"}}>Point your camera at the QR code on the other judge's screen.</p>
-                  <div style={{position:"relative",width:260,height:260,borderRadius:16,overflow:"hidden",background:"#000",border:"3px solid #1D4ED8",marginBottom:20}}>
-                    <video ref={scanVideoRef} autoPlay playsInline muted style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                    {/* Corner brackets for scan framing */}
-                    {[["0px","0px","border-top","border-left"],["0px","auto","border-top","border-right"],["auto","0px","border-bottom","border-left"],["auto","auto","border-bottom","border-right"]].map(([t,r,b1,b2],i)=>(
-                      <div key={i} style={{position:"absolute",top:t!=="auto"?8:undefined,bottom:t==="auto"?8:undefined,right:r!=="auto"?8:undefined,left:r==="auto"?undefined:8,width:28,height:28,borderColor:"#60A5FA",borderStyle:"solid",borderWidth:0,[b1.replace("border-","border"+b1.slice(6)+"Width")]:3,[b2.replace("border-","border"+b2.slice(6)+"Width")]:3,pointerEvents:"none"}}/>
-                    ))}
+                  {/* The <video> element itself lives at top-level for stable refs.
+                      This div is just a placeholder that matches the video's fixed position. */}
+                  <div ref={scanBoxRef} style={{position:"relative",width:260,height:260,borderRadius:16,overflow:"visible",border:"3px solid #1D4ED8",marginBottom:20,background:"#000"}}>
+                    {/* Corner bracket overlays */}
+                    <div style={{position:"absolute",top:-3,left:-3,width:32,height:32,borderTop:"4px solid #60A5FA",borderLeft:"4px solid #60A5FA",borderRadius:"4px 0 0 0",pointerEvents:"none",zIndex:201}}/>
+                    <div style={{position:"absolute",top:-3,right:-3,width:32,height:32,borderTop:"4px solid #60A5FA",borderRight:"4px solid #60A5FA",borderRadius:"0 4px 0 0",pointerEvents:"none",zIndex:201}}/>
+                    <div style={{position:"absolute",bottom:-3,left:-3,width:32,height:32,borderBottom:"4px solid #60A5FA",borderLeft:"4px solid #60A5FA",borderRadius:"0 0 0 4px",pointerEvents:"none",zIndex:201}}/>
+                    <div style={{position:"absolute",bottom:-3,right:-3,width:32,height:32,borderBottom:"4px solid #60A5FA",borderRight:"4px solid #60A5FA",borderRadius:"0 0 4px 0",pointerEvents:"none",zIndex:201}}/>
                   </div>
-                  {/* Hidden canvas for frame processing */}
-                  <canvas ref={scanCanvasRef} style={{display:"none"}}/>
                   <button onClick={stopScanner}
-                    style={{padding:"13px 32px",borderRadius:12,border:"none",background:"var(--surface2)",color:"var(--text-secondary)",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                    style={{padding:"13px 32px",borderRadius:12,border:"none",background:"rgba(255,255,255,0.1)",color:"#fff",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
                     Cancel
                   </button>
                 </div>
@@ -5301,6 +5337,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       })()}
 
       {/* ── Handoff QR modal — generating side ── */}
+      {/* ── Scanner video + canvas live HERE (top-level, stable across renders) ── */}
+      {/* Always rendered so refs stay attached; visibility controlled by scannerOpen */}
+      <video ref={scanVideoRef} autoPlay playsInline muted
+        style={{display:"none",position:"fixed",inset:0,width:"100%",height:"100%",objectFit:"cover",zIndex:-1}}/>
+      <canvas ref={scanCanvasRef} style={{display:"none"}}/>
+
       {handoffModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.92)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
           <div style={{background:"var(--surface)",borderRadius:20,padding:"28px 22px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"1px solid var(--border)",textAlign:"center"}}>
