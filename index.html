@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-02 | session: scanner downsample+lock fix, URL handoff jumps to match screen -->
+<!-- NC BLAST index.html | last updated: 2026-06-02 | session: scanner rAF loop replaces setInterval for reliable mobile video scanning -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2821,24 +2821,40 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const scanIntervalRef = useRef(null);// setInterval handle for frame sampling
   const scanStreamRef = useRef(null);  // MediaStream ref so we can stop it
   const scanLockRef = useRef(false);   // prevents jsQR calls from piling up
+  const scanRafRef = useRef(null);     // requestAnimationFrame handle for scan loop
   // useCallback ref: fires the moment the video element mounts in the DOM.
-  // Attaches the stream and starts the scan loop immediately — no timing guesswork.
+  // Uses requestAnimationFrame instead of setInterval — rAF is synced to the display
+  // and far more reliable for processing live video frames on mobile browsers.
   const scanVideoCallbackRef = useCallback((node) => {
     scanVideoRef.current = node;
-    if(!node) return; // element unmounted — stop everything
+    // Node unmounted — cancel the rAF loop
+    if(!node) {
+      if(scanRafRef.current) { cancelAnimationFrame(scanRafRef.current); scanRafRef.current = null; }
+      return;
+    }
     const stream = scanStreamRef.current;
     if(!stream) return;
     node.srcObject = stream;
     node.play().catch(()=>{});
-    if(scanIntervalRef.current) clearInterval(scanIntervalRef.current);
     scanLockRef.current = false;
-    scanIntervalRef.current = setInterval(()=>{
-      if(scanLockRef.current) return; // previous jsQR call still running — skip this tick
+
+    // Throttle: only run jsQR every ~300ms even though rAF fires at 60fps
+    let lastScan = 0;
+
+    const scanFrame = (now) => {
+      scanRafRef.current = requestAnimationFrame(scanFrame);
+      if(now - lastScan < 300) return; // throttle — don't run jsQR every frame
+      if(scanLockRef.current) return;  // previous jsQR call still running
+
       const vid = scanVideoRef.current;
       const canvas = scanCanvasRef.current;
-      if(!vid || !canvas || vid.readyState < 2 || vid.videoWidth === 0) return;
-      // Downsample to max 640px wide before passing to jsQR.
-      // Native camera resolution (often 1080p-4K) makes jsQR very slow on mobile.
+      // videoWidth > 0 is the reliable check — readyState can lag on mobile
+      if(!vid || !canvas || vid.videoWidth === 0 || vid.videoHeight === 0) return;
+
+      lastScan = now;
+      scanLockRef.current = true;
+
+      // Downsample to max 640px wide — native resolution is too slow for jsQR on mobile
       const MAX_W = 640;
       const scale = Math.min(1, MAX_W / vid.videoWidth);
       const w = Math.round(vid.videoWidth * scale);
@@ -2848,22 +2864,24 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       const ctx = canvas.getContext("2d");
       ctx.drawImage(vid, 0, 0, w, h);
       const imgData = ctx.getImageData(0, 0, w, h);
-      scanLockRef.current = true;
-      // Run jsQR — synchronous but potentially slow, so lock prevents re-entry
+
       let code = null;
-      try { code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "dontInvert" }); }
+      try { code = jsQR(imgData.data, w, h); }
       catch(_) {}
       scanLockRef.current = false;
+
       if(code && code.data) {
         const m = code.data.match(/[?&]handoff=([A-Za-z0-9]{6})/);
         if(m) {
-          clearInterval(scanIntervalRef.current);
-          scanIntervalRef.current = null;
+          cancelAnimationFrame(scanRafRef.current);
+          scanRafRef.current = null;
           stopScanner();
           handleHandoffScan(m[1]);
         }
       }
-    }, 300);
+    };
+
+    scanRafRef.current = requestAnimationFrame(scanFrame);
   }, []);
   const [pingComment,setPingComment] = useState("");
   const [pingReason,setPingReason] = useState(null); // selected reason chip
@@ -3322,6 +3340,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
 
   // Stops the camera scanner and clears its resources
   const stopScanner = () => {
+    if(scanRafRef.current) { cancelAnimationFrame(scanRafRef.current); scanRafRef.current = null; }
     if(scanIntervalRef.current) { clearInterval(scanIntervalRef.current); scanIntervalRef.current = null; }
     if(scanStreamRef.current) { scanStreamRef.current.getTracks().forEach(t=>t.stop()); scanStreamRef.current = null; }
     if(scanVideoRef.current) { scanVideoRef.current.srcObject = null; }
