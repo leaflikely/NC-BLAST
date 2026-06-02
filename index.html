@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-02 | session: match handoff QR - fix scanner ref stability and video positioning -->
+<!-- NC BLAST index.html | last updated: 2026-06-02 | session: handoff scanner facingMode fallback + roster refresh fix -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3280,16 +3280,24 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   // Starts the camera — attaches stream to the always-mounted <video> element
   const startScanner = async () => {
     setHandoffPreview(null);
+    setScannerOpen(true); // open the modal first so the box ref renders before we attach the stream
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      let stream;
+      try {
+        // Prefer the rear camera on phones; this constraint may fail on desktop
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+      } catch(_) {
+        // Fallback: any available camera (works on desktop / devices with only a front camera)
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
       scanStreamRef.current = stream;
       const video = scanVideoRef.current;
       if(video) {
         video.srcObject = stream;
-        video.play().catch(()=>{});
+        // play() is called inside the useEffect after positioning
       }
-      setScannerOpen(true); // open the overlay UI; the useEffect below will position the video
     } catch(e) {
+      stopScanner();
       alert("Camera access denied or unavailable.");
     }
   };
@@ -3318,6 +3326,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       video.style.borderRadius = "13px"; // slightly inset from the border
       video.style.zIndex = "200";
       video.style.margin = "0";
+      // Play the stream now that we know the element is visible and positioned
+      if(video.srcObject && video.paused) video.play().catch(()=>{});
       // Start the frame-sampling interval once video is positioned
       if(!scanIntervalRef.current) {
         scanIntervalRef.current = setInterval(()=>{
@@ -6813,15 +6823,22 @@ function OrgApp({onSwitchRole}) {
     if (!slug) return;
     setRosterRefreshing(true); setRosterRefreshMsg(null);
     try {
-      // bypass_cache=1 forces Challonge to be hit fresh, ignoring the KV copy
+      // bypass_cache=1 forces the Worker to skip the KV copy and hit Challonge directly,
+      // then write the fresh list back to KV so judges pick it up on their next import
       const res = await fetch(
         `${OVERLAY_WORKER}/?slug=${encodeURIComponent(slug)}&bypass_cache=1`,
         { signal: AbortSignal.timeout(10000) }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const count = (data.participants || []).length;
-      setRosterRefreshMsg({ ok: true, text: `Roster refreshed — ${count} player${count===1?"":"s"} loaded from Challonge.` });
+      const participants = data.participants || [];
+      const count = participants.length;
+      const fromCache = data.fromCache;
+      if (fromCache) {
+        setRosterRefreshMsg({ ok: false, text: `Still serving cached data — Worker bypass may not have applied. Try again.` });
+      } else {
+        setRosterRefreshMsg({ ok: true, text: `KV cache updated — ${count} player${count===1?"":"s"} now live. Judges will see the new list on next import.` });
+      }
     } catch(e) {
       setRosterRefreshMsg({ ok: false, text: `Refresh failed: ${e.message}` });
     } finally {
