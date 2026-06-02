@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-02 | session: scanner rAF loop replaces setInterval for reliable mobile video scanning -->
+<!-- NC BLAST index.html | last updated: 2026-06-02 | session: scanner rewritten as useEffect, plain ref, setTimeout for state calls -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2816,73 +2816,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const handoffPollRef = useRef(null); // setInterval handle for claim polling
   const [scannerOpen,setScannerOpen] = useState(false);         // camera QR scanner open
   const [handoffPreview,setHandoffPreview] = useState(null);    // { p1, p2, pts, sets, curSet, token } preview card before accept
-  const scanVideoRef = useRef(null);   // <video> for getUserMedia stream — set by useCallback below
+  const scanVideoRef = useRef(null);   // <video> for getUserMedia stream
   const scanCanvasRef = useRef(null);  // offscreen canvas for frame sampling
-  const scanIntervalRef = useRef(null);// setInterval handle for frame sampling
+  const scanIntervalRef = useRef(null);// kept for cleanup compat
   const scanStreamRef = useRef(null);  // MediaStream ref so we can stop it
-  const scanLockRef = useRef(false);   // prevents jsQR calls from piling up
   const scanRafRef = useRef(null);     // requestAnimationFrame handle for scan loop
-  // useCallback ref: fires the moment the video element mounts in the DOM.
-  // Uses requestAnimationFrame instead of setInterval — rAF is synced to the display
-  // and far more reliable for processing live video frames on mobile browsers.
-  const scanVideoCallbackRef = useCallback((node) => {
-    scanVideoRef.current = node;
-    // Node unmounted — cancel the rAF loop
-    if(!node) {
-      if(scanRafRef.current) { cancelAnimationFrame(scanRafRef.current); scanRafRef.current = null; }
-      return;
-    }
-    const stream = scanStreamRef.current;
-    if(!stream) return;
-    node.srcObject = stream;
-    node.play().catch(()=>{});
-    scanLockRef.current = false;
-
-    // Throttle: only run jsQR every ~300ms even though rAF fires at 60fps
-    let lastScan = 0;
-
-    const scanFrame = (now) => {
-      scanRafRef.current = requestAnimationFrame(scanFrame);
-      if(now - lastScan < 300) return; // throttle — don't run jsQR every frame
-      if(scanLockRef.current) return;  // previous jsQR call still running
-
-      const vid = scanVideoRef.current;
-      const canvas = scanCanvasRef.current;
-      // videoWidth > 0 is the reliable check — readyState can lag on mobile
-      if(!vid || !canvas || vid.videoWidth === 0 || vid.videoHeight === 0) return;
-
-      lastScan = now;
-      scanLockRef.current = true;
-
-      // Downsample to max 640px wide — native resolution is too slow for jsQR on mobile
-      const MAX_W = 640;
-      const scale = Math.min(1, MAX_W / vid.videoWidth);
-      const w = Math.round(vid.videoWidth * scale);
-      const h = Math.round(vid.videoHeight * scale);
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(vid, 0, 0, w, h);
-      const imgData = ctx.getImageData(0, 0, w, h);
-
-      let code = null;
-      try { code = jsQR(imgData.data, w, h); }
-      catch(_) {}
-      scanLockRef.current = false;
-
-      if(code && code.data) {
-        const m = code.data.match(/[?&]handoff=([A-Za-z0-9]{6})/);
-        if(m) {
-          cancelAnimationFrame(scanRafRef.current);
-          scanRafRef.current = null;
-          stopScanner();
-          handleHandoffScan(m[1]);
-        }
-      }
-    };
-
-    scanRafRef.current = requestAnimationFrame(scanFrame);
-  }, []);
+  const scanFoundRef = useRef(false);  // prevents double-firing when QR is detected
   const [pingComment,setPingComment] = useState("");
   const [pingReason,setPingReason] = useState(null); // selected reason chip
   const [pingStadium,setPingStadium] = useState(null); // selected stadium number
@@ -3338,19 +3277,21 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     }, 2500);
   };
 
-  // Stops the camera scanner and clears its resources
+  // Stops the camera scanner and clears all its resources
   const stopScanner = () => {
     if(scanRafRef.current) { cancelAnimationFrame(scanRafRef.current); scanRafRef.current = null; }
     if(scanIntervalRef.current) { clearInterval(scanIntervalRef.current); scanIntervalRef.current = null; }
     if(scanStreamRef.current) { scanStreamRef.current.getTracks().forEach(t=>t.stop()); scanStreamRef.current = null; }
     if(scanVideoRef.current) { scanVideoRef.current.srcObject = null; }
-    scanLockRef.current = false;
+    scanFoundRef.current = false;
     setScannerOpen(false);
   };
 
-  // Starts the camera — stores stream in ref; the useCallback ref on <video> picks it up on mount
+  // Opens the scanner: gets camera permission, stores the stream, then shows the modal.
+  // The useEffect below watches scannerOpen and wires everything up once the video element exists.
   const startScanner = async () => {
     setHandoffPreview(null);
+    scanFoundRef.current = false;
     try {
       let stream;
       try {
@@ -3359,11 +3300,76 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         stream = await navigator.mediaDevices.getUserMedia({ video: true });
       }
       scanStreamRef.current = stream;
-      setScannerOpen(true); // renders the <video> in the modal; useCallback ref fires and attaches stream
+      setScannerOpen(true);
     } catch(e) {
       alert("Camera access denied or unavailable.");
     }
   };
+
+  // Wires up the video + rAF scan loop whenever the scanner modal opens.
+  // Runs AFTER the modal renders so the video element is guaranteed to exist in the DOM.
+  useEffect(() => {
+    if(!scannerOpen) return;
+    const video = scanVideoRef.current;
+    const canvas = scanCanvasRef.current;
+    const stream = scanStreamRef.current;
+    if(!video || !stream) return;
+
+    // Attach stream and play
+    video.srcObject = stream;
+    const playPromise = video.play();
+    if(playPromise) playPromise.catch(()=>{});
+
+    scanFoundRef.current = false;
+    let lastScan = 0;
+
+    const scanFrame = (now) => {
+      if(scanFoundRef.current) return; // already found — stop the loop
+      scanRafRef.current = requestAnimationFrame(scanFrame);
+
+      if(now - lastScan < 300) return; // throttle to ~3 checks/sec
+      if(!video || !canvas) return;
+      if(video.videoWidth === 0 || video.videoHeight === 0) return; // no frame yet
+
+      lastScan = now;
+
+      // Draw downsampled frame into canvas
+      const MAX_W = 640;
+      const scale = Math.min(1, MAX_W / video.videoWidth);
+      const w = Math.round(video.videoWidth * scale);
+      const h = Math.round(video.videoHeight * scale);
+      if(canvas.width !== w) canvas.width = w;
+      if(canvas.height !== h) canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, w, h);
+
+      let imgData;
+      try { imgData = ctx.getImageData(0, 0, w, h); } catch(_) { return; }
+
+      let code;
+      try { code = jsQR(imgData.data, w, h); } catch(_) { return; }
+
+      if(code && code.data) {
+        const m = code.data.match(/[?&]handoff=([A-Za-z0-9]{6})/);
+        if(m) {
+          scanFoundRef.current = true;
+          if(scanRafRef.current) { cancelAnimationFrame(scanRafRef.current); scanRafRef.current = null; }
+          // stopScanner and handleHandoffScan are called via setTimeout so we're
+          // outside the rAF callback when state updates fire — avoids React warnings
+          setTimeout(() => {
+            stopScanner();
+            handleHandoffScan(m[1]);
+          }, 0);
+        }
+      }
+    };
+
+    scanRafRef.current = requestAnimationFrame(scanFrame);
+
+    return () => {
+      if(scanRafRef.current) { cancelAnimationFrame(scanRafRef.current); scanRafRef.current = null; }
+    };
+  }, [scannerOpen]);
 
   // Called when a valid handoff token is scanned — fetches preview from KV
   const handleHandoffScan = async (token) => {
@@ -4277,7 +4283,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
             <p style={{fontSize:16,fontWeight:900,color:"#fff",marginBottom:12}}>📷 Scan Handoff QR</p>
             <p style={{fontSize:12,color:"#94A3B8",marginBottom:16,textAlign:"center"}}>Point your camera at the QR code on the other judge's screen.</p>
             <div style={{position:"relative",width:260,height:260,borderRadius:16,overflow:"hidden",background:"#000",border:"3px solid #1D4ED8",marginBottom:20}}>
-              <video ref={scanVideoCallbackRef} autoPlay playsInline muted
+              <video ref={scanVideoRef} autoPlay playsInline muted
                 style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
               <canvas ref={scanCanvasRef} style={{display:"none"}}/>
               <div style={{position:"absolute",top:8,left:8,width:28,height:28,borderTop:"3px solid #60A5FA",borderLeft:"3px solid #60A5FA",pointerEvents:"none"}}/>
