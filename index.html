@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-02 | session: handoff scanner facingMode fallback + roster refresh fix -->
+<!-- NC BLAST index.html | last updated: 2026-06-02 | session: handoff scanner useCallback ref + roster sync name list + pairings cache bust -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2816,11 +2816,42 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const handoffPollRef = useRef(null); // setInterval handle for claim polling
   const [scannerOpen,setScannerOpen] = useState(false);         // camera QR scanner open
   const [handoffPreview,setHandoffPreview] = useState(null);    // { p1, p2, pts, sets, curSet, token } preview card before accept
-  const scanVideoRef = useRef(null);   // <video> for getUserMedia stream
+  const scanVideoRef = useRef(null);   // <video> for getUserMedia stream — set by useCallback below
   const scanCanvasRef = useRef(null);  // offscreen canvas for frame sampling
   const scanIntervalRef = useRef(null);// setInterval handle for frame sampling
   const scanStreamRef = useRef(null);  // MediaStream ref so we can stop it
-  const scanBoxRef = useRef(null);     // the placeholder div the video visually fills
+  // useCallback ref: fires the moment the video element mounts in the DOM
+  // This sidesteps all the timing issues with useEffect — when the node exists, the stream is ready
+  const scanVideoCallbackRef = useCallback((node) => {
+    scanVideoRef.current = node;
+    if(!node) return; // element unmounted
+    const stream = scanStreamRef.current;
+    if(!stream) return;
+    node.srcObject = stream;
+    node.play().catch(()=>{});
+    // Start frame-sampling
+    if(scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+    scanIntervalRef.current = setInterval(()=>{
+      const vid = scanVideoRef.current;
+      const canvas = scanCanvasRef.current;
+      if(!vid || !canvas || vid.readyState < 2 || vid.videoWidth === 0) return;
+      canvas.width = vid.videoWidth;
+      canvas.height = vid.videoHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(vid, 0, 0);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imgData.data, imgData.width, imgData.height);
+      if(code && code.data) {
+        const m = code.data.match(/[?&]handoff=([A-Za-z0-9]{6})/);
+        if(m) {
+          clearInterval(scanIntervalRef.current);
+          scanIntervalRef.current = null;
+          stopScanner();
+          handleHandoffScan(m[1]);
+        }
+      }
+    }, 250);
+  }, []);
   const [pingComment,setPingComment] = useState("");
   const [pingReason,setPingReason] = useState(null); // selected reason chip
   const [pingStadium,setPingStadium] = useState(null); // selected stadium number
@@ -3269,91 +3300,26 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const stopScanner = () => {
     if(scanIntervalRef.current) { clearInterval(scanIntervalRef.current); scanIntervalRef.current = null; }
     if(scanStreamRef.current) { scanStreamRef.current.getTracks().forEach(t=>t.stop()); scanStreamRef.current = null; }
-    // Hide the video element
-    if(scanVideoRef.current) {
-      scanVideoRef.current.srcObject = null;
-      scanVideoRef.current.style.display = "none";
-    }
+    if(scanVideoRef.current) { scanVideoRef.current.srcObject = null; }
     setScannerOpen(false);
   };
 
-  // Starts the camera — attaches stream to the always-mounted <video> element
+  // Starts the camera — stores stream in ref; the useCallback ref on <video> picks it up on mount
   const startScanner = async () => {
     setHandoffPreview(null);
-    setScannerOpen(true); // open the modal first so the box ref renders before we attach the stream
     try {
       let stream;
       try {
-        // Prefer the rear camera on phones; this constraint may fail on desktop
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
       } catch(_) {
-        // Fallback: any available camera (works on desktop / devices with only a front camera)
         stream = await navigator.mediaDevices.getUserMedia({ video: true });
       }
       scanStreamRef.current = stream;
-      const video = scanVideoRef.current;
-      if(video) {
-        video.srcObject = stream;
-        // play() is called inside the useEffect after positioning
-      }
+      setScannerOpen(true); // renders the <video> in the modal; useCallback ref fires and attaches stream
     } catch(e) {
-      stopScanner();
       alert("Camera access denied or unavailable.");
     }
   };
-
-  // When the scanner opens, position the video element over the placeholder box
-  // When it closes, hide it. This runs after the modal has painted.
-  useEffect(()=>{
-    const video = scanVideoRef.current;
-    if(!video) return;
-    if(!scannerOpen) {
-      video.style.display = "none";
-      return;
-    }
-    // Use requestAnimationFrame to wait until the modal and box are painted
-    const raf = requestAnimationFrame(()=>{
-      const box = scanBoxRef.current;
-      if(!box || !video) return;
-      const rect = box.getBoundingClientRect();
-      video.style.display = "block";
-      video.style.position = "fixed";
-      video.style.top = rect.top + "px";
-      video.style.left = rect.left + "px";
-      video.style.width = rect.width + "px";
-      video.style.height = rect.height + "px";
-      video.style.objectFit = "cover";
-      video.style.borderRadius = "13px"; // slightly inset from the border
-      video.style.zIndex = "200";
-      video.style.margin = "0";
-      // Play the stream now that we know the element is visible and positioned
-      if(video.srcObject && video.paused) video.play().catch(()=>{});
-      // Start the frame-sampling interval once video is positioned
-      if(!scanIntervalRef.current) {
-        scanIntervalRef.current = setInterval(()=>{
-          const vid = scanVideoRef.current;
-          const canvas = scanCanvasRef.current;
-          if(!vid || !canvas || vid.readyState < 2 || vid.videoWidth === 0) return;
-          canvas.width = vid.videoWidth;
-          canvas.height = vid.videoHeight;
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(vid, 0, 0);
-          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imgData.data, imgData.width, imgData.height);
-          if(code && code.data) {
-            const m = code.data.match(/[?&]handoff=([A-Za-z0-9]{6})/);
-            if(m) {
-              clearInterval(scanIntervalRef.current);
-              scanIntervalRef.current = null;
-              stopScanner();
-              handleHandoffScan(m[1]);
-            }
-          }
-        }, 250);
-      }
-    });
-    return ()=> cancelAnimationFrame(raf);
-  }, [scannerOpen]);
 
   // Called when a valid handoff token is scanned — fetches preview from KV
   const handleHandoffScan = async (token) => {
@@ -4306,14 +4272,16 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                 <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.96)",zIndex:200,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
                   <p style={{fontSize:16,fontWeight:900,color:"#fff",marginBottom:12}}>📷 Scan Handoff QR</p>
                   <p style={{fontSize:12,color:"#94A3B8",marginBottom:16,textAlign:"center"}}>Point your camera at the QR code on the other judge's screen.</p>
-                  {/* The <video> element itself lives at top-level for stable refs.
-                      This div is just a placeholder that matches the video's fixed position. */}
-                  <div ref={scanBoxRef} style={{position:"relative",width:260,height:260,borderRadius:16,overflow:"visible",border:"3px solid #1D4ED8",marginBottom:20,background:"#000"}}>
-                    {/* Corner bracket overlays */}
-                    <div style={{position:"absolute",top:-3,left:-3,width:32,height:32,borderTop:"4px solid #60A5FA",borderLeft:"4px solid #60A5FA",borderRadius:"4px 0 0 0",pointerEvents:"none",zIndex:201}}/>
-                    <div style={{position:"absolute",top:-3,right:-3,width:32,height:32,borderTop:"4px solid #60A5FA",borderRight:"4px solid #60A5FA",borderRadius:"0 4px 0 0",pointerEvents:"none",zIndex:201}}/>
-                    <div style={{position:"absolute",bottom:-3,left:-3,width:32,height:32,borderBottom:"4px solid #60A5FA",borderLeft:"4px solid #60A5FA",borderRadius:"0 0 0 4px",pointerEvents:"none",zIndex:201}}/>
-                    <div style={{position:"absolute",bottom:-3,right:-3,width:32,height:32,borderBottom:"4px solid #60A5FA",borderRight:"4px solid #60A5FA",borderRadius:"0 0 4px 0",pointerEvents:"none",zIndex:201}}/>
+                  <div style={{position:"relative",width:260,height:260,borderRadius:16,overflow:"hidden",background:"#000",border:"3px solid #1D4ED8",marginBottom:20}}>
+                    {/* useCallback ref attaches the stream and starts scanning the moment this element mounts */}
+                    <video ref={scanVideoCallbackRef} autoPlay playsInline muted
+                      style={{width:"100%",height:"100%",objectFit:"cover",display:"block"}}/>
+                    <canvas ref={scanCanvasRef} style={{display:"none"}}/>
+                    {/* Corner brackets */}
+                    <div style={{position:"absolute",top:8,left:8,width:28,height:28,borderTop:"3px solid #60A5FA",borderLeft:"3px solid #60A5FA",pointerEvents:"none"}}/>
+                    <div style={{position:"absolute",top:8,right:8,width:28,height:28,borderTop:"3px solid #60A5FA",borderRight:"3px solid #60A5FA",pointerEvents:"none"}}/>
+                    <div style={{position:"absolute",bottom:8,left:8,width:28,height:28,borderBottom:"3px solid #60A5FA",borderLeft:"3px solid #60A5FA",pointerEvents:"none"}}/>
+                    <div style={{position:"absolute",bottom:8,right:8,width:28,height:28,borderBottom:"3px solid #60A5FA",borderRight:"3px solid #60A5FA",pointerEvents:"none"}}/>
                   </div>
                   <button onClick={stopScanner}
                     style={{padding:"13px 32px",borderRadius:12,border:"none",background:"rgba(255,255,255,0.1)",color:"#fff",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
@@ -5347,12 +5315,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       })()}
 
       {/* ── Handoff QR modal — generating side ── */}
-      {/* ── Scanner video + canvas live HERE (top-level, stable across renders) ── */}
-      {/* Always rendered so refs stay attached; visibility controlled by scannerOpen */}
-      <video ref={scanVideoRef} autoPlay playsInline muted
-        style={{display:"none",position:"fixed",inset:0,width:"100%",height:"100%",objectFit:"cover",zIndex:-1}}/>
-      <canvas ref={scanCanvasRef} style={{display:"none"}}/>
-
       {handoffModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.92)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
           <div style={{background:"var(--surface)",borderRadius:20,padding:"28px 22px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"1px solid var(--border)",textAlign:"center"}}>
@@ -6823,24 +6785,36 @@ function OrgApp({onSwitchRole}) {
     if (!slug) return;
     setRosterRefreshing(true); setRosterRefreshMsg(null);
     try {
-      // bypass_cache=1 forces the Worker to skip the KV copy and hit Challonge directly,
-      // then write the fresh list back to KV so judges pick it up on their next import
-      const res = await fetch(
+      // Step 1: bust the participant KV cache — hits Challonge directly and rewrites KV
+      const partRes = await fetch(
         `${OVERLAY_WORKER}/?slug=${encodeURIComponent(slug)}&bypass_cache=1`,
         { signal: AbortSignal.timeout(10000) }
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const participants = data.participants || [];
-      const count = participants.length;
-      const fromCache = data.fromCache;
-      if (fromCache) {
-        setRosterRefreshMsg({ ok: false, text: `Still serving cached data — Worker bypass may not have applied. Try again.` });
-      } else {
-        setRosterRefreshMsg({ ok: true, text: `KV cache updated — ${count} player${count===1?"":"s"} now live. Judges will see the new list on next import.` });
-      }
+      if (!partRes.ok) throw new Error(`Participants fetch failed: HTTP ${partRes.status}`);
+      const partData = await partRes.json();
+      if (partData.fromCache) throw new Error("Worker still returned cached data — deploy may not have applied.");
+
+      // Step 2: bust the pairings KV cache so name resolution uses the fresh participant list
+      const pairRes = await fetch(
+        `${OVERLAY_WORKER}/pairings?slug=${encodeURIComponent(slug)}&bypass_cache=1`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (!pairRes.ok) throw new Error(`Pairings fetch failed: HTTP ${pairRes.status}`);
+      const pairData = await pairRes.json();
+
+      // Update local pairings state so org view reflects changes immediately
+      setPairings(pairData.pairings || []);
+
+      // Build the name list to display
+      const participants = partData.participants || [];
+      const names = participants.map(p => {
+        const part = p.participant || p;
+        return part.display_name || part.username || part.name || "";
+      }).filter(Boolean).sort((a,b) => a.localeCompare(b));
+
+      setRosterRefreshMsg({ ok: true, names, count: names.length });
     } catch(e) {
-      setRosterRefreshMsg({ ok: false, text: `Refresh failed: ${e.message}` });
+      setRosterRefreshMsg({ ok: false, text: e.message });
     } finally {
       setRosterRefreshing(false);
     }
@@ -7074,9 +7048,22 @@ function OrgApp({onSwitchRole}) {
               If players dropped or registered on Challonge after you imported this event, tap Refresh Roster to pull the latest list. This button disappears once Round 2 starts.
             </p>
             {rosterRefreshMsg && (
-              <p style={{fontSize:11,fontWeight:700,color:rosterRefreshMsg.ok?"#22C55E":"#EF4444",margin:0}}>
-                {rosterRefreshMsg.ok ? "✓" : "⚠"} {rosterRefreshMsg.text}
-              </p>
+              rosterRefreshMsg.ok ? (
+                <div>
+                  <p style={{fontSize:11,fontWeight:700,color:"#22C55E",margin:"0 0 6px"}}>
+                    ✓ {rosterRefreshMsg.count} player{rosterRefreshMsg.count===1?"":"s"} synced from Challonge — KV updated
+                  </p>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                    {(rosterRefreshMsg.names||[]).map(n=>(
+                      <span key={n} style={{fontSize:10,fontWeight:600,color:"var(--text-secondary)",background:"var(--surface3)",borderRadius:6,padding:"2px 7px"}}>
+                        {n}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p style={{fontSize:11,fontWeight:700,color:"#EF4444",margin:0}}>⚠ {rosterRefreshMsg.text}</p>
+              )
             )}
           </div>
         );
