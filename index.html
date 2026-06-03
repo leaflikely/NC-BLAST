@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-03 | session: stadium assignment + judge highlights; org view cleanup; judge name map (global KV, drag-drop UI, login pre-fill, auto-load participants) -->
+<!-- NC BLAST index.html | last updated: 2026-06-03 | session: stadium assign save/load (KV); match call algorithm; roster auto-load; name map fixes -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16948,10 +16948,12 @@ function OrgApp({onSwitchRole}) {
   const [jwError, setJwError] = useState(null);
   const [jwInput, setJwInput] = useState("");                  // textarea paste input
 
-  // ── Stadium assignment state (local only, resets each session) ────
+  // ── Stadium assignment state ──────────────────────────────────────────
   const [stadiumCount, setStadiumCount] = useState(null);     // null = not set yet, 1-8 once chosen
-  const [stadiumAssign, setStadiumAssign] = useState({});     // { displayName: "A"|"B"|... }
-  const [stadiumDragOver, setStadiumDragOver] = useState(null); // which bucket is being hovered
+  const [stadiumAssign, setStadiumAssign] = useState({});     // { challongeUsername: "A"|"B"|... }
+  const [stadiumDragOver, setStadiumDragOver] = useState(null);
+  const [stadiumSaving, setStadiumSaving] = useState(false);
+  const [stadiumSaveMsg, setStadiumSaveMsg] = useState(null); // null | "saved" | "error"
 
   // ── Judge name map state (global KV: Challonge username → bracket display name) ────
   const [judgeNameMap, setJudgeNameMap]     = useState({});   // { "nghia2daizzo": "Nghia", ... }
@@ -17110,6 +17112,37 @@ function OrgApp({onSwitchRole}) {
     }
   };
 
+  // ── Stadium assignment load / save ───────────────────────────────────
+  const loadStadiumAssign = async () => {
+    if (!slug) return;
+    try {
+      const data = await workerGet(`/stadium-assign?slug=${encodeURIComponent(slug)}`);
+      if (data.data) {
+        if (data.data.count) setStadiumCount(data.data.count);
+        if (data.data.assign) setStadiumAssign(data.data.assign);
+      }
+    } catch(_) {}
+  };
+
+  const saveStadiumAssign = async () => {
+    const token    = sessionStorage.getItem("ncblast-auth-token") || "";
+    const username = sessionStorage.getItem("ncblast-auth-user")  || "";
+    setStadiumSaving(true); setStadiumSaveMsg(null);
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/stadium-assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Auth-Token": token },
+        body: JSON.stringify({ slug, count: stadiumCount, assign: stadiumAssign, username }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Save failed");
+      setStadiumSaveMsg("saved");
+      setTimeout(() => setStadiumSaveMsg(null), 2500);
+    } catch(e) { setStadiumSaveMsg("error"); }
+    finally { setStadiumSaving(false); }
+  };
+
   // ── Judge name map fetch / save ──────────────────────────────────────
   const loadNameMap = async () => {
     setNameMapLoading(true); setNameMapError(null);
@@ -17222,6 +17255,7 @@ function OrgApp({onSwitchRole}) {
     loadJudgeWhitelist(slug);
     loadNameMap();
     loadParticipants();
+    loadStadiumAssign();
 
     // Poll live match slots every 5s
     const pollLive = async () => {
@@ -17787,17 +17821,27 @@ function OrgApp({onSwitchRole}) {
 
         return (
           <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",marginBottom:14,border:"1px solid var(--border)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
               <div>
                 <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 1px"}}>Stadium Assignment</p>
                 <p style={{fontSize:10,color:"var(--text-muted)",margin:0}}>Drag judges into their stadium. Judge names are highlighted in matches.</p>
               </div>
-              {stadiumCount && (
-                <button onClick={()=>{setStadiumCount(null);setStadiumAssign({});}}
-                  style={{background:"none",border:"1px solid var(--border)",borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:700,color:"var(--text-faint)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-                  Reset
-                </button>
-              )}
+              <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                {stadiumSaveMsg === "saved" && <span style={{fontSize:10,fontWeight:700,color:"#22C55E"}}>✓ Saved</span>}
+                {stadiumSaveMsg === "error" && <span style={{fontSize:10,fontWeight:700,color:"#EF4444"}}>⚠ Failed</span>}
+                {stadiumCount && (
+                  <>
+                    <button onClick={saveStadiumAssign} disabled={stadiumSaving}
+                      style={{background:"#3B82F6",border:"none",borderRadius:8,padding:"4px 11px",fontSize:10,fontWeight:800,color:"#fff",fontFamily:"'Outfit',sans-serif",cursor:stadiumSaving?"not-allowed":"pointer",opacity:stadiumSaving?0.5:1}}>
+                      {stadiumSaving ? "…" : "Save"}
+                    </button>
+                    <button onClick={()=>{setStadiumCount(null);setStadiumAssign({});setStadiumSaveMsg(null);}}
+                      style={{background:"none",border:"1px solid var(--border)",borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:700,color:"var(--text-faint)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                      Reset
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Step 1: pick count */}
@@ -18084,6 +18128,272 @@ function OrgApp({onSwitchRole}) {
             <p style={{fontSize:12,color:"var(--text-faint)"}}>All matches may be complete, or the round hasn't started yet.</p>
           </div>
         )}
+
+        {/* ── Match Call Algorithm ─────────────────────────────────── */}
+        {stadiumCount && pairings && (() => {
+          const STADIUM_LETTERS = STADIUM_LABELS.slice(0, stadiumCount);
+
+          // Which Challonge usernames are judges, and their bracket display names
+          const judgeUsers = judgeWhitelist; // lowercase Challonge usernames
+          const getBN = (u) => judgeNameMap[u.toLowerCase()] || u;
+
+          // Is a display name a judge? (bracket name or username match)
+          const isJudgeName = (displayName) => {
+            if (!displayName) return false;
+            const dl = displayName.toLowerCase();
+            return judgeUsers.some(u => {
+              const mapped = judgeNameMap[u.toLowerCase()];
+              return mapped ? mapped.toLowerCase() === dl : u.toLowerCase() === dl;
+            });
+          };
+
+          // Which display name → Challonge username (reverse lookup)
+          const displayToUsername = (displayName) => {
+            if (!displayName) return null;
+            const dl = displayName.toLowerCase();
+            return judgeUsers.find(u => {
+              const mapped = judgeNameMap[u.toLowerCase()];
+              return mapped ? mapped.toLowerCase() === dl : u.toLowerCase() === dl;
+            }) || null;
+          };
+
+          // Which players are currently in a live match (display names)
+          const playersInLiveMatch = new Set();
+          liveSlots.forEach(slot => {
+            if (slot.p1) playersInLiveMatch.add(slot.p1.toLowerCase());
+            if (slot.p2) playersInLiveMatch.add(slot.p2.toLowerCase());
+          });
+          const isInLiveMatch = (displayName) =>
+            displayName && playersInLiveMatch.has(displayName.toLowerCase());
+
+          // Free judge count per stadium (judges not currently in a live match as a player)
+          const freeJudgesPerStadium = {};
+          STADIUM_LETTERS.forEach(letter => {
+            const judges = judgeUsers.filter(u => stadiumAssign[u] === letter);
+            const free = judges.filter(u => !isInLiveMatch(getBN(u)));
+            freeJudgesPerStadium[letter] = free.length;
+          });
+
+          // Floaters: judges with no stadium assignment
+          const floaterUsers = judgeUsers.filter(u => !stadiumAssign[u]);
+          const floatersFree = floaterUsers.filter(u => !isInLiveMatch(getBN(u))).length;
+
+          // Which stadiums are open (no live match currently on them)
+          const openStadiums = STADIUM_LETTERS.filter(letter => {
+            return !liveSlots.some(slot => slot.stadium === letter && slot.p1);
+          });
+          // Also include: stadium has no live slot at all (slot-based detection)
+          // Fallback: consider all stadiums open if no slot data links to stadiums
+          const hasSlotStadiumData = liveSlots.some(s => s.stadium);
+          const effectiveOpenStadiums = hasSlotStadiumData
+            ? openStadiums
+            : STADIUM_LETTERS; // show all if we can't determine which are open
+
+          // Waiting matches (not live, not complete)
+          const waitingMatches = roundMatches.filter(m => {
+            const live = getLiveState(m);
+            return !live && m.state !== "complete";
+          });
+
+          if (waitingMatches.length === 0 && effectiveOpenStadiums.length === 0) return null;
+
+          // Classify a match
+          const classifyMatch = (m) => {
+            const p1j = isJudgeName(m.player1_name);
+            const p2j = isJudgeName(m.player2_name);
+            if (p1j && p2j) return "JvJ";
+            if (p1j || p2j) return "JvP";
+            return "PvP";
+          };
+
+          // Check if a match is hard-blocked (a player is already in a live match)
+          const isHardBlocked = (m) =>
+            isInLiveMatch(m.player1_name) || isInLiveMatch(m.player2_name);
+
+          // Evaluate callability of a match
+          // Returns: { callable: bool, needsFloater: bool, needsHandoff: bool, flags: string[] }
+          const evaluateMatch = (m) => {
+            if (isHardBlocked(m)) return { callable: false, reason: "Player already in a match" };
+            const type = classifyMatch(m);
+            const flags = [];
+
+            if (type === "PvP") return { callable: true, tier: 3, needsFloater: false, needsHandoff: false, flags };
+
+            const p1u = displayToUsername(m.player1_name);
+            const p2u = displayToUsername(m.player2_name);
+            const judgeUser = type === "JvP" ? (isJudgeName(m.player1_name) ? p1u : p2u) : null;
+
+            if (type === "JvP") {
+              const stationLetter = judgeUser ? stadiumAssign[judgeUser] : null;
+              const stationFree = stationLetter ? freeJudgesPerStadium[stationLetter] : 0;
+              // After this judge plays, their station loses 1 free judge
+              const remainingFree = stationFree - 1;
+              if (remainingFree >= 1) {
+                // Station stays covered naturally
+                return { callable: true, tier: 2, needsFloater: false, needsHandoff: false, flags };
+              } else if (floatersFree > 0) {
+                flags.push(`Floater needed to cover Stadium ${stationLetter || "?"}`);
+                return { callable: true, tier: 2, needsFloater: true, needsHandoff: false, flags };
+              } else {
+                // Check if another station can send a judge via handoff
+                const canHandoff = STADIUM_LETTERS.some(l => l !== stationLetter && freeJudgesPerStadium[l] >= 2);
+                if (canHandoff) {
+                  const donor = STADIUM_LETTERS.find(l => l !== stationLetter && freeJudgesPerStadium[l] >= 2);
+                  flags.push(`Handoff needed — Stadium ${donor} can cover`);
+                  return { callable: true, tier: 2, needsFloater: false, needsHandoff: true, flags };
+                }
+                return { callable: false, reason: `Would strand Stadium ${stationLetter || "?"} — no coverage available` };
+              }
+            }
+
+            if (type === "JvJ") {
+              const sameStation = p1u && p2u && stadiumAssign[p1u] && stadiumAssign[p1u] === stadiumAssign[p2u];
+              if (sameStation) {
+                const stLetter = stadiumAssign[p1u];
+                const stFree = freeJudgesPerStadium[stLetter];
+                // Both judges playing leaves station empty — needs floater
+                if (floatersFree > 0) {
+                  flags.push(`Same-station JvJ — floater judges for them or covers their station`);
+                  return { callable: true, tier: 1, needsFloater: true, needsHandoff: false, flags };
+                }
+                const canHandoff = STADIUM_LETTERS.some(l => l !== stLetter && freeJudgesPerStadium[l] >= 2);
+                if (canHandoff) {
+                  const donor = STADIUM_LETTERS.find(l => l !== stLetter && freeJudgesPerStadium[l] >= 2);
+                  flags.push(`Same-station JvJ — handoff from Stadium ${donor} needed`);
+                  return { callable: true, tier: 1, needsFloater: false, needsHandoff: true, flags };
+                }
+                return { callable: false, reason: `Same-station JvJ with no coverage available` };
+              } else {
+                // Different stations — each must have ≥1 free judge after this player leaves
+                const st1 = p1u ? stadiumAssign[p1u] : null;
+                const st2 = p2u ? stadiumAssign[p2u] : null;
+                const st1ok = !st1 || freeJudgesPerStadium[st1] >= 2;
+                const st2ok = !st2 || freeJudgesPerStadium[st2] >= 2;
+                if (st1ok && st2ok) {
+                  return { callable: true, tier: 1, needsFloater: false, needsHandoff: false, flags };
+                }
+                const reason = [];
+                if (!st1ok) reason.push(`Stadium ${st1} would be stranded`);
+                if (!st2ok) reason.push(`Stadium ${st2} would be stranded`);
+                return { callable: false, reason: reason.join("; ") };
+              }
+            }
+
+            return { callable: true, tier: 3, needsFloater: false, needsHandoff: false, flags };
+          };
+
+          // Score + rank all waiting matches
+          const evaluated = waitingMatches.map((m, idx) => ({
+            m, idx, type: classifyMatch(m), ...evaluateMatch(m)
+          }));
+
+          const callable = evaluated.filter(e => e.callable).sort((a, b) => {
+            if (a.tier !== b.tier) return a.tier - b.tier; // lower tier = higher priority
+            return a.idx - b.idx; // earlier in list = waited longer
+          });
+          const blocked = evaluated.filter(e => !e.callable);
+
+          // Best suggestion: top callable match (tier 1 > 2 > 3, then wait order)
+          const suggestion = callable[0] || null;
+
+          // Tier label
+          const tierLabel = (type, needsFloater, needsHandoff) => {
+            const base = type === "JvJ" ? "Judge vs Judge" : type === "JvP" ? "Judge vs Player" : "Player vs Player";
+            const extra = needsFloater ? " · Floater" : needsHandoff ? " · Handoff" : "";
+            return base + extra;
+          };
+          const tierColor = (type) =>
+            type === "JvJ" ? "#F59E0B" : type === "JvP" ? "#3B82F6" : "var(--text-muted)";
+
+          return (
+            <div style={{marginTop:16,borderRadius:12,border:"1px solid var(--border2)",overflow:"hidden"}}>
+              {/* Header */}
+              <div style={{background:"var(--surface2)",padding:"10px 14px",borderBottom:"1px solid var(--border)"}}>
+                <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:1,margin:"0 0 1px"}}>
+                  Match Call Helper
+                </p>
+                <p style={{fontSize:14,fontWeight:900,color:"var(--text-primary)",margin:0}}>
+                  Next Suggested Call
+                </p>
+              </div>
+
+              <div style={{padding:"12px 14px"}}>
+                {waitingMatches.length === 0 && (
+                  <p style={{fontSize:12,color:"var(--text-muted)",margin:0,fontStyle:"italic"}}>No waiting matches — all open matches are live.</p>
+                )}
+
+                {/* Best suggestion */}
+                {suggestion && (
+                  <div style={{marginBottom:blocked.length > 0 ? 12 : 0}}>
+                    <div style={{
+                      padding:"12px 13px",borderRadius:10,
+                      border:`2px solid ${tierColor(suggestion.type)}40`,
+                      background:`${tierColor(suggestion.type)}0A`,
+                      marginBottom:8
+                    }}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:6}}>
+                        <span style={{fontSize:9,fontWeight:800,color:tierColor(suggestion.type),textTransform:"uppercase",letterSpacing:0.8,border:`1px solid ${tierColor(suggestion.type)}60`,borderRadius:6,padding:"2px 7px"}}>
+                          {tierLabel(suggestion.type, suggestion.needsFloater, suggestion.needsHandoff)}
+                        </span>
+                      </div>
+                      <p style={{fontSize:15,fontWeight:900,color:"var(--text-primary)",margin:"0 0 4px"}}>
+                        {suggestion.m.player1_name||"?"} <span style={{fontWeight:400,color:"var(--text-faint)"}}>vs</span> {suggestion.m.player2_name||"?"}
+                      </p>
+                      {suggestion.flags.length > 0 && suggestion.flags.map((f,i) => (
+                        <p key={i} style={{fontSize:10,fontWeight:700,color:"#F59E0B",margin:"2px 0 0"}}>⚠ {f}</p>
+                      ))}
+                    </div>
+
+                    {/* Other callable matches */}
+                    {callable.length > 1 && (
+                      <div>
+                        <p style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 5px"}}>Also callable</p>
+                        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                          {callable.slice(1,4).map(e => (
+                            <div key={e.m.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)"}}>
+                              <span style={{fontSize:9,fontWeight:800,color:tierColor(e.type),flexShrink:0,border:`1px solid ${tierColor(e.type)}50`,borderRadius:5,padding:"1px 6px"}}>{e.type}</span>
+                              <span style={{fontSize:12,fontWeight:700,color:"var(--text-secondary)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                {e.m.player1_name||"?"} vs {e.m.player2_name||"?"}
+                              </span>
+                              {(e.needsFloater||e.needsHandoff) && <span style={{fontSize:9,color:"#F59E0B",fontWeight:700,flexShrink:0}}>{e.needsFloater?"Floater":"Handoff"}</span>}
+                            </div>
+                          ))}
+                          {callable.length > 4 && <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0",textAlign:"center"}}>+{callable.length-4} more callable</p>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* No callable matches */}
+                {callable.length === 0 && waitingMatches.length > 0 && (
+                  <div style={{padding:"12px",borderRadius:10,background:"#450A0A",border:"1px solid #DC2626",marginBottom:blocked.length > 0 ? 10 : 0}}>
+                    <p style={{fontSize:12,fontWeight:800,color:"#FCA5A5",margin:"0 0 4px"}}>⏳ No callable matches right now</p>
+                    <p style={{fontSize:11,color:"#FCA5A5",opacity:0.8,margin:0}}>Waiting for live matches to finish before the next call can be made safely.</p>
+                  </div>
+                )}
+
+                {/* Blocked matches summary */}
+                {blocked.length > 0 && (
+                  <div>
+                    <p style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 5px"}}>Blocked</p>
+                    <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                      {blocked.map(e => (
+                        <div key={e.m.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",opacity:0.7}}>
+                          <span style={{fontSize:9,fontWeight:800,color:"#EF4444",flexShrink:0,border:"1px solid #EF444450",borderRadius:5,padding:"1px 6px"}}>{e.type}</span>
+                          <span style={{fontSize:12,fontWeight:700,color:"var(--text-muted)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            {e.m.player1_name||"?"} vs {e.m.player2_name||"?"}
+                          </span>
+                          <span style={{fontSize:9,color:"var(--text-faint)",flexShrink:0,maxWidth:120,textAlign:"right",lineHeight:1.3}}>{e.reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </React.Fragment>
 
       {/* ── Judge Accountability Log (collapsed by default) ──────── */}
