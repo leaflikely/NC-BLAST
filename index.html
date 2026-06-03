@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-03 | session: stadium assign save/load (KV); match call algorithm; roster auto-load; name map fixes -->
+<!-- NC BLAST index.html | last updated: 2026-06-03 | session: stadium save/load; per-station match queues with drag-drop reorder; coverage checks; floater tracking -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16955,6 +16955,14 @@ function OrgApp({onSwitchRole}) {
   const [stadiumSaving, setStadiumSaving] = useState(false);
   const [stadiumSaveMsg, setStadiumSaveMsg] = useState(null); // null | "saved" | "error"
 
+  // ── Per-station queue state ────────────────────────────────────────
+  // { "A": [matchId, matchId, ...], "B": [...], ... }
+  // Match IDs in priority order — org can drag to reorder
+  const [stationQueues, setStationQueues] = useState({});
+  const [queueDragItem, setQueueDragItem] = useState(null);   // { matchId, fromStation }
+  const [queueDragOver, setQueueDragOver] = useState(null);   // { station, afterIdx }
+  const [queuesGenerated, setQueuesGenerated] = useState(false); // true once algo has run
+
   // ── Judge name map state (global KV: Challonge username → bracket display name) ────
   const [judgeNameMap, setJudgeNameMap]     = useState({});   // { "nghia2daizzo": "Nghia", ... }
   const [nameMapOpen, setNameMapOpen]       = useState(false);
@@ -18129,268 +18137,378 @@ function OrgApp({onSwitchRole}) {
           </div>
         )}
 
-        {/* ── Match Call Algorithm ─────────────────────────────────── */}
+        {/* ── Per-Station Match Queue ──────────────────────────────── */}
         {stadiumCount && pairings && (() => {
           const STADIUM_LETTERS = STADIUM_LABELS.slice(0, stadiumCount);
 
-          // Which Challonge usernames are judges, and their bracket display names
-          const judgeUsers = judgeWhitelist; // lowercase Challonge usernames
+          // ── Helpers ────────────────────────────────────────────────
           const getBN = (u) => judgeNameMap[u.toLowerCase()] || u;
 
-          // Is a display name a judge? (bracket name or username match)
           const isJudgeName = (displayName) => {
             if (!displayName) return false;
             const dl = displayName.toLowerCase();
-            return judgeUsers.some(u => {
+            return judgeWhitelist.some(u => {
               const mapped = judgeNameMap[u.toLowerCase()];
               return mapped ? mapped.toLowerCase() === dl : u.toLowerCase() === dl;
             });
           };
 
-          // Which display name → Challonge username (reverse lookup)
           const displayToUsername = (displayName) => {
             if (!displayName) return null;
             const dl = displayName.toLowerCase();
-            return judgeUsers.find(u => {
+            return judgeWhitelist.find(u => {
               const mapped = judgeNameMap[u.toLowerCase()];
               return mapped ? mapped.toLowerCase() === dl : u.toLowerCase() === dl;
             }) || null;
           };
 
-          // Which players are currently in a live match (display names)
-          const playersInLiveMatch = new Set();
-          liveSlots.forEach(slot => {
-            if (slot.p1) playersInLiveMatch.add(slot.p1.toLowerCase());
-            if (slot.p2) playersInLiveMatch.add(slot.p2.toLowerCase());
+          // Which players are in a live match right now
+          const playersLive = new Set();
+          liveSlots.forEach(s => {
+            if (s.state?.p1) playersLive.add(s.state.p1.toLowerCase());
+            if (s.state?.p2) playersLive.add(s.state.p2.toLowerCase());
           });
-          const isInLiveMatch = (displayName) =>
-            displayName && playersInLiveMatch.has(displayName.toLowerCase());
+          const isLive = (name) => name && playersLive.has(name.toLowerCase());
 
-          // Free judge count per stadium (judges not currently in a live match as a player)
-          const freeJudgesPerStadium = {};
-          STADIUM_LETTERS.forEach(letter => {
-            const judges = judgeUsers.filter(u => stadiumAssign[u] === letter);
-            const free = judges.filter(u => !isInLiveMatch(getBN(u)));
-            freeJudgesPerStadium[letter] = free.length;
-          });
+          // Judges at each station (challonge usernames)
+          const judgesAt = (letter) => judgeWhitelist.filter(u => stadiumAssign[u] === letter);
+          // Floaters: judges with no station
+          const floaterUsers = judgeWhitelist.filter(u => !stadiumAssign[u]);
 
-          // Floaters: judges with no stadium assignment
-          const floaterUsers = judgeUsers.filter(u => !stadiumAssign[u]);
-          const floatersFree = floaterUsers.filter(u => !isInLiveMatch(getBN(u))).length;
+          // Free judges at a station (not currently in a live match as a player)
+          const freeAt = (letter) => judgesAt(letter).filter(u => !isLive(getBN(u))).length;
+          const floatersFree = floaterUsers.filter(u => !isLive(getBN(u))).length;
 
-          // Which stadiums are open (no live match currently on them)
-          const openStadiums = STADIUM_LETTERS.filter(letter => {
-            return !liveSlots.some(slot => slot.stadium === letter && slot.p1);
-          });
-          // Also include: stadium has no live slot at all (slot-based detection)
-          // Fallback: consider all stadiums open if no slot data links to stadiums
-          const hasSlotStadiumData = liveSlots.some(s => s.stadium);
-          const effectiveOpenStadiums = hasSlotStadiumData
-            ? openStadiums
-            : STADIUM_LETTERS; // show all if we can't determine which are open
-
-          // Waiting matches (not live, not complete)
-          const waitingMatches = roundMatches.filter(m => {
-            const live = getLiveState(m);
-            return !live && m.state !== "complete";
-          });
-
-          if (waitingMatches.length === 0 && effectiveOpenStadiums.length === 0) return null;
-
-          // Classify a match
-          const classifyMatch = (m) => {
+          // Match classification
+          const classifyM = (m) => {
             const p1j = isJudgeName(m.player1_name);
             const p2j = isJudgeName(m.player2_name);
-            if (p1j && p2j) return "JvJ";
-            if (p1j || p2j) return "JvP";
-            return "PvP";
+            if (p1j && p2j) return 'JvJ';
+            if (p1j || p2j) return 'JvP';
+            return 'PvP';
           };
 
-          // Check if a match is hard-blocked (a player is already in a live match)
-          const isHardBlocked = (m) =>
-            isInLiveMatch(m.player1_name) || isInLiveMatch(m.player2_name);
+          // All matches by id
+          const matchById = {};
+          roundMatches.forEach(m => { matchById[m.id] = m; });
 
-          // Evaluate callability of a match
-          // Returns: { callable: bool, needsFloater: bool, needsHandoff: bool, flags: string[] }
-          const evaluateMatch = (m) => {
-            if (isHardBlocked(m)) return { callable: false, reason: "Player already in a match" };
-            const type = classifyMatch(m);
+          // Waiting matches (not live, not complete)
+          const waitingIds = new Set(
+            roundMatches.filter(m => !getLiveState(m) && m.state !== 'complete').map(m => m.id)
+          );
+
+          // ── Queue generator ─────────────────────────────────────────
+          // Builds a suggested ordered list of match IDs for each station.
+          // Only runs if queues haven't been manually set or algo needs reset.
+          const generateQueues = () => {
+            const queues = {};
+            STADIUM_LETTERS.forEach(l => { queues[l] = []; });
+
+            const unassigned = roundMatches.filter(m => {
+              if (m.state === 'complete') return false;
+              if (getLiveState(m)) return false; // already live
+              return true;
+            });
+
+            // Separate by type
+            const jvjMatches  = unassigned.filter(m => classifyM(m) === 'JvJ');
+            const jvpMatches  = unassigned.filter(m => classifyM(m) === 'JvP');
+            const pvpMatches  = unassigned.filter(m => classifyM(m) === 'PvP');
+
+            const pvpPool = [...pvpMatches]; // draw from freely
+
+            // For each station, build its JvP sequence (wave 1 + wave 2)
+            STADIUM_LETTERS.forEach(letter => {
+              const judges = judgesAt(letter); // challonge usernames
+              // Find JvP matches where one player is this station's judge
+              const stationJvP = jvpMatches.filter(m => {
+                const p1u = displayToUsername(m.player1_name);
+                const p2u = displayToUsername(m.player2_name);
+                return (p1u && judges.includes(p1u)) || (p2u && judges.includes(p2u));
+              });
+
+              // Order: first judge alphabetically by bracket name goes wave 1
+              // (arbitrary but consistent — org can reorder)
+              stationJvP.sort((a, b) => {
+                const judgeA = displayToUsername(a.player1_name) || displayToUsername(a.player2_name);
+                const judgeB = displayToUsername(b.player1_name) || displayToUsername(b.player2_name);
+                return getBN(judgeA || '').localeCompare(getBN(judgeB || ''));
+              });
+
+              stationJvP.forEach(m => queues[letter].push(m.id));
+            });
+
+            // Distribute PvP matches across stations as padding after their JvP waves
+            let stIdx = 0;
+            pvpPool.forEach(m => {
+              queues[STADIUM_LETTERS[stIdx % STADIUM_LETTERS.length]].push(m.id);
+              stIdx++;
+            });
+
+            // JvJ matches go at the end of queues, distributed round-robin
+            // (deferred to wave 3+, after most JvP matches complete)
+            let jvjStIdx = 0;
+            jvjMatches.forEach(m => {
+              queues[STADIUM_LETTERS[jvjStIdx % STADIUM_LETTERS.length]].push(m.id);
+              jvjStIdx++;
+            });
+
+            return queues;
+          };
+
+          // Use saved queues if they exist, otherwise show generate button result
+          const activeQueues = queuesGenerated ? stationQueues : {};
+
+          // ── Coverage check for a match at a given station ──────────
+          const coverageFor = (m, stationLetter) => {
+            if (!m) return { ok: true, flags: [] };
+            const type = classifyM(m);
             const flags = [];
+            const isBlocked = isLive(m.player1_name) || isLive(m.player2_name);
+            if (isBlocked) return { ok: false, flags: ['Player already in a live match'] };
 
-            if (type === "PvP") return { callable: true, tier: 3, needsFloater: false, needsHandoff: false, flags };
+            if (type === 'PvP') return { ok: true, flags };
 
-            const p1u = displayToUsername(m.player1_name);
-            const p2u = displayToUsername(m.player2_name);
-            const judgeUser = type === "JvP" ? (isJudgeName(m.player1_name) ? p1u : p2u) : null;
-
-            if (type === "JvP") {
-              const stationLetter = judgeUser ? stadiumAssign[judgeUser] : null;
-              const stationFree = stationLetter ? freeJudgesPerStadium[stationLetter] : 0;
-              // After this judge plays, their station loses 1 free judge
-              const remainingFree = stationFree - 1;
-              if (remainingFree >= 1) {
-                // Station stays covered naturally
-                return { callable: true, tier: 2, needsFloater: false, needsHandoff: false, flags };
-              } else if (floatersFree > 0) {
-                flags.push(`Floater needed to cover Stadium ${stationLetter || "?"}`);
-                return { callable: true, tier: 2, needsFloater: true, needsHandoff: false, flags };
-              } else {
-                // Check if another station can send a judge via handoff
-                const canHandoff = STADIUM_LETTERS.some(l => l !== stationLetter && freeJudgesPerStadium[l] >= 2);
-                if (canHandoff) {
-                  const donor = STADIUM_LETTERS.find(l => l !== stationLetter && freeJudgesPerStadium[l] >= 2);
-                  flags.push(`Handoff needed — Stadium ${donor} can cover`);
-                  return { callable: true, tier: 2, needsFloater: false, needsHandoff: true, flags };
-                }
-                return { callable: false, reason: `Would strand Stadium ${stationLetter || "?"} — no coverage available` };
-              }
+            if (type === 'JvP') {
+              const judgePlayer = isJudgeName(m.player1_name) ? displayToUsername(m.player1_name) : displayToUsername(m.player2_name);
+              const homeSt = judgePlayer ? stadiumAssign[judgePlayer] : null;
+              const remainAfter = homeSt ? freeAt(homeSt) - 1 : 0;
+              if (homeSt && remainAfter >= 1) return { ok: true, flags };
+              if (floatersFree > 0) { flags.push(`Floater covers Stadium ${homeSt||'?'}`); return { ok: true, flags }; }
+              const donor = STADIUM_LETTERS.find(l => l !== homeSt && freeAt(l) >= 2);
+              if (donor) { flags.push(`Handoff from Stadium ${donor}`); return { ok: true, flags }; }
+              return { ok: false, flags: [`Stadium ${homeSt||'?'} would be stranded`] };
             }
 
-            if (type === "JvJ") {
-              const sameStation = p1u && p2u && stadiumAssign[p1u] && stadiumAssign[p1u] === stadiumAssign[p2u];
-              if (sameStation) {
-                const stLetter = stadiumAssign[p1u];
-                const stFree = freeJudgesPerStadium[stLetter];
-                // Both judges playing leaves station empty — needs floater
-                if (floatersFree > 0) {
-                  flags.push(`Same-station JvJ — floater judges for them or covers their station`);
-                  return { callable: true, tier: 1, needsFloater: true, needsHandoff: false, flags };
-                }
-                const canHandoff = STADIUM_LETTERS.some(l => l !== stLetter && freeJudgesPerStadium[l] >= 2);
-                if (canHandoff) {
-                  const donor = STADIUM_LETTERS.find(l => l !== stLetter && freeJudgesPerStadium[l] >= 2);
-                  flags.push(`Same-station JvJ — handoff from Stadium ${donor} needed`);
-                  return { callable: true, tier: 1, needsFloater: false, needsHandoff: true, flags };
-                }
-                return { callable: false, reason: `Same-station JvJ with no coverage available` };
-              } else {
-                // Different stations — each must have ≥1 free judge after this player leaves
-                const st1 = p1u ? stadiumAssign[p1u] : null;
-                const st2 = p2u ? stadiumAssign[p2u] : null;
-                const st1ok = !st1 || freeJudgesPerStadium[st1] >= 2;
-                const st2ok = !st2 || freeJudgesPerStadium[st2] >= 2;
-                if (st1ok && st2ok) {
-                  return { callable: true, tier: 1, needsFloater: false, needsHandoff: false, flags };
-                }
-                const reason = [];
-                if (!st1ok) reason.push(`Stadium ${st1} would be stranded`);
-                if (!st2ok) reason.push(`Stadium ${st2} would be stranded`);
-                return { callable: false, reason: reason.join("; ") };
+            if (type === 'JvJ') {
+              const p1u = displayToUsername(m.player1_name);
+              const p2u = displayToUsername(m.player2_name);
+              const st1 = p1u ? stadiumAssign[p1u] : null;
+              const st2 = p2u ? stadiumAssign[p2u] : null;
+              if (st1 && st1 === st2) {
+                if (floatersFree > 0) { flags.push('Same-station JvJ — floater needed'); return { ok: true, flags }; }
+                const donor = STADIUM_LETTERS.find(l => l !== st1 && freeAt(l) >= 2);
+                if (donor) { flags.push(`Same-station JvJ — handoff from Stadium ${donor}`); return { ok: true, flags }; }
+                return { ok: false, flags: ['Same-station JvJ — no coverage available'] };
               }
+              const st1ok = !st1 || freeAt(st1) >= 2;
+              const st2ok = !st2 || freeAt(st2) >= 2;
+              if (st1ok && st2ok) return { ok: true, flags };
+              const problems = [];
+              if (!st1ok) problems.push(`Stadium ${st1} stranded`);
+              if (!st2ok) problems.push(`Stadium ${st2} stranded`);
+              return { ok: false, flags: problems };
             }
 
-            return { callable: true, tier: 3, needsFloater: false, needsHandoff: false, flags };
+            return { ok: true, flags };
           };
 
-          // Score + rank all waiting matches
-          const evaluated = waitingMatches.map((m, idx) => ({
-            m, idx, type: classifyMatch(m), ...evaluateMatch(m)
-          }));
-
-          const callable = evaluated.filter(e => e.callable).sort((a, b) => {
-            if (a.tier !== b.tier) return a.tier - b.tier; // lower tier = higher priority
-            return a.idx - b.idx; // earlier in list = waited longer
-          });
-          const blocked = evaluated.filter(e => !e.callable);
-
-          // Best suggestion: top callable match (tier 1 > 2 > 3, then wait order)
-          const suggestion = callable[0] || null;
-
-          // Tier label
-          const tierLabel = (type, needsFloater, needsHandoff) => {
-            const base = type === "JvJ" ? "Judge vs Judge" : type === "JvP" ? "Judge vs Player" : "Player vs Player";
-            const extra = needsFloater ? " · Floater" : needsHandoff ? " · Handoff" : "";
-            return base + extra;
+          // ── Drag handlers for queue reordering ─────────────────────
+          const onQueueDragStart = (e, matchId, fromStation) => {
+            e.dataTransfer.setData('text/plain', matchId);
+            setQueueDragItem({ matchId, fromStation });
           };
-          const tierColor = (type) =>
-            type === "JvJ" ? "#F59E0B" : type === "JvP" ? "#3B82F6" : "var(--text-muted)";
+          const onQueueDragOver = (e, station, afterIdx) => {
+            e.preventDefault();
+            setQueueDragOver({ station, afterIdx });
+          };
+          const onQueueDrop = (e, toStation, afterIdx) => {
+            e.preventDefault();
+            if (!queueDragItem) return;
+            const { matchId, fromStation } = queueDragItem;
+            setStationQueues(prev => {
+              const next = {};
+              STADIUM_LETTERS.forEach(l => { next[l] = [...(prev[l] || [])]; });
+              // Remove from source
+              next[fromStation] = next[fromStation].filter(id => id !== matchId);
+              // Insert into destination
+              const dest = [...(next[toStation] || [])];
+              const insertAt = Math.min(afterIdx, dest.length);
+              dest.splice(insertAt, 0, matchId);
+              next[toStation] = dest;
+              return next;
+            });
+            setQueueDragItem(null);
+            setQueueDragOver(null);
+          };
+          const onQueueDragEnd = () => { setQueueDragItem(null); setQueueDragOver(null); };
+
+          const typeColor = (type) =>
+            type === 'JvJ' ? '#F59E0B' : type === 'JvP' ? '#3B82F6' : 'var(--text-faint)';
 
           return (
-            <div style={{marginTop:16,borderRadius:12,border:"1px solid var(--border2)",overflow:"hidden"}}>
-              {/* Header */}
-              <div style={{background:"var(--surface2)",padding:"10px 14px",borderBottom:"1px solid var(--border)"}}>
-                <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:1,margin:"0 0 1px"}}>
-                  Match Call Helper
-                </p>
-                <p style={{fontSize:14,fontWeight:900,color:"var(--text-primary)",margin:0}}>
-                  Next Suggested Call
-                </p>
+            <div style={{marginTop:16}}>
+              {/* Header row */}
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                <div>
+                  <p style={{fontSize:10,fontWeight:700,color:'var(--text-faint)',textTransform:'uppercase',letterSpacing:1,margin:'0 0 1px'}}>
+                    Match Call Helper
+                  </p>
+                  <p style={{fontSize:16,fontWeight:900,color:'var(--text-primary)',margin:0}}>Station Queues</p>
+                </div>
+                <div style={{display:'flex',gap:6}}>
+                  {queuesGenerated && (
+                    <button onClick={()=>{setQueuesGenerated(false);setStationQueues({});}}
+                      style={{padding:'5px 11px',borderRadius:8,border:'1px solid var(--border)',background:'none',color:'var(--text-faint)',fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:'pointer'}}>
+                      Reset
+                    </button>
+                  )}
+                  <button onClick={()=>{
+                    const q = generateQueues();
+                    setStationQueues(q);
+                    setQueuesGenerated(true);
+                  }}
+                    style={{padding:'5px 13px',borderRadius:8,border:'none',background:'#3B82F6',color:'#fff',fontSize:11,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:'pointer'}}>
+                    {queuesGenerated ? '↻ Regenerate' : '⚡ Generate Queues'}
+                  </button>
+                </div>
               </div>
 
-              <div style={{padding:"12px 14px"}}>
-                {waitingMatches.length === 0 && (
-                  <p style={{fontSize:12,color:"var(--text-muted)",margin:0,fontStyle:"italic"}}>No waiting matches — all open matches are live.</p>
-                )}
+              {!queuesGenerated && (
+                <div style={{padding:'20px',borderRadius:12,border:'2px dashed var(--border)',textAlign:'center',color:'var(--text-muted)'}}>
+                  <p style={{fontSize:24,margin:'0 0 6px'}}>📋</p>
+                  <p style={{fontSize:13,fontWeight:700,margin:'0 0 3px'}}>No queues generated yet</p>
+                  <p style={{fontSize:11,color:'var(--text-faint)',margin:0}}>Tap Generate Queues to build a suggested match order for each station based on judge assignments.</p>
+                </div>
+              )}
 
-                {/* Best suggestion */}
-                {suggestion && (
-                  <div style={{marginBottom:blocked.length > 0 ? 12 : 0}}>
-                    <div style={{
-                      padding:"12px 13px",borderRadius:10,
-                      border:`2px solid ${tierColor(suggestion.type)}40`,
-                      background:`${tierColor(suggestion.type)}0A`,
-                      marginBottom:8
-                    }}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:6}}>
-                        <span style={{fontSize:9,fontWeight:800,color:tierColor(suggestion.type),textTransform:"uppercase",letterSpacing:0.8,border:`1px solid ${tierColor(suggestion.type)}60`,borderRadius:6,padding:"2px 7px"}}>
-                          {tierLabel(suggestion.type, suggestion.needsFloater, suggestion.needsHandoff)}
-                        </span>
-                      </div>
-                      <p style={{fontSize:15,fontWeight:900,color:"var(--text-primary)",margin:"0 0 4px"}}>
-                        {suggestion.m.player1_name||"?"} <span style={{fontWeight:400,color:"var(--text-faint)"}}>vs</span> {suggestion.m.player2_name||"?"}
-                      </p>
-                      {suggestion.flags.length > 0 && suggestion.flags.map((f,i) => (
-                        <p key={i} style={{fontSize:10,fontWeight:700,color:"#F59E0B",margin:"2px 0 0"}}>⚠ {f}</p>
-                      ))}
-                    </div>
+              {queuesGenerated && (
+                <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                  {STADIUM_LETTERS.map(letter => {
+                    const sc = STADIUM_COLORS[letter];
+                    const queueIds = stationQueues[letter] || [];
+                    // Only show waiting matches (skip completed/live)
+                    const visibleIds = queueIds.filter(id => waitingIds.has(id));
+                    const nextId = visibleIds[0] || null;
+                    const nextMatch = nextId ? matchById[nextId] : null;
+                    const nextCoverage = coverageFor(nextMatch, letter);
+                    const stationJudges = judgesAt(letter);
 
-                    {/* Other callable matches */}
-                    {callable.length > 1 && (
-                      <div>
-                        <p style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 5px"}}>Also callable</p>
-                        <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                          {callable.slice(1,4).map(e => (
-                            <div key={e.m.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)"}}>
-                              <span style={{fontSize:9,fontWeight:800,color:tierColor(e.type),flexShrink:0,border:`1px solid ${tierColor(e.type)}50`,borderRadius:5,padding:"1px 6px"}}>{e.type}</span>
-                              <span style={{fontSize:12,fontWeight:700,color:"var(--text-secondary)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                                {e.m.player1_name||"?"} vs {e.m.player2_name||"?"}
-                              </span>
-                              {(e.needsFloater||e.needsHandoff) && <span style={{fontSize:9,color:"#F59E0B",fontWeight:700,flexShrink:0}}>{e.needsFloater?"Floater":"Handoff"}</span>}
+                    return (
+                      <div key={letter} style={{borderRadius:12,border:`2px solid ${sc.bg}40`,overflow:'hidden'}}>
+                        {/* Station header */}
+                        <div style={{background:sc.bg+'18',borderBottom:`1px solid ${sc.bg}30`,padding:'9px 13px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                          <div style={{display:'flex',alignItems:'center',gap:8}}>
+                            <span style={{fontSize:12,fontWeight:900,color:sc.bg,letterSpacing:0.5}}>STADIUM {letter}</span>
+                            <div style={{display:'flex',gap:4}}>
+                              {stationJudges.map(u => (
+                                <span key={u} style={{
+                                  fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:10,
+                                  background: isLive(getBN(u)) ? '#450A0A' : sc.bg+'30',
+                                  color: isLive(getBN(u)) ? '#FCA5A5' : sc.bg,
+                                  border:`1px solid ${isLive(getBN(u)) ? '#DC2626' : sc.bg+'50'}`
+                                }}>
+                                  {getBN(u)}{isLive(getBN(u)) ? ' ▶' : ''}
+                                </span>
+                              ))}
+                              {stationJudges.length === 0 && (
+                                <span style={{fontSize:9,color:'var(--text-faint)',fontStyle:'italic'}}>No judges assigned</span>
+                              )}
                             </div>
-                          ))}
-                          {callable.length > 4 && <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0",textAlign:"center"}}>+{callable.length-4} more callable</p>}
+                          </div>
+                          <span style={{fontSize:10,color:sc.bg,fontWeight:700}}>{visibleIds.length} queued</span>
+                        </div>
+
+                        {/* Queue items */}
+                        <div style={{padding:'8px 10px',background:'var(--surface)'}}>
+                          {visibleIds.length === 0 && (
+                            <p style={{fontSize:11,color:'var(--text-faint)',margin:'4px 0',fontStyle:'italic',textAlign:'center'}}>Queue empty — drag matches here</p>
+                          )}
+
+                          {visibleIds.map((id, idx) => {
+                            const m = matchById[id];
+                            if (!m) return null;
+                            const type = classifyM(m);
+                            const isNext = idx === 0;
+                            const cov = isNext ? nextCoverage : { ok: true, flags: [] };
+                            const isBlocked = isNext && !cov.ok;
+                            const isDragging = queueDragItem?.matchId === id;
+                            const isDropTarget = queueDragOver?.station === letter && queueDragOver?.afterIdx === idx;
+
+                            return (
+                              <React.Fragment key={id}>
+                                {/* Drop zone above this item */}
+                                {isDropTarget && (
+                                  <div style={{height:3,borderRadius:2,background:'#3B82F6',margin:'2px 0'}}/>
+                                )}
+                                <div
+                                  draggable
+                                  onDragStart={e => onQueueDragStart(e, id, letter)}
+                                  onDragEnd={onQueueDragEnd}
+                                  onDragOver={e => onQueueDragOver(e, letter, idx)}
+                                  onDrop={e => onQueueDrop(e, letter, idx)}
+                                  style={{
+                                    display:'flex',alignItems:'center',gap:8,
+                                    padding:'8px 10px',borderRadius:9,marginBottom:4,
+                                    border:`1.5px solid ${isBlocked ? '#DC2626' : isNext ? sc.bg+'60' : 'var(--border)'}`,
+                                    background: isBlocked ? '#450A0A' : isNext ? sc.bg+'10' : 'var(--surface2)',
+                                    opacity: isDragging ? 0.4 : 1,
+                                    cursor:'grab',
+                                  }}>
+                                  {/* Position number */}
+                                  <span style={{fontSize:10,fontWeight:800,color: isNext ? sc.bg : 'var(--text-faint)',width:16,textAlign:'center',flexShrink:0}}>
+                                    {idx+1}
+                                  </span>
+                                  {/* Type badge */}
+                                  <span style={{fontSize:9,fontWeight:800,padding:'2px 6px',borderRadius:5,border:`1px solid ${typeColor(type)}50`,color:typeColor(type),flexShrink:0}}>
+                                    {type}
+                                  </span>
+                                  {/* Match names */}
+                                  <span style={{fontSize:12,fontWeight:700,color: isBlocked ? '#FCA5A5' : 'var(--text-primary)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                    {m.player1_name||'?'} <span style={{fontWeight:400,color:'var(--text-faint)'}}>vs</span> {m.player2_name||'?'}
+                                  </span>
+                                  {/* Flags */}
+                                  {cov.flags.length > 0 && (
+                                    <span style={{fontSize:9,fontWeight:700,color:'#F59E0B',flexShrink:0,textAlign:'right',maxWidth:90,lineHeight:1.3}}>
+                                      {cov.flags[0]}
+                                    </span>
+                                  )}
+                                  {isBlocked && (
+                                    <span style={{fontSize:9,fontWeight:700,color:'#EF4444',flexShrink:0}}>BLOCKED</span>
+                                  )}
+                                </div>
+                              </React.Fragment>
+                            );
+                          })}
+
+                          {/* Drop zone at the bottom of the queue */}
+                          <div
+                            onDragOver={e => onQueueDragOver(e, letter, visibleIds.length)}
+                            onDrop={e => onQueueDrop(e, letter, visibleIds.length)}
+                            style={{
+                              height: queueDragOver?.station === letter && queueDragOver?.afterIdx === visibleIds.length ? 6 : 2,
+                              borderRadius:3,
+                              background: queueDragOver?.station === letter && queueDragOver?.afterIdx === visibleIds.length ? '#3B82F6' : 'transparent',
+                              margin:'2px 0 0',
+                              transition:'height 0.1s, background 0.1s'
+                            }}
+                          />
                         </div>
                       </div>
-                    )}
-                  </div>
-                )}
+                    );
+                  })}
 
-                {/* No callable matches */}
-                {callable.length === 0 && waitingMatches.length > 0 && (
-                  <div style={{padding:"12px",borderRadius:10,background:"#450A0A",border:"1px solid #DC2626",marginBottom:blocked.length > 0 ? 10 : 0}}>
-                    <p style={{fontSize:12,fontWeight:800,color:"#FCA5A5",margin:"0 0 4px"}}>⏳ No callable matches right now</p>
-                    <p style={{fontSize:11,color:"#FCA5A5",opacity:0.8,margin:0}}>Waiting for live matches to finish before the next call can be made safely.</p>
-                  </div>
-                )}
-
-                {/* Blocked matches summary */}
-                {blocked.length > 0 && (
-                  <div>
-                    <p style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 5px"}}>Blocked</p>
-                    <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                      {blocked.map(e => (
-                        <div key={e.m.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",opacity:0.7}}>
-                          <span style={{fontSize:9,fontWeight:800,color:"#EF4444",flexShrink:0,border:"1px solid #EF444450",borderRadius:5,padding:"1px 6px"}}>{e.type}</span>
-                          <span style={{fontSize:12,fontWeight:700,color:"var(--text-muted)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                            {e.m.player1_name||"?"} vs {e.m.player2_name||"?"}
-                          </span>
-                          <span style={{fontSize:9,color:"var(--text-faint)",flexShrink:0,maxWidth:120,textAlign:"right",lineHeight:1.3}}>{e.reason}</span>
-                        </div>
+                  {/* Floater summary */}
+                  {floaterUsers.length > 0 && (
+                    <div style={{padding:'9px 12px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',display:'flex',alignItems:'center',gap:10}}>
+                      <span style={{fontSize:11,fontWeight:700,color:'var(--text-faint)'}}>Floaters:</span>
+                      {floaterUsers.map(u => (
+                        <span key={u} style={{
+                          fontSize:10,fontWeight:700,padding:'2px 9px',borderRadius:10,
+                          background: isLive(getBN(u)) ? '#450A0A' : 'var(--surface2)',
+                          color: isLive(getBN(u)) ? '#FCA5A5' : 'var(--text-secondary)',
+                          border:`1px solid ${isLive(getBN(u)) ? '#DC2626' : 'var(--border2)'}`
+                        }}>
+                          {getBN(u)}{isLive(getBN(u)) ? ' ▶' : ''}
+                        </span>
                       ))}
+                      <span style={{fontSize:10,color:'var(--text-faint)',marginLeft:'auto'}}>
+                        {floatersFree}/{floaterUsers.length} free
+                      </span>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })()}
