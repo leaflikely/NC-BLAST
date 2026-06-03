@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-02 | session: stadium assignment panel (drag-and-drop, 8 stadiums, color coding); judge-player highlighting in match cards -->
+<!-- NC BLAST index.html | last updated: 2026-06-03 | session: stadium assignment + judge highlights; org view cleanup (score log collapse, set score pills, whitelist token fix) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16886,6 +16886,7 @@ function OrgApp({onSwitchRole}) {
   const [pairingsError, setPairingsError] = useState(null);
   const [scoreLog, setScoreLog] = useState([]);       // judge accountability log entries
   const [scoreLogLoading, setScoreLogLoading] = useState(false);
+  const [scoreLogOpen, setScoreLogOpen] = useState(false); // collapsed by default
 
   // ── Head judge management state ───────────────────────────────────
   const [headJudges, setHeadJudges] = useState([]);
@@ -17038,6 +17039,8 @@ function OrgApp({onSwitchRole}) {
 
   const saveJudgeWhitelist = async () => {
     const usernames = jwInput.split(/[\n,]+/).map(u => u.trim().toLowerCase()).filter(Boolean);
+    const token    = sessionStorage.getItem("ncblast-auth-token") || "";
+    const username = sessionStorage.getItem("ncblast-auth-user")  || "";
     setJwLoading(true); setJwError(null);
     try {
       const res = await fetch(`${OVERLAY_WORKER}/judge-whitelist/set`, {
@@ -17680,27 +17683,56 @@ function OrgApp({onSwitchRole}) {
                     {renderPlayerName(m.player2_name, p2IsJudge, p2Color)}
                   </p>
                   {live && !isShuffling && (
-                    <p style={{fontSize:12,fontWeight:700,color:"#22C55E",margin:"3px 0 0"}}>
-                      {(live.pts||[0,0])[0]} – {(live.pts||[0,0])[1]}
-                      {live.sets && (live.sets[0]>0||live.sets[1]>0) && (
-                        <span style={{fontSize:10,fontWeight:600,color:"var(--text-muted)",marginLeft:6}}>
-                          (Set {(live.sets[0]||0)+1+(live.sets[1]||0) > 1 ? `${live.sets[0]||0}–${live.sets[1]||0}` : "1"})
-                        </span>
-                      )}
+                    <div style={{marginTop:5,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      {/* Set score pills */}
+                      <div style={{display:"flex",alignItems:"center",gap:4}}>
+                        <span style={{
+                          fontSize:13,fontWeight:900,padding:"2px 9px",borderRadius:8,
+                          background:"#1E3A5F",color:"#60A5FA",border:"1.5px solid #2563EB",lineHeight:1.3
+                        }}>{(live.sets||[0,0])[0]}</span>
+                        <span style={{fontSize:10,fontWeight:700,color:"var(--text-faint)"}}>–</span>
+                        <span style={{
+                          fontSize:13,fontWeight:900,padding:"2px 9px",borderRadius:8,
+                          background:"#450A0A",color:"#F87171",border:"1.5px solid #DC2626",lineHeight:1.3
+                        }}>{(live.sets||[0,0])[1]}</span>
+                        <span style={{fontSize:10,fontWeight:600,color:"var(--text-faint)",marginLeft:3}}>sets</span>
+                      </div>
+                      {/* Point score */}
+                      <span style={{fontSize:11,fontWeight:700,color:"#22C55E"}}>
+                        {(live.pts||[0,0])[0]}–{(live.pts||[0,0])[1]} pts
+                      </span>
+                      {/* Judge chip */}
                       {live.judge && (
                         <span style={{
-                          fontSize:10,fontWeight:700,marginLeft:8,
+                          fontSize:10,fontWeight:700,
                           color: judgeStColor ? judgeStColor.bg : "var(--text-muted)"
                         }}>
                           ⚖️{judgeStLetter ? ` [${judgeStLetter}]` : ""} {live.judge}
                         </span>
                       )}
-                    </p>
+                    </div>
                   )}
-                  {isShuffling && live && live.judge && (
-                    <p style={{fontSize:11,fontWeight:700,margin:"3px 0 0",color:judgeStColor?judgeStColor.bg:"var(--text-muted)"}}>
-                      ⚖️{judgeStLetter?` [${judgeStLetter}]`:""} {live.judge}
-                    </p>
+                  {isShuffling && live && (
+                    <div style={{marginTop:5,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      {/* Still show set score during shuffle */}
+                      <div style={{display:"flex",alignItems:"center",gap:4}}>
+                        <span style={{
+                          fontSize:13,fontWeight:900,padding:"2px 9px",borderRadius:8,
+                          background:"#1E3A5F",color:"#60A5FA",border:"1.5px solid #2563EB",lineHeight:1.3
+                        }}>{(live.sets||[0,0])[0]}</span>
+                        <span style={{fontSize:10,fontWeight:700,color:"var(--text-faint)"}}>–</span>
+                        <span style={{
+                          fontSize:13,fontWeight:900,padding:"2px 9px",borderRadius:8,
+                          background:"#450A0A",color:"#F87171",border:"1.5px solid #DC2626",lineHeight:1.3
+                        }}>{(live.sets||[0,0])[1]}</span>
+                        <span style={{fontSize:10,fontWeight:600,color:"var(--text-faint)",marginLeft:3}}>sets</span>
+                      </div>
+                      {live.judge && (
+                        <span style={{fontSize:10,fontWeight:700,color:judgeStColor?judgeStColor.bg:"var(--text-muted)"}}>
+                          ⚖️{judgeStLetter?` [${judgeStLetter}]`:""} {live.judge}
+                        </span>
+                      )}
+                    </div>
                   )}
                   {done && m.scores_csv && (
                     <p style={{fontSize:11,color:"var(--text-muted)",margin:"2px 0 0"}}>Final: {m.scores_csv}</p>
@@ -17720,54 +17752,76 @@ function OrgApp({onSwitchRole}) {
         )}
       </React.Fragment>
 
-      {/* ── Judge Accountability Log ───────────────────────────── */}
+      {/* ── Judge Accountability Log (collapsed by default) ──────── */}
       <div style={{marginTop:8}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div>
-            <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:1,margin:0}}>Judge Log</p>
-            <h2 style={{fontSize:18,fontWeight:900,color:"var(--text-primary)",margin:0}}>Scored Matches</h2>
-          </div>
-          <button onClick={async()=>{
+        <button onClick={async()=>{
+          const opening = !scoreLogOpen;
+          setScoreLogOpen(opening);
+          if (opening && scoreLog.length === 0) {
             setScoreLogLoading(true);
             try { const d = await workerGet(`/scorelog/list?slug=${encodeURIComponent(slug)}`); setScoreLog((d.entries||[]).slice().reverse()); } catch(_){}
             finally { setScoreLogLoading(false); }
-          }} disabled={scoreLogLoading} style={{background:"none",border:"2px solid var(--border)",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,color:"var(--text-muted)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-            {scoreLogLoading?"…":"↻"}
-          </button>
-        </div>
+          }
+        }} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:scoreLogOpen?"12px 12px 0 0":12,padding:"11px 14px",cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+          <div style={{textAlign:"left"}}>
+            <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:1,margin:0}}>Judge Log</p>
+            <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0}}>
+              Scored Matches
+              {scoreLog.length > 0 && <span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)",marginLeft:6}}>({scoreLog.length})</span>}
+            </p>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {scoreLogOpen && (
+              <button onClick={async(e)=>{
+                e.stopPropagation();
+                setScoreLogLoading(true);
+                try { const d = await workerGet(`/scorelog/list?slug=${encodeURIComponent(slug)}`); setScoreLog((d.entries||[]).slice().reverse()); } catch(_){}
+                finally { setScoreLogLoading(false); }
+              }} disabled={scoreLogLoading}
+                style={{background:"none",border:"1.5px solid var(--border2)",borderRadius:7,padding:"3px 9px",fontSize:11,fontWeight:700,color:"var(--text-muted)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                {scoreLogLoading?"…":"↻"}
+              </button>
+            )}
+            <span style={{fontSize:16,color:"var(--text-muted)",lineHeight:1}}>{scoreLogOpen?"▲":"▼"}</span>
+          </div>
+        </button>
 
-        {scoreLogLoading && scoreLog.length === 0 && (
-          <p style={{fontSize:12,color:"var(--text-muted)"}}>Loading…</p>
-        )}
-        {!scoreLogLoading && scoreLog.length === 0 && (
-          <div style={{textAlign:"center",padding:"24px 0",color:"var(--text-muted)"}}>
-            <p style={{fontSize:28,marginBottom:8}}>📋</p>
-            <p style={{fontSize:13,fontWeight:700}}>No matches logged yet.</p>
-            <p style={{fontSize:11,color:"var(--text-faint)"}}>Entries appear here after judges submit scores to Challonge.</p>
+        {scoreLogOpen && (
+          <div style={{border:"1px solid var(--border)",borderTop:"none",borderRadius:"0 0 12px 12px",padding:"10px 12px 12px",background:"var(--surface)"}}>
+            {scoreLogLoading && scoreLog.length === 0 && (
+              <p style={{fontSize:12,color:"var(--text-muted)",margin:"8px 0"}}>Loading…</p>
+            )}
+            {!scoreLogLoading && scoreLog.length === 0 && (
+              <div style={{textAlign:"center",padding:"20px 0",color:"var(--text-muted)"}}>
+                <p style={{fontSize:24,marginBottom:6}}>📋</p>
+                <p style={{fontSize:13,fontWeight:700,margin:"0 0 3px"}}>No matches logged yet.</p>
+                <p style={{fontSize:11,color:"var(--text-faint)",margin:0}}>Entries appear after judges submit scores to Challonge.</p>
+              </div>
+            )}
+            {scoreLog.map(e => {
+              const t = new Date(e.scoredAt);
+              const timeStr = t.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+              return (
+                <div key={e.id} style={{borderRadius:9,marginBottom:6,border:"1px solid var(--border2)",background:"var(--surface2)",padding:"9px 11px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {e.p1} <span style={{color:"var(--text-faint)",fontWeight:400}}>vs</span> {e.p2}
+                      </p>
+                      <p style={{fontSize:11,fontWeight:700,color:"var(--text-secondary)",margin:"0 0 3px"}}>
+                        {e.p1Sets}–{e.p2Sets} · Winner: <span style={{color:"#22C55E"}}>{e.winner}</span>
+                      </p>
+                      <p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>
+                        ⚖️ {e.judge||"Unknown judge"}{e.challongeMatchId ? ` · Match #${e.challongeMatchId}` : ""}
+                      </p>
+                    </div>
+                    <p style={{fontSize:10,color:"var(--text-faint)",margin:0,flexShrink:0,paddingTop:2}}>{timeStr}</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
-        {scoreLog.map(e => {
-          const t = new Date(e.scoredAt);
-          const timeStr = t.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-          return (
-            <div key={e.id} style={{borderRadius:11,marginBottom:7,border:"1px solid var(--border)",background:"var(--surface)",padding:"10px 12px"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {e.p1} <span style={{color:"var(--text-faint)",fontWeight:400}}>vs</span> {e.p2}
-                  </p>
-                  <p style={{fontSize:11,fontWeight:700,color:"var(--text-secondary)",margin:"0 0 3px"}}>
-                    {e.p1Sets}–{e.p2Sets} · Winner: <span style={{color:"#22C55E"}}>{e.winner}</span>
-                  </p>
-                  <p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>
-                    ⚖️ {e.judge||"Unknown judge"}{e.challongeMatchId ? ` · Match #${e.challongeMatchId}` : ""}
-                  </p>
-                </div>
-                <p style={{fontSize:10,color:"var(--text-faint)",margin:0,flexShrink:0,paddingTop:2}}>{timeStr}</p>
-              </div>
-            </div>
-          );
-        })}
       </div>
 
       </div>
