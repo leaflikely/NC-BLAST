@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-03 | session: stadium save/load; per-station match queues with drag-drop reorder; coverage checks; floater tracking -->
+<!-- NC BLAST index.html | last updated: 2026-06-03 | session: stadium save/load; per-station match queues (balanced distribution, drag-drop, coverage checks, floater tracking) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -18204,54 +18204,48 @@ function OrgApp({onSwitchRole}) {
             const queues = {};
             STADIUM_LETTERS.forEach(l => { queues[l] = []; });
 
-            const unassigned = roundMatches.filter(m => {
+            const pending = roundMatches.filter(m => {
               if (m.state === 'complete') return false;
-              if (getLiveState(m)) return false; // already live
+              if (getLiveState(m)) return false;
               return true;
             });
 
-            // Separate by type
-            const jvjMatches  = unassigned.filter(m => classifyM(m) === 'JvJ');
-            const jvpMatches  = unassigned.filter(m => classifyM(m) === 'JvP');
-            const pvpMatches  = unassigned.filter(m => classifyM(m) === 'PvP');
+            const jvjMatches = pending.filter(m => classifyM(m) === 'JvJ');
+            const jvpMatches = pending.filter(m => classifyM(m) === 'JvP');
+            const pvpMatches = pending.filter(m => classifyM(m) === 'PvP');
 
-            const pvpPool = [...pvpMatches]; // draw from freely
+            // Helper: push to the station whose queue is currently shortest
+            const pushToShortest = (matchId) => {
+              const shortest = STADIUM_LETTERS.reduce((best, l) =>
+                queues[l].length < queues[best].length ? l : best
+              , STADIUM_LETTERS[0]);
+              queues[shortest].push(matchId);
+            };
 
-            // For each station, build its JvP sequence (wave 1 + wave 2)
+            // Step 1 — JvP matches go to the station whose judges are playing in them.
+            // This is fixed — a judge's match belongs at their own station.
             STADIUM_LETTERS.forEach(letter => {
-              const judges = judgesAt(letter); // challonge usernames
-              // Find JvP matches where one player is this station's judge
+              const judges = judgesAt(letter);
               const stationJvP = jvpMatches.filter(m => {
                 const p1u = displayToUsername(m.player1_name);
                 const p2u = displayToUsername(m.player2_name);
                 return (p1u && judges.includes(p1u)) || (p2u && judges.includes(p2u));
               });
-
-              // Order: first judge alphabetically by bracket name goes wave 1
-              // (arbitrary but consistent — org can reorder)
+              // Wave 1 first judge alphabetically, wave 2 second — org can reorder
               stationJvP.sort((a, b) => {
-                const judgeA = displayToUsername(a.player1_name) || displayToUsername(a.player2_name);
-                const judgeB = displayToUsername(b.player1_name) || displayToUsername(b.player2_name);
-                return getBN(judgeA || '').localeCompare(getBN(judgeB || ''));
+                const juA = displayToUsername(a.player1_name) || displayToUsername(a.player2_name);
+                const juB = displayToUsername(b.player1_name) || displayToUsername(b.player2_name);
+                return getBN(juA || '').localeCompare(getBN(juB || ''));
               });
-
               stationJvP.forEach(m => queues[letter].push(m.id));
             });
 
-            // Distribute PvP matches across stations as padding after their JvP waves
-            let stIdx = 0;
-            pvpPool.forEach(m => {
-              queues[STADIUM_LETTERS[stIdx % STADIUM_LETTERS.length]].push(m.id);
-              stIdx++;
-            });
+            // Step 2 — PvP matches fill to balance queue lengths.
+            // Always add to whichever station is shortest at that moment.
+            pvpMatches.forEach(m => pushToShortest(m.id));
 
-            // JvJ matches go at the end of queues, distributed round-robin
-            // (deferred to wave 3+, after most JvP matches complete)
-            let jvjStIdx = 0;
-            jvjMatches.forEach(m => {
-              queues[STADIUM_LETTERS[jvjStIdx % STADIUM_LETTERS.length]].push(m.id);
-              jvjStIdx++;
-            });
+            // Step 3 — JvJ matches go last (wave 3+), also balanced.
+            jvjMatches.forEach(m => pushToShortest(m.id));
 
             return queues;
           };
