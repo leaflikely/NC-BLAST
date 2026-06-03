@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-03 | session: stadium assignment + judge highlights; org view cleanup (score log collapse, set score pills, whitelist token fix) -->
+<!-- NC BLAST index.html | last updated: 2026-06-03 | session: stadium assignment + judge highlights; org view cleanup; judge name map (global KV, drag-drop UI, login pre-fill) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11330,6 +11330,10 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
 
   useEffect(() => {
     workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>setCachedList([]));
+    // Fetch global judge name map and cache to localStorage so the name picker can use it
+    workerGet("/judge-namemap").then(d => {
+      try { localStorage.setItem("ncblast-judge-namemap", JSON.stringify(d.map || {})); } catch(_) {}
+    }).catch(() => {});
   }, []);
 
   // Fetch participant list from Worker — used both for Judge B picker and final import
@@ -11577,31 +11581,69 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
       const roster = (duoRoster && duoRoster.names) || [];
       const handleSoloPick = (name) => { setSoloName(name); };
       const handleSoloManualConfirm = () => { const v = duoManualInput.trim(); if (!v) return; setSoloName(v); };
+
+      // Look up bracket name from global name map using judge's Challonge username
+      const mappedBracketName = (() => {
+        if (!authA.username) return null;
+        try {
+          const raw = localStorage.getItem("ncblast-judge-namemap");
+          const map = raw ? JSON.parse(raw) : {};
+          return map[authA.username.toLowerCase()] || null;
+        } catch(_) { return null; }
+      })();
+
       return (
         <div style={{marginTop:12}}>
           <div style={{padding:"10px 12px",borderRadius:10,background:"var(--surface2)",marginBottom:12,border:"1px solid var(--border)"}}>
             <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0}}>{selectedName}</p>
             <p style={{fontSize:10,color:"#94A3B8",margin:"3px 0 0"}}>Logged in as {authA.username}</p>
           </div>
-          <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",marginBottom:8}}>Who are you in the bracket?</p>
-          {duoRosterLoading ? (
-            <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",marginBottom:8}}>
-              <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
-              <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>Loading roster…</p>
+
+          {/* Pre-fill: if the name map has a match, show it as a confirm prompt */}
+          {mappedBracketName && roster.includes(mappedBracketName) ? (
+            <div style={{marginBottom:10}}>
+              <p style={{fontSize:11,color:"var(--text-muted)",margin:"0 0 8px",lineHeight:1.5}}>
+                Your bracket name was found automatically. Confirm to continue.
+              </p>
+              <div style={{padding:"12px 14px",borderRadius:12,border:"2px solid #EA580C",background:"#EA580C0D",marginBottom:8}}>
+                <p style={{fontSize:11,fontWeight:700,color:"var(--text-faint)",margin:"0 0 2px"}}>Bracket name</p>
+                <p style={{fontSize:16,fontWeight:900,color:"#EA580C",margin:0}}>{mappedBracketName}</p>
+              </div>
+              <button onClick={() => handleSoloPick(mappedBracketName)}
+                style={{width:"100%",padding:"12px 0",borderRadius:10,border:"none",background:"#EA580C",
+                  color:"#fff",fontSize:14,fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:6}}>
+                ✓ Yes, that's me
+              </button>
+              <button onClick={() => {/* fall through to manual list below by clearing — show divider */}}
+                style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border2)",background:"none",
+                  color:"var(--text-muted)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:10}}
+                onClick={() => setDuoManual(true)}>
+                ✏️ Pick a different name
+              </button>
             </div>
-          ) : roster.length > 0 ? (
-            <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:260,overflowY:"auto",marginBottom:10}}>
-              {roster.map(name => (
-                <button key={name} onClick={() => handleSoloPick(name)}
-                  style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"2px solid var(--border)",
-                    background:"var(--surface2)",color:"var(--text-primary)",fontSize:13,fontWeight:700,
-                    fontFamily:"'Outfit',sans-serif",cursor:"pointer",textAlign:"left"}}>
-                  {name}
-                </button>
-              ))}
-            </div>
-          ) : !duoManual && (
-            <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 10px"}}>No roster loaded.</p>
+          ) : (
+            <>
+              <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",marginBottom:8}}>Who are you in the bracket?</p>
+              {duoRosterLoading ? (
+                <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",marginBottom:8}}>
+                  <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
+                  <p style={{fontSize:13,color:"var(--text-muted)",margin:0}}>Loading roster…</p>
+                </div>
+              ) : roster.length > 0 ? (
+                <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:260,overflowY:"auto",marginBottom:10}}>
+                  {roster.map(name => (
+                    <button key={name} onClick={() => handleSoloPick(name)}
+                      style={{width:"100%",padding:"11px 14px",borderRadius:10,border:"2px solid var(--border)",
+                        background:"var(--surface2)",color:"var(--text-primary)",fontSize:13,fontWeight:700,
+                        fontFamily:"'Outfit',sans-serif",cursor:"pointer",textAlign:"left"}}>
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              ) : !duoManual && (
+                <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 10px"}}>No roster loaded.</p>
+              )}
+            </>
           )}
           {duoManual ? (
             <div style={{marginBottom:10}}>
@@ -16911,6 +16953,24 @@ function OrgApp({onSwitchRole}) {
   const [stadiumAssign, setStadiumAssign] = useState({});     // { displayName: "A"|"B"|... }
   const [stadiumDragOver, setStadiumDragOver] = useState(null); // which bucket is being hovered
 
+  // ── Judge name map state (global KV: Challonge username → bracket display name) ────
+  const [judgeNameMap, setJudgeNameMap]     = useState({});   // { "nghia2daizzo": "Nghia", ... }
+  const [nameMapOpen, setNameMapOpen]       = useState(false);
+  const [nameMapLoading, setNameMapLoading] = useState(false);
+  const [nameMapSaving, setNameMapSaving]   = useState(false);
+  const [nameMapError, setNameMapError]     = useState(null);
+  // Draft state while mapping tab is open — keyed by challonge username
+  const [nameMapDraft, setNameMapDraft]     = useState({});   // { username: bracketName | null }
+  const [nameMapDragOver, setNameMapDragOver] = useState(null); // username slot being dragged over
+  // Participants pulled for the current tournament (used as the bracket name pool)
+  const [nameMapParticipants, setNameMapParticipants] = useState([]);
+
+  // Derived: get bracket display name for a Challonge username (from saved map)
+  const getBracketName = (challongeUsername) => {
+    if (!challongeUsername) return null;
+    return judgeNameMap[challongeUsername.toLowerCase()] || null;
+  };
+
   const STADIUM_LABELS = ["A","B","C","D","E","F","G","H"];
   const STADIUM_COLORS = {
     A: { bg:"#0D9488", border:"#14B8A6", text:"#fff", faint:"#99F6E4" },
@@ -17037,6 +17097,70 @@ function OrgApp({onSwitchRole}) {
     }
   };
 
+  // ── Judge name map fetch / save ──────────────────────────────────────
+  const loadNameMap = async () => {
+    setNameMapLoading(true); setNameMapError(null);
+    try {
+      const data = await workerGet("/judge-namemap");
+      setJudgeNameMap(data.map || {});
+    } catch(e) { setNameMapError("Failed to load name map"); }
+    finally { setNameMapLoading(false); }
+  };
+
+  const openNameMap = async (participants) => {
+    // Pull fresh participants if not already loaded
+    let parts = participants || nameMapParticipants;
+    if (!parts || parts.length === 0) {
+      try {
+        const r = await fetchParticipants(slug);
+        parts = (r && r.names) || [];
+        setNameMapParticipants(parts);
+      } catch(_) { parts = []; }
+    }
+    setNameMapLoading(true);
+    try {
+      const data = await workerGet("/judge-namemap");
+      const map = data.map || {};
+      setJudgeNameMap(map);
+      // Build draft: for each whitelisted judge, use saved mapping or null
+      const draft = {};
+      judgeWhitelist.forEach(u => { draft[u] = map[u.toLowerCase()] || null; });
+      // Auto-match: exact case-insensitive match between username and a participant name
+      judgeWhitelist.forEach(u => {
+        if (!draft[u]) {
+          const match = parts.find(p => p.toLowerCase() === u.toLowerCase());
+          if (match) draft[u] = match; // suggestion — not yet saved
+        }
+      });
+      setNameMapDraft(draft);
+    } catch(e) { setNameMapError("Failed to load"); }
+    finally { setNameMapLoading(false); setNameMapOpen(true); }
+  };
+
+  const saveNameMap = async () => {
+    const token    = sessionStorage.getItem("ncblast-auth-token") || "";
+    const username = sessionStorage.getItem("ncblast-auth-user")  || "";
+    setNameMapSaving(true); setNameMapError(null);
+    try {
+      // Only save entries that have a value
+      const map = {};
+      Object.entries(nameMapDraft).forEach(([u, v]) => { if (v) map[u.toLowerCase()] = v; });
+      const res = await fetch(`${OVERLAY_WORKER}/judge-namemap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Auth-Token": token },
+        body: JSON.stringify({ map, username }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Save failed");
+      setJudgeNameMap(data.map || {});
+      // Also cache to localStorage so judges on this device get the update immediately
+      try { localStorage.setItem("ncblast-judge-namemap", JSON.stringify(data.map || {})); } catch(_) {}
+      setNameMapOpen(false);
+    } catch(e) { setNameMapError(e.message); }
+    finally { setNameMapSaving(false); }
+  };
+
   const saveJudgeWhitelist = async () => {
     const usernames = jwInput.split(/[\n,]+/).map(u => u.trim().toLowerCase()).filter(Boolean);
     const token    = sessionStorage.getItem("ncblast-auth-token") || "";
@@ -17083,6 +17207,7 @@ function OrgApp({onSwitchRole}) {
     loadScoreLog();
     loadHeadJudges(slug);
     loadJudgeWhitelist(slug);
+    loadNameMap();
 
     // Poll live match slots every 5s
     const pollLive = async () => {
@@ -17429,11 +17554,180 @@ function OrgApp({onSwitchRole}) {
           rows={4}
           style={{width:"100%",padding:"8px 10px",borderRadius:9,border:"1px solid var(--border2)",background:"var(--input-bg)",color:"var(--text-primary)",fontSize:12,fontFamily:"'Outfit',sans-serif",outline:"none",resize:"vertical",boxSizing:"border-box",marginBottom:8}}
         />
-        <button onClick={saveJudgeWhitelist} disabled={jwLoading || !orgOwnerUsername}
-          style={{width:"100%",padding:"9px 0",borderRadius:9,border:"none",background:"#3B82F6",color:"#fff",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:(jwLoading||!orgOwnerUsername)?"not-allowed":"pointer",opacity:(jwLoading||!orgOwnerUsername)?0.4:1}}>
-          Save Whitelist
-        </button>
+        <div style={{display:"flex",gap:8,marginTop:0}}>
+          <button onClick={saveJudgeWhitelist} disabled={jwLoading || !orgOwnerUsername}
+            style={{flex:2,padding:"9px 0",borderRadius:9,border:"none",background:"#3B82F6",color:"#fff",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:(jwLoading||!orgOwnerUsername)?"not-allowed":"pointer",opacity:(jwLoading||!orgOwnerUsername)?0.4:1}}>
+            Save Whitelist
+          </button>
+          {judgeWhitelist.length > 0 && (
+            <button onClick={()=>openNameMap(nameMapParticipants)}
+              style={{flex:1,padding:"9px 0",borderRadius:9,border:"2px solid var(--border2)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              🔗 Name Map
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* ── Judge Name Map Modal ─────────────────────────────────── */}
+      {nameMapOpen && (() => {
+        const allParticipants = nameMapParticipants;
+        // Which bracket names are already claimed in the draft
+        const claimed = new Set(Object.values(nameMapDraft).filter(Boolean));
+        // Unmatched bracket names (available to drag from)
+        const unmatched = allParticipants.filter(p => !claimed.has(p));
+
+        const handleDragStartName = (e, bracketName) => {
+          e.dataTransfer.setData("text/plain", bracketName);
+        };
+        const handleDropOnJudge = (e, judgeUsername) => {
+          e.preventDefault();
+          const bracketName = e.dataTransfer.getData("text/plain");
+          if (!bracketName) return;
+          setNameMapDraft(prev => {
+            const next = { ...prev };
+            // If this bracketName is already assigned to another judge, clear it there first
+            Object.keys(next).forEach(u => { if (next[u] === bracketName) next[u] = null; });
+            next[judgeUsername] = bracketName;
+            return next;
+          });
+          setNameMapDragOver(null);
+        };
+        const handleDropOnPool = (e) => {
+          e.preventDefault();
+          const bracketName = e.dataTransfer.getData("text/plain");
+          if (!bracketName) return;
+          setNameMapDraft(prev => {
+            const next = { ...prev };
+            Object.keys(next).forEach(u => { if (next[u] === bracketName) next[u] = null; });
+            return next;
+          });
+          setNameMapDragOver(null);
+        };
+        const handleDragOver = (e, target) => { e.preventDefault(); setNameMapDragOver(target); };
+        const handleDragLeave = () => setNameMapDragOver(null);
+
+        const allMapped = judgeWhitelist.every(u => !!nameMapDraft[u]);
+
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:600,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"20px 16px",overflowY:"auto"}}>
+            <div style={{background:"var(--surface)",borderRadius:18,width:"100%",maxWidth:420,boxShadow:"0 16px 48px rgba(0,0,0,0.5)",border:"1px solid var(--border)"}}>
+
+              {/* Header */}
+              <div style={{padding:"16px 18px 0",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div>
+                  <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:1,margin:"0 0 2px"}}>Global — persists across events</p>
+                  <h2 style={{fontSize:18,fontWeight:900,color:"var(--text-primary)",margin:0}}>Judge Name Mapping</h2>
+                  <p style={{fontSize:11,color:"var(--text-muted)",margin:"4px 0 0",lineHeight:1.5}}>
+                    Link each judge's Challonge login to their bracket display name. Drag a bracket name onto a judge row to assign it.
+                  </p>
+                </div>
+                <button onClick={()=>setNameMapOpen(false)}
+                  style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:22,fontFamily:"'Outfit',sans-serif",paddingTop:2,flexShrink:0}}>×</button>
+              </div>
+
+              <div style={{padding:"14px 18px 18px"}}>
+                {nameMapError && <p style={{fontSize:11,color:"#EF4444",margin:"0 0 8px"}}>⚠ {nameMapError}</p>}
+                {nameMapLoading && <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 8px"}}>Loading…</p>}
+
+                {/* Bracket name pool */}
+                <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 6px"}}>
+                  Bracket Names — drag onto a judge row
+                </p>
+                <div
+                  onDrop={handleDropOnPool}
+                  onDragOver={e=>{e.preventDefault();setNameMapDragOver("__pool__");}}
+                  onDragLeave={handleDragLeave}
+                  style={{
+                    minHeight:44,display:"flex",flexWrap:"wrap",gap:6,padding:"8px 10px",
+                    borderRadius:10,border:`2px dashed ${nameMapDragOver==="__pool__"?"var(--text-muted)":"var(--border)"}`,
+                    background:nameMapDragOver==="__pool__"?"var(--surface2)":"transparent",
+                    marginBottom:14,transition:"background 0.15s"
+                  }}>
+                  {unmatched.length === 0 && allMapped && (
+                    <p style={{fontSize:10,color:"var(--text-faint)",margin:"auto 0",fontStyle:"italic"}}>All names assigned — drag here to unassign</p>
+                  )}
+                  {unmatched.length === 0 && !allMapped && (
+                    <p style={{fontSize:10,color:"var(--text-faint)",margin:"auto 0",fontStyle:"italic"}}>No bracket names loaded — check tournament connection</p>
+                  )}
+                  {unmatched.map(p => (
+                    <div key={p} draggable
+                      onDragStart={e=>handleDragStartName(e,p)}
+                      style={{padding:"5px 12px",borderRadius:20,background:"var(--surface2)",border:"1.5px solid var(--border2)",fontSize:11,fontWeight:700,color:"var(--text-primary)",cursor:"grab",userSelect:"none"}}>
+                      {p}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Judge rows */}
+                <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 8px"}}>Judges</p>
+                <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
+                  {judgeWhitelist.map(u => {
+                    const mapped = nameMapDraft[u] || null;
+                    const savedMapped = judgeNameMap[u.toLowerCase()] || null;
+                    const isAutoMatch = !savedMapped && mapped;  // suggested but not yet saved
+                    const isOver = nameMapDragOver === u;
+                    return (
+                      <div key={u}
+                        onDrop={e=>handleDropOnJudge(e,u)}
+                        onDragOver={e=>handleDragOver(e,u)}
+                        onDragLeave={handleDragLeave}
+                        style={{
+                          display:"flex",alignItems:"center",gap:8,padding:"9px 12px",
+                          borderRadius:10,border:`2px solid ${isOver?"#3B82F6":mapped?"var(--border2)":"var(--border)"}`,
+                          background:isOver?"#3B82F620":mapped?"var(--surface2)":"var(--surface)",
+                          transition:"background 0.12s, border-color 0.12s"
+                        }}>
+                        {/* Challonge username */}
+                        <div style={{flex:"0 0 auto",minWidth:0}}>
+                          <p style={{fontSize:11,fontWeight:700,color:"var(--text-secondary)",margin:0,whiteSpace:"nowrap"}}>{u}</p>
+                          <p style={{fontSize:9,color:"var(--text-faint)",margin:0}}>Challonge</p>
+                        </div>
+                        <span style={{fontSize:12,color:"var(--text-faint)",flexShrink:0}}>→</span>
+                        {/* Bracket name chip or drop target */}
+                        {mapped ? (
+                          <div draggable
+                            onDragStart={e=>handleDragStartName(e,mapped)}
+                            style={{
+                              display:"flex",alignItems:"center",gap:6,flex:1,
+                              padding:"4px 10px",borderRadius:20,
+                              background: isAutoMatch ? "#FEF3C7" : "#1E3A5F",
+                              border: `1.5px solid ${isAutoMatch ? "#F59E0B" : "#3B82F6"}`,
+                              cursor:"grab",userSelect:"none"
+                            }}>
+                            <span style={{fontSize:11,fontWeight:700,color:isAutoMatch?"#78350F":"#93C5FD",flex:1}}>{mapped}</span>
+                            {isAutoMatch && <span style={{fontSize:9,fontWeight:800,color:"#92400E",letterSpacing:0.5}}>AUTO</span>}
+                            <button onClick={()=>setNameMapDraft(prev=>({...prev,[u]:null}))}
+                              style={{background:"none",border:"none",color:isAutoMatch?"#92400E":"#60A5FA",cursor:"pointer",fontSize:13,lineHeight:1,padding:0,fontFamily:"'Outfit',sans-serif"}}>×</button>
+                          </div>
+                        ) : (
+                          <div style={{flex:1,padding:"6px 10px",borderRadius:20,border:`2px dashed ${isOver?"#3B82F6":"var(--border)"}`,textAlign:"center"}}>
+                            <p style={{fontSize:10,color:"var(--text-faint)",margin:0,fontStyle:"italic"}}>Drop bracket name here</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Save / cancel */}
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>setNameMapOpen(false)}
+                    style={{flex:1,padding:"11px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                    Cancel
+                  </button>
+                  <button onClick={saveNameMap} disabled={nameMapSaving}
+                    style={{flex:2,padding:"11px 0",borderRadius:10,border:"none",background:nameMapSaving?"var(--border2)":"#3B82F6",color:"#fff",fontSize:13,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:nameMapSaving?"not-allowed":"pointer"}}>
+                    {nameMapSaving ? "Saving…" : "💾 Save Name Map"}
+                  </button>
+                </div>
+                <p style={{fontSize:10,color:"var(--text-faint)",margin:"8px 0 0",textAlign:"center",lineHeight:1.5}}>
+                  Saved globally — carries over to future events automatically.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Judges ─────────────────────────────────────────────── */}
       {/* ── Stadium Assignment ──────────────────────────────────── */}
@@ -17516,18 +17810,22 @@ function OrgApp({onSwitchRole}) {
                   {unassigned.length === 0 && (
                     <p style={{fontSize:10,color:"var(--text-faint)",margin:"auto 0",fontStyle:"italic"}}>All judges assigned — drag here to unassign</p>
                   )}
-                  {unassigned.map(u => (
-                    <div key={u} draggable
-                      onDragStart={e=>handleDragStart(e,u)}
-                      style={{
-                        padding:"5px 12px",borderRadius:20,
-                        background:"var(--surface)",border:"1.5px solid var(--border2)",
-                        fontSize:11,fontWeight:700,color:"var(--text-secondary)",
-                        cursor:"grab",userSelect:"none"
-                      }}>
-                      {u}
-                    </div>
-                  ))}
+                  {unassigned.map(u => {
+                    const bracketName = judgeNameMap[u.toLowerCase()];
+                    return (
+                      <div key={u} draggable
+                        onDragStart={e=>handleDragStart(e,u)}
+                        style={{
+                          padding:"5px 12px",borderRadius:20,
+                          background:"var(--surface)",border:"1.5px solid var(--border2)",
+                          fontSize:11,fontWeight:700,color:"var(--text-secondary)",
+                          cursor:"grab",userSelect:"none"
+                        }}>
+                        {bracketName || u}
+                        {bracketName && <span style={{fontSize:9,color:"var(--text-faint)",fontWeight:500,marginLeft:4}}>({u})</span>}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Stadium buckets */}
@@ -17554,18 +17852,22 @@ function OrgApp({onSwitchRole}) {
                           {membersInBucket.length === 0 && (
                             <p style={{fontSize:10,color:sc.bg+"90",margin:0,fontStyle:"italic"}}>Drop here</p>
                           )}
-                          {membersInBucket.map(u => (
-                            <div key={u} draggable
-                              onDragStart={e=>handleDragStart(e,u)}
-                              style={{
-                                padding:"4px 10px",borderRadius:20,
-                                background:sc.bg,border:`1.5px solid ${sc.border}`,
-                                fontSize:11,fontWeight:700,color:sc.text,
-                                cursor:"grab",userSelect:"none"
-                              }}>
-                              {u}
-                            </div>
-                          ))}
+                          {membersInBucket.map(u => {
+                            const bracketName = judgeNameMap[u.toLowerCase()];
+                            return (
+                              <div key={u} draggable
+                                onDragStart={e=>handleDragStart(e,u)}
+                                style={{
+                                  padding:"4px 10px",borderRadius:20,
+                                  background:sc.bg,border:`1.5px solid ${sc.border}`,
+                                  fontSize:11,fontWeight:700,color:sc.text,
+                                  cursor:"grab",userSelect:"none"
+                                }}>
+                                {bracketName || u}
+                                {bracketName && <span style={{fontSize:9,opacity:0.7,fontWeight:500,marginLeft:3}}>({u})</span>}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
@@ -17634,8 +17936,17 @@ function OrgApp({onSwitchRole}) {
           const bgColor = live ? "#22C55E0A" : "var(--surface)";
 
           // Judge-player warning: highlight player names that belong to judges
-          const p1IsJudge = judgeWhitelist.some(u => u.toLowerCase() === (m.player1_name||"").toLowerCase());
-          const p2IsJudge = judgeWhitelist.some(u => u.toLowerCase() === (m.player2_name||"").toLowerCase());
+          // Match by mapped bracket name first, fall back to raw Challonge username
+          const isJudgeByName = (displayName) => {
+            if (!displayName) return false;
+            const dl = displayName.toLowerCase();
+            return judgeWhitelist.some(u => {
+              const mapped = judgeNameMap[u.toLowerCase()];
+              return mapped ? mapped.toLowerCase() === dl : u.toLowerCase() === dl;
+            });
+          };
+          const p1IsJudge = isJudgeByName(m.player1_name);
+          const p2IsJudge = isJudgeByName(m.player2_name);
 
           // Stadium colors for players (by display name)
           const p1Color = getStadiumColor(m.player1_name);
