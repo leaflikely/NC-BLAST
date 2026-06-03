@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-02 | session: fix orgUsername loss (Worker TTL + overwrite); add emergency master-key claim in org view -->
+<!-- NC BLAST index.html | last updated: 2026-06-02 | session: stadium assignment panel (drag-and-drop, 8 stadiums, color coding); judge-player highlighting in match cards -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16905,6 +16905,34 @@ function OrgApp({onSwitchRole}) {
   const [jwError, setJwError] = useState(null);
   const [jwInput, setJwInput] = useState("");                  // textarea paste input
 
+  // ── Stadium assignment state (local only, resets each session) ────
+  const [stadiumCount, setStadiumCount] = useState(null);     // null = not set yet, 1-8 once chosen
+  const [stadiumAssign, setStadiumAssign] = useState({});     // { displayName: "A"|"B"|... }
+  const [stadiumDragOver, setStadiumDragOver] = useState(null); // which bucket is being hovered
+
+  const STADIUM_LABELS = ["A","B","C","D","E","F","G","H"];
+  const STADIUM_COLORS = {
+    A: { bg:"#0D9488", border:"#14B8A6", text:"#fff", faint:"#99F6E4" },
+    B: { bg:"#7C3AED", border:"#8B5CF6", text:"#fff", faint:"#DDD6FE" },
+    C: { bg:"#D97706", border:"#F59E0B", text:"#fff", faint:"#FDE68A" },
+    D: { bg:"#DB2777", border:"#EC4899", text:"#fff", faint:"#FBCFE8" },
+    E: { bg:"#2563EB", border:"#3B82F6", text:"#fff", faint:"#BFDBFE" },
+    F: { bg:"#DC2626", border:"#EF4444", text:"#fff", faint:"#FECACA" },
+    G: { bg:"#059669", border:"#10B981", text:"#fff", faint:"#A7F3D0" },
+    H: { bg:"#9333EA", border:"#A855F7", text:"#fff", faint:"#E9D5FF" },
+  };
+
+  const getStadiumLetter = (displayName) => {
+    if (!displayName) return null;
+    const key = Object.keys(stadiumAssign).find(k => k.toLowerCase() === displayName.toLowerCase());
+    return key ? stadiumAssign[key] : null;
+  };
+  const getStadiumColor = (displayName) => {
+    const letter = getStadiumLetter(displayName);
+    return letter ? STADIUM_COLORS[letter] : null;
+  };
+
+
   // ── Roster refresh state ───────────────────────────────────────────
   const [rosterRefreshing, setRosterRefreshing] = useState(false);
   const [rosterRefreshMsg, setRosterRefreshMsg] = useState(null); // null | { ok: bool, text: string }
@@ -17405,18 +17433,146 @@ function OrgApp({onSwitchRole}) {
       </div>
 
       {/* ── Judges ─────────────────────────────────────────────── */}
-      {judgeWhitelist.length > 0 && (
-        <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",marginBottom:14,border:"1px solid var(--border)"}}>
-          <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 10px"}}>Judges</p>
-          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-            {judgeWhitelist.map(u => (
-              <div key={u} style={{padding:"5px 12px",borderRadius:20,background:"var(--surface)",border:"1.5px solid var(--border2)",fontSize:11,fontWeight:700,color:"var(--text-secondary)"}}>
-                {u}
+      {/* ── Stadium Assignment ──────────────────────────────────── */}
+      {judgeWhitelist.length > 0 && (() => {
+        const activeMatcher = (name) => {
+          if (!name) return false;
+          const nl = name.toLowerCase();
+          return judgeWhitelist.some(u => u.toLowerCase() === nl);
+        };
+        const stadiumLetters = STADIUM_LABELS.slice(0, stadiumCount || 0);
+        // Names not yet assigned to any stadium
+        const assigned = new Set(Object.values(stadiumAssign));
+        const unassigned = judgeWhitelist.filter(u => !stadiumAssign[u]);
+
+        const handleDragStart = (e, name) => {
+          e.dataTransfer.setData("text/plain", name);
+        };
+        const handleDrop = (e, bucket) => {
+          e.preventDefault();
+          const name = e.dataTransfer.getData("text/plain");
+          if (!name) return;
+          setStadiumAssign(prev => ({ ...prev, [name]: bucket }));
+          setStadiumDragOver(null);
+        };
+        const handleDropUnassigned = (e) => {
+          e.preventDefault();
+          const name = e.dataTransfer.getData("text/plain");
+          if (!name) return;
+          setStadiumAssign(prev => { const next = {...prev}; delete next[name]; return next; });
+          setStadiumDragOver(null);
+        };
+        const handleDragOver = (e, bucket) => { e.preventDefault(); setStadiumDragOver(bucket); };
+        const handleDragLeave = () => setStadiumDragOver(null);
+
+        return (
+          <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",marginBottom:14,border:"1px solid var(--border)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div>
+                <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 1px"}}>Stadium Assignment</p>
+                <p style={{fontSize:10,color:"var(--text-muted)",margin:0}}>Drag judges into their stadium. Judge names are highlighted in matches.</p>
               </div>
-            ))}
+              {stadiumCount && (
+                <button onClick={()=>{setStadiumCount(null);setStadiumAssign({});}}
+                  style={{background:"none",border:"1px solid var(--border)",borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:700,color:"var(--text-faint)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                  Reset
+                </button>
+              )}
+            </div>
+
+            {/* Step 1: pick count */}
+            {!stadiumCount && (
+              <div>
+                <p style={{fontSize:11,fontWeight:700,color:"var(--text-secondary)",margin:"0 0 8px"}}>How many stadiums are you running?</p>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {[1,2,3,4,5,6,7,8].map(n => (
+                    <button key={n} onClick={()=>setStadiumCount(n)}
+                      style={{width:38,height:38,borderRadius:10,border:"2px solid var(--border2)",background:"var(--surface)",color:"var(--text-primary)",fontSize:16,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: drag-and-drop assignment */}
+            {stadiumCount && (
+              <div>
+                {/* Unassigned pool */}
+                <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:"0 0 6px"}}>Judges</p>
+                <div
+                  onDrop={handleDropUnassigned}
+                  onDragOver={e=>{e.preventDefault();setStadiumDragOver("__unassigned__");}}
+                  onDragLeave={handleDragLeave}
+                  style={{
+                    minHeight:38,display:"flex",flexWrap:"wrap",gap:6,padding:"8px 10px",
+                    borderRadius:10,border:`2px dashed ${stadiumDragOver==="__unassigned__"?"var(--text-muted)":"var(--border)"}`,
+                    background:stadiumDragOver==="__unassigned__"?"var(--surface2)":"transparent",
+                    marginBottom:14,transition:"background 0.15s"
+                  }}>
+                  {unassigned.length === 0 && (
+                    <p style={{fontSize:10,color:"var(--text-faint)",margin:"auto 0",fontStyle:"italic"}}>All judges assigned — drag here to unassign</p>
+                  )}
+                  {unassigned.map(u => (
+                    <div key={u} draggable
+                      onDragStart={e=>handleDragStart(e,u)}
+                      style={{
+                        padding:"5px 12px",borderRadius:20,
+                        background:"var(--surface)",border:"1.5px solid var(--border2)",
+                        fontSize:11,fontWeight:700,color:"var(--text-secondary)",
+                        cursor:"grab",userSelect:"none"
+                      }}>
+                      {u}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Stadium buckets */}
+                <div style={{display:"grid",gridTemplateColumns:"repeat(2, 1fr)",gap:8}}>
+                  {stadiumLetters.map(letter => {
+                    const sc = STADIUM_COLORS[letter];
+                    const membersInBucket = judgeWhitelist.filter(u => stadiumAssign[u] === letter);
+                    const isOver = stadiumDragOver === letter;
+                    return (
+                      <div key={letter}
+                        onDrop={e=>handleDrop(e,letter)}
+                        onDragOver={e=>handleDragOver(e,letter)}
+                        onDragLeave={handleDragLeave}
+                        style={{
+                          borderRadius:10,padding:"8px 10px",minHeight:60,
+                          border:`2px solid ${isOver ? sc.border : sc.bg+"60"}`,
+                          background:isOver ? sc.bg+"25" : sc.bg+"12",
+                          transition:"background 0.15s, border-color 0.15s"
+                        }}>
+                        <p style={{fontSize:10,fontWeight:800,color:sc.bg,margin:"0 0 6px",letterSpacing:0.8}}>
+                          STADIUM {letter}
+                        </p>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                          {membersInBucket.length === 0 && (
+                            <p style={{fontSize:10,color:sc.bg+"90",margin:0,fontStyle:"italic"}}>Drop here</p>
+                          )}
+                          {membersInBucket.map(u => (
+                            <div key={u} draggable
+                              onDragStart={e=>handleDragStart(e,u)}
+                              style={{
+                                padding:"4px 10px",borderRadius:20,
+                                background:sc.bg,border:`1.5px solid ${sc.border}`,
+                                fontSize:11,fontWeight:700,color:sc.text,
+                                cursor:"grab",userSelect:"none"
+                              }}>
+                              {u}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Matches      {/* ── Matches ────────────────────────────────────────────── */}
       <React.Fragment>
@@ -17474,6 +17630,40 @@ function OrgApp({onSwitchRole}) {
           const borderColor = live ? "#22C55E" : done ? "var(--border)" : "var(--border2)";
           const bgColor = live ? "#22C55E0A" : "var(--surface)";
 
+          // Judge-player warning: highlight player names that belong to judges
+          const p1IsJudge = judgeWhitelist.some(u => u.toLowerCase() === (m.player1_name||"").toLowerCase());
+          const p2IsJudge = judgeWhitelist.some(u => u.toLowerCase() === (m.player2_name||"").toLowerCase());
+
+          // Stadium colors for players (by display name)
+          const p1Color = getStadiumColor(m.player1_name);
+          const p2Color = getStadiumColor(m.player2_name);
+
+          // Helper: render a player name with judge highlight and optional stadium badge
+          const renderPlayerName = (name, isJudge, stColor) => {
+            if (!name) return <span style={{color:"var(--text-faint)"}}>?</span>;
+            return (
+              <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
+                {stColor && (
+                  <span style={{
+                    fontSize:9,fontWeight:900,padding:"1px 5px",borderRadius:6,
+                    background:stColor.bg,color:stColor.text,letterSpacing:0.5
+                  }}>{getStadiumLetter(name)}</span>
+                )}
+                <span style={{
+                  color: isJudge ? "#F59E0B" : "var(--text-primary)",
+                  fontWeight: isJudge ? 900 : 800,
+                }}>
+                  {name}
+                </span>
+                {isJudge && <span title="This player is also a judge" style={{fontSize:10}}>⚖️</span>}
+              </span>
+            );
+          };
+
+          // Judge chip color based on stadium assignment
+          const judgeStColor = live?.judge ? getStadiumColor(live.judge) : null;
+          const judgeStLetter = live?.judge ? getStadiumLetter(live.judge) : null;
+
           return (
             <div key={m.id} style={{borderRadius:12,marginBottom:8,border:`2px solid ${borderColor}`,background:bgColor,padding:"11px 13px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
@@ -17485,7 +17675,9 @@ function OrgApp({onSwitchRole}) {
                     {!live && !done && <span style={{fontSize:9,fontWeight:700,color:"#F59E0B",textTransform:"uppercase",letterSpacing:0.8}}>Waiting</span>}
                   </div>
                   <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {m.player1_name||"?"} <span style={{color:"var(--text-faint)",fontWeight:400}}>vs</span> {m.player2_name||"?"}
+                    {renderPlayerName(m.player1_name, p1IsJudge, p1Color)}
+                    <span style={{color:"var(--text-faint)",fontWeight:400}}> vs </span>
+                    {renderPlayerName(m.player2_name, p2IsJudge, p2Color)}
                   </p>
                   {live && !isShuffling && (
                     <p style={{fontSize:12,fontWeight:700,color:"#22C55E",margin:"3px 0 0"}}>
@@ -17495,11 +17687,20 @@ function OrgApp({onSwitchRole}) {
                           (Set {(live.sets[0]||0)+1+(live.sets[1]||0) > 1 ? `${live.sets[0]||0}–${live.sets[1]||0}` : "1"})
                         </span>
                       )}
-                      {live.judge && <span style={{fontSize:10,fontWeight:500,color:"var(--text-muted)",marginLeft:8}}>⚖️ {live.judge}</span>}
+                      {live.judge && (
+                        <span style={{
+                          fontSize:10,fontWeight:700,marginLeft:8,
+                          color: judgeStColor ? judgeStColor.bg : "var(--text-muted)"
+                        }}>
+                          ⚖️{judgeStLetter ? ` [${judgeStLetter}]` : ""} {live.judge}
+                        </span>
+                      )}
                     </p>
                   )}
                   {isShuffling && live && live.judge && (
-                    <p style={{fontSize:11,fontWeight:500,color:"var(--text-muted)",margin:"3px 0 0"}}>Judge: {live.judge}</p>
+                    <p style={{fontSize:11,fontWeight:700,margin:"3px 0 0",color:judgeStColor?judgeStColor.bg:"var(--text-muted)"}}>
+                      ⚖️{judgeStLetter?` [${judgeStLetter}]`:""} {live.judge}
+                    </p>
                   )}
                   {done && m.scores_csv && (
                     <p style={{fontSize:11,color:"var(--text-muted)",margin:"2px 0 0"}}>Final: {m.scores_csv}</p>
