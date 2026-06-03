@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-03 | session: stadium assignment + judge highlights; org view cleanup; judge name map (global KV, drag-drop UI, login pre-fill) -->
+<!-- NC BLAST index.html | last updated: 2026-06-03 | session: stadium assignment + judge highlights; org view cleanup; judge name map (global KV, drag-drop UI, login pre-fill, auto-load participants) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -17058,6 +17058,23 @@ function OrgApp({onSwitchRole}) {
     finally { setJwLoading(false); }
   };
 
+  // Parse a raw participant array into a sorted name list
+  const parseParticipantNames = (participants) =>
+    (participants || []).map(p => {
+      const part = p.participant || p;
+      return (part.display_name || part.username || part.name || "").trim();
+    }).filter(Boolean).sort((a, b) => a.localeCompare(b));
+
+  // Auto-load participant names into nameMapParticipants (uses KV cache — fast)
+  const loadParticipants = async () => {
+    if (!slug) return;
+    try {
+      const data = await workerGet(`/?slug=${encodeURIComponent(slug)}`);
+      const names = parseParticipantNames(data.participants);
+      setNameMapParticipants(names);
+    } catch(_) {}
+  };
+
   const refreshRoster = async () => {
     if (!slug) return;
     setRosterRefreshing(true); setRosterRefreshMsg(null);
@@ -17082,13 +17099,9 @@ function OrgApp({onSwitchRole}) {
       // Update local pairings state so org view reflects changes immediately
       setPairings(pairData.pairings || []);
 
-      // Build the name list to display
-      const participants = partData.participants || [];
-      const names = participants.map(p => {
-        const part = p.participant || p;
-        return part.display_name || part.username || part.name || "";
-      }).filter(Boolean).sort((a,b) => a.localeCompare(b));
-
+      // Build the name list to display and store for name map use
+      const names = parseParticipantNames(partData.participants);
+      setNameMapParticipants(names);
       setRosterRefreshMsg({ ok: true, names, count: names.length });
     } catch(e) {
       setRosterRefreshMsg({ ok: false, text: e.message });
@@ -17107,13 +17120,13 @@ function OrgApp({onSwitchRole}) {
     finally { setNameMapLoading(false); }
   };
 
-  const openNameMap = async (participants) => {
-    // Pull fresh participants if not already loaded
-    let parts = participants || nameMapParticipants;
+  const openNameMap = async () => {
+    // nameMapParticipants is auto-loaded on slug mount; if still empty, try once more
+    let parts = nameMapParticipants;
     if (!parts || parts.length === 0) {
       try {
-        const r = await fetchParticipants(slug);
-        parts = (r && r.names) || [];
+        const data = await workerGet(`/?slug=${encodeURIComponent(slug)}`);
+        parts = parseParticipantNames(data.participants);
         setNameMapParticipants(parts);
       } catch(_) { parts = []; }
     }
@@ -17208,6 +17221,7 @@ function OrgApp({onSwitchRole}) {
     loadHeadJudges(slug);
     loadJudgeWhitelist(slug);
     loadNameMap();
+    loadParticipants();
 
     // Poll live match slots every 5s
     const pollLive = async () => {
@@ -17374,37 +17388,46 @@ function OrgApp({onSwitchRole}) {
       {/* ── Body ───────────────────────────────────────────────── */}
       <div style={{flex:1,overflowY:"auto",padding:"12px 14px 32px"}}>
 
-      {/* ── Roster Refresh ───────────────────────────────────────── */}
+      {/* ── Roster Sync ─────────────────────────────────────────── */}
       {(() => {
+        // Names shown: after a manual refresh use the fresh list, otherwise the auto-loaded list
+        const displayNames = rosterRefreshMsg?.ok ? (rosterRefreshMsg.names || []) : nameMapParticipants;
         return (
           <div style={{marginBottom:14,padding:"12px 14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-              <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0}}>Roster Sync</p>
+              <div>
+                <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0}}>Roster Sync</p>
+                {displayNames.length > 0 && !rosterRefreshMsg && (
+                  <p style={{fontSize:9,color:"var(--text-faint)",margin:"1px 0 0"}}>{displayNames.length} players from cache</p>
+                )}
+              </div>
               <button onClick={refreshRoster} disabled={rosterRefreshing}
                 style={{padding:"5px 12px",borderRadius:8,border:"none",background:rosterRefreshing?"var(--surface3)":"#0F766E",color:rosterRefreshing?"var(--text-muted)":"#fff",fontSize:11,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:rosterRefreshing?"not-allowed":"pointer"}}>
                 {rosterRefreshing ? "Refreshing…" : "↻ Refresh Roster"}
               </button>
             </div>
-            <p style={{fontSize:10,color:"var(--text-muted)",margin:"0 0 6px",lineHeight:1.5}}>
-              If players dropped or registered on Challonge after you imported this event, tap Refresh Roster to pull the latest list from Challonge and update the pairings cache.
+            <p style={{fontSize:10,color:"var(--text-muted)",margin:"0 0 8px",lineHeight:1.5}}>
+              If players dropped or registered on Challonge after you imported this event, tap Refresh Roster to pull the latest list and update the pairings cache.
             </p>
-            {rosterRefreshMsg && (
-              rosterRefreshMsg.ok ? (
-                <div>
-                  <p style={{fontSize:11,fontWeight:700,color:"#22C55E",margin:"0 0 6px"}}>
-                    ✓ {rosterRefreshMsg.count} player{rosterRefreshMsg.count===1?"":"s"} synced from Challonge — KV updated
-                  </p>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-                    {(rosterRefreshMsg.names||[]).map(n=>(
-                      <span key={n} style={{fontSize:10,fontWeight:600,color:"var(--text-secondary)",background:"var(--surface3)",borderRadius:6,padding:"2px 7px"}}>
-                        {n}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p style={{fontSize:11,fontWeight:700,color:"#EF4444",margin:0}}>⚠ {rosterRefreshMsg.text}</p>
-              )
+            {rosterRefreshMsg?.ok && (
+              <p style={{fontSize:11,fontWeight:700,color:"#22C55E",margin:"0 0 6px"}}>
+                ✓ {rosterRefreshMsg.count} player{rosterRefreshMsg.count===1?"":"s"} synced from Challonge — KV updated
+              </p>
+            )}
+            {rosterRefreshMsg && !rosterRefreshMsg.ok && (
+              <p style={{fontSize:11,fontWeight:700,color:"#EF4444",margin:"0 0 6px"}}>⚠ {rosterRefreshMsg.text}</p>
+            )}
+            {displayNames.length > 0 && (
+              <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                {displayNames.map(n=>(
+                  <span key={n} style={{fontSize:10,fontWeight:600,color:"var(--text-secondary)",background:"var(--surface3)",borderRadius:6,padding:"2px 7px"}}>
+                    {n}
+                  </span>
+                ))}
+              </div>
+            )}
+            {displayNames.length === 0 && !rosterRefreshing && (
+              <p style={{fontSize:11,color:"var(--text-faint)",margin:0,fontStyle:"italic"}}>No roster loaded yet — tap Refresh Roster.</p>
             )}
           </div>
         );
@@ -17560,7 +17583,7 @@ function OrgApp({onSwitchRole}) {
             Save Whitelist
           </button>
           {judgeWhitelist.length > 0 && (
-            <button onClick={()=>openNameMap(nameMapParticipants)}
+            <button onClick={()=>openNameMap()}
               style={{flex:1,padding:"9px 0",borderRadius:9,border:"2px solid var(--border2)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
               🔗 Name Map
             </button>
@@ -17570,7 +17593,7 @@ function OrgApp({onSwitchRole}) {
 
       {/* ── Judge Name Map Modal ─────────────────────────────────── */}
       {nameMapOpen && (() => {
-        const allParticipants = nameMapParticipants;
+        const allParticipants = nameMapParticipants;  // populated on mount
         // Which bracket names are already claimed in the draft
         const claimed = new Set(Object.values(nameMapDraft).filter(Boolean));
         // Unmatched bracket names (available to drag from)
