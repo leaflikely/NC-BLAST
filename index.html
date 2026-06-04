@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-03 | session: stadium save/load; per-station match queues (balanced distribution, drag-drop, coverage checks, floater tracking) -->
+<!-- NC BLAST index.html | last updated: 2026-06-04 | session: deck review shows first on entry; per-player "Record Deck" button allows recording either player first -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14609,7 +14609,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                   <button style={{...S.pri,margin:0,
                     opacity:(activeCanProceed&&underwayStatus!=="checking")?1:0.4}}
                     disabled={!activeCanProceed||underwayStatus==="checking"}
-                    onClick={()=>{refreshCombos();setMatchStartIdx(log.length);setFuture([]);setCurSet(1);setShuf(1);setPts([0,0]);setSets([0,0]);setUsed1([]);setUsed2([]);setLerStrikes([0,0]);setSetScores([]);setDeckReview(false);setPhase("deck");}}>
+                    onClick={()=>{refreshCombos();setMatchStartIdx(log.length);setFuture([]);setCurSet(1);setShuf(1);setPts([0,0]);setSets([0,0]);setUsed1([]);setUsed2([]);setLerStrikes([0,0]);setSetScores([]);setDeckReview(true);setPhase("deck");}}>
                     Build Decks →
                   </button>
                 </div>
@@ -14618,18 +14618,14 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           );
         })()}
 
-        {pickTab==="roster"&&<button style={{...S.pri,opacity:canProceed?1:0.4}} disabled={!canProceed} onClick={()=>{refreshCombos();setMatchStartIdx(log.length);setFuture([]);setCurSet(1);setShuf(1);setPts([0,0]);setSets([0,0]);setUsed1([]);setUsed2([]);setLerStrikes([0,0]);setSetScores([]);setDeckReview(false);setPhase("deck");}}>Build Decks →</button>}
+        {pickTab==="roster"&&<button style={{...S.pri,opacity:canProceed?1:0.4}} disabled={!canProceed} onClick={()=>{refreshCombos();setMatchStartIdx(log.length);setFuture([]);setCurSet(1);setShuf(1);setPts([0,0]);setSets([0,0]);setUsed1([]);setUsed2([]);setLerStrikes([0,0]);setSetScores([]);setDeckReview(true);setPhase("deck");}}>Build Decks →</button>}
         {pickTab==="roster"&&config.tm&&playersSelected&&!judge.trim()&&<p style={{...S.hint,color:"#D97706"}}>Select the judge on duty to continue</p>}
       </div>
     );
   }
 
   if(phase==="deck"){
-    // If not in review mode and picker is not open, auto-start on P1 first blade
-    if(!deckReview&&!picker){
-      openPicker({who:1,slot:0,cat:"blade"});
-      return null;
-    }
+    // (Auto-start removed: deck review screen now shows first, players tap "Record Deck" per player)
 
     // Review screen — shown when deckReview=true or picker is closed after finishing
     // Show a summary of what has been built so far with option to start or edit
@@ -14642,7 +14638,18 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         <p style={S.sub}>Tap any part to change it</p>
         {[{who:1,name:p1,deck:d1,setDeck:setD1,cl:"#2563EB"},{who:2,name:p2,deck:d2,setDeck:setD2,cl:"#DC2626"}].map(pl=>(
           <div key={pl.who} style={{...S.card,borderLeft:`4px solid ${pl.cl}`,marginBottom:12}}>
-            <p style={{fontSize:13,fontWeight:800,color:pl.cl,marginBottom:8}}>{pl.name}</p>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+              <p style={{fontSize:13,fontWeight:800,color:pl.cl,margin:0}}>{pl.name}</p>
+              {!pl.deck.every(comboReady)&&(
+                <button onClick={()=>openPicker({who:pl.who,slot:0,cat:"blade"})}
+                  style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:7,border:`1.5px solid ${pl.cl}`,background:`${pl.cl}14`,color:pl.cl,fontFamily:"'Outfit',sans-serif",cursor:"pointer",whiteSpace:"nowrap"}}>
+                  Record Deck →
+                </button>
+              )}
+              {pl.deck.every(comboReady)&&(
+                <span style={{fontSize:11,fontWeight:700,color:"#15803D",padding:"4px 10px",borderRadius:7,border:"1.5px solid #15803D",background:"#15803D14"}}>✓ Done</span>
+              )}
+            </div>
             {[0,1,2].map(slot=>(
               <div key={slot} style={{marginBottom:slot<2?8:0}}>
                 <p style={{fontSize:10,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,marginBottom:4}}>{comboNames[slot].toUpperCase()} COMBO</p>
