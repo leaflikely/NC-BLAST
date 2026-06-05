@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-04 | session: deck review shows first on entry; per-player "Record Deck" button allows recording either player first -->
+<!-- NC BLAST index.html | last updated: 2026-06-05 | session: deck review shows first; floater JvP matches no longer dropped from queue generator -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -18246,6 +18246,15 @@ function OrgApp({onSwitchRole}) {
               });
               stationJvP.forEach(m => queues[letter].push(m.id));
             });
+
+            // Step 1b — JvP matches involving floaters (judges with no assigned station).
+            // These were skipped in Step 1 because floaters don't belong to any station's judge list.
+            // Assign them to the shortest queue just like PvP matches.
+            const assignedJvP = new Set(
+              STADIUM_LETTERS.flatMap(l => queues[l])
+            );
+            const unassignedJvP = jvpMatches.filter(m => !assignedJvP.has(m.id));
+            unassignedJvP.forEach(m => pushToShortest(m.id));
 
             // Step 2 — PvP matches fill to balance queue lengths.
             // Always add to whichever station is shortest at that moment.
