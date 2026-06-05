@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-05 | session: deck review shows first; floater JvP matches no longer dropped from queue generator -->
+<!-- NC BLAST index.html | last updated: 2026-06-05 | session: deck review shows first on entry, per-player Record Deck button; floater matches prioritized as PvP in queue generator (not held until JvJ last wave) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -18186,13 +18186,41 @@ function OrgApp({onSwitchRole}) {
           const freeAt = (letter) => judgesAt(letter).filter(u => !isLive(getBN(u))).length;
           const floatersFree = floaterUsers.filter(u => !isLive(getBN(u))).length;
 
-          // Match classification
+          // Match classification (used for display badges)
           const classifyM = (m) => {
             const p1j = isJudgeName(m.player1_name);
             const p2j = isJudgeName(m.player2_name);
             if (p1j && p2j) return 'JvJ';
             if (p1j || p2j) return 'JvP';
             return 'PvP';
+          };
+
+          // Classification for queue priority ordering.
+          // Floaters have no station to staff, so their matches are treated like player
+          // matches for scheduling — a floater vs floater match isn't held until last.
+          const isFloater = (displayName) => {
+            if (!displayName) return false;
+            const u = displayToUsername(displayName);
+            return u ? floaterUsers.includes(u) : false;
+          };
+          const classifyForPriority = (m) => {
+            const p1j = isJudgeName(m.player1_name);
+            const p2j = isJudgeName(m.player2_name);
+            if (!p1j && !p2j) return 'PvP';
+            // If both players are judges, check if either is an assigned-station judge
+            if (p1j && p2j) {
+              const p1float = isFloater(m.player1_name);
+              const p2float = isFloater(m.player2_name);
+              // Both are floaters → treat as PvP for priority (no station to staff)
+              if (p1float && p2float) return 'PvP';
+              // At least one is a station judge → JvJ scheduling still applies
+              return 'JvJ';
+            }
+            // One judge, one player
+            const judgeIsFloater = p1j ? isFloater(m.player1_name) : isFloater(m.player2_name);
+            // Floater JvP still needs queue placement — treat same as station JvP
+            // (Step 1b handles the unassigned routing)
+            return 'JvP';
           };
 
           // All matches by id
@@ -18217,9 +18245,10 @@ function OrgApp({onSwitchRole}) {
               return true;
             });
 
-            const jvjMatches = pending.filter(m => classifyM(m) === 'JvJ');
-            const jvpMatches = pending.filter(m => classifyM(m) === 'JvP');
-            const pvpMatches = pending.filter(m => classifyM(m) === 'PvP');
+            // Use priority classification (floater matches treated as PvP, not JvJ)
+            const jvjMatches = pending.filter(m => classifyForPriority(m) === 'JvJ');
+            const jvpMatches = pending.filter(m => classifyForPriority(m) === 'JvP');
+            const pvpMatches = pending.filter(m => classifyForPriority(m) === 'PvP');
 
             // Helper: push to the station whose queue is currently shortest
             const pushToShortest = (matchId) => {
