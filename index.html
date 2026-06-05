@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-05 | session: deck review shows first on entry, per-player Record Deck button; floater matches prioritized as PvP in queue generator (not held until JvJ last wave) -->
+<!-- NC BLAST index.html | last updated: 2026-06-05 | session: fix stale closure in saveCombosToStorage — workerCombos now read via ref so previous combos are never wiped by a race condition -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12939,6 +12939,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const [pendingFinish,setPendingFinish] = useState(null); // {pi, fin} — selected but not yet confirmed
   const [overlaySlot,setOverlaySlot] = useState(()=>{ try{return parseInt(localStorage.getItem(KEYS.overlaySlot)||"0",10)||0;}catch{return 0;} }); // 0 = disabled, 1-4 = slot number
   const [workerCombos,setWorkerCombos] = useState({}); // { playerName: [combo,...] } loaded from Worker KV
+  const workerCombosRef = useRef({}); // mirrors workerCombos — always current, avoids stale closure in saveCombosToStorage
   const [overlayStatus,setOverlayStatus] = useState(null); // null | "ok" | "error"
   // swapped: purely a display-order flip. When true, p2 is shown on the left (blue side) and p1 on right (red side).
   // sets[], pts[], setScores[] always use canonical index 0=p1 1=p2 regardless of swap.
@@ -13076,7 +13077,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         const combos = await fetchComboCacheFromWorker(name);
         if(combos.length) results[name] = combos;
       }));
-      if(!cancelled) setWorkerCombos(prev => ({...prev, ...results}));
+      if(!cancelled) setWorkerCombos(prev => { const next = {...prev, ...results}; workerCombosRef.current = next; return next; });
     }
     if(p1 || p2) load();
     return () => { cancelled = true; };
@@ -13089,7 +13090,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       const combos = await fetchComboCacheFromWorker(name);
       results[name] = combos; // always overwrite, even if empty, to clear stale entries
     }));
-    setWorkerCombos(prev => ({...prev, ...results}));
+    setWorkerCombos(prev => { const next = {...prev, ...results}; workerCombosRef.current = next; return next; });
   };
   const need = Math.ceil(config.bo/2);
   const cReady = d1.every(comboReady)&&d2.every(comboReady);
@@ -13196,8 +13197,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     const pushQueue = [];
     [[p1, d1],[p2, d2]].forEach(([name, deck])=>{
       if(!name) return;
-      // Start from whatever is already in workerCombos for this player (in-memory only)
-      const prev = (workerCombos[name] || []).map(normalizeCombo);
+      // Start from whatever is already in workerCombos for this player (use ref — always current, never stale)
+      const prev = (workerCombosRef.current[name] || []).map(normalizeCombo);
       // Add new complete combos, refresh updatedAt for ones already seen
       deck.forEach(combo=>{
         if(!comboReady(combo)) return;
@@ -13212,7 +13213,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       // Keep only the 3 most recently used combos — prevents accumulation across rounds
       const capped = prev.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).slice(0,3);
       // Update in-memory cache so the rest of this session sees the new combos immediately
-      setWorkerCombos(prev2 => ({...prev2, [name]: capped}));
+      setWorkerCombos(prev2 => { const next = {...prev2, [name]: capped}; workerCombosRef.current = next; return next; });
       pushQueue.push([name, capped]);
     });
     // Push all players to Worker KV in parallel so neither overwrites the other
@@ -14152,7 +14153,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           const prevCombos = (workerCombos[playerName] || []).map(normalizeCombo).filter(c=>comboReady(c));
           if(!prevCombos.length) return null;
           const clearCombos = () => {
-            setWorkerCombos(prev => { const n={...prev}; delete n[playerName]; return n; });
+            setWorkerCombos(prev => { const n={...prev}; delete n[playerName]; workerCombosRef.current = n; return n; });
             fetch(`${OVERLAY_WORKER}/combos/push`, {
               method:"POST", headers:{"Content-Type":"application/json"},
               body: JSON.stringify({player:playerName, combos:[], updatedAt:Date.now()}),
