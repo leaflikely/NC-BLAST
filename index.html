@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-05 | session: fix stale closure in saveCombosToStorage; shuffle timer now shows current set/match score and win condition -->
+<!-- NC BLAST index.html | last updated: 2026-06-05 | session: loginMode (solo/duo) set in org view, judge login auto-applies it; floater badge shows F not J in station view; stale closure fix; shuffle timer score display -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11320,6 +11320,7 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
   const [duoManualInput, setDuoManualInput]   = useState("");   // manual entry value
   const [duoRoster, setDuoRoster]             = useState(null); // {names, pmap} loaded after Judge A login
   const [duoRosterLoading, setDuoRosterLoading] = useState(false);
+  const [eventLoginMode, setEventLoginMode]   = useState(null); // "solo" | "duo" | null — set by org, read from cached list
 
   // Popup-based auth — Judge A only. Judge B is selected from the player roster.
   const authA = useChallongeAuthPopup();
@@ -11459,10 +11460,16 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
     setSelectedSlug(t.slug); setSelectedName(t.name || t.slug);
     setAuthError(null); setDeviceMode(null);
     resetDuoState(); authA.reset();
+    const mode = t.loginMode || null;
+    setEventLoginMode(mode);
+    // If the org has set a mode, apply it immediately — skip the picker screen
+    if (mode === "solo") setDeviceMode("solo");
+    if (mode === "duo")  setDeviceMode("shared");
   };
 
   const handleCancel = () => {
     setSelectedSlug(null); setSelectedName(""); setDeviceMode(null);
+    setEventLoginMode(null);
     resetDuoState(); setAuthError(null); authA.reset();
   };
 
@@ -11474,7 +11481,8 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
           <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px"}}>{selectedName}</p>
           <p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>{selectedSlug}</p>
         </div>
-        <p style={{fontSize:13,fontWeight:700,color:"var(--text-primary)",marginBottom:12,textAlign:"center"}}>How is this device being used?</p>
+        <p style={{fontSize:13,fontWeight:700,color:"var(--text-primary)",marginBottom:4,textAlign:"center"}}>How is this device being used?</p>
+        <p style={{fontSize:10,color:"#F59E0B",marginBottom:12,textAlign:"center"}}>⚠ Your organizer hasn't set a login mode for this event yet.</p>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <button onClick={()=>setDeviceMode("solo")} style={{padding:"18px 8px",borderRadius:14,border:"2px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"center"}}>
             <div style={{fontSize:32,marginBottom:6}}>📱</div>
@@ -11794,9 +11802,9 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
           <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0}}>{selectedName}</p>
         </div>
         {deviceMode === "solo" ? (
-          <LoginStep auth={authA} label="Judge Login" sub={`Log in with Challonge to access "${selectedName}".`} />
+          <LoginStep auth={authA} label="Judge Login" sub={`Log in with your Challonge account to access "${selectedName}".`} />
         ) : (
-          <LoginStep auth={authA} label="Challonge Login" sub="One judge logs in. You'll both pick your bracket names next." />
+          <LoginStep auth={authA} label="Challonge Login" sub={`One judge logs in for this tablet. You'll both pick your bracket names next.`} />
         )}
         <button onClick={handleCancel} style={{width:"100%",marginTop:4,padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
           ← Back to event list
@@ -11834,7 +11842,12 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
         <button key={t.slug} onClick={()=>handleSelect(t)}
           style={{display:"block",width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid var(--border)",background:"var(--surface2)",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif",marginBottom:6}}>
           <p style={{fontSize:13,fontWeight:700,color:"var(--text-primary)",margin:0}}>{t.name||t.slug}</p>
-          <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>{t.slug} · 🔗 Challonge login required</p>
+          <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>
+            {t.slug}
+            {t.loginMode === "solo" && " · 📱 Solo mode"}
+            {t.loginMode === "duo"  && " · 💊 Duo mode"}
+            {!t.loginMode           && " · 🔗 Challonge login required"}
+          </p>
         </button>
       ))}
       {!config.tournamentName?.trim() && <p style={{...S.hint,color:"#7C3AED",marginTop:6}}>Select an event to continue</p>}
@@ -17025,6 +17038,11 @@ function OrgApp({onSwitchRole}) {
   // Participants pulled for the current tournament (used as the bracket name pool)
   const [nameMapParticipants, setNameMapParticipants] = useState([]);
 
+  // ── Login mode state ──────────────────────────────────────────────
+  const [loginMode, setLoginMode] = useState(null);   // null | "solo" | "duo"
+  const [loginModeSaving, setLoginModeSaving] = useState(false);
+  const [loginModeError, setLoginModeError] = useState(null);
+
   // Derived: get bracket display name for a Challonge username (from saved map)
   const getBracketName = (challongeUsername) => {
     if (!challongeUsername) return null;
@@ -17066,6 +17084,7 @@ function OrgApp({onSwitchRole}) {
       const res = await workerGet(`/judges/get?slug=${encodeURIComponent(s)}`);
       setHeadJudges(res.headJudges || []);
       setOrgOwnerUsername(res.orgUsername || null);
+      setLoginMode(res.loginMode || null);
     } catch(e) { setHjError(e.message || "Failed to load head judges."); }
     finally { setHjLoading(false); }
   };
@@ -17285,9 +17304,27 @@ function OrgApp({onSwitchRole}) {
     finally { setJwLoading(false); }
   };
 
+  const saveLoginMode = async (mode) => {
+    if (!slug || !mode) return;
+    const token    = sessionStorage.getItem("ncblast-auth-token") || "";
+    const username = sessionStorage.getItem("ncblast-auth-user")  || "";
+    setLoginModeSaving(true); setLoginModeError(null);
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/org/tournament/set-login-mode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, loginMode: mode, token, username }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Save failed");
+      setLoginMode(mode);
+    } catch(e) { setLoginModeError(e.message); }
+    finally { setLoginModeSaving(false); }
+  };
+
   useEffect(() => {
     if (!slug) return;
-
     // Load pairings and judge meta once
     const loadPairings = async () => {
       setLoadingPairings(true); setPairingsError(null);
@@ -17634,6 +17671,33 @@ function OrgApp({onSwitchRole}) {
         );
       })()}
 
+      {/* ── Login Mode ───────────────────────────────────────────── */}
+      <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",marginBottom:14,border:"1px solid var(--border)"}}>
+        <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 4px"}}>Judge Login Mode</p>
+        <p style={{fontSize:10,color:"var(--text-muted)",margin:"0 0 12px",lineHeight:1.5}}>
+          Choose how judges log in at this event. <strong>Solo</strong> — each judge uses their own device and Challonge account. <strong>Duo</strong> — two judges share one tablet per station, no individual Challonge logins needed.
+        </p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+          {[["solo","📱","Solo Device","One judge, one device"],["duo","💊","Duo Tablet","Two judges share a tablet"]].map(([mode,icon,title,sub])=>(
+            <button key={mode} onClick={()=>{ if(loginMode!==mode) saveLoginMode(mode); }}
+              disabled={loginModeSaving || !orgOwnerUsername}
+              style={{padding:"12px 8px",borderRadius:12,cursor:(loginModeSaving||!orgOwnerUsername)?"not-allowed":"pointer",
+                fontFamily:"'Outfit',sans-serif",textAlign:"center",
+                border:`2px solid ${loginMode===mode?"#3B82F6":"var(--border2)"}`,
+                background:loginMode===mode?"#3B82F60F":"var(--surface2)",
+                opacity:(loginModeSaving||!orgOwnerUsername)?0.5:1}}>
+              <div style={{fontSize:24,marginBottom:4}}>{icon}</div>
+              <p style={{fontSize:12,fontWeight:800,color:loginMode===mode?"#3B82F6":"var(--text-primary)",margin:"0 0 2px"}}>{title}</p>
+              <p style={{fontSize:10,color:"var(--text-muted)",margin:0}}>{sub}</p>
+              {loginMode===mode&&<p style={{fontSize:9,fontWeight:800,color:"#3B82F6",margin:"4px 0 0",letterSpacing:0.5}}>ACTIVE</p>}
+            </button>
+          ))}
+        </div>
+        {loginModeError && <p style={{fontSize:11,color:"#EF4444",margin:"4px 0 0"}}>⚠ {loginModeError}</p>}
+        {!loginMode && <p style={{fontSize:10,color:"#F59E0B",margin:"4px 0 0"}}>⚠ No mode set — judges will be prompted to choose at login.</p>}
+        {!orgOwnerUsername && !hjLoading && <p style={{fontSize:10,color:"var(--text-faint)",margin:"6px 0 0",fontStyle:"italic"}}>Only the tournament owner can change this.</p>}
+      </div>
+
       {/* ── Judge Whitelist ─────────────────────────────────────── */}
       <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",marginBottom:14,border:"1px solid var(--border)"}}>
         <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 4px"}}>Judge Whitelist</p>
@@ -17674,7 +17738,7 @@ function OrgApp({onSwitchRole}) {
             style={{flex:2,padding:"9px 0",borderRadius:9,border:"none",background:"#3B82F6",color:"#fff",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:(jwLoading||!orgOwnerUsername)?"not-allowed":"pointer",opacity:(jwLoading||!orgOwnerUsername)?0.4:1}}>
             Save Whitelist
           </button>
-          {judgeWhitelist.length > 0 && (
+          {judgeWhitelist.length > 0 && loginMode !== "duo" && (
             <button onClick={()=>openNameMap()}
               style={{flex:1,padding:"9px 0",borderRadius:9,border:"2px solid var(--border2)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
               🔗 Name Map
@@ -18501,6 +18565,21 @@ function OrgApp({onSwitchRole}) {
                             const m = matchById[id];
                             if (!m) return null;
                             const type = classifyM(m);
+                            // Show "F" instead of "J" when the judge-side player is a floater
+                            const badgeLabel = (() => {
+                              if (type === 'PvP') return 'PvP';
+                              if (type === 'JvJ') {
+                                const p1f = isFloater(m.player1_name), p2f = isFloater(m.player2_name);
+                                if (p1f && p2f) return 'FvF';
+                                if (p1f) return 'FvJ';
+                                if (p2f) return 'JvF';
+                                return 'JvJ';
+                              }
+                              // JvP — check which side is the judge
+                              const p1j = isJudgeName(m.player1_name);
+                              const judgeSideFloat = p1j ? isFloater(m.player1_name) : isFloater(m.player2_name);
+                              return judgeSideFloat ? 'FvP' : 'JvP';
+                            })();
                             const isNext = idx === 0;
                             const cov = isNext ? nextCoverage : { ok: true, flags: [] };
                             const isBlocked = isNext && !cov.ok;
@@ -18533,7 +18612,7 @@ function OrgApp({onSwitchRole}) {
                                   </span>
                                   {/* Type badge */}
                                   <span style={{fontSize:9,fontWeight:800,padding:'2px 6px',borderRadius:5,border:`1px solid ${typeColor(type)}50`,color:typeColor(type),flexShrink:0}}>
-                                    {type}
+                                    {badgeLabel}
                                   </span>
                                   {/* Match names */}
                                   <span style={{fontSize:12,fontWeight:700,color: isBlocked ? '#FCA5A5' : 'var(--text-primary)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
