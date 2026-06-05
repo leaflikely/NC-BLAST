@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-05 | session: fix stale closure in saveCombosToStorage — workerCombos now read via ref so previous combos are never wiped by a race condition -->
+<!-- NC BLAST index.html | last updated: 2026-06-05 | session: fix stale closure in saveCombosToStorage; shuffle timer now shows current set/match score and win condition -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12747,7 +12747,7 @@ function ComboLabel({blade, ratchet, bit, color, color2, empty, emptyText}) {
   );
 }
 
-function ShuffleTimerInner({onDismiss}){
+function ShuffleTimerInner({onDismiss, p1, p2, sets, pts, need, curSet, config}){
   const TOTAL = 60;
   const [seconds, setSeconds] = useState(TOTAL);
   const [expired, setExpired] = useState(false);
@@ -12802,7 +12802,49 @@ function ShuffleTimerInner({onDismiss}){
 
   return (
     <div style={{position:"fixed",inset:0,background:"var(--bg-solid)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:600,padding:"24px",gap:0}}>
-      <p style={{fontSize:11,fontWeight:700,letterSpacing:3,color:"var(--text-muted)",textTransform:"uppercase",marginBottom:20}}>Shuffle Order Selection</p>
+      <p style={{fontSize:11,fontWeight:700,letterSpacing:3,color:"var(--text-muted)",textTransform:"uppercase",marginBottom:12}}>Shuffle Order Selection</p>
+
+      {/* Match state summary — visible during shuffle so judges can answer player questions */}
+      {p1&&p2&&(()=>{
+        const isBO3plus = config&&config.bo>1;
+        const ptLimit = config&&config.pts>0?config.pts:null;
+        const p1Color = "#3B82F6";
+        const p2Color = "#EF4444";
+        return (
+          <div style={{width:"100%",maxWidth:340,marginBottom:16,background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:14,overflow:"hidden"}}>
+            {/* Set score row — only shown in BO3+ */}
+            {isBO3plus&&(
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 14px 6px",borderBottom:"1px solid var(--border2)"}}>
+                <span style={{fontSize:11,fontWeight:700,color:p1Color,flex:1,textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:110}}>{p1}</span>
+                <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                  <span style={{fontSize:22,fontWeight:900,color:p1Color,minWidth:24,textAlign:"center"}}>{sets[0]}</span>
+                  <span style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",letterSpacing:1}}>SETS</span>
+                  <span style={{fontSize:22,fontWeight:900,color:p2Color,minWidth:24,textAlign:"center"}}>{sets[1]}</span>
+                </div>
+                <span style={{fontSize:11,fontWeight:700,color:p2Color,flex:1,textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:110}}>{p2}</span>
+              </div>
+            )}
+            {/* Current set point score */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:isBO3plus?"8px 14px 10px":"10px 14px"}}>
+              {!isBO3plus&&<span style={{fontSize:11,fontWeight:700,color:p1Color,flex:1,textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:110}}>{p1}</span>}
+              {isBO3plus&&<span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)",flex:1,textAlign:"left"}}>Set {curSet}</span>}
+              <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                <span style={{fontSize:28,fontWeight:900,color:p1Color,minWidth:28,textAlign:"center"}}>{pts[0]}</span>
+                <span style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",letterSpacing:1}}>{ptLimit?"PTS":"–"}</span>
+                <span style={{fontSize:28,fontWeight:900,color:p2Color,minWidth:28,textAlign:"center"}}>{pts[1]}</span>
+              </div>
+              {!isBO3plus&&<span style={{fontSize:11,fontWeight:700,color:p2Color,flex:1,textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:110}}>{p2}</span>}
+              {isBO3plus&&<span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)",flex:1,textAlign:"right"}}>First to {ptLimit||"∞"}</span>}
+            </div>
+            {/* Win condition reminder */}
+            <div style={{background:"var(--bg-tint,rgba(0,0,0,0.03))",borderTop:"1px solid var(--border2)",padding:"5px 14px",textAlign:"center"}}>
+              <span style={{fontSize:10,fontWeight:600,color:"var(--text-faint)",letterSpacing:0.3}}>
+                {isBO3plus?`First to ${need} set${need>1?"s":""} wins the match`:"First to reach point limit wins"}
+              </span>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Stopwatch SVG — hold to pause */}
       <div {...holdEvents} style={{cursor:"pointer",userSelect:"none",WebkitUserSelect:"none",touchAction:"none"}}>
@@ -14682,7 +14724,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   // ── Shuffle Timer Screen ────────────────────────────────────────────────────
   if(shuffleTimer){
     const dismissTimer = () => { pushOverlay({shuffling:false}); setShuffleTimer(null); setUsed1([]); setUsed2([]); if(shuffleTimer==="active"){ setShuf(s=>s+1); } };
-    return <ShuffleTimerInner onDismiss={dismissTimer}/>;
+    return <ShuffleTimerInner onDismiss={dismissTimer} p1={p1} p2={p2} sets={sets} pts={pts} need={need} curSet={curSet} config={config}/>;
   }
 
   // ── Side Assignment Modal ──────────────────────────────────────────────────
