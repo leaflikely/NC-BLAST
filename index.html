@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-05 | session: loginMode (solo/duo) set in org view, judge login auto-applies it; floater badge shows F not J in station view; stale closure fix; shuffle timer score display -->
+<!-- NC BLAST index.html | last updated: 2026-06-05 | session: loginMode (solo/duo) set in org view, judge login auto-applies it; floater badge shows F not J in station view; stale closure fix; shuffle timer score display; duo handoff method picker (same device vs new device) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13018,6 +13018,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const [scannerOpen,setScannerOpen] = useState(false);         // camera QR scanner open
   const [handoffPreview,setHandoffPreview] = useState(null);    // { p1, p2, pts, sets, curSet, token } preview card before accept
   const scanVideoRef = useRef(null);   // <video> for getUserMedia stream
+  const [handoffMethodPicker,setHandoffMethodPicker] = useState(false); // duo mode: show "new device vs same device" choice
+  const [handoffSameDeviceConfirm,setHandoffSameDeviceConfirm] = useState(null); // name of judge who just took over
   const scanCanvasRef = useRef(null);  // offscreen canvas for frame sampling
   const scanIntervalRef = useRef(null);// kept for cleanup compat
   const scanStreamRef = useRef(null);  // MediaStream ref so we can stop it
@@ -14479,6 +14481,63 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         </div>
 
         {/* ── Scanner modal and handoff preview — outside tabs so they work from any state ── */}
+        {/* ── Scanner modal and handoff preview — outside tabs so they work from any state ── */}
+
+        {/* ── Duo handoff: choose method ──────────────────────────────────── */}
+        {handoffMethodPicker&&sharedJudges&&(()=>{
+          const otherJudge = judge===sharedJudges.judgeA ? sharedJudges.judgeB : sharedJudges.judgeA;
+          const doSameDevice = () => {
+            setHandoffMethodPicker(false);
+            setJudge(otherJudge);
+            setHandoffSameDeviceConfirm(otherJudge);
+            setTimeout(() => setHandoffSameDeviceConfirm(null), 3000);
+          };
+          const doNewDevice = () => {
+            setHandoffMethodPicker(false);
+            startHandoff();
+          };
+          return (
+            <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.92)",zIndex:500,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+              <div style={{width:"100%",maxWidth:340,background:"var(--card)",borderRadius:20,overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,0.5)"}}>
+                <div style={{padding:"20px 20px 16px",borderBottom:"1px solid var(--border)"}}>
+                  <p style={{fontSize:11,fontWeight:700,letterSpacing:2,color:"var(--text-muted)",textTransform:"uppercase",margin:"0 0 4px"}}>Hand Off Match</p>
+                  <p style={{fontSize:18,fontWeight:900,color:"var(--text-primary)",margin:"0 0 4px"}}>{p1} vs {p2}</p>
+                  <p style={{fontSize:11,color:"var(--text-faint)",margin:0}}>Currently: <strong style={{color:"var(--text-secondary)"}}>{judge||"–"}</strong></p>
+                </div>
+                <div style={{padding:"16px 20px",display:"flex",flexDirection:"column",gap:10}}>
+                  <button onClick={doSameDevice}
+                    style={{width:"100%",padding:"16px 14px",borderRadius:14,border:"2px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
+                    <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px"}}>💊 Same Device</p>
+                    <p style={{fontSize:11,color:"var(--text-muted)",margin:0}}>Hand off to <strong style={{color:"var(--text-secondary)"}}>{otherJudge}</strong> — continue on this tablet</p>
+                  </button>
+                  <button onClick={doNewDevice}
+                    style={{width:"100%",padding:"16px 14px",borderRadius:14,border:"2px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
+                    <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:"0 0 2px"}}>📲 New Device</p>
+                    <p style={{fontSize:11,color:"var(--text-muted)",margin:0}}>Generate a QR code for another judge's device</p>
+                  </button>
+                </div>
+                <div style={{padding:"0 20px 20px"}}>
+                  <button onClick={()=>setHandoffMethodPicker(false)}
+                    style={{width:"100%",padding:"10px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-muted)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Same-device handoff confirm toast ───────────────────────────── */}
+        {handoffSameDeviceConfirm&&(
+          <div style={{position:"fixed",bottom:80,left:"50%",transform:"translateX(-50%)",zIndex:600,
+            background:"#15803D",color:"#fff",borderRadius:12,padding:"10px 20px",
+            boxShadow:"0 8px 24px rgba(0,0,0,0.4)",textAlign:"center",pointerEvents:"none",
+            display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap"}}>
+            <span style={{fontSize:16}}>✅</span>
+            <span style={{fontSize:13,fontWeight:800}}>Handed off to {handoffSameDeviceConfirm}</span>
+          </div>
+        )}
+
         {scannerOpen&&(
           <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.96)",zIndex:200,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
             <p style={{fontSize:16,fontWeight:900,color:"#fff",marginBottom:12}}>📷 Scan Handoff QR</p>
@@ -15116,7 +15175,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           </button>
           {/* Handoff QR button — tournament mode only, requires an active Challonge match */}
           {config.tm&&challongeMatchId&&(
-            <button type="button" onClick={()=>startHandoff()}
+            <button type="button" onClick={()=>{ if(sharedJudges) { setHandoffMethodPicker(true); } else { startHandoff(); } }}
               style={{flex:1,height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",color:"#E9D5FF",borderRadius:bp(6),fontSize:bf(13),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",lineHeight:1,minWidth:0}}
               title="Hand off match to another judge">
               🔀
