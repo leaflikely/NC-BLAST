@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-05 | session: loginMode (solo/duo) set in org view, judge login auto-applies it; floater badge shows F not J in station view; stale closure fix; shuffle timer score display; duo handoff method picker (same device vs new device) -->
+<!-- NC BLAST index.html | last updated: 2026-06-05 | session: loginMode solo/duo; floater F badge; stale combo closure fix; shuffle timer score; duo handoff method picker; deck builder order-independent advance flow -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13410,6 +13410,41 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
 
   // ── Handoff helpers ──────────────────────────────────────────────────────
   // Generates a random 6-character token (letters + numbers)
+
+  // ── Deck builder advance helper ──────────────────────────────────────────
+  // Called after a part is selected. Advances to the next step in the linear
+  // build flow regardless of which player started first.
+  // `who` = 1|2 (who we just finished a step for), `slot` = 0-2, `cat` = current category.
+  // `updatedD1`/`updatedD2` are the deck arrays AFTER the current pick is applied
+  // (state updates are async so we pass the fresh values directly).
+  const advanceDeckPicker = (who, slot, cat, updatedD1, updatedD2, returnToReview, name) => {
+    if (returnToReview) { setPicker(null); setDeckReview(true); return; }
+    const cats = ["blade","ratchet","bit"];
+    const catIdx = cats.indexOf(cat);
+    // Still steps remaining in this combo
+    if (catIdx < 2) {
+      const nextCat = (cat === "blade" && NO_RATCHET_BLADES.includes(name)) ? "bit" : cats[catIdx + 1];
+      openPicker({who, slot, cat: nextCat});
+      return;
+    }
+    // More combos remaining for this player
+    if (slot < 2) {
+      openPicker({who, slot: slot + 1, cat: "blade"});
+      return;
+    }
+    // This player just finished their last combo — check the other player
+    const otherWho = who === 1 ? 2 : 1;
+    const otherDeck = otherWho === 1 ? updatedD1 : updatedD2;
+    if (!otherDeck.every(comboReady)) {
+      // Other player still needs combos — jump to their first unfinished one
+      const firstUnfinished = otherDeck.findIndex(c => !comboReady(c));
+      openPicker({who: otherWho, slot: firstUnfinished >= 0 ? firstUnfinished : 0, cat: "blade"});
+    } else {
+      // Both players are done — go to review
+      setPicker(null);
+      setDeckReview(true);
+    }
+  };
   const makeHandoffToken = () => {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
     let t = "";
@@ -13945,26 +13980,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           onClick={()=>{
             if(taken)return;
             const nd=[...deck];nd[slot]={...nd[slot],[cat]:name};setDeck(nd);
-            // If editing a single part from review screen, return to review
-            if(picker.returnToReview){
-              setPicker(null);
-              setDeckReview(true);
-              return;
-            }
-            // Auto-advance to next step in linear flow
-            const cats=["blade","ratchet","bit"];
-            const catIdx=cats.indexOf(cat);
-            if(catIdx<2){
-              const nextCat=(cat==="blade"&&NO_RATCHET_BLADES.includes(name))?"bit":cats[catIdx+1];
-              openPicker({who,slot,cat:nextCat});
-            } else if(slot<2){
-              openPicker({who,slot:slot+1,cat:"blade"});
-            } else if(who===1){
-              openPicker({who:2,slot:0,cat:"blade"});
-            } else {
-              setPicker(null);
-              setDeckReview(true);
-            }
+            // Build fresh deck refs to pass to advanceDeckPicker (state updates are async)
+            const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
+            advanceDeckPicker(who,slot,cat,freshD1,freshD2,picker.returnToReview,name);
           }}
           style={{padding:"8px 4px",borderRadius:9,
             border:sel?`2px solid ${accent||cc}`:taken?"2px solid #E2E8F0":idleBorder,
@@ -14018,13 +14036,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                 onClick={()=>{
                   if(taken)return;
                   const nd=[...deck];nd[slot]={...nd[slot],[cat]:name};setDeck(nd);
-                  if(picker.returnToReview){setPicker(null);setDeckReview(true);return;}
-                  const cats=["blade","ratchet","bit"];
-                  const catIdx=cats.indexOf(cat);
-                  if(catIdx<2){const nextCat=(cat==="blade"&&NO_RATCHET_BLADES.includes(name))?"bit":cats[catIdx+1];openPicker({who,slot,cat:nextCat});}
-                  else if(slot<2){openPicker({who,slot:slot+1,cat:"blade"});}
-                  else if(who===1){openPicker({who:2,slot:0,cat:"blade"});}
-                  else{setPicker(null);setDeckReview(true);}
+                  const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
+                  advanceDeckPicker(who,slot,cat,freshD1,freshD2,picker.returnToReview,name);
                 }}
                 style={{flex:1,minWidth:0,borderRadius:9,
                   border:sel?`2px solid ${cc}`:taken?"2px solid var(--border)":isTopGroup?`2px solid ${cc}50`:"2px solid var(--border2)",
@@ -14090,13 +14103,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                         onClick={()=>{
                           if(taken)return;
                           const nd=[...deck];nd[slot]={...nd[slot],[cat]:name};setDeck(nd);
-                          if(picker.returnToReview){setPicker(null);setDeckReview(true);return;}
-                          const cats=["blade","ratchet","bit"];
-                          const catIdx=cats.indexOf(cat);
-                          if(catIdx<2){const nextCat=(cat==="blade"&&NO_RATCHET_BLADES.includes(name))?"bit":cats[catIdx+1];openPicker({who,slot,cat:nextCat});}
-                          else if(slot<2){openPicker({who,slot:slot+1,cat:"blade"});}
-                          else if(who===1){openPicker({who:2,slot:0,cat:"blade"});}
-                          else{setPicker(null);setDeckReview(true);}
+                          const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
+                          advanceDeckPicker(who,slot,cat,freshD1,freshD2,picker.returnToReview,name);
                         }}
                         style={{flex:1,minWidth:0,height:"100%",borderRadius:9,
                           border:sel?`2px solid ${cc}`:taken?"2px solid var(--border)":`2px solid ${cc}50`,
@@ -14149,13 +14157,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                         onClick={()=>{
                           if(taken)return;
                           const nd=[...deck];nd[slot]={...nd[slot],[cat]:name};setDeck(nd);
-                          if(picker.returnToReview){setPicker(null);setDeckReview(true);return;}
-                          const cats=["blade","ratchet","bit"];
-                          const catIdx=cats.indexOf(cat);
-                          if(catIdx<2){const nextCat=(cat==="blade"&&NO_RATCHET_BLADES.includes(name))?"bit":cats[catIdx+1];openPicker({who,slot,cat:nextCat});}
-                          else if(slot<2){openPicker({who,slot:slot+1,cat:"blade"});}
-                          else if(who===1){openPicker({who:2,slot:0,cat:"blade"});}
-                          else{setPicker(null);setDeckReview(true);}
+                          const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
+                          advanceDeckPicker(who,slot,cat,freshD1,freshD2,picker.returnToReview,name);
                         }}
                         style={{flex:1,minWidth:0,height:"100%",borderRadius:9,
                           border:sel?`2px solid ${cc}`:taken?"2px solid var(--border)":"2px solid var(--border2)",
@@ -14239,10 +14242,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                         const nd=who===1?[...d1]:[...d2];
                         nd[slot]={blade:c.blade,ratchet:c.ratchet,bit:c.bit};
                         if(who===1)setD1(nd); else setD2(nd);
-                        if(picker?.returnToReview){ setPicker(null); setDeckReview(true); return; }
-                        if(slot<2){ openPicker({who,slot:slot+1,cat:"blade"}); }
-                        else if(who===1){ openPicker({who:2,slot:0,cat:"blade"}); }
-                        else { setPicker(null); setDeckReview(true); }
+                        const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
+                        // quick-pick fills a whole combo — cat is effectively "bit" (final step)
+                        advanceDeckPicker(who,slot,"bit",freshD1,freshD2,picker?.returnToReview,c.bit);
                       }}
                       style={{padding:"8px 4px",borderRadius:9,border:`2px solid ${anyTaken?"var(--border)":bladeColor+"50"}`,background:anyTaken?"var(--surface3)":bladeColor+"10",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2}}>
                       <span style={{fontSize:13,fontWeight:800}}>{c.blade}</span>
@@ -14274,11 +14276,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                       const nd=who===1?[...d1]:[...d2];
                       nd[slot]={blade:qc.blade,ratchet:qc.ratchet,bit:qc.bit};
                       if(who===1)setD1(nd); else setD2(nd);
-                      // advance past this combo entirely
-                      if(picker?.returnToReview){ setPicker(null); setDeckReview(true); return; }
-                      if(slot<2){ openPicker({who,slot:slot+1,cat:"blade"}); }
-                      else if(who===1){ openPicker({who:2,slot:0,cat:"blade"}); }
-                      else { setPicker(null); setDeckReview(true); }
+                      const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
+                      // quick-pick fills a whole combo — advance from bit (final step)
+                      advanceDeckPicker(who,slot,"bit",freshD1,freshD2,picker?.returnToReview,qc.bit);
                     }}
                     style={{padding:"8px 4px",borderRadius:9,border:`2px solid ${anyTaken?"var(--border)":bladeColor+"60"}`,background:anyTaken?"var(--surface3)":bladeColor+"12",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:52,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2}}>
                     <span style={{fontSize:13,fontWeight:800}}>{qc.blade}</span>
