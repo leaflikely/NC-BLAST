@@ -18141,13 +18141,14 @@ function OrgApp({onSwitchRole}) {
                               <div key={u} draggable
                                 onDragStart={e=>handleDragStart(e,u)}
                                 style={{
-                                  padding:"4px 10px",borderRadius:20,
+                                  padding:"3px 8px",borderRadius:20,
                                   background:sc.bg,border:`1.5px solid ${sc.border}`,
-                                  fontSize:11,fontWeight:700,color:sc.text,
-                                  cursor:"grab",userSelect:"none"
+                                  fontSize:10,fontWeight:700,color:sc.text,
+                                  cursor:"grab",userSelect:"none",
+                                  maxWidth:"100%",overflow:"hidden",
+                                  textOverflow:"ellipsis",whiteSpace:"nowrap"
                                 }}>
                                 {bracketName || u}
-                                {bracketName && <span style={{fontSize:9,opacity:0.7,fontWeight:500,marginLeft:3}}>({u})</span>}
                               </div>
                             );
                           })}
@@ -18618,12 +18619,31 @@ function OrgApp({onSwitchRole}) {
           return (
             <div style={{marginTop:16}}>
               {/* Header row */}
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-                <div>
-                  <p style={{fontSize:10,fontWeight:700,color:'var(--text-faint)',textTransform:'uppercase',letterSpacing:1,margin:'0 0 1px'}}>
-                    Match Call Helper
-                  </p>
-                  <p style={{fontSize:16,fontWeight:900,color:'var(--text-primary)',margin:0}}>Station Queues</p>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,gap:12,flexWrap:'wrap'}}>
+                <div style={{display:'flex',alignItems:'baseline',gap:14,flexWrap:'wrap',flex:1,minWidth:0}}>
+                  <div>
+                    <p style={{fontSize:10,fontWeight:700,color:'var(--text-faint)',textTransform:'uppercase',letterSpacing:1,margin:'0 0 1px'}}>
+                      Match Call Helper
+                    </p>
+                    <p style={{fontSize:16,fontWeight:900,color:'var(--text-primary)',margin:0}}>Station Queues</p>
+                  </div>
+                  {floaterUsers.length > 0 && (
+                    <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                      <span style={{fontSize:10,fontWeight:700,color:'var(--text-faint)',whiteSpace:'nowrap'}}>Floaters:</span>
+                      {floaterUsers.map(u => (
+                        <span key={u} style={{
+                          fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:10,
+                          background: isLive(getBN(u)) ? '#450A0A' : 'var(--surface2)',
+                          color: isLive(getBN(u)) ? '#FCA5A5' : 'var(--text-secondary)',
+                          border:`1px solid ${isLive(getBN(u)) ? '#DC2626' : 'var(--border2)'}`,
+                          whiteSpace:'nowrap'
+                        }}>
+                          {getBN(u)}{isLive(getBN(u)) ? ' ▶' : ''}
+                        </span>
+                      ))}
+                      <span style={{fontSize:9,color:'var(--text-faint)'}}>{floatersFree}/{floaterUsers.length} free</span>
+                    </div>
+                  )}
                 </div>
                 <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
                   {/* Judges First / Judges Last toggle */}
@@ -18659,7 +18679,7 @@ function OrgApp({onSwitchRole}) {
               )}
 
               {queuesGenerated && (
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(340px,1fr))',gap:10,alignItems:'start'}}>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,alignItems:'start'}}>
                   {STADIUM_LETTERS.map(letter => {
                     const sc = STADIUM_COLORS[letter];
                     const queueIds = stationQueues[letter] || [];
@@ -18833,25 +18853,7 @@ function OrgApp({onSwitchRole}) {
                     );
                   })}
 
-                  {/* Floater summary */}
-                  {floaterUsers.length > 0 && (
-                    <div style={{padding:'9px 12px',borderRadius:10,border:'1px solid var(--border)',background:'var(--surface)',display:'flex',alignItems:'center',gap:10}}>
-                      <span style={{fontSize:11,fontWeight:700,color:'var(--text-faint)'}}>Floaters:</span>
-                      {floaterUsers.map(u => (
-                        <span key={u} style={{
-                          fontSize:10,fontWeight:700,padding:'2px 9px',borderRadius:10,
-                          background: isLive(getBN(u)) ? '#450A0A' : 'var(--surface2)',
-                          color: isLive(getBN(u)) ? '#FCA5A5' : 'var(--text-secondary)',
-                          border:`1px solid ${isLive(getBN(u)) ? '#DC2626' : 'var(--border2)'}`
-                        }}>
-                          {getBN(u)}{isLive(getBN(u)) ? ' ▶' : ''}
-                        </span>
-                      ))}
-                      <span style={{fontSize:10,color:'var(--text-faint)',marginLeft:'auto'}}>
-                        {floatersFree}/{floaterUsers.length} free
-                      </span>
-                    </div>
-                  )}
+
                 </div>
               )}
             </div>
