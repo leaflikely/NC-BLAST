@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-08 | session: station queue lock button; judges-first/last toggle; refresh fixes live+pairings+prune; move-to-station button; name map assign button -->
+<!-- NC BLAST index.html | last updated: 2026-06-08 | session: station queue lock button; judges-first/last toggle; refresh fixes; move-to-station button; name map assign button; org desktop layout 2-col; name map available in all login modes; floater F badge removed -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -17559,7 +17559,7 @@ function OrgApp({onSwitchRole}) {
       )}
 
       {/* ── Header ─────────────────────────────────────────────── */}
-      <div style={{background:"var(--surface)",borderBottom:"1px solid var(--border)",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+      <div style={{background:"var(--surface)",borderBottom:"1px solid var(--border)",padding:"12px 24px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
         <button onClick={onSwitchRole} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",lineHeight:1,padding:"2px 4px"}}>←</button>
         <div style={{flex:1,minWidth:0}}>
           <p style={{fontSize:11,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.8,margin:0}}>Organizer View</p>
@@ -17578,7 +17578,7 @@ function OrgApp({onSwitchRole}) {
 
 
       {/* ── Body ───────────────────────────────────────────────── */}
-      <div style={{flex:1,overflowY:"auto",padding:"12px 14px 32px"}}>
+      <div style={{flex:1,overflowY:"auto",padding:"16px 24px 40px",maxWidth:1100,width:"100%",margin:"0 auto",boxSizing:"border-box",alignSelf:"stretch"}}>
 
       {/* ── Roster Sync ─────────────────────────────────────────── */}
       {(() => {
@@ -17734,8 +17734,11 @@ function OrgApp({onSwitchRole}) {
         );
       })()}
 
+      {/* ── Management grid: Login Mode + Whitelist + Stadium Assignment ── */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12,marginBottom:14,alignItems:"start"}}>
+
       {/* ── Login Mode ───────────────────────────────────────────── */}
-      <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",marginBottom:14,border:"1px solid var(--border)"}}>
+      <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",border:"1px solid var(--border)"}}>
         <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 4px"}}>Judge Login Mode</p>
         <p style={{fontSize:10,color:"var(--text-muted)",margin:"0 0 12px",lineHeight:1.5}}>
           Choose how judges log in at this event. <strong>Solo</strong> — each judge uses their own device and Challonge account. <strong>Duo</strong> — two judges share one tablet per station, no individual Challonge logins needed.
@@ -17762,7 +17765,7 @@ function OrgApp({onSwitchRole}) {
       </div>
 
       {/* ── Judge Whitelist ─────────────────────────────────────── */}
-      <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",marginBottom:14,border:"1px solid var(--border)"}}>
+      <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",border:"1px solid var(--border)"}}>
         <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:"0 0 4px"}}>Judge Whitelist</p>
         <p style={{fontSize:10,color:"var(--text-muted)",margin:"0 0 10px",lineHeight:1.5}}>
           Only judges on this list can log in and score matches. One Challonge username per line. Only the tournament organizer can save changes.
@@ -17801,7 +17804,7 @@ function OrgApp({onSwitchRole}) {
             style={{flex:2,padding:"9px 0",borderRadius:9,border:"none",background:"#3B82F6",color:"#fff",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:(jwLoading||!orgOwnerUsername)?"not-allowed":"pointer",opacity:(jwLoading||!orgOwnerUsername)?0.4:1}}>
             Save Whitelist
           </button>
-          {judgeWhitelist.length > 0 && loginMode !== "duo" && (
+          {judgeWhitelist.length > 0 && (
             <button onClick={()=>openNameMap()}
               style={{flex:1,padding:"9px 0",borderRadius:9,border:"2px solid var(--border2)",background:"var(--surface)",color:"var(--text-secondary)",fontSize:12,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
               🔗 Name Map
@@ -18159,6 +18162,8 @@ function OrgApp({onSwitchRole}) {
         );
       })()}
 
+      </div>{/* end management grid */}
+
       {/* ── Matches      {/* ── Matches ────────────────────────────────────────────── */}
       <React.Fragment>
 
@@ -18226,6 +18231,7 @@ function OrgApp({onSwitchRole}) {
           </div>
         )}
 
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:8,marginBottom:4}}>
         {roundMatches.map(m => {
           const live = getLiveState(m);
           const done = m.state === "complete";
@@ -18351,6 +18357,7 @@ function OrgApp({onSwitchRole}) {
             </div>
           );
         })}
+        </div>
 
         {pairings && roundMatches.length === 0 && (
           <div style={{textAlign:"center",padding:"40px 0",color:"var(--text-muted)"}}>
@@ -18652,7 +18659,7 @@ function OrgApp({onSwitchRole}) {
               )}
 
               {queuesGenerated && (
-                <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:10,alignItems:'start'}}>
                   {STADIUM_LETTERS.map(letter => {
                     const sc = STADIUM_COLORS[letter];
                     const queueIds = stationQueues[letter] || [];
@@ -18698,20 +18705,15 @@ function OrgApp({onSwitchRole}) {
                             const m = matchById[id];
                             if (!m) return null;
                             const type = classifyM(m);
-                            // Show "F" instead of "J" when the judge-side player is a floater
+                            // Floater matches display with generic non-judge labels (PvP / JvP / JvJ)
                             const badgeLabel = (() => {
                               if (type === 'PvP') return 'PvP';
                               if (type === 'JvJ') {
-                                const p1f = isFloater(m.player1_name), p2f = isFloater(m.player2_name);
-                                if (p1f && p2f) return 'FvF';
-                                if (p1f) return 'FvJ';
-                                if (p2f) return 'JvF';
+                                // Both are judges (floaters or stationed) — show JvJ
                                 return 'JvJ';
                               }
-                              // JvP — check which side is the judge
-                              const p1j = isJudgeName(m.player1_name);
-                              const judgeSideFloat = p1j ? isFloater(m.player1_name) : isFloater(m.player2_name);
-                              return judgeSideFloat ? 'FvP' : 'JvP';
+                              // JvP — floaters still show as JvP (they are judges)
+                              return 'JvP';
                             })();
                             const isNext = idx === 0;
                             const cov = isNext ? nextCoverage : { ok: true, flags: [] };
