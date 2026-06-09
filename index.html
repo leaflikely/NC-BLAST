@@ -17578,7 +17578,7 @@ function OrgApp({onSwitchRole}) {
 
 
       {/* ── Body ───────────────────────────────────────────────── */}
-      <div style={{flex:1,overflowY:"auto",padding:"16px 24px 40px",maxWidth:1100,width:"100%",margin:"0 auto",boxSizing:"border-box",alignSelf:"stretch"}}>
+      <div style={{flex:1,overflowY:"auto",padding:"16px 24px 40px",boxSizing:"border-box"}}>
 
       {/* ── Roster Sync ─────────────────────────────────────────── */}
       {(() => {
@@ -17735,7 +17735,7 @@ function OrgApp({onSwitchRole}) {
       })()}
 
       {/* ── Management grid: Login Mode + Whitelist + Stadium Assignment ── */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12,marginBottom:14,alignItems:"start"}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12,marginBottom:14,alignItems:"start"}}>
 
       {/* ── Login Mode ───────────────────────────────────────────── */}
       <div style={{background:"var(--card)",borderRadius:14,padding:"16px 14px",border:"1px solid var(--border)"}}>
@@ -18112,7 +18112,7 @@ function OrgApp({onSwitchRole}) {
                 </div>
 
                 {/* Stadium buckets */}
-                <div style={{display:"grid",gridTemplateColumns:"repeat(2, 1fr)",gap:8}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
                   {stadiumLetters.map(letter => {
                     const sc = STADIUM_COLORS[letter];
                     const membersInBucket = judgeWhitelist.filter(u => stadiumAssign[u] === letter);
@@ -18659,7 +18659,7 @@ function OrgApp({onSwitchRole}) {
               )}
 
               {queuesGenerated && (
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:10,alignItems:'start'}}>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(340px,1fr))',gap:10,alignItems:'start'}}>
                   {STADIUM_LETTERS.map(letter => {
                     const sc = STADIUM_COLORS[letter];
                     const queueIds = stationQueues[letter] || [];
