@@ -14752,37 +14752,60 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         <h1 style={S.title}>Deck Review</h1>
         <p style={S.sub}>Tap any part to change it</p>
         {[{who:1,name:p1,deck:d1,setDeck:setD1,cl:"#2563EB"},{who:2,name:p2,deck:d2,setDeck:setD2,cl:"#DC2626"}].map(pl=>(
-          <div key={pl.who} style={{...S.card,borderLeft:`4px solid ${pl.cl}`,marginBottom:12}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-              <p style={{fontSize:13,fontWeight:800,color:pl.cl,margin:0}}>{pl.name}</p>
-              {!pl.deck.every(comboReady)&&(
-                <button onClick={()=>openPicker({who:pl.who,slot:0,cat:"blade"})}
-                  style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:7,border:`1.5px solid ${pl.cl}`,background:`${pl.cl}14`,color:pl.cl,fontFamily:"'Outfit',sans-serif",cursor:"pointer",whiteSpace:"nowrap"}}>
-                  Record Deck →
-                </button>
-              )}
-              {pl.deck.every(comboReady)&&(
-                <span style={{fontSize:11,fontWeight:700,color:"#15803D",padding:"4px 10px",borderRadius:7,border:"1.5px solid #15803D",background:"#15803D14"}}>✓ Done</span>
-              )}
-            </div>
-            {[0,1,2].map(slot=>(
-              <div key={slot} style={{marginBottom:slot<2?8:0}}>
-                <p style={{fontSize:10,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,marginBottom:4}}>{comboNames[slot].toUpperCase()} COMBO</p>
-                <div style={{display:"flex",gap:6}}>
-                  {["blade","ratchet","bit"].map(cat=>{
-                    const cc={blade:"#EA580C",ratchet:"#1D4ED8",bit:"#15803D"}[cat];
-                    const val=pl.deck[slot][cat];
-                    return (
-                      <button key={cat} onClick={()=>openPicker({who:pl.who,slot,cat,returnToReview:true})}
-                        style={{flex:1,padding:"8px 4px",borderRadius:8,border:`2px solid ${val?cc:"#E2E8F0"}`,background:val?cc+"14":"var(--surface2)",color:val?cc:"var(--text-faint)",fontFamily:"'Outfit',sans-serif",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:44,gap:0}}>
-                        {val ? <PartLabel name={val} size={splitPartName(val,cat!=="bit").length>1?10:12} keepDash={cat!=="bit"}/> : <span style={{fontSize:12,fontWeight:700}}>—</span>}
-                      </button>
-                    );
-                  })}
-                </div>
+          {(()=>{
+            // A deck is fully blank when every combo has no parts at all submitted
+            const isBlank = pl.deck.every(c => !c.blade && !c.ratchet && !c.bit);
+            return (
+            <div key={pl.who} style={{...S.card,borderLeft:`4px solid ${pl.cl}`,marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                <p style={{fontSize:13,fontWeight:800,color:pl.cl,margin:0}}>{pl.name}</p>
+                {!pl.deck.every(comboReady)&&(
+                  <button onClick={()=>openPicker({who:pl.who,slot:0,cat:"blade"})}
+                    style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:7,border:`1.5px solid ${pl.cl}`,background:`${pl.cl}14`,color:pl.cl,fontFamily:"'Outfit',sans-serif",cursor:"pointer",whiteSpace:"nowrap"}}>
+                    Record Deck →
+                  </button>
+                )}
+                {pl.deck.every(comboReady)&&(
+                  <span style={{fontSize:11,fontWeight:700,color:"#15803D",padding:"4px 10px",borderRadius:7,border:"1.5px solid #15803D",background:"#15803D14"}}>✓ Done</span>
+                )}
               </div>
-            ))}
-          </div>
+              {isBlank && (
+                <p style={{fontSize:10,color:"var(--text-faint)",fontStyle:"italic",margin:"0 0 8px",lineHeight:1.4}}>
+                  Use <strong style={{color:pl.cl}}>Record Deck →</strong> to enter this player's deck. Individual part buttons become available once recording has started.
+                </p>
+              )}
+              {[0,1,2].map(slot=>(
+                <div key={slot} style={{marginBottom:slot<2?8:0}}>
+                  <p style={{fontSize:10,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,marginBottom:4}}>{comboNames[slot].toUpperCase()} COMBO</p>
+                  <div style={{display:"flex",gap:6}}>
+                    {["blade","ratchet","bit"].map(cat=>{
+                      const cc={blade:"#EA580C",ratchet:"#1D4ED8",bit:"#15803D"}[cat];
+                      const val=pl.deck[slot][cat];
+                      const disabled = isBlank;
+                      return (
+                        <button key={cat}
+                          onClick={disabled ? undefined : ()=>openPicker({who:pl.who,slot,cat,returnToReview:true})}
+                          style={{flex:1,padding:"8px 4px",borderRadius:8,
+                            border:`2px solid ${disabled?"var(--border)":val?cc:"#E2E8F0"}`,
+                            background:disabled?"var(--surface)":val?cc+"14":"var(--surface2)",
+                            color:disabled?"var(--text-faint)":val?cc:"var(--text-faint)",
+                            fontFamily:"'Outfit',sans-serif",
+                            cursor:disabled?"not-allowed":"pointer",
+                            display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                            minHeight:44,gap:0,
+                            opacity:disabled?0.35:1,
+                            userSelect:"none"
+                          }}>
+                          {val ? <PartLabel name={val} size={splitPartName(val,cat!=="bit").length>1?10:12} keepDash={cat!=="bit"}/> : <span style={{fontSize:12,fontWeight:700}}>—</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            );
+          })()}
         ))}
         <button style={{...S.pri,opacity:allDone?1:0.4}} disabled={!allDone} onClick={()=>{
           if(config.tm){setSideAssign({pickPriority:null});setSidePicker({priority:null});}
