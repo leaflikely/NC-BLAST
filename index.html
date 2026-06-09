@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-05 | session: loginMode solo/duo; floater F badge; stale combo closure fix; shuffle timer score; duo handoff method picker; deck builder order-independent advance flow -->
+<!-- NC BLAST index.html | last updated: 2026-06-08 | session: station queue lock button; judges-first/last toggle; refresh fixes live+pairings+prune; move-to-station button; name map assign button -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -17084,6 +17084,9 @@ function OrgApp({onSwitchRole}) {
   const [queueDragItem, setQueueDragItem] = useState(null);   // { matchId, fromStation }
   const [queueDragOver, setQueueDragOver] = useState(null);   // { station, afterIdx }
   const [queuesGenerated, setQueuesGenerated] = useState(false); // true once algo has run
+  const [lockedMatchIds, setLockedMatchIds] = useState(new Set()); // match IDs locked in place
+  const [judgesFirstMode, setJudgesFirstMode] = useState(true);   // true=JvP wave1, false=JvP last
+  const [moveMenuOpen, setMoveMenuOpen] = useState(null);         // matchId currently showing move picker, or null
 
   // ── Judge name map state (global KV: Challonge username → bracket display name) ────
   const [judgeNameMap, setJudgeNameMap]     = useState({});   // { "nghia2daizzo": "Nghia", ... }
@@ -17094,6 +17097,7 @@ function OrgApp({onSwitchRole}) {
   // Draft state while mapping tab is open — keyed by challonge username
   const [nameMapDraft, setNameMapDraft]     = useState({});   // { username: bracketName | null }
   const [nameMapDragOver, setNameMapDragOver] = useState(null); // username slot being dragged over
+  const [nameMapAssignMenu, setNameMapAssignMenu] = useState(null); // bracket name currently showing judge picker
   // Participants pulled for the current tournament (used as the bracket name pool)
   const [nameMapParticipants, setNameMapParticipants] = useState([]);
 
@@ -17887,13 +17891,41 @@ function OrgApp({onSwitchRole}) {
                   {unmatched.length === 0 && !allMapped && (
                     <p style={{fontSize:10,color:"var(--text-faint)",margin:"auto 0",fontStyle:"italic"}}>No bracket names loaded — check tournament connection</p>
                   )}
-                  {unmatched.map(p => (
-                    <div key={p} draggable
-                      onDragStart={e=>handleDragStartName(e,p)}
-                      style={{padding:"5px 12px",borderRadius:20,background:"var(--surface2)",border:"1.5px solid var(--border2)",fontSize:11,fontWeight:700,color:"var(--text-primary)",cursor:"grab",userSelect:"none"}}>
-                      {p}
-                    </div>
-                  ))}
+                  {unmatched.map(p => {
+                    const isAssignOpen = nameMapAssignMenu === p;
+                    const unmappedJudges = judgeWhitelist.filter(u => !nameMapDraft[u]);
+                    return (
+                      <div key={p} style={{display:'flex',flexDirection:'column',gap:0}}>
+                        <div style={{display:'flex',alignItems:'center',gap:5,padding:"4px 10px 4px 14px",borderRadius:isAssignOpen?'20px 20px 6px 6px':'20px',background:"var(--surface2)",border:"1.5px solid var(--border2)"}}>
+                          <span draggable onDragStart={e=>handleDragStartName(e,p)}
+                            style={{fontSize:11,fontWeight:700,color:"var(--text-primary)",cursor:"grab",userSelect:"none",flex:1}}>
+                            {p}
+                          </span>
+                          <button
+                            onClick={()=>setNameMapAssignMenu(isAssignOpen?null:p)}
+                            style={{background:isAssignOpen?'#3B82F6':'none',border:`1px solid ${isAssignOpen?'#3B82F6':'var(--border2)'}`,borderRadius:5,padding:'2px 6px',cursor:'pointer',fontSize:9,fontWeight:800,color:isAssignOpen?'#fff':'var(--text-faint)',fontFamily:"'Outfit',sans-serif",flexShrink:0}}>
+                            {isAssignOpen ? '✕' : 'Assign →'}
+                          </button>
+                        </div>
+                        {isAssignOpen && (
+                          <div style={{background:'var(--surface)',border:'1.5px solid var(--border2)',borderTop:'none',borderRadius:'0 0 10px 10px',padding:'6px 10px',display:'flex',flexDirection:'column',gap:4}}>
+                            <p style={{fontSize:9,fontWeight:700,color:'var(--text-faint)',margin:'0 0 3px',textTransform:'uppercase',letterSpacing:0.5}}>Assign to judge:</p>
+                            {unmappedJudges.length === 0 && <p style={{fontSize:10,color:'var(--text-faint)',fontStyle:'italic',margin:0}}>All judges already have a name assigned</p>}
+                            {unmappedJudges.map(u => (
+                              <button key={u}
+                                onClick={()=>{
+                                  setNameMapDraft(prev=>({...prev,[u]:p}));
+                                  setNameMapAssignMenu(null);
+                                }}
+                                style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--border2)',background:'var(--surface2)',color:'var(--text-primary)',fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:'pointer',textAlign:'left'}}>
+                                {u}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Judge rows */}
@@ -18138,7 +18170,25 @@ function OrgApp({onSwitchRole}) {
           </div>
           <button onClick={async()=>{
             setLoadingPairings(true);
-            try { const d = await workerGet(`/pairings?slug=${encodeURIComponent(slug)}&bypass_cache=1`); setPairings(d.pairings||[]); } catch(_){}
+            try {
+              const [pairData, liveData] = await Promise.all([
+                workerGet(`/pairings?slug=${encodeURIComponent(slug)}&bypass_cache=1`),
+                workerGet(`/overlay/all`).catch(()=>({slots:[]})),
+              ]);
+              const freshPairings = pairData.pairings || [];
+              setPairings(freshPairings);
+              setLiveSlots(liveData.slots || []);
+              // Prune completed matches from queues so they stop reappearing
+              const completeIds = new Set(freshPairings.filter(m => m.state === 'complete').map(m => m.id));
+              if (completeIds.size > 0) {
+                setStationQueues(prev => {
+                  const next = {};
+                  Object.keys(prev).forEach(l => { next[l] = (prev[l]||[]).filter(id => !completeIds.has(id)); });
+                  return next;
+                });
+                setLockedMatchIds(prev => { const n = new Set(prev); completeIds.forEach(id => n.delete(id)); return n; });
+              }
+            } catch(_){}
             finally { setLoadingPairings(false); }
           }} disabled={loadingPairings} style={{background:"none",border:"2px solid var(--border)",borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,color:"var(--text-muted)",fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
             {loadingPairings?"…":"↻"}
@@ -18402,12 +18452,17 @@ function OrgApp({onSwitchRole}) {
           // Builds a suggested ordered list of match IDs for each station.
           // Only runs if queues haven't been manually set or algo needs reset.
           const generateQueues = () => {
+            // Seed queues: preserve locked matches in their current stations first
             const queues = {};
-            STADIUM_LETTERS.forEach(l => { queues[l] = []; });
+            STADIUM_LETTERS.forEach(l => {
+              queues[l] = (stationQueues[l] || []).filter(id => lockedMatchIds.has(id));
+            });
+            const lockedSet = new Set(STADIUM_LETTERS.flatMap(l => queues[l]));
 
             const pending = roundMatches.filter(m => {
               if (m.state === 'complete') return false;
               if (getLiveState(m)) return false;
+              if (lockedSet.has(m.id)) return false; // already placed as locked
               return true;
             });
 
@@ -18424,38 +18479,50 @@ function OrgApp({onSwitchRole}) {
               queues[shortest].push(matchId);
             };
 
-            // Step 1 — JvP matches go to the station whose judges are playing in them.
-            // This is fixed — a judge's match belongs at their own station.
-            STADIUM_LETTERS.forEach(letter => {
-              const judges = judgesAt(letter);
-              const stationJvP = jvpMatches.filter(m => {
-                const p1u = displayToUsername(m.player1_name);
-                const p2u = displayToUsername(m.player2_name);
-                return (p1u && judges.includes(p1u)) || (p2u && judges.includes(p2u));
+            if (judgesFirstMode) {
+              // Step 1 — JvP matches go to the station whose judges are playing in them (wave 1).
+              STADIUM_LETTERS.forEach(letter => {
+                const judges = judgesAt(letter);
+                const stationJvP = jvpMatches.filter(m => {
+                  const p1u = displayToUsername(m.player1_name);
+                  const p2u = displayToUsername(m.player2_name);
+                  return (p1u && judges.includes(p1u)) || (p2u && judges.includes(p2u));
+                });
+                stationJvP.sort((a, b) => {
+                  const juA = displayToUsername(a.player1_name) || displayToUsername(a.player2_name);
+                  const juB = displayToUsername(b.player1_name) || displayToUsername(b.player2_name);
+                  return getBN(juA || '').localeCompare(getBN(juB || ''));
+                });
+                stationJvP.forEach(m => queues[letter].push(m.id));
               });
-              // Wave 1 first judge alphabetically, wave 2 second — org can reorder
-              stationJvP.sort((a, b) => {
-                const juA = displayToUsername(a.player1_name) || displayToUsername(a.player2_name);
-                const juB = displayToUsername(b.player1_name) || displayToUsername(b.player2_name);
-                return getBN(juA || '').localeCompare(getBN(juB || ''));
+              // Step 1b — floater JvP matches
+              const assignedJvP = new Set(STADIUM_LETTERS.flatMap(l => queues[l]));
+              jvpMatches.filter(m => !assignedJvP.has(m.id)).forEach(m => pushToShortest(m.id));
+              // Step 2 — PvP matches
+              pvpMatches.forEach(m => pushToShortest(m.id));
+            } else {
+              // Judges Last mode — PvP first, then JvP, then JvJ
+              pvpMatches.forEach(m => pushToShortest(m.id));
+              // JvP: station-aware placement
+              STADIUM_LETTERS.forEach(letter => {
+                const judges = judgesAt(letter);
+                const stationJvP = jvpMatches.filter(m => {
+                  const p1u = displayToUsername(m.player1_name);
+                  const p2u = displayToUsername(m.player2_name);
+                  return (p1u && judges.includes(p1u)) || (p2u && judges.includes(p2u));
+                });
+                stationJvP.sort((a, b) => {
+                  const juA = displayToUsername(a.player1_name) || displayToUsername(a.player2_name);
+                  const juB = displayToUsername(b.player1_name) || displayToUsername(b.player2_name);
+                  return getBN(juA || '').localeCompare(getBN(juB || ''));
+                });
+                stationJvP.forEach(m => queues[letter].push(m.id));
               });
-              stationJvP.forEach(m => queues[letter].push(m.id));
-            });
+              const assignedJvP2 = new Set(STADIUM_LETTERS.flatMap(l => queues[l]));
+              jvpMatches.filter(m => !assignedJvP2.has(m.id)).forEach(m => pushToShortest(m.id));
+            }
 
-            // Step 1b — JvP matches involving floaters (judges with no assigned station).
-            // These were skipped in Step 1 because floaters don't belong to any station's judge list.
-            // Assign them to the shortest queue just like PvP matches.
-            const assignedJvP = new Set(
-              STADIUM_LETTERS.flatMap(l => queues[l])
-            );
-            const unassignedJvP = jvpMatches.filter(m => !assignedJvP.has(m.id));
-            unassignedJvP.forEach(m => pushToShortest(m.id));
-
-            // Step 2 — PvP matches fill to balance queue lengths.
-            // Always add to whichever station is shortest at that moment.
-            pvpMatches.forEach(m => pushToShortest(m.id));
-
-            // Step 3 — JvJ matches go last (wave 3+), also balanced.
+            // JvJ matches always go last
             jvjMatches.forEach(m => pushToShortest(m.id));
 
             return queues;
@@ -18551,9 +18618,15 @@ function OrgApp({onSwitchRole}) {
                   </p>
                   <p style={{fontSize:16,fontWeight:900,color:'var(--text-primary)',margin:0}}>Station Queues</p>
                 </div>
-                <div style={{display:'flex',gap:6}}>
+                <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'flex-end'}}>
+                  {/* Judges First / Judges Last toggle */}
+                  <button onClick={()=>setJudgesFirstMode(m=>!m)}
+                    title={judgesFirstMode ? "Judges play their matches first (wave 1) — tap to flip" : "Judges play their matches last — tap to flip"}
+                    style={{padding:'5px 10px',borderRadius:8,border:`1px solid ${judgesFirstMode?'#3B82F6':'var(--border)'}`,background:judgesFirstMode?'#1E3A5F':'none',color:judgesFirstMode?'#93C5FD':'var(--text-faint)',fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:'pointer'}}>
+                    {judgesFirstMode ? '👨‍⚖️ First' : '👨‍⚖️ Last'}
+                  </button>
                   {queuesGenerated && (
-                    <button onClick={()=>{setQueuesGenerated(false);setStationQueues({});}}
+                    <button onClick={()=>{setQueuesGenerated(false);setStationQueues({});setLockedMatchIds(new Set());setMoveMenuOpen(null);}}
                       style={{padding:'5px 11px',borderRadius:8,border:'1px solid var(--border)',background:'none',color:'var(--text-faint)',fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:'pointer'}}>
                       Reset
                     </button>
@@ -18562,6 +18635,7 @@ function OrgApp({onSwitchRole}) {
                     const q = generateQueues();
                     setStationQueues(q);
                     setQueuesGenerated(true);
+                    setMoveMenuOpen(null);
                   }}
                     style={{padding:'5px 13px',borderRadius:8,border:'none',background:'#3B82F6',color:'#fff',fontSize:11,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:'pointer'}}>
                     {queuesGenerated ? '↻ Regenerate' : '⚡ Generate Queues'}
@@ -18617,7 +18691,7 @@ function OrgApp({onSwitchRole}) {
                         {/* Queue items */}
                         <div style={{padding:'8px 10px',background:'var(--surface)'}}>
                           {visibleIds.length === 0 && (
-                            <p style={{fontSize:11,color:'var(--text-faint)',margin:'4px 0',fontStyle:'italic',textAlign:'center'}}>Queue empty — drag matches here</p>
+                            <p style={{fontSize:11,color:'var(--text-faint)',margin:'4px 0',fontStyle:'italic',textAlign:'center'}}>Queue empty — move matches here using the Move → button</p>
                           )}
 
                           {visibleIds.map((id, idx) => {
@@ -18644,6 +18718,9 @@ function OrgApp({onSwitchRole}) {
                             const isBlocked = isNext && !cov.ok;
                             const isDragging = queueDragItem?.matchId === id;
                             const isDropTarget = queueDragOver?.station === letter && queueDragOver?.afterIdx === idx;
+                            const isLocked = lockedMatchIds.has(id);
+                            const isMoveOpen = moveMenuOpen === id;
+                            const otherStations = STADIUM_LETTERS.filter(l => l !== letter);
 
                             return (
                               <React.Fragment key={id}>
@@ -18651,40 +18728,86 @@ function OrgApp({onSwitchRole}) {
                                 {isDropTarget && (
                                   <div style={{height:3,borderRadius:2,background:'#3B82F6',margin:'2px 0'}}/>
                                 )}
-                                <div
-                                  draggable
-                                  onDragStart={e => onQueueDragStart(e, id, letter)}
-                                  onDragEnd={onQueueDragEnd}
-                                  onDragOver={e => onQueueDragOver(e, letter, idx)}
-                                  onDrop={e => onQueueDrop(e, letter, idx)}
-                                  style={{
-                                    display:'flex',alignItems:'center',gap:8,
-                                    padding:'8px 10px',borderRadius:9,marginBottom:4,
-                                    border:`1.5px solid ${isBlocked ? '#DC2626' : isNext ? sc.bg+'60' : 'var(--border)'}`,
-                                    background: isBlocked ? '#450A0A' : isNext ? sc.bg+'10' : 'var(--surface2)',
-                                    opacity: isDragging ? 0.4 : 1,
-                                    cursor:'grab',
-                                  }}>
-                                  {/* Position number */}
-                                  <span style={{fontSize:10,fontWeight:800,color: isNext ? sc.bg : 'var(--text-faint)',width:16,textAlign:'center',flexShrink:0}}>
-                                    {idx+1}
-                                  </span>
-                                  {/* Type badge */}
-                                  <span style={{fontSize:9,fontWeight:800,padding:'2px 6px',borderRadius:5,border:`1px solid ${typeColor(type)}50`,color:typeColor(type),flexShrink:0}}>
-                                    {badgeLabel}
-                                  </span>
-                                  {/* Match names */}
-                                  <span style={{fontSize:12,fontWeight:700,color: isBlocked ? '#FCA5A5' : 'var(--text-primary)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                                    {m.player1_name||'?'} <span style={{fontWeight:400,color:'var(--text-faint)'}}>vs</span> {m.player2_name||'?'}
-                                  </span>
-                                  {/* Flags */}
-                                  {cov.flags.length > 0 && (
-                                    <span style={{fontSize:9,fontWeight:700,color:'#F59E0B',flexShrink:0,textAlign:'right',maxWidth:90,lineHeight:1.3}}>
-                                      {cov.flags[0]}
+                                <div style={{marginBottom:4}}>
+                                  <div
+                                    draggable={!isLocked}
+                                    onDragStart={e => !isLocked && onQueueDragStart(e, id, letter)}
+                                    onDragEnd={onQueueDragEnd}
+                                    onDragOver={e => onQueueDragOver(e, letter, idx)}
+                                    onDrop={e => onQueueDrop(e, letter, idx)}
+                                    style={{
+                                      display:'flex',alignItems:'center',gap:6,
+                                      padding:'7px 8px',borderRadius:9,
+                                      border:`1.5px solid ${isLocked ? sc.bg+'90' : isBlocked ? '#DC2626' : isNext ? sc.bg+'60' : 'var(--border)'}`,
+                                      background: isBlocked ? '#450A0A' : isNext ? sc.bg+'10' : 'var(--surface2)',
+                                      opacity: isDragging ? 0.4 : 1,
+                                      cursor: isLocked ? 'default' : 'grab',
+                                    }}>
+                                    {/* Position number */}
+                                    <span style={{fontSize:10,fontWeight:800,color: isNext ? sc.bg : 'var(--text-faint)',width:14,textAlign:'center',flexShrink:0}}>
+                                      {idx+1}
                                     </span>
-                                  )}
-                                  {isBlocked && (
-                                    <span style={{fontSize:9,fontWeight:700,color:'#EF4444',flexShrink:0}}>BLOCKED</span>
+                                    {/* Type badge */}
+                                    <span style={{fontSize:9,fontWeight:800,padding:'2px 5px',borderRadius:5,border:`1px solid ${typeColor(type)}50`,color:typeColor(type),flexShrink:0}}>
+                                      {badgeLabel}
+                                    </span>
+                                    {/* Match names */}
+                                    <span style={{fontSize:11,fontWeight:700,color: isBlocked ? '#FCA5A5' : 'var(--text-primary)',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                      {m.player1_name||'?'} <span style={{fontWeight:400,color:'var(--text-faint)'}}>vs</span> {m.player2_name||'?'}
+                                    </span>
+                                    {/* Flags */}
+                                    {cov.flags.length > 0 && !isMoveOpen && (
+                                      <span style={{fontSize:9,fontWeight:700,color:'#F59E0B',flexShrink:0,textAlign:'right',maxWidth:80,lineHeight:1.3}}>
+                                        {cov.flags[0]}
+                                      </span>
+                                    )}
+                                    {isBlocked && !isMoveOpen && (
+                                      <span style={{fontSize:9,fontWeight:700,color:'#EF4444',flexShrink:0}}>BLOCKED</span>
+                                    )}
+                                    {/* Lock button */}
+                                    <button
+                                      onClick={()=>setLockedMatchIds(prev=>{
+                                        const n = new Set(prev);
+                                        if(n.has(id)) n.delete(id); else n.add(id);
+                                        return n;
+                                      })}
+                                      title={isLocked ? 'Unlock — allow regenerate to move this match' : 'Lock — keep this match here on regenerate'}
+                                      style={{background:'none',border:'none',padding:'0 2px',cursor:'pointer',fontSize:13,lineHeight:1,flexShrink:0,opacity:isLocked?1:0.45}}>
+                                      {isLocked ? '🔒' : '🔓'}
+                                    </button>
+                                    {/* Move button */}
+                                    {otherStations.length > 0 && (
+                                      <button
+                                        onClick={()=>setMoveMenuOpen(isMoveOpen ? null : id)}
+                                        style={{background:isMoveOpen?'#3B82F6':'none',border:`1px solid ${isMoveOpen?'#3B82F6':'var(--border2)'}`,borderRadius:5,padding:'2px 6px',cursor:'pointer',fontSize:9,fontWeight:800,color:isMoveOpen?'#fff':'var(--text-faint)',fontFamily:"'Outfit',sans-serif",flexShrink:0}}>
+                                        {isMoveOpen ? '✕' : 'Move →'}
+                                      </button>
+                                    )}
+                                  </div>
+                                  {/* Inline station picker */}
+                                  {isMoveOpen && (
+                                    <div style={{display:'flex',gap:5,padding:'5px 8px',background:'var(--surface)',borderRadius:'0 0 8px 8px',border:'1px solid var(--border)',borderTop:'none',flexWrap:'wrap'}}>
+                                      <span style={{fontSize:9,fontWeight:700,color:'var(--text-faint)',alignSelf:'center',marginRight:2}}>Move to:</span>
+                                      {otherStations.map(dest => {
+                                        const dsc = STADIUM_COLORS[dest];
+                                        return (
+                                          <button key={dest}
+                                            onClick={()=>{
+                                              setStationQueues(prev => {
+                                                const next = {};
+                                                STADIUM_LETTERS.forEach(l => { next[l] = [...(prev[l]||[])]; });
+                                                next[letter] = next[letter].filter(x => x !== id);
+                                                next[dest] = [...next[dest], id];
+                                                return next;
+                                              });
+                                              setMoveMenuOpen(null);
+                                            }}
+                                            style={{padding:'3px 10px',borderRadius:6,border:`1.5px solid ${dsc.bg}`,background:dsc.bg+'18',color:dsc.bg,fontSize:10,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:'pointer'}}>
+                                            {dest}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
                                   )}
                                 </div>
                               </React.Fragment>
