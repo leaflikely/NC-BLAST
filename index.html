@@ -10184,6 +10184,18 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
   /* Quick combo button text rendered via CSS content so Safari has no DOM text nodes to select */
   .qc-blade::before{ content:attr(data-label); font-size:13px; font-weight:800; display:block; }
   .qc-parts::before{ content:attr(data-label); font-size:11px; opacity:0.7; display:block; }
+  /* Block all text selection on the blade picker page so long-press never triggers highlight */
+  .picker-page{
+    -webkit-user-select:none;
+    -moz-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
+  }
+  /* Restore selection inside inputs so the search bar still works normally */
+  .picker-page input{
+    -webkit-user-select:text;
+    user-select:text;
+  }
   input,textarea{color:var(--text-primary);background:var(--input-bg);}
   input::placeholder{color:var(--text-faint);}
   /* Bottom bar always uses surface color */
@@ -14273,7 +14285,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     }
 
     return (
-      <div style={S.page}>
+      <div className="picker-page" style={S.page}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:0}}>
           <button style={S.back} onClick={goBack}>{IC.back} Back</button>
           {!picker?.returnToReview && pickerHistory.length>0 && (
