@@ -10878,40 +10878,45 @@ function PartLabel({name, size, keepDash}) {
 }
 
 // Quick full combos for blade picker shortcuts
+// Quick Combos: 5 columns × 2 rows, left-to-right then top-to-bottom
+// Row 1: flagship combos | Row 2: secondary combos
 const QUICK_COMBOS = [
-  {blade:"Wizard Rod",  ratchet:"1-60", bit:"Hexa"},
-  {blade:"Wizard Rod",  ratchet:"1-60", bit:"Low Orb"},
-  {blade:"Cobalt Dragoon", ratchet:"5-60", bit:"Elevate"},
-  {blade:"Cobalt Dragoon", ratchet:"9-60", bit:"Elevate"},
-  {blade:"Shark Scale", ratchet:"3-60", bit:"Low Rush"},
-  {blade:"Shark Scale", ratchet:"3-60", bit:"Free Ball"},
-  {blade:"Golem Rock",  ratchet:"9-60", bit:"Free Ball"},
-  {blade:"Aero Pegasus", ratchet:"1-50", bit:"Rush"},
-  {blade:"Hover Wyvern", ratchet:"9-60", bit:"Kick"},
-  {blade:"Bullet Griffon", ratchet:null, bit:"Hexa"},
-  {blade:"Meteor Dragoon", ratchet:"7-60", bit:"Level"},
-  {blade:"Clock Mirage", ratchet:"7-55", bit:"Free Ball"},
+  {blade:"Wizard Rod",      ratchet:"1-60",  bit:"Hexa"},
+  {blade:"Shark Scale",     ratchet:"3-60",  bit:"Low Rush"},
+  {blade:"Cobalt Dragoon",  ratchet:"5-60",  bit:"Elevate"},
+  {blade:"Aero Pegasus",    ratchet:"1-60",  bit:"Rush"},
+  {blade:"Hover Wyvern",    ratchet:"9-60",  bit:"Kick"},
+  {blade:"Shark Scale",     ratchet:"9-60",  bit:"Free Ball"},
+  {blade:"Shark Scale",     ratchet:"7-60",  bit:"Free Flat"},
+  {blade:"Meteor Dragoon",  ratchet:"7-70",  bit:"Level"},
+  {blade:"Golem Rock",      ratchet:"9-60",  bit:"Free Ball"},
+  {blade:"Clock Mirage",    ratchet:"7-55",  bit:"Low Orb"},
 ];
 
 // Top 10 priority items per category (displayed first as a group)
 const TOP10 = {
-  blades: ["Wizard Rod","Shark Scale","Cobalt Dragoon","Aero Pegasus","Hover Wyvern","Golem Rock","Meteor Dragoon","Bullet Griffon","Silver Wolf","Clock Mirage"],
+  blades: ["Shark Scale","Wizard Rod","Aero Pegasus","Cobalt Dragoon","Hover Wyvern","Meteor Dragoon","Phoenix Wing","Dran Strike","Golem Rock","Silver Wolf","Clock Mirage","Tyranno Beat","Dran Buster","Knight Mail","Bullet Griffon"],
   ratchets: ["1-50","1-60","1-70","3-60","5-60","7-55","7-60","7-70","8-70","9-60"],
   bits: ["Ball","Elevate","Free Ball","Hexa","Jolt","Kick","Level","Low Orb","Low Rush","Rush"],
 };
 
-// Individual colors for top 10 blades
+// Individual colors for top 15 blades
 const BLADE_COLORS = {
-  "Wizard Rod":    "#EAB308", // yellow
-  "Shark Scale":   "#7C3AED", // purple
-  "Cobalt Dragoon":"#1E40AF", // dark blue
-  "Aero Pegasus":  "#0D9488", // teal
-  "Hover Wyvern":  "#15803D", // green
-  "Golem Rock":    "#EA580C", // orange
-  "Meteor Dragoon":"#A855F7", // light purple
-  "Bullet Griffon": "#DC2626", // red
-  "Silver Wolf":   "#64748B", // grey
-  "Clock Mirage":  "#065F46", // dark green
+  "Shark Scale":    "#7C3AED", // purple
+  "Wizard Rod":     "#EAB308", // yellow
+  "Aero Pegasus":   "#0D9488", // teal
+  "Cobalt Dragoon": "#1E40AF", // dark blue
+  "Hover Wyvern":   "#16A34A", // bright green
+  "Meteor Dragoon": "#A855F7", // bright purple
+  "Phoenix Wing":   "#DC2626", // pure red
+  "Dran Strike":    "#2563EB", // bright blue (brighter than Cobalt Dragoon)
+  "Golem Rock":     "#EA580C", // orange
+  "Silver Wolf":    "#64748B", // grey
+  "Clock Mirage":   "#EC4899", // pink
+  "Tyranno Beat":   "#166534", // dark green
+  "Dran Buster":    "#1E3A8A", // darker blue (darker than Cobalt Dragoon)
+  "Knight Mail":    "#4ADE80", // mid green (between Hover and Tyranno)
+  "Bullet Griffon": "#991B1B", // dark red (darker than Phoenix Wing)
 };
 
 function mergeWithDefaults(saved) {
@@ -12988,10 +12993,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const [future,setFuture] = useState([]);
   const [matchStartIdx,setMatchStartIdx] = useState(0);
   const [picker,setPicker] = useState(null);
+  const [qcEditMenu,setQcEditMenu] = useState(null); // { qi, qc } — which quick combo is showing the part-edit menu
   const [pickerHistory,setPickerHistory] = useState([]); // stack of previous picker states for undo
   const openPicker = (val) => {
     setPickerHistory(h => picker ? [...h, picker] : h);
     setPicker(val); setPickerSearch(""); setCrossoverOpen(false); setCxPicker(null);
+    setQcEditMenu(null); // dismiss any open quick-combo edit menu
   };
   const undoPicker = () => {
     if(!pickerHistory.length) return;
@@ -13454,8 +13461,27 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   // `who` = 1|2 (who we just finished a step for), `slot` = 0-2, `cat` = current category.
   // `updatedD1`/`updatedD2` are the deck arrays AFTER the current pick is applied
   // (state updates are async so we pass the fresh values directly).
-  const advanceDeckPicker = (who, slot, cat, updatedD1, updatedD2, returnToReview, name) => {
+  const advanceDeckPicker = (who, slot, cat, updatedD1, updatedD2, returnToReview, name, qcEdit) => {
+    // returnToReview: go straight to deck review (review-mode edits, or review-mode qcEdit)
     if (returnToReview) { setPicker(null); setDeckReview(true); return; }
+    // qcEdit: the other two parts of this combo are already locked in — skip to next slot/player
+    // rather than stepping through the remaining parts of the current combo
+    if (qcEdit) {
+      if (slot < 2) {
+        openPicker({who, slot: slot + 1, cat: "blade"});
+        return;
+      }
+      const otherWho = who === 1 ? 2 : 1;
+      const otherDeck = otherWho === 1 ? updatedD1 : updatedD2;
+      if (!otherDeck.every(comboReady)) {
+        const firstUnfinished = otherDeck.findIndex(c => !comboReady(c));
+        openPicker({who: otherWho, slot: firstUnfinished >= 0 ? firstUnfinished : 0, cat: "blade"});
+      } else {
+        setPicker(null);
+        setDeckReview(true);
+      }
+      return;
+    }
     const cats = ["blade","ratchet","bit"];
     const catIdx = cats.indexOf(cat);
     // Still steps remaining in this combo
@@ -14016,10 +14042,15 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         <button disabled={taken}
           onClick={()=>{
             if(taken)return;
-            const nd=[...deck];nd[slot]={...nd[slot],[cat]:name};setDeck(nd);
+            const nd=[...deck];
+            // Hard rule: NO_RATCHET_BLADES (e.g. Bullet Griffon) cannot physically hold a ratchet.
+            // Null it out in the same state update so it never persists in the deck.
+            const noRatchet = cat==="blade" && NO_RATCHET_BLADES.includes(name);
+            nd[slot]={...nd[slot],[cat]:name, ...(noRatchet?{ratchet:null}:{})};
+            setDeck(nd);
             // Build fresh deck refs to pass to advanceDeckPicker (state updates are async)
             const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
-            advanceDeckPicker(who,slot,cat,freshD1,freshD2,picker.returnToReview,name);
+            advanceDeckPicker(who,slot,cat,freshD1,freshD2,picker.returnToReview,name,picker.qcEdit);
           }}
           style={{padding:"8px 4px",borderRadius:9,
             border:sel?`2px solid ${accent||cc}`:taken?"2px solid #E2E8F0":idleBorder,
@@ -14074,7 +14105,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                   if(taken)return;
                   const nd=[...deck];nd[slot]={...nd[slot],[cat]:name};setDeck(nd);
                   const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
-                  advanceDeckPicker(who,slot,cat,freshD1,freshD2,picker.returnToReview,name);
+                  advanceDeckPicker(who,slot,cat,freshD1,freshD2,picker.returnToReview,name,picker.qcEdit);
                 }}
                 style={{flex:1,minWidth:0,borderRadius:9,
                   border:sel?`2px solid ${cc}`:taken?"2px solid var(--border)":isTopGroup?`2px solid ${cc}50`:"2px solid var(--border2)",
@@ -14129,7 +14160,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
             <div style={{flexShrink:0,background:cc+"0D",borderRadius:10,border:`1px solid ${cc}30`,
               padding:"4px 6px",margin:"4px 10px 0",
               display:"flex",flexDirection:"column",gap:4}}>
-              <p style={{fontSize:8,fontWeight:700,color:cc,letterSpacing:1.5,textTransform:"uppercase",flexShrink:0,margin:"0 0 2px 2px"}}>★ Top 10</p>
+              <p style={{fontSize:8,fontWeight:700,color:cc,letterSpacing:1.5,textTransform:"uppercase",flexShrink:0,margin:"0 0 2px 2px"}}>★ Top 15</p>
               {top10Rows.map((row,ri)=>(
                 <div key={ri} style={{height:ROW_H,display:"flex",gap:4}}>
                   {row.map(name=>{
@@ -14141,7 +14172,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                           if(taken)return;
                           const nd=[...deck];nd[slot]={...nd[slot],[cat]:name};setDeck(nd);
                           const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
-                          advanceDeckPicker(who,slot,cat,freshD1,freshD2,picker.returnToReview,name);
+                          advanceDeckPicker(who,slot,cat,freshD1,freshD2,picker.returnToReview,name,picker.qcEdit);
                         }}
                         style={{flex:1,minWidth:0,height:"100%",borderRadius:9,
                           border:sel?`2px solid ${cc}`:taken?"2px solid var(--border)":`2px solid ${cc}50`,
@@ -14195,7 +14226,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                           if(taken)return;
                           const nd=[...deck];nd[slot]={...nd[slot],[cat]:name};setDeck(nd);
                           const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
-                          advanceDeckPicker(who,slot,cat,freshD1,freshD2,picker.returnToReview,name);
+                          advanceDeckPicker(who,slot,cat,freshD1,freshD2,picker.returnToReview,name,picker.qcEdit);
                         }}
                         style={{flex:1,minWidth:0,height:"100%",borderRadius:9,
                           border:sel?`2px solid ${cc}`:taken?"2px solid var(--border)":"2px solid var(--border2)",
@@ -14241,7 +14272,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
 
         <div style={{marginBottom:12}}>
           <p style={{fontSize:11,fontWeight:700,color:pColor,letterSpacing:1,textTransform:"uppercase",marginBottom:2}}>{playerName} — {comboLabel} Combo</p>
-          <h1 style={{...S.title,color:cc,textAlign:"left",margin:0}}>Select {catLabels[cat]}</h1>
+          <h1 style={{...S.title,color:cc,textAlign:"left",margin:0}}>{picker?.editingPart ? "Select New" : "Select"} {catLabels[cat]}</h1>
         </div>
 
         {/* Previous Combos — blade screen only, from Worker KV only (no localStorage) */}
@@ -14279,7 +14310,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                         if(who===1)setD1(nd); else setD2(nd);
                         const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
                         // quick-pick fills a whole combo — cat is effectively "bit" (final step)
-                        advanceDeckPicker(who,slot,"bit",freshD1,freshD2,picker?.returnToReview,c.bit);
+                        advanceDeckPicker(who,slot,"bit",freshD1,freshD2,picker?.returnToReview,c.bit,false);
                       }}
                       style={{padding:"8px 4px",borderRadius:9,border:`2px solid ${anyTaken?"var(--border)":bladeColor+"50"}`,background:anyTaken?"var(--surface3)":bladeColor+"10",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2}}>
                       <span style={{fontSize:13,fontWeight:800}}>{c.blade}</span>
@@ -14294,41 +14325,113 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         })()}
 
         {/* Quick Combos — blade screen only */}
-        {cat==="blade"&&!pickerSearch&&(
+        {cat==="blade"&&!pickerSearch&&!picker?.editingPart&&(
           <div style={{marginBottom:12}}>
-            <p style={{fontSize:9,fontWeight:700,color:cc,letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>⚡ Quick Combos</p>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+              <p style={{fontSize:9,fontWeight:700,color:cc,letterSpacing:1.5,textTransform:"uppercase",margin:0}}>⚡ Quick Combos</p>
+              <p style={{fontSize:8,color:"var(--text-faint)",margin:0,fontStyle:"italic"}}>Hold to edit one part</p>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
               {QUICK_COMBOS.map((qc,qi)=>{
                 const bTaken=takenByOtherSlots.includes(qc.blade);
                 const rTaken=qc.ratchet?(who===1?d1:d2).map((c,i)=>i!==slot?c.ratchet:null).filter(Boolean).includes(qc.ratchet):false;
                 const bitTaken=(who===1?d1:d2).map((c,i)=>i!==slot?c.bit:null).filter(Boolean).includes(qc.bit);
                 const anyTaken=bTaken||rTaken||bitTaken;
                 const bladeColor=BLADE_COLORS[qc.blade]||cc;
+                const isMenuOpen=qcEditMenu?.qi===qi;
+
+                // Long-press timer ref scoped to this item
+                let lpTimer=null;
+
+                const startLongPress=()=>{
+                  if(anyTaken)return;
+                  lpTimer=setTimeout(()=>{ setQcEditMenu({qi,qc}); lpTimer=null; },300);
+                };
+                const cancelLongPress=()=>{ if(lpTimer){clearTimeout(lpTimer);lpTimer=null;} };
+
+                // Apply the whole combo to deck state, then open the picker for just one part.
+                // qcEdit:true tells advanceDeckPicker to skip the remaining parts of this combo
+                // (since the other two are already locked in) and advance to the next slot/player.
+                // editingPart:true tells the blade screen to hide quick combos and change the title.
+                const applyAndEditPart=(partCat)=>{
+                  setQcEditMenu(null);
+                  const nd=who===1?[...d1]:[...d2];
+                  nd[slot]={blade:qc.blade,ratchet:qc.ratchet,bit:qc.bit};
+                  if(who===1)setD1(nd); else setD2(nd);
+                  // Honor the original flow mode: linear stays linear, review-mode stays review-mode
+                  const wasReview = picker?.returnToReview || false;
+                  openPicker({who,slot,cat:partCat,returnToReview:wasReview,qcEdit:true,editingPart:true});
+                };
+
                 return (
-                  <button key={qi} disabled={anyTaken}
-                    onClick={()=>{
-                      if(anyTaken)return;
-                      const nd=who===1?[...d1]:[...d2];
-                      nd[slot]={blade:qc.blade,ratchet:qc.ratchet,bit:qc.bit};
-                      if(who===1)setD1(nd); else setD2(nd);
-                      const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
-                      // quick-pick fills a whole combo — advance from bit (final step)
-                      advanceDeckPicker(who,slot,"bit",freshD1,freshD2,picker?.returnToReview,qc.bit);
-                    }}
-                    style={{padding:"8px 4px",borderRadius:9,border:`2px solid ${anyTaken?"var(--border)":bladeColor+"60"}`,background:anyTaken?"var(--surface3)":bladeColor+"12",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:52,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2}}>
-                    <span style={{fontSize:13,fontWeight:800}}>{qc.blade}</span>
-                    <span style={{fontSize:11,opacity:0.7}}>{qc.ratchet?`${qc.ratchet} · ${qc.bit}`:qc.bit}</span>
-                    {anyTaken&&<span style={{fontSize:9,color:"var(--text-faint)"}}>IN USE</span>}
-                  </button>
+                  <div key={qi} style={{position:"relative"}}>
+                    <button
+                      disabled={anyTaken}
+                      onClick={()=>{
+                        if(anyTaken||isMenuOpen)return;
+                        const nd=who===1?[...d1]:[...d2];
+                        nd[slot]={blade:qc.blade,ratchet:qc.ratchet,bit:qc.bit};
+                        if(who===1)setD1(nd); else setD2(nd);
+                        const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
+                        advanceDeckPicker(who,slot,"bit",freshD1,freshD2,picker?.returnToReview,qc.bit,false);
+                      }}
+                      onMouseDown={startLongPress}
+                      onMouseUp={cancelLongPress}
+                      onMouseLeave={cancelLongPress}
+                      onTouchStart={e=>{e.preventDefault();startLongPress();}}
+                      onTouchEnd={cancelLongPress}
+                      onTouchCancel={cancelLongPress}
+                      style={{width:"100%",padding:"8px 4px",borderRadius:isMenuOpen?"9px 9px 0 0":9,border:`2px solid ${isMenuOpen?bladeColor:anyTaken?"var(--border)":bladeColor+"60"}`,borderBottom:isMenuOpen?`2px solid ${bladeColor}`:undefined,background:isMenuOpen?bladeColor+"22":anyTaken?"var(--surface3)":bladeColor+"12",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:52,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,userSelect:"none",WebkitUserSelect:"none"}}>
+                      <span style={{fontSize:13,fontWeight:800}}>{qc.blade}</span>
+                      <span style={{fontSize:11,opacity:0.7}}>{qc.ratchet?`${qc.ratchet} · ${qc.bit}`:qc.bit}</span>
+                      {anyTaken&&<span style={{fontSize:9,color:"var(--text-faint)"}}>IN USE</span>}
+                      {isMenuOpen&&<span style={{fontSize:8,color:bladeColor,marginTop:1,fontWeight:800}}>EDITING ▾</span>}
+                    </button>
+                    {/* Part edit menu — appears below the button on long press */}
+                    {isMenuOpen&&(
+                      <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:50,border:`2px solid ${bladeColor}`,borderTop:"none",borderRadius:"0 0 9px 9px",background:"var(--surface)",overflow:"hidden",boxShadow:`0 6px 20px ${bladeColor}30`}}>
+                        {/* Dismiss bar */}
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 8px",background:bladeColor+"18",borderBottom:`1px solid ${bladeColor}30`}}>
+                          <span style={{fontSize:8,fontWeight:700,color:bladeColor,textTransform:"uppercase",letterSpacing:0.5}}>Edit one part:</span>
+                          <button onClick={e=>{e.stopPropagation();setQcEditMenu(null);}} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",fontSize:12,lineHeight:1,padding:"0 2px"}}>✕</button>
+                        </div>
+                        {/* Blade chip */}
+                        <button onClick={()=>applyAndEditPart("blade")}
+                          style={{width:"100%",padding:"7px 10px",border:"none",borderBottom:`1px solid ${bladeColor}20`,background:"none",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",fontFamily:"'Outfit',sans-serif"}}>
+                          <span style={{fontSize:9,fontWeight:700,color:"#EA580C",textTransform:"uppercase",letterSpacing:0.5}}>Blade</span>
+                          <span style={{fontSize:11,fontWeight:800,color:"var(--text-primary)"}}>{qc.blade}</span>
+                        </button>
+                        {/* Ratchet chip */}
+                        {qc.ratchet&&(
+                          <button onClick={()=>applyAndEditPart("ratchet")}
+                            style={{width:"100%",padding:"7px 10px",border:"none",borderBottom:`1px solid ${bladeColor}20`,background:"none",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",fontFamily:"'Outfit',sans-serif"}}>
+                            <span style={{fontSize:9,fontWeight:700,color:"#1D4ED8",textTransform:"uppercase",letterSpacing:0.5}}>Ratchet</span>
+                            <span style={{fontSize:11,fontWeight:800,color:"var(--text-primary)"}}>{qc.ratchet} <span style={{fontWeight:400,fontSize:9,color:"var(--text-faint)"}}>→ change</span></span>
+                          </button>
+                        )}
+                        {/* Bit chip */}
+                        <button onClick={()=>applyAndEditPart("bit")}
+                          style={{width:"100%",padding:"7px 10px",border:"none",background:"none",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",fontFamily:"'Outfit',sans-serif"}}>
+                          <span style={{fontSize:9,fontWeight:700,color:"#15803D",textTransform:"uppercase",letterSpacing:0.5}}>Bit</span>
+                          <span style={{fontSize:11,fontWeight:800,color:"var(--text-primary)"}}>{qc.bit} <span style={{fontWeight:400,fontSize:9,color:"var(--text-faint)"}}>→ change</span></span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
+            {/* Dismiss edit menu when tapping outside */}
+            {qcEditMenu&&(
+              <div onClick={()=>setQcEditMenu(null)}
+                style={{position:"fixed",inset:0,zIndex:40}}/>
+            )}
           </div>
         )}
 
         {/* Top 10 group */}
         <div style={{marginBottom:8,background:cc+"0D",borderRadius:12,padding:"10px 10px 8px",border:`1px solid ${cc}30`}}>
-          <p style={{fontSize:9,fontWeight:700,color:cc,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>★ Top 10</p>
+          <p style={{fontSize:9,fontWeight:700,color:cc,letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>★ Top 15</p>
           <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
             {top10.map(name=><PartBtn key={name} name={name} isTop={true}/>)}
           </div>
@@ -16172,7 +16275,7 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[],
         {cat==="blade"&&!search&&(
           <div style={{marginBottom:10}}>
             <p style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>⚡ Quick Combos</p>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
               {QUICK_COMBOS.map((qc,i)=>{
                 // Check all three parts against other slots — no duplicates allowed across any part type
                 const takenBlades = deck.filter((_,si)=>si!==slot).map(c=>c.blade).filter(Boolean);
@@ -16181,6 +16284,7 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[],
                 const anyTaken = takenBlades.includes(qc.blade)
                   || (qc.ratchet && takenRatchets.includes(qc.ratchet))
                   || takenBits.includes(qc.bit);
+                const bladeColor = BLADE_COLORS[qc.blade] || "#EA580C";
                 return (
                   <button key={i} disabled={anyTaken} onClick={()=>{
                     if(anyTaken)return;
@@ -16190,9 +16294,10 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[],
                     if(returnToReview){setStep(null);stepHistory.current=[];}
                     else advanceAfter(slot,"bit");
                   }}
-                    style={{padding:"8px 8px",borderRadius:9,border:"2px solid #EA580C30",background:"#EA580C0A",color:anyTaken?"var(--text-faint)":"var(--text-primary)",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"left",opacity:anyTaken?0.4:1}}>
+                    style={{padding:"7px 4px",borderRadius:9,border:`2px solid ${anyTaken?"var(--border)":bladeColor+"60"}`,background:anyTaken?"var(--surface3)":bladeColor+"12",color:anyTaken?"var(--text-faint)":"var(--text-primary)",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:48,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1}}>
                     <div style={{fontSize:11,fontWeight:800}}>{qc.blade}</div>
-                    <div style={{fontSize:9,color:"var(--text-muted)",marginTop:1}}>{qc.ratchet} · {qc.bit}</div>
+                    <div style={{fontSize:9,color:"var(--text-muted)",marginTop:1}}>{qc.ratchet?`${qc.ratchet} · ${qc.bit}`:qc.bit}</div>
+                    {anyTaken&&<div style={{fontSize:8,color:"var(--text-faint)"}}>IN USE</div>}
                   </button>
                 );
               })}
@@ -16203,7 +16308,7 @@ function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[],
         {/* Top 10 */}
         {filteredTop.length>0&&(
           <div style={{marginBottom:10}}>
-            {!search&&<p style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>★ Top 10</p>}
+            {!search&&<p style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>★ Top 15</p>}
             <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5}}>
               {filteredTop.map(n=>{
                 const bc = cat==="blade"?BLADE_COLORS[n]:null;
