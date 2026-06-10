@@ -10165,6 +10165,22 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
     --purple:#A855F7;
   }
   body{background:var(--bg);min-height:100vh;font-family:'Outfit',sans-serif;color:var(--text-primary);overscroll-behavior:none;}
+  /* Suppress all text selection/callout on elements that handle long press */
+  .no-select{
+    -webkit-user-select:none;
+    -moz-user-select:none;
+    -ms-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .no-select *{
+    -webkit-user-select:none;
+    -moz-user-select:none;
+    -ms-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
+  }
   input,textarea{color:var(--text-primary);background:var(--input-bg);}
   input::placeholder{color:var(--text-faint);}
   /* Bottom bar always uses surface color */
@@ -14331,7 +14347,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
               <p style={{fontSize:9,fontWeight:700,color:cc,letterSpacing:1.5,textTransform:"uppercase",margin:0}}>⚡ Quick Combos</p>
               <p style={{fontSize:8,color:"var(--text-faint)",margin:0,fontStyle:"italic"}}>Hold to edit one part</p>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gridAutoRows:"1fr",gap:6}}>
+            <div className="no-select" style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gridAutoRows:"1fr",gap:6}}>
               {QUICK_COMBOS.map((qc,qi)=>{
                 const bTaken=takenByOtherSlots.includes(qc.blade);
                 const rTaken=qc.ratchet?(who===1?d1:d2).map((c,i)=>i!==slot?c.ratchet:null).filter(Boolean).includes(qc.ratchet):false;
@@ -14366,6 +14382,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                 return (
                   <div key={qi} style={{position:"relative"}}>
                     <button
+                      className="no-select"
                       disabled={anyTaken}
                       onClick={()=>{
                         if(anyTaken||isMenuOpen)return;
