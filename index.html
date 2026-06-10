@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-08 | session: station queue lock button; judges-first/last toggle; refresh fixes; move-to-station button; name map assign button; org desktop layout 2-col; name map available in all login modes; floater F badge removed -->
+<!-- NC BLAST index.html | last updated: 2026-06-08 | session: tournament-scoped combo registry; normalizePlayerKey; pushCombosForTournament; fetchCombosForTournament; early save on deck confirm; player view ComboTab updated; shuffle timer respects swap; blank deck gates part buttons; org desktop layout -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10782,32 +10782,59 @@ function ChallongeLoginScreen({ auth, title, subtitle, onCancel }) {
 }
 
 // Push a player's combos to the Worker KV so other devices can load them
-async function pushComboCacheToWorker(playerName, combos) {
-  if(!playerName) return;
+// ── Combo Registry Helpers (tournament-scoped) ───────────────────────────────
+// normalizePlayerKey: consistent lowercase+trim used as the lookup key in the
+// combo registry. Applied on both client and Worker so names always match.
+function normalizePlayerKey(name) {
+  return (name || "").trim().toLowerCase();
+}
+
+// Push one player's combos into the tournament-scoped registry.
+// The Worker merges this player's entry without touching other players.
+async function pushCombosForTournament(slug, playerName, combos) {
+  if(!slug || !playerName) return;
   try {
-    await fetch(`${OVERLAY_WORKER}/combos/push`, {
+    await fetch(`${OVERLAY_WORKER}/combos/slug`, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ player: playerName, combos: combos||[], updatedAt: Date.now() }),
+      body: JSON.stringify({ slug, player: playerName, combos: combos||[] }),
       signal: AbortSignal.timeout(5000),
     });
   } catch(_) {}
 }
 
-// Fetch a player's combos from the Worker KV (returns [] on miss/error)
-async function fetchComboCacheFromWorker(playerName) {
-  if(!playerName) return [];
+// Fetch the entire combo registry for a tournament in one request.
+// Returns a dict keyed by normalizePlayerKey(name) → [combo, ...].
+async function fetchCombosForTournament(slug) {
+  if(!slug) return {};
   try {
-    const res = await fetch(`${OVERLAY_WORKER}/combos/get?player=${encodeURIComponent(playerName)}`, {
+    const res = await fetch(`${OVERLAY_WORKER}/combos/slug?slug=${encodeURIComponent(slug)}`, {
       signal: AbortSignal.timeout(5000),
     });
-    if(!res.ok) return [];
+    if(!res.ok) return {};
     const data = await res.json();
-    if(!Array.isArray(data.combos)) return [];
-    // Respect TTL client-side too
-    if(data.updatedAt && Date.now() - data.updatedAt > COMBO_CACHE_TTL) return [];
-    return data.combos.filter(comboReady).map(normalizeCombo);
-  } catch(_) { return []; }
+    if(!data.registry || typeof data.registry !== "object") return {};
+    // Normalize every entry on the way in
+    const out = {};
+    Object.entries(data.registry).forEach(([k, arr]) => {
+      if(Array.isArray(arr)) out[k] = arr.map(normalizeCombo).filter(comboReady);
+    });
+    return out;
+  } catch(_) { return {}; }
+}
+
+// Look up a player's combos from an already-fetched registry dict.
+function getCombosFromRegistry(registry, playerName) {
+  if(!registry || !playerName) return [];
+  return registry[normalizePlayerKey(playerName)] || [];
+}
+
+// Legacy stubs — kept so player view ComboTab still works during transition
+async function pushComboCacheToWorker(playerName, combos) {
+  // no-op: player view now calls pushCombosForTournament directly
+}
+async function fetchComboCacheFromWorker(playerName) {
+  return []; // no-op: judge view now uses fetchCombosForTournament
 }
 function sGet(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; } }
 function sSave(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
@@ -13132,28 +13159,35 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   }, [handoffModal]);
   // ── End handoff effects ──────────────────────────────────────────────────
 
-  // Load combos from Worker KV when player names are known (cross-device cache)
+  // Load combo registry for this tournament when player names are known.
+  // One fetch returns all players — no per-player round trips.
   useEffect(()=>{
     let cancelled = false;
     async function load() {
-      const results = {};
-      await Promise.all([p1, p2].filter(Boolean).map(async name => {
-        const combos = await fetchComboCacheFromWorker(name);
-        if(combos.length) results[name] = combos;
-      }));
-      if(!cancelled) setWorkerCombos(prev => { const next = {...prev, ...results}; workerCombosRef.current = next; return next; });
+      if(!challongeSlug) return;
+      const registry = await fetchCombosForTournament(challongeSlug);
+      if(!cancelled) {
+        // Build a display-name-keyed dict for the two current players
+        const results = {};
+        [p1, p2].filter(Boolean).forEach(name => {
+          const combos = getCombosFromRegistry(registry, name);
+          if(combos.length) results[name] = combos;
+        });
+        setWorkerCombos(prev => { const next = {...prev, ...results}; workerCombosRef.current = next; return next; });
+      }
     }
-    if(p1 || p2) load();
+    if((p1 || p2) && challongeSlug) load();
     return () => { cancelled = true; };
-  }, [p1, p2]);
+  }, [p1, p2, challongeSlug]);
 
-  // Re-fetch combos for current players on demand (called when Build Decks is tapped)
+  // Re-fetch registry on demand (called when Build Decks is tapped).
   const refreshCombos = async () => {
+    if(!challongeSlug) return;
+    const registry = await fetchCombosForTournament(challongeSlug);
     const results = {};
-    await Promise.all([p1, p2].filter(Boolean).map(async name => {
-      const combos = await fetchComboCacheFromWorker(name);
-      results[name] = combos; // always overwrite, even if empty, to clear stale entries
-    }));
+    [p1, p2].filter(Boolean).forEach(name => {
+      results[name] = getCombosFromRegistry(registry, name);
+    });
     setWorkerCombos(prev => { const next = {...prev, ...results}; workerCombosRef.current = next; return next; });
   };
   const need = Math.ceil(config.bo/2);
@@ -13255,34 +13289,30 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     }
   };
 
-  const saveCombosToStorage = () => {
-    // Combos are stored only in Worker KV (keyed by player name, 1hr TTL).
-    // We never write to localStorage — that caused stale combos bleeding across events.
-    const pushQueue = [];
-    [[p1, d1],[p2, d2]].forEach(([name, deck])=>{
+  // pushDeckToRegistry: writes both players' ready combos into the tournament registry.
+  // Called at deck confirmation (early) and again at match completion (ensures nothing lost).
+  // The Worker merges per-player so parallel calls from different stations don't race.
+  const pushDeckToRegistry = (d1override, d2override) => {
+    if(!challongeSlug) return;
+    const deck1 = d1override || d1;
+    const deck2 = d2override || d2;
+    [[p1, deck1],[p2, deck2]].forEach(([name, deck])=>{
       if(!name) return;
-      // Start from whatever is already in workerCombos for this player (use ref — always current, never stale)
-      const prev = (workerCombosRef.current[name] || []).map(normalizeCombo);
-      // Add new complete combos, refresh updatedAt for ones already seen
-      deck.forEach(combo=>{
-        if(!comboReady(combo)) return;
-        const str = comboStr(combo);
-        const existing = prev.findIndex(c=>comboStr(c)===str);
-        if(existing >= 0) {
-          prev[existing] = {...combo, updatedAt: Date.now()};
-        } else {
-          prev.push({...combo, updatedAt: Date.now()});
-        }
+      const readyCombos = deck.filter(comboReady).map(c => ({...normalizeCombo(c), updatedAt: Date.now()}));
+      if(!readyCombos.length) return;
+      // Update in-memory cache immediately so this session sees it without a re-fetch
+      setWorkerCombos(prev => {
+        const next = {...prev, [name]: readyCombos};
+        workerCombosRef.current = next;
+        return next;
       });
-      // Keep only the 3 most recently used combos — prevents accumulation across rounds
-      const capped = prev.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).slice(0,3);
-      // Update in-memory cache so the rest of this session sees the new combos immediately
-      setWorkerCombos(prev2 => { const next = {...prev2, [name]: capped}; workerCombosRef.current = next; return next; });
-      pushQueue.push([name, capped]);
+      // Push to Worker — each player is a separate merge, no race condition
+      pushCombosForTournament(challongeSlug, name, readyCombos);
     });
-    // Push all players to Worker KV in parallel so neither overwrites the other
-    Promise.all(pushQueue.map(([name, capped]) => pushComboCacheToWorker(name, capped)));
   };
+
+  // saveCombosToStorage: alias called at match completion — same logic, kept for clarity
+  const saveCombosToStorage = () => pushDeckToRegistry();
 
   const fetchActiveMatches = async () => {
     if(!challongeSlug) return;
@@ -14221,10 +14251,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           if(!prevCombos.length) return null;
           const clearCombos = () => {
             setWorkerCombos(prev => { const n={...prev}; delete n[playerName]; workerCombosRef.current = n; return n; });
-            fetch(`${OVERLAY_WORKER}/combos/push`, {
-              method:"POST", headers:{"Content-Type":"application/json"},
-              body: JSON.stringify({player:playerName, combos:[], updatedAt:Date.now()}),
-            }).catch(()=>{});
+            // Push empty array to the tournament registry to clear this player's entry
+            if(challongeSlug) pushCombosForTournament(challongeSlug, playerName, []);
           };
           return (
             <div style={{marginBottom:12}}>
@@ -14813,6 +14841,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
             );
           })}
         <button style={{...S.pri,opacity:allDone?1:0.4}} disabled={!allDone} onClick={()=>{
+          // Save decks to registry NOW so the next judge can see them immediately,
+          // before the match has finished. Also saved again at match completion as a backup.
+          pushDeckToRegistry();
           if(config.tm){setSideAssign({pickPriority:null});setSidePicker({priority:null});}
           setPhase("battle");
         }}>Start Match ⚔️</button>
@@ -16812,13 +16843,13 @@ function ComboTab({myName, myDeck, onDeckSaved, slug, onCombosFound, parts}){
   const [pushStatus, setPushStatus] = useState(null);
 
   useEffect(()=>{
-    if(!myName){ setWorkerCombos([]); onCombosFound&&onCombosFound(false); return; }
+    if(!myName || !slug){ setWorkerCombos([]); onCombosFound&&onCombosFound(false); return; }
     setWorkerCombos(null);
     (async()=>{
       try {
-        const kvName = tn(myName); // match the key the judge uses (truncated for long names)
-        const data = await workerGet(`/combos/get?player=${encodeURIComponent(kvName)}`);
-        const fetched = Array.isArray(data.combos) ? data.combos.map(normalizeCombo).filter(c=>c.blade) : [];
+        // Fetch the whole tournament registry, then pull out this player's entry
+        const registry = await fetchCombosForTournament(slug);
+        const fetched = getCombosFromRegistry(registry, myName);
         setWorkerCombos(fetched);
         onCombosFound&&onCombosFound(fetched.length>0);
       } catch(_){
@@ -16826,18 +16857,15 @@ function ComboTab({myName, myDeck, onDeckSaved, slug, onCombosFound, parts}){
         onCombosFound&&onCombosFound(false);
       }
     })();
-  },[myName]);
+  },[myName, slug]);
 
   const handleSave = async(deck) => {
     // Only push combos that are fully built — incomplete slots get dropped
     const readyCombos = deck.filter(comboReady).map(normalizeCombo);
     setBuilding(false); setPushStatus(null); onDeckSaved(readyCombos);
     try {
-      await fetch(`${OVERLAY_WORKER}/combos/push`,{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({player:tn(myName),combos:readyCombos,updatedAt:Date.now()}), // tn() matches judge-side key
-        signal:AbortSignal.timeout(8000),
-      });
+      // Push to tournament-scoped registry using the same route as judge view
+      await pushCombosForTournament(slug, myName, readyCombos);
       setPushStatus("ok");
       setWorkerCombos(readyCombos);
       onCombosFound&&onCombosFound(readyCombos.length>0);
