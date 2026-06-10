@@ -10181,6 +10181,9 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
     user-select:none;
     -webkit-touch-callout:none;
   }
+  /* Quick combo button text rendered via CSS content so Safari has no DOM text nodes to select */
+  .qc-blade::before{ content:attr(data-label); font-size:13px; font-weight:800; display:block; }
+  .qc-parts::before{ content:attr(data-label); font-size:11px; opacity:0.7; display:block; }
   input,textarea{color:var(--text-primary);background:var(--input-bg);}
   input::placeholder{color:var(--text-faint);}
   /* Bottom bar always uses surface color */
@@ -14400,10 +14403,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                       onTouchCancel={cancelLongPress}
                       onContextMenu={e=>e.preventDefault()}
                       style={{width:"100%",padding:"8px 4px",borderRadius:isMenuOpen?"9px 9px 0 0":9,border:`2px solid ${isMenuOpen?bladeColor:anyTaken?"var(--border)":bladeColor+"60"}`,borderBottom:isMenuOpen?`2px solid ${bladeColor}`:undefined,background:isMenuOpen?bladeColor+"22":anyTaken?"var(--surface3)":bladeColor+"12",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:56,height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,userSelect:"none",WebkitUserSelect:"none",WebkitTouchCallout:"none",touchAction:"none"}}>
-                      <span style={{fontSize:13,fontWeight:800,userSelect:"none",WebkitUserSelect:"none",pointerEvents:"none"}}>{qc.blade}</span>
-                      <span style={{fontSize:11,opacity:0.7,userSelect:"none",WebkitUserSelect:"none",pointerEvents:"none"}}>{qc.ratchet?`${qc.ratchet} · ${qc.bit}`:qc.bit}</span>
-                      {anyTaken&&<span style={{fontSize:9,color:"var(--text-faint)"}}>IN USE</span>}
-                      {isMenuOpen&&<span style={{fontSize:8,color:bladeColor,marginTop:1,fontWeight:800,userSelect:"none",WebkitUserSelect:"none",pointerEvents:"none"}}>EDITING ▾</span>}
+                      {/* Text rendered via CSS content:attr() — no DOM text nodes for Safari to select */}
+                      <div className="qc-blade" data-label={qc.blade} aria-label={qc.blade}/>
+                      <div className="qc-parts" data-label={qc.ratchet?`${qc.ratchet} · ${qc.bit}`:qc.bit} aria-label={qc.ratchet?`${qc.ratchet} · ${qc.bit}`:qc.bit}/>
+                      {anyTaken&&<div aria-hidden="true" style={{fontSize:9,color:"var(--text-faint)",userSelect:"none",WebkitUserSelect:"none"}}>IN USE</div>}
+                      {isMenuOpen&&<div aria-hidden="true" style={{fontSize:8,color:bladeColor,marginTop:1,fontWeight:800,userSelect:"none",WebkitUserSelect:"none"}}>EDITING ▾</div>}
                     </button>
                     {/* Part edit menu — appears below the button on long press */}
                     {isMenuOpen&&(
