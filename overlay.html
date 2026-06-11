@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- NC BLAST overlay.html | last updated: 2026-06-11 | session: flash text repositioned to winning side blank space; set dot fix via index.html -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -8,7 +9,7 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   html, body {
-    width: 100%;
+    width: 1920px; height: 1080px;
     background: transparent;
     overflow: hidden;
     font-family: 'Barlow', sans-serif;
@@ -28,11 +29,66 @@
     --border-bright: rgba(255,255,255,0.12);
     --text: #F0F4FF;
     --muted: rgba(240,244,255,0.5);
+    --widget-w: 860px;
   }
 
-  /* ── FULL-WIDTH CONTAINER ──────────────────── */
+  /* ── DRAGGABLE CONTAINER ───────────────────── */
   #widget {
-    width: 100%;
+    position: absolute;
+    top: 880px; left: 30px;
+    width: var(--widget-w);
+    cursor: move;
+    user-select: none;
+
+  }
+
+  /* ── RESIZE HANDLES ────────────────────────── */
+  .resize-handle {
+    position: absolute;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  #widget:hover .resize-handle { opacity: 1; }
+  /* On touch devices: always show handles so they are visible and tappable */
+  @media (pointer: coarse) {
+    .resize-handle { opacity: 1 !important; }
+  }
+
+  /* Corner — scale uniformly */
+  #rh-corner {
+    bottom: -8px; right: -8px;
+    width: 28px; height: 28px;
+    cursor: se-resize;
+    background: rgba(255,255,255,0.18);
+    border-radius: 4px;
+    touch-action: none;
+  }
+  #rh-corner::after {
+    content: '';
+    position: absolute;
+    bottom: 5px; right: 5px;
+    width: 10px; height: 10px;
+    border-right: 2.5px solid rgba(255,255,255,0.75);
+    border-bottom: 2.5px solid rgba(255,255,255,0.75);
+  }
+  /* Right edge — stretch width only */
+  #rh-right {
+    top: 15%; bottom: 15%; right: -8px;
+    width: 16px;
+    cursor: ew-resize;
+    background: rgba(255,255,255,0.1);
+    border-radius: 0 5px 5px 0;
+    touch-action: none;
+  }
+  /* Bottom edge — stretch height only */
+  #rh-bottom {
+    left: 15%; right: 15%; bottom: -8px;
+    height: 16px;
+    cursor: ns-resize;
+    background: rgba(255,255,255,0.1);
+    border-radius: 0 0 5px 5px;
+    touch-action: none;
   }
 
   /* ── MAIN CARD ─────────────────────────────── */
@@ -276,9 +332,11 @@
   }
 
   /* ── FINISH FLASH BANNER ───────────────────── */
+  /* Flash sits in the blank space on whichever side scored — never covers center score */
   #finish-flash {
     position: absolute;
-    inset: 0;
+    top: 0; bottom: 0;
+    /* Default hidden; width and side set by p1-win / p2-win classes */
     display: none;
     flex-direction: column;
     align-items: center;
@@ -287,23 +345,32 @@
     z-index: 50;
     border-radius: 6px;
     overflow: hidden;
+    width: 38%;
   }
   #finish-flash.visible { display: flex; }
-  #finish-flash.p1-win { background: rgba(59,130,246,0.25); }
-  #finish-flash.p2-win { background: rgba(249,115,22,0.25); }
+  /* P1 wins → left side */
+  #finish-flash.p1-win {
+    left: 0; right: auto;
+    background: rgba(59,130,246,0.18);
+  }
+  /* P2 wins → right side */
+  #finish-flash.p2-win {
+    right: 0; left: auto;
+    background: rgba(249,115,22,0.18);
+  }
 
   .flash-type {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 52px;
+    font-size: 42px;
     font-weight: 900;
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
   .flash-winner {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 22px;
+    font-size: 18px;
     font-weight: 700;
-    letter-spacing: 0.15em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     color: rgba(255,255,255,0.7);
     margin-top: 4px;
@@ -325,18 +392,52 @@
   }
   #offline-msg.visible { display: block; }
 
+  /* ── DRAG HANDLE INDICATOR (top of card) ───── */
+  .drag-indicator {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 3px 0 1px;
+    gap: 3px;
+    cursor: move;
+    opacity: 0.2;
+    transition: opacity 0.2s;
+  }
+  .drag-indicator:hover { opacity: 0.5; }
+  .drag-indicator span {
+    width: 24px; height: 2px;
+    background: var(--text);
+    border-radius: 2px;
+  }
+
   /* ── SCALE WRAPPER ─────────────────────────── */
   #scale-wrap {
-    width: 100%;
+    transform-origin: top left;
   }
 
 </style>
 </head>
 <body>
 
+<button id="reset-btn" onclick="resetOverlay()" style="
+  position: fixed; top: 12px; right: 12px;
+  background: rgba(220,38,38,0.85); color: #fff;
+  border: none; border-radius: 8px;
+  padding: 8px 16px; font-size: 14px; font-weight: 700;
+  font-family: 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  cursor: pointer; z-index: 9999;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+">⟳ Reset Overlay</button>
+
 <div id="widget">
   <div id="scale-wrap">
     <div class="card" id="main-card">
+
+      <!-- Drag indicator -->
+      <div class="drag-indicator" id="drag-handle">
+        <span></span><span></span><span></span>
+      </div>
 
       <!-- Finish flash overlay (sits on top of card content) -->
       <div id="finish-flash">
@@ -396,24 +497,17 @@
 
     </div><!-- .card -->
   </div><!-- #scale-wrap -->
+  <div class="resize-handle" id="rh-corner"></div>
+  <div class="resize-handle" id="rh-right"></div>
+  <div class="resize-handle" id="rh-bottom"></div>
 </div><!-- #widget -->
-
-<button id="reset-btn" onclick="resetOverlay()" style="
-  display: block; margin: 8px 0 0 0;
-  background: rgba(220,38,38,0.85); color: #fff;
-  border: none; border-radius: 8px;
-  padding: 8px 16px; font-size: 14px; font-weight: 700;
-  font-family: 'Barlow Condensed', sans-serif;
-  letter-spacing: 0.08em; text-transform: uppercase;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-">⟳ Reset Overlay</button>
 
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
 const WORKER = "https://challonge-proxy.danny61734.workers.dev";
 const params = new URLSearchParams(location.search);
 const SLOT = parseInt(params.get("slot") || "1");
+const EDIT_MODE = params.get("edit") === "1"; // ?edit=1 shows controls
 
 // ── STATE ────────────────────────────────────────────────────────
 let lastEtag = null;
@@ -421,6 +515,8 @@ let lastState = null;
 let flashTimer = null;
 let p1PopTimer = null;
 let p2PopTimer = null;
+let widgetScale = parseFloat(localStorage.getItem("ncblast-scale") || "1");
+let widgetPos = JSON.parse(localStorage.getItem("ncblast-pos") || "null") || { x: 30, y: 880 };
 
 // ── ELEMENTS ─────────────────────────────────────────────────────
 const widget     = document.getElementById("widget");
@@ -432,6 +528,212 @@ const flashType  = document.getElementById("flash-type-text");
 const flashWinner= document.getElementById("flash-winner-text");
 
 const el = id => document.getElementById(id);
+
+// ── APPLY SAVED POSITION & SCALE ─────────────────────────────────
+function applyTransform() {
+  widget.style.left = widgetPos.x + "px";
+  widget.style.top  = widgetPos.y + "px";
+  scaleWrap.style.transform = `scale(${widgetScale})`;
+  const baseH = el("main-card").offsetHeight || 140;
+  widget.style.width  = (BASE_W * widgetScale) + "px";
+  widget.style.height = (baseH * widgetScale) + "px";
+}
+
+// ── DRAG ─────────────────────────────────────────────────────────
+let dragging = false, dragStartX, dragStartY, dragOriginX, dragOriginY;
+
+function startDrag(e) {
+  const touch = e.touches ? e.touches[0] : e;
+  dragging = true;
+  dragStartX = touch.clientX;
+  dragStartY = touch.clientY;
+  dragOriginX = widgetPos.x;
+  dragOriginY = widgetPos.y;
+  e.preventDefault();
+}
+
+function onDrag(e) {
+  if (!dragging) return;
+  const touch = e.touches ? e.touches[0] : e;
+  widgetPos.x = dragOriginX + (touch.clientX - dragStartX);
+  widgetPos.y = dragOriginY + (touch.clientY - dragStartY);
+  // Clamp to screen
+  widgetPos.x = Math.max(0, Math.min(1920 - 100, widgetPos.x));
+  widgetPos.y = Math.max(0, Math.min(1080 - 40, widgetPos.y));
+  widget.style.left = widgetPos.x + "px";
+  widget.style.top  = widgetPos.y + "px";
+}
+
+function endDrag() {
+  if (!dragging) return;
+  dragging = false;
+  localStorage.setItem("ncblast-pos", JSON.stringify(widgetPos));
+}
+
+el("drag-handle").addEventListener("mousedown", startDrag);
+document.addEventListener("mousemove", onDrag);
+document.addEventListener("mouseup", endDrag);
+el("drag-handle").addEventListener("touchstart", startDrag, { passive: false });
+document.addEventListener("touchmove", onDrag, { passive: false });
+document.addEventListener("touchend", endDrag);
+
+// ── RESIZE ───────────────────────────────────────────────────────
+// Supports 3 handles: corner (uniform scale), right edge (width), bottom edge (height)
+const BASE_W = 860;
+const BASE_H = 160; // approximate natural card height at scale 1
+
+let resizeMode = null; // null | "corner" | "right" | "bottom"
+let resizeStartX, resizeStartY, resizeStartScale, resizeStartW, resizeStartH;
+let widgetW = parseFloat(localStorage.getItem("ncblast-w") || String(BASE_W * widgetScale));
+let widgetH = parseFloat(localStorage.getItem("ncblast-h") || "0"); // 0 = auto
+
+function applySize() {
+  scaleWrap.style.transform = `scale(${widgetScale})`;
+  // Width: either explicit px override or scale-derived
+  const w = widgetW > 0 ? widgetW : BASE_W * widgetScale;
+  widget.style.width = w + "px";
+  // Height: explicit override or auto
+  if (widgetH > 0) {
+    widget.style.height = widgetH + "px";
+    scaleWrap.style.transformOrigin = "top left";
+    // Scale inner card to fill explicit height
+    const cardH = el("main-card").offsetHeight || BASE_H;
+    const hScale = widgetH / cardH;
+    const wScale = w / BASE_W;
+    const s = Math.min(hScale, wScale);
+    widgetScale = Math.max(0.3, Math.min(3.0, s));
+    scaleWrap.style.transform = `scale(${widgetScale})`;
+  } else {
+    widget.style.height = (el("main-card").offsetHeight * widgetScale) + "px";
+  }
+}
+
+function startResize(mode, e) {
+  resizeMode = mode;
+  resizeStartX = e.clientX;
+  resizeStartY = e.clientY;
+  resizeStartScale = widgetScale;
+  resizeStartW = widgetW || BASE_W * widgetScale;
+  resizeStartH = widgetH || (el("main-card").offsetHeight * widgetScale);
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+// ── RESIZE: shared delta logic (used by both mouse and touch) ────
+function applyResizeDelta(dx, dy) {
+  if (resizeMode === "corner") {
+    widgetScale = Math.max(0.3, Math.min(3.0, resizeStartScale + dx / 500));
+    widgetW = 0; widgetH = 0;
+    scaleWrap.style.transform = `scale(${widgetScale})`;
+    widget.style.width  = (BASE_W * widgetScale) + "px";
+    widget.style.height = ((el("main-card").offsetHeight || BASE_H) * widgetScale) + "px";
+  } else if (resizeMode === "right") {
+    widgetW = Math.max(200, resizeStartW + dx);
+    widgetH = 0;
+    widgetScale = widgetW / BASE_W;
+    scaleWrap.style.transform = `scale(${widgetScale})`;
+    widget.style.width  = widgetW + "px";
+    widget.style.height = ((el("main-card").offsetHeight || BASE_H) * widgetScale) + "px";
+  } else if (resizeMode === "bottom") {
+    widgetH = Math.max(60, resizeStartH + dy);
+    const cardH = el("main-card").offsetHeight || BASE_H;
+    widgetScale = widgetH / cardH;
+    widgetW = BASE_W * widgetScale;
+    scaleWrap.style.transform = `scale(${widgetScale})`;
+    widget.style.width  = widgetW + "px";
+    widget.style.height = widgetH + "px";
+  }
+}
+
+function saveResizeState() {
+  localStorage.setItem("ncblast-scale", String(widgetScale));
+  localStorage.setItem("ncblast-w", String(widgetW));
+  localStorage.setItem("ncblast-h", String(widgetH));
+}
+
+// ── RESIZE: mouse events ─────────────────────────────────────────
+el("rh-corner").addEventListener("mousedown", e => startResize("corner", e));
+el("rh-right").addEventListener("mousedown",  e => startResize("right",  e));
+el("rh-bottom").addEventListener("mousedown", e => startResize("bottom", e));
+
+document.addEventListener("mousemove", e => {
+  if (!resizeMode) return;
+  applyResizeDelta(e.clientX - resizeStartX, e.clientY - resizeStartY);
+});
+
+document.addEventListener("mouseup", () => {
+  if (!resizeMode) return;
+  resizeMode = null;
+  saveResizeState();
+});
+
+// ── RESIZE: touch events on handles (mobile) ──────────────────────
+function startResizeTouch(mode, e) {
+  if (e.touches.length !== 1) return;
+  const t = e.touches[0];
+  resizeMode = mode;
+  resizeStartX = t.clientX;
+  resizeStartY = t.clientY;
+  resizeStartScale = widgetScale;
+  resizeStartW = widgetW || BASE_W * widgetScale;
+  resizeStartH = widgetH || (el("main-card").offsetHeight * widgetScale);
+  e.preventDefault();
+  e.stopPropagation();
+}
+el("rh-corner").addEventListener("touchstart", e => startResizeTouch("corner", e), { passive: false });
+el("rh-right").addEventListener("touchstart",  e => startResizeTouch("right",  e), { passive: false });
+el("rh-bottom").addEventListener("touchstart", e => startResizeTouch("bottom", e), { passive: false });
+
+document.addEventListener("touchmove", e => {
+  if (!resizeMode || e.touches.length !== 1) return;
+  const t = e.touches[0];
+  applyResizeDelta(t.clientX - resizeStartX, t.clientY - resizeStartY);
+  e.preventDefault();
+}, { passive: false });
+
+document.addEventListener("touchend", () => {
+  if (!resizeMode) return;
+  resizeMode = null;
+  saveResizeState();
+});
+
+// ── PINCH TO ZOOM (two-finger spread/pinch on the widget) ────────
+// Most natural mobile resize — spread to grow, pinch to shrink.
+let pinchStartDist = null;
+let pinchStartScale = null;
+
+widget.addEventListener("touchstart", e => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    pinchStartDist = Math.hypot(dx, dy);
+    pinchStartScale = widgetScale;
+    e.preventDefault();
+  }
+}, { passive: false });
+
+widget.addEventListener("touchmove", e => {
+  if (e.touches.length !== 2 || pinchStartDist === null) return;
+  const dx = e.touches[0].clientX - e.touches[1].clientX;
+  const dy = e.touches[0].clientY - e.touches[1].clientY;
+  const dist = Math.hypot(dx, dy);
+  widgetScale = Math.max(0.3, Math.min(3.0, pinchStartScale * (dist / pinchStartDist)));
+  widgetW = 0; widgetH = 0;
+  scaleWrap.style.transform = `scale(${widgetScale})`;
+  widget.style.width  = (BASE_W * widgetScale) + "px";
+  widget.style.height = ((el("main-card").offsetHeight || BASE_H) * widgetScale) + "px";
+  e.preventDefault();
+}, { passive: false });
+
+widget.addEventListener("touchend", e => {
+  if (pinchStartDist !== null && e.touches.length < 2) {
+    pinchStartDist = null;
+    pinchStartScale = null;
+    localStorage.setItem("ncblast-scale", String(widgetScale));
+    localStorage.setItem("ncblast-w", "0");
+    localStorage.setItem("ncblast-h", "0");
+  }
+});
 
 // ── RENDER COMBO ─────────────────────────────────────────────────
 function renderCombo(containerId, combo, playerClass) {
@@ -575,6 +877,7 @@ function renderState(state, prevState) {
     }
   }
 
+  applyTransform();
 }
 
 // ── POLLING LOOP ──────────────────────────────────────────────────
@@ -610,6 +913,20 @@ async function poll() {
 }
 
 // ── INIT ──────────────────────────────────────────────────────────
+// If no saved scale exists yet (first time opening this channel site),
+// auto-size the widget to 75% of the available window width.
+// Once a user manually resizes, their preference is saved and this is skipped.
+if (!localStorage.getItem("ncblast-scale")) {
+  const targetW = window.innerWidth * 0.75;
+  widgetScale = Math.max(0.3, Math.min(3.0, targetW / BASE_W));
+  widgetW = 0; widgetH = 0;
+}
+
+widget.style.left = widgetPos.x + "px";
+widget.style.top  = widgetPos.y + "px";
+scaleWrap.style.transform = `scale(${widgetScale})`;
+widget.style.width = (BASE_W * widgetScale) + "px";
+
 // Show slot number in brand if multiple slots
 if (SLOT > 1) {
   el("brand-text").textContent = `NC BLAST · T${SLOT}`;
@@ -644,6 +961,38 @@ function resetOverlay() {
 // Start polling
 renderState(null, null);
 poll();
+
+// ── KEYBOARD SHORTCUTS (for streamer convenience) ─────────────────
+// R = reset position and scale to default (75% window width, bottom-left)
+// +/- = scale up/down
+document.addEventListener("keydown", e => {
+  if (e.key === "r" || e.key === "R") {
+    widgetPos = { x: 30, y: 880 };
+    widgetScale = Math.max(0.3, Math.min(3.0, (window.innerWidth * 0.75) / BASE_W));
+    widgetW = 0; widgetH = 0;
+    localStorage.removeItem("ncblast-scale");
+    localStorage.removeItem("ncblast-w");
+    localStorage.removeItem("ncblast-h");
+    localStorage.setItem("ncblast-pos", JSON.stringify(widgetPos));
+    applyTransform();
+  }
+  if (e.key === "=" || e.key === "+") {
+    widgetScale = Math.min(3.0, widgetScale + 0.05);
+    widgetW = 0; widgetH = 0;
+    localStorage.setItem("ncblast-scale", String(widgetScale));
+    localStorage.setItem("ncblast-w", "0");
+    localStorage.setItem("ncblast-h", "0");
+    applyTransform();
+  }
+  if (e.key === "-") {
+    widgetScale = Math.max(0.3, widgetScale - 0.05);
+    widgetW = 0; widgetH = 0;
+    localStorage.setItem("ncblast-scale", String(widgetScale));
+    localStorage.setItem("ncblast-w", "0");
+    localStorage.setItem("ncblast-h", "0");
+    applyTransform();
+  }
+});
 </script>
 </body>
 </html>
