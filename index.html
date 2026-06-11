@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-11 | session: floaters display as regular players in organizer match cards; tournament mode judge flow skips players screen; set dot overlay fix (nsEarly pre-computes sets before pushOverlay) -->
+<!-- NC BLAST index.html | last updated: 2026-06-11 | session: floaters display as regular players in organizer match cards; tournament mode judge flow skips players screen; set dot overlay fix (nsEarly + force bypass debounce on set win) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13263,8 +13263,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     // Compute the updated sets count now (before React re-renders) so the overlay
     // push gets the correct final dot count — React setState is async and would be stale.
     const nsEarly = setWon ? (() => { const a=[sets[0],sets[1]]; a[scoringPi]+=1; return a; })() : [...sets];
-    // Push to stream overlay with correct sets count (fire and forget)
-    pushOverlay({lastFinish:{type:fin.id,scorerIdx:scoringPi},pts:np,sets:nsEarly});
+    // Push to stream overlay with correct sets count (fire and forget).
+    // force=true bypasses the 500ms debounce so a set win always reaches the overlay.
+    pushOverlay({lastFinish:{type:fin.id,scorerIdx:scoringPi},pts:np,sets:nsEarly}, setWon);
 
     // LER — 1-strike system: first LER adds a strike, second converts to a point
     if(fin.id==="LER"){
@@ -13371,11 +13372,12 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     }
   };
 
-  const pushOverlay = (extraState={}) => {
+  const pushOverlay = (extraState={}, force=false) => {
     // Throttle: never fire more than once per 500ms. Prevents runaway loops
     // if something triggers pushOverlay in a tight re-render cycle.
+    // Pass force=true to bypass the debounce for critical state (set wins, match over).
     const now = Date.now();
-    if(now - pushOverlayDebounceRef.current < 500) return;
+    if(!force && now - pushOverlayDebounceRef.current < 500) return;
     pushOverlayDebounceRef.current = now;
     const activeComboOf = (deck, idx) => {
       const c = idx !== null ? deck[idx] : null;
