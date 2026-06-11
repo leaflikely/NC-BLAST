@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-06-11 | session: flash moved inside player blocks (no overlap possible); LER/OF wording overhaul; set dot force push via index.html -->
+<!-- NC BLAST overlay.html | last updated: 2026-06-11 | session: flash moved inside player blocks; LER-STRIKE on committer side; LER penalty on gainer side (OPPONENT PENALTY); OF on gainer side -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -799,11 +799,10 @@ function showFlash(type, scorerIdx, p1Name, p2Name, p1Color, p2Color) {
     bottomLine = (scorerIdx === 0 ? p1Name : p2Name) + " LAUNCH ERROR";
 
   } else if (type === "LER") {
-    // scorerIdx = opponent gaining the point. Committer = 1 - scorerIdx.
-    const committer = 1 - scorerIdx;
-    flashIdx = committer;
+    // scorerIdx = opponent gaining the point. Show on their side.
+    flashIdx = scorerIdx;
     topLine = "LAUNCH ERROR";
-    bottomLine = (committer === 0 ? p1Name : p2Name) + " PENALTY";
+    bottomLine = "OPPONENT PENALTY";
 
   } else if (type === "OF2" || type === "OF3") {
     // Own Finish — scorerIdx = opponent gaining the points. Show near them.
