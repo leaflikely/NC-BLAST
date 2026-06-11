@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-11 | session: floaters display as regular players in organizer match cards; tournament mode judge flow skips players screen -->
+<!-- NC BLAST index.html | last updated: 2026-06-11 | session: floaters display as regular players in organizer match cards; tournament mode judge flow skips players screen; set dot overlay fix (nsEarly pre-computes sets before pushOverlay) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13258,17 +13258,20 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     };
     const newLog=[...log,entry];
     setLog(newLog); sSave(KEYS.matchLog, newLog); setFuture([]); setPts(np);
-    // Push to stream overlay (fire and forget)
-    pushOverlay({lastFinish:{type:fin.id,scorerIdx:scoringPi},pts:np});
 
     const setWon = config.pts>0 && np[scoringPi]>=config.pts;
+    // Compute the updated sets count now (before React re-renders) so the overlay
+    // push gets the correct final dot count — React setState is async and would be stale.
+    const nsEarly = setWon ? (() => { const a=[sets[0],sets[1]]; a[scoringPi]+=1; return a; })() : [...sets];
+    // Push to stream overlay with correct sets count (fire and forget)
+    pushOverlay({lastFinish:{type:fin.id,scorerIdx:scoringPi},pts:np,sets:nsEarly});
 
     // LER — 1-strike system: first LER adds a strike, second converts to a point
     if(fin.id==="LER"){
       if(setWon){
-        const ns=[sets[0],sets[1]]; ns[scoringPi]+=1; setSets(ns);
+        setSets(nsEarly);
         setSetScores(ss=>[...ss,{p1:np[0],p2:np[1]}]);
-        if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
+        if(nsEarly[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
         else {
           if(config.tm){const loserPi=1-scoringPi;setSideAssign({pickPriority:loserPi});setSidePicker({priority:loserPi});}
           setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(1);
@@ -13284,9 +13287,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     const nu1=[...used1,r1]; const nu2=[...used2,r2];
     setUsed1(nu1); setUsed2(nu2); setR1(null); setR2(null);
     if(setWon){
-      const ns=[sets[0],sets[1]]; ns[scoringPi]+=1; setSets(ns);
+      setSets(nsEarly);
       setSetScores(ss=>[...ss,{p1:np[0],p2:np[1]}]);
-      if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
+      if(nsEarly[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
       else {
         if(config.tm){ const loserPi=1-scoringPi; setSideAssign({pickPriority:loserPi}); setSidePicker({priority:loserPi}); }
         setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(1);
