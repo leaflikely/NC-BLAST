@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-08 | session: tournament-scoped combo registry; normalizePlayerKey; pushCombosForTournament; fetchCombosForTournament; early save on deck confirm; player view ComboTab updated; shuffle timer respects swap; blank deck gates part buttons; org desktop layout -->
+<!-- NC BLAST index.html | last updated: 2026-06-11 | session: floaters display as regular players in organizer match cards; tournament mode judge flow skips players screen -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -18432,12 +18432,15 @@ function OrgApp({onSwitchRole}) {
           const borderColor = live ? "#22C55E" : done ? "var(--border)" : "var(--border2)";
           const bgColor = live ? "#22C55E0A" : "var(--surface)";
 
-          // Judge-player warning: highlight player names that belong to judges
-          // Match by mapped bracket name first, fall back to raw Challonge username
+          // Judge-player warning: highlight player names that belong to stationed judges.
+          // Floaters are judges without a stadium assignment — they display like regular players.
+          // Match by mapped bracket name first, fall back to raw Challonge username.
           const isJudgeByName = (displayName) => {
             if (!displayName) return false;
             const dl = displayName.toLowerCase();
             return judgeWhitelist.some(u => {
+              // Only highlight if this judge has a stadium assignment (not a floater)
+              if (!stadiumAssign[u]) return false;
               const mapped = judgeNameMap[u.toLowerCase()];
               return mapped ? mapped.toLowerCase() === dl : u.toLowerCase() === dl;
             });
@@ -20363,7 +20366,7 @@ function BeyJudgeApp() {
           </div>
         </div>
       )}
-      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap,names)=>{setJudgeEventDeleted(false);setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});if(names&&names.length){const fresh=[...new Set(names)];setPlayers(fresh);sSave(KEYS.players,fresh);}}} onJudgeVerified={(payload)=>{
+      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen(config.tm?"match":"players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap,names)=>{setJudgeEventDeleted(false);setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});if(names&&names.length){const fresh=[...new Set(names)];setPlayers(fresh);sSave(KEYS.players,fresh);}}} onJudgeVerified={(payload)=>{
         if (payload && typeof payload === "object" && payload.mode === "shared") {
           setSharedJudges({ judgeA: payload.judgeA, judgeB: payload.judgeB });
           setJudge(""); // will be chosen per-match
@@ -20375,7 +20378,7 @@ function BeyJudgeApp() {
         }
       }}/>}
       {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}} tournamentMode={config.tm}/>}
-      {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sharedJudges={sharedJudges} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
+      {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sharedJudges={sharedJudges} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen(config.tm?"format":"players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
     </div>
   );
 }
