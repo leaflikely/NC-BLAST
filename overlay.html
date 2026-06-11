@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-06-11 | session: flash text repositioned to side zones with overflow clamp; LER shows committer not scorer; set dot force push via index.html -->
+<!-- NC BLAST overlay.html | last updated: 2026-06-11 | session: flash moved inside player blocks (no overlap possible); LER/OF wording overhaul; set dot force push via index.html -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -332,57 +332,48 @@
   }
 
   /* ── FINISH FLASH BANNER ───────────────────── */
-  /* Flash sits in the blank space on whichever side scored — never covers center score.
-     Width is capped to the p1/p2 player column so it never bleeds over the score. */
-  #finish-flash {
+  /* Each player block is position:relative so the flash for that side
+     is contained exactly within that column — no overlap with center score. */
+  .player {
+    position: relative;
+  }
+  .player-flash {
     position: absolute;
-    top: 0; bottom: 0;
+    inset: 0;
     display: none;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     pointer-events: none;
     z-index: 50;
-    border-radius: 6px;
+    border-radius: 4px;
     overflow: hidden;
-    /* Stay within the player column — the grid gives each side roughly 1fr of the card.
-       We clamp to 36% max so even at narrow widget sizes we stay off the score. */
-    max-width: 36%;
-    padding: 0 10px;
+    padding: 0 8px;
   }
-  #finish-flash.visible { display: flex; }
-  /* P1 wins → left side */
-  #finish-flash.p1-win {
-    left: 0; right: auto;
-    background: rgba(59,130,246,0.18);
-  }
-  /* P2 wins → right side */
-  #finish-flash.p2-win {
-    right: 0; left: auto;
-    background: rgba(249,115,22,0.18);
-  }
+  .player-flash.visible { display: flex; }
+  #p1-flash { background: rgba(59,130,246,0.22); }
+  #p2-flash { background: rgba(249,115,22,0.22); }
 
   .flash-type {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 38px;
+    font-size: 32px;
     font-weight: 900;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    /* Shrink to fit if text is too wide */
     max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    text-align: center;
   }
   .flash-winner {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 700;
     letter-spacing: 0.10em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.7);
-    margin-top: 4px;
-    /* Shrink to fit if name is too long */
+    color: rgba(255,255,255,0.75);
+    margin-top: 3px;
     max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
@@ -453,12 +444,6 @@
         <span></span><span></span><span></span>
       </div>
 
-      <!-- Finish flash overlay (sits on top of card content) -->
-      <div id="finish-flash">
-        <div class="flash-type" id="flash-type-text">XTR</div>
-        <div class="flash-winner" id="flash-winner-text">Player wins</div>
-      </div>
-
       <!-- Tournament bar -->
       <div class="tourney-bar">
         <span class="brand" id="brand-text">NC BLAST</span>
@@ -474,6 +459,10 @@
 
         <!-- P1 (left) -->
         <div class="player p1" id="p1-block">
+          <div class="player-flash" id="p1-flash">
+            <div class="flash-type" id="p1-flash-type"></div>
+            <div class="flash-winner" id="p1-flash-winner"></div>
+          </div>
           <div class="player-name" id="p1-name">—</div>
           <div class="player-side" id="p1-side"></div>
           <div class="combo-display" id="p1-combo">
@@ -499,6 +488,10 @@
 
         <!-- P2 (right) -->
         <div class="player p2 right" id="p2-block">
+          <div class="player-flash" id="p2-flash">
+            <div class="flash-type" id="p2-flash-type"></div>
+            <div class="flash-winner" id="p2-flash-winner"></div>
+          </div>
           <div class="player-name" id="p2-name">—</div>
           <div class="player-side" id="p2-side"></div>
           <div class="combo-display" id="p2-combo">
@@ -537,9 +530,8 @@ const widget     = document.getElementById("widget");
 const scaleWrap  = document.getElementById("scale-wrap");
 const scoreboard = document.getElementById("scoreboard");
 const offlineMsg = document.getElementById("offline-msg");
-const flashEl    = document.getElementById("finish-flash");
-const flashType  = document.getElementById("flash-type-text");
-const flashWinner= document.getElementById("flash-winner-text");
+const p1Flash     = document.getElementById("p1-flash");
+const p2Flash     = document.getElementById("p2-flash");
 
 const el = id => document.getElementById(id);
 
@@ -784,36 +776,62 @@ function popScore(elId, timerRef) {
 }
 
 // ── FINISH FLASH ──────────────────────────────────────────────────
-const FINISH_LABELS = {
-  XTR: "XTREME",
-  OVR: "OVER",
-  BST: "BURST",
-  OF: "OUT OF BOUNDS",
-  OF2: "OUT — P2 PENALTY",
-  OF3: "OUT — P1 PENALTY",
-  "LER-STRIKE": "LER STRIKE",
-};
+// scorerIdx semantics from judge app:
+//   Normal finish (XTR/OVR/BST/SPF): scorerIdx = the player who scored
+//   Penalty finish (LER, OF2, OF3):  scorerIdx = the opponent gaining the point
+//                                     committer = 1 - scorerIdx
+//   LER-STRIKE (first LER, no point): scorerIdx = the committer themselves
 
 function showFlash(type, scorerIdx, p1Name, p2Name, p1Color, p2Color) {
-  const label = FINISH_LABELS[type] || type;
-  // For LER-STRIKE: scorerIdx is the opponent who receives the point.
-  // The committer is 1 - scorerIdx. Show the committer with "LAUNCH ERROR" wording,
-  // and position the flash on the committer's side so it's clear who erred.
-  const isLer = type === "LER" || type === "LER-STRIKE";
-  const committerIdx = isLer ? 1 - scorerIdx : scorerIdx;
-  const subject = committerIdx === 0 ? p1Name : p2Name;
-  const subjectColor = committerIdx === 0 ? p1Color : p2Color;
-  flashType.textContent = label;
-  flashType.style.color = subjectColor;
-  flashType.style.textShadow = `0 0 30px ${subjectColor}`;
-  flashWinner.textContent = isLer
-    ? (subject || "Player") + " LAUNCH ERROR"
-    : (subject || "Player") + " SCORES";
-  flashEl.className = "visible " + (committerIdx === 0 ? "p1-win" : "p2-win");
-
+  // Clear both flashes first
+  p1Flash.classList.remove("visible");
+  p2Flash.classList.remove("visible");
   clearTimeout(flashTimer);
+
+  let flashIdx;   // which player block to light up
+  let topLine;    // big text (finish type label)
+  let bottomLine; // smaller name line
+
+  if (type === "LER-STRIKE") {
+    // scorerIdx = committer. Show on committer's side.
+    flashIdx = scorerIdx;
+    topLine = "LER STRIKE";
+    bottomLine = (scorerIdx === 0 ? p1Name : p2Name) + " LAUNCH ERROR";
+
+  } else if (type === "LER") {
+    // scorerIdx = opponent gaining the point. Committer = 1 - scorerIdx.
+    const committer = 1 - scorerIdx;
+    flashIdx = committer;
+    topLine = "LAUNCH ERROR";
+    bottomLine = (committer === 0 ? p1Name : p2Name) + " PENALTY";
+
+  } else if (type === "OF2" || type === "OF3") {
+    // Own Finish — scorerIdx = opponent gaining the points. Show near them.
+    const pts = type === "OF2" ? 2 : 3;
+    flashIdx = scorerIdx;
+    topLine = "OWN FINISH";
+    bottomLine = "OPPONENT +" + pts + " PTS";
+
+  } else {
+    // Normal finish — scorerIdx = scorer
+    const labels = { XTR: "XTREME", OVR: "OVER", BST: "BURST", SPF: "SPIN" };
+    flashIdx = scorerIdx;
+    topLine = labels[type] || type;
+    bottomLine = (scorerIdx === 0 ? p1Name : p2Name) + " SCORES";
+  }
+
+  const flashEl = flashIdx === 0 ? p1Flash : p2Flash;
+  const flashColor = flashIdx === 0 ? p1Color : p2Color;
+
+  flashEl.querySelector(".flash-type").textContent = topLine;
+  flashEl.querySelector(".flash-type").style.color = flashColor;
+  flashEl.querySelector(".flash-type").style.textShadow = `0 0 24px ${flashColor}`;
+  flashEl.querySelector(".flash-winner").textContent = bottomLine;
+  flashEl.classList.add("visible");
+
   flashTimer = setTimeout(() => {
-    flashEl.className = "";
+    p1Flash.classList.remove("visible");
+    p2Flash.classList.remove("visible");
   }, 2200);
 }
 
@@ -961,7 +979,8 @@ function resetOverlay() {
   clearTimeout(flashTimer);
   clearTimeout(p1PopTimer);
   clearTimeout(p2PopTimer);
-  flashEl.className = "";
+  p1Flash.classList.remove("visible");
+  p2Flash.classList.remove("visible");
   el("p1-name").textContent = "—";
   el("p2-name").textContent = "—";
   el("p1-side").textContent = "";
