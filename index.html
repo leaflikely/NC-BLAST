@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-12 | session: CRITICAL FIX — restored OrgApp, PinModal, OrgConfirmUsername, OrgTournamentSelect (entire organizer view) which were accidentally deleted in the prior player-view-removal session. Organizer view was completely broken/missing in the last two delivered files. Also: removed dead ChallongeLoginScreen, COMBO_CACHE_TTL, ROLE_KEY -->
+<!-- NC BLAST index.html | last updated: 2026-06-13 | session: CRITICAL FIX — restored OrgApp, PinModal, OrgConfirmUsername, OrgTournamentSelect, and workerGet() which were all accidentally deleted during player-view removal. Org view errors and judge blank screen both traced to missing workerGet definition -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10344,6 +10344,13 @@ function useScale() {
 ═══════════════════════════════════════ */
 const KEYS = { parts: "bx-library-v10", players: "bx-roster-v2", combos: "bx-combos-v1", matchLog: "bx-matchlog-v1", challongeMap: "bx-challonge-map-v1", overlaySlot: "bx-overlay-slot-v1", lastJudge: "ncblast-last-judge-v1" };
 const OVERLAY_WORKER = "https://challonge-proxy.danny61734.workers.dev";
+
+// Shared fetch helper — GET request to the Worker, throws on non-OK responses.
+async function workerGet(path, signal) {
+  const res = await fetch(`${OVERLAY_WORKER}${path}`, { signal });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
 
 /* ═══════════════════════════════════════
    CHALLONGE OAUTH HOOK
