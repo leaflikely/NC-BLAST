@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: OAuth removed — all three paths confirmed blocked (Worker bot-challenge, CORS, no implicit grant); replaced with direct username entry; whitelist remains as authorization gate; submitUsername() hook fn added -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: Performance — defer on CDN scripts; jsQR+qrcodejs moved from head to body (unblocks first paint); loading indicator in #root; dead OAuth code removed from Babel block (~29KB); pulse animation finite -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,9 +6,109 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <title>NC BLAST</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js" defer></script>
+<!-- qrcodejs: moved to body -->
+<!-- jsQR: moved to body -->
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{font-size:16px;overscroll-behavior:none;}
+  /* Blocks pull-to-refresh on mobile — page still scrolls normally, just won't bounce/reload on swipe-down */
+  :root{
+    --bg:linear-gradient(180deg,#F8FAFC 0%,#EFF6FF 100%);
+    --bg-solid:#F8FAFC;
+    --surface:#ffffff;
+    --surface2:#F8FAFC;
+    --surface3:#F1F5F9;
+    --border:#E2E8F0;
+    --border2:#CBD5E1;
+    --text-primary:#1E293B;
+    --text-secondary:#475569;
+    --text-muted:#64748B;
+    --text-faint:#94A3B8;
+    --text-disabled:#CBD5E1;
+    --shadow:rgba(0,0,0,0.06);
+    --pill-bg:#F1F5F9;
+    --input-bg:#FAFAFA;
+    --accent:#EA580C;
+    --accent2:#F97316;
+    --green:#22C55E;
+    --blue:#3B82F6;
+    --red:#EF4444;
+    --purple:#A855F7;
+  }
+  body.dark{
+    --bg:linear-gradient(180deg,#0F172A 0%,#1E293B 100%);
+    --bg-solid:#0F172A;
+    --surface:#1E293B;
+    --surface2:#0F172A;
+    --surface3:#334155;
+    --border:#334155;
+    --border2:#475569;
+    --text-primary:#F1F5F9;
+    --text-secondary:#CBD5E1;
+    --text-muted:#94A3B8;
+    --text-faint:#64748B;
+    --text-disabled:#475569;
+    --shadow:rgba(0,0,0,0.3);
+    --pill-bg:#334155;
+    --input-bg:#1E293B;
+    --accent:#EA580C;
+    --accent2:#F97316;
+    --green:#22C55E;
+    --blue:#3B82F6;
+    --red:#EF4444;
+    --purple:#A855F7;
+  }
+  body{background:var(--bg);min-height:100vh;font-family:'Outfit',sans-serif;color:var(--text-primary);overscroll-behavior:none;}
+  /* Suppress all text selection/callout on elements that handle long press */
+  .no-select{
+    -webkit-user-select:none;
+    -moz-user-select:none;
+    -ms-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .no-select *{
+    -webkit-user-select:none;
+    -moz-user-select:none;
+    -ms-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
+  }
+  /* Quick combo button text rendered via CSS content so Safari has no DOM text nodes to select */
+  .qc-blade::before{ content:attr(data-label); font-size:13px; font-weight:800; display:block; }
+  .qc-parts::before{ content:attr(data-label); font-size:11px; opacity:0.7; display:block; }
+  /* Block all text selection on the blade picker page so long-press never triggers highlight */
+  .picker-page{
+    -webkit-user-select:none;
+    -moz-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
+  }
+  /* Restore selection inside inputs so the search bar still works normally */
+  .picker-page input{
+    -webkit-user-select:text;
+    user-select:text;
+  }
+  input,textarea{color:var(--text-primary);background:var(--input-bg);}
+  input::placeholder{color:var(--text-faint);}
+  /* Bottom bar always uses surface color */
+  .bottom-bar{background:var(--surface);}
+  /* Player view classes */
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+  @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+  .fade-in{animation:fadeIn 0.3s ease both;}
+  .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22C55E;animation:pulse 1.5s ease 3;margin-right:5px;}
+</style>
+</head>
+<body>
+<div id="root"><div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;font-family:sans-serif;gap:16px;"><p style="margin:0;font-size:22px;font-weight:900;color:#f8fafc;letter-spacing:0.05em;">NC BLAST</p><div style="width:28px;height:28px;border-radius:50%;border:3px solid #334155;border-top-color:#EA580C;animation:spin 0.9s linear infinite;"></div></div></div>
+
+<!-- Libraries moved from <head> to body so they don't block first paint -->
 <script>/* qrcodejs inlined — cdnjs 403s on Cloudflare Pages */
 var QRCode;!function(){function a(a){this.mode=c.MODE_8BIT_BYTE,this.data=a,this.parsedData=[];for(var b=[],d=0,e=this.data.length;e>d;d++){var f=this.data.charCodeAt(d);f>65536?(b[0]=240|(1835008&f)>>>18,b[1]=128|(258048&f)>>>12,b[2]=128|(4032&f)>>>6,b[3]=128|63&f):f>2048?(b[0]=224|(61440&f)>>>12,b[1]=128|(4032&f)>>>6,b[2]=128|63&f):f>128?(b[0]=192|(1984&f)>>>6,b[1]=128|63&f):b[0]=f,this.parsedData=this.parsedData.concat(b)}this.parsedData.length!=this.data.length&&(this.parsedData.unshift(191),this.parsedData.unshift(187),this.parsedData.unshift(239))}function b(a,b){this.typeNumber=a,this.errorCorrectLevel=b,this.modules=null,this.moduleCount=0,this.dataCache=null,this.dataList=[]}function i(a,b){if(void 0==a.length)throw new Error(a.length+"/"+b);for(var c=0;c<a.length&&0==a[c];)c++;this.num=new Array(a.length-c+b);for(var d=0;d<a.length-c;d++)this.num[d]=a[d+c]}function j(a,b){this.totalCount=a,this.dataCount=b}function k(){this.buffer=[],this.length=0}function m(){return"undefined"!=typeof CanvasRenderingContext2D}function n(){var a=!1,b=navigator.userAgent;return/android/i.test(b)&&(a=!0,aMat=b.toString().match(/android ([0-9]\.[0-9])/i),aMat&&aMat[1]&&(a=parseFloat(aMat[1]))),a}function r(a,b){for(var c=1,e=s(a),f=0,g=l.length;g>=f;f++){var h=0;switch(b){case d.L:h=l[f][0];break;case d.M:h=l[f][1];break;case d.Q:h=l[f][2];break;case d.H:h=l[f][3]}if(h>=e)break;c++}if(c>l.length)throw new Error("Too long data");return c}function s(a){var b=encodeURI(a).toString().replace(/\%[0-9a-fA-F]{2}/g,"a");return b.length+(b.length!=a?3:0)}a.prototype={getLength:function(){return this.parsedData.length},write:function(a){for(var b=0,c=this.parsedData.length;c>b;b++)a.put(this.parsedData[b],8)}},b.prototype={addData:function(b){var c=new a(b);this.dataList.push(c),this.dataCache=null},isDark:function(a,b){if(0>a||this.moduleCount<=a||0>b||this.moduleCount<=b)throw new Error(a+","+b);return this.modules[a][b]},getModuleCount:function(){return this.moduleCount},make:function(){this.makeImpl(!1,this.getBestMaskPattern())},makeImpl:function(a,c){this.moduleCount=4*this.typeNumber+17,this.modules=new Array(this.moduleCount);for(var d=0;d<this.moduleCount;d++){this.modules[d]=new Array(this.moduleCount);for(var e=0;e<this.moduleCount;e++)this.modules[d][e]=null}this.setupPositionProbePattern(0,0),this.setupPositionProbePattern(this.moduleCount-7,0),this.setupPositionProbePattern(0,this.moduleCount-7),this.setupPositionAdjustPattern(),this.setupTimingPattern(),this.setupTypeInfo(a,c),this.typeNumber>=7&&this.setupTypeNumber(a),null==this.dataCache&&(this.dataCache=b.createData(this.typeNumber,this.errorCorrectLevel,this.dataList)),this.mapData(this.dataCache,c)},setupPositionProbePattern:function(a,b){for(var c=-1;7>=c;c++)if(!(-1>=a+c||this.moduleCount<=a+c))for(var d=-1;7>=d;d++)-1>=b+d||this.moduleCount<=b+d||(this.modules[a+c][b+d]=c>=0&&6>=c&&(0==d||6==d)||d>=0&&6>=d&&(0==c||6==c)||c>=2&&4>=c&&d>=2&&4>=d?!0:!1)},getBestMaskPattern:function(){for(var a=0,b=0,c=0;8>c;c++){this.makeImpl(!0,c);var d=f.getLostPoint(this);(0==c||a>d)&&(a=d,b=c)}return b},createMovieClip:function(a,b,c){var d=a.createEmptyMovieClip(b,c),e=1;this.make();for(var f=0;f<this.modules.length;f++)for(var g=f*e,h=0;h<this.modules[f].length;h++){var i=h*e,j=this.modules[f][h];j&&(d.beginFill(0,100),d.moveTo(i,g),d.lineTo(i+e,g),d.lineTo(i+e,g+e),d.lineTo(i,g+e),d.endFill())}return d},setupTimingPattern:function(){for(var a=8;a<this.moduleCount-8;a++)null==this.modules[a][6]&&(this.modules[a][6]=0==a%2);for(var b=8;b<this.moduleCount-8;b++)null==this.modules[6][b]&&(this.modules[6][b]=0==b%2)},setupPositionAdjustPattern:function(){for(var a=f.getPatternPosition(this.typeNumber),b=0;b<a.length;b++)for(var c=0;c<a.length;c++){var d=a[b],e=a[c];if(null==this.modules[d][e])for(var g=-2;2>=g;g++)for(var h=-2;2>=h;h++)this.modules[d+g][e+h]=-2==g||2==g||-2==h||2==h||0==g&&0==h?!0:!1}},setupTypeNumber:function(a){for(var b=f.getBCHTypeNumber(this.typeNumber),c=0;18>c;c++){var d=!a&&1==(1&b>>c);this.modules[Math.floor(c/3)][c%3+this.moduleCount-8-3]=d}for(var c=0;18>c;c++){var d=!a&&1==(1&b>>c);this.modules[c%3+this.moduleCount-8-3][Math.floor(c/3)]=d}},setupTypeInfo:function(a,b){for(var c=this.errorCorrectLevel<<3|b,d=f.getBCHTypeInfo(c),e=0;15>e;e++){var g=!a&&1==(1&d>>e);6>e?this.modules[e][8]=g:8>e?this.modules[e+1][8]=g:this.modules[this.moduleCount-15+e][8]=g}for(var e=0;15>e;e++){var g=!a&&1==(1&d>>e);8>e?this.modules[8][this.moduleCount-e-1]=g:9>e?this.modules[8][15-e-1+1]=g:this.modules[8][15-e-1]=g}this.modules[this.moduleCount-8][8]=!a},mapData:function(a,b){for(var c=-1,d=this.moduleCount-1,e=7,g=0,h=this.moduleCount-1;h>0;h-=2)for(6==h&&h--;;){for(var i=0;2>i;i++)if(null==this.modules[d][h-i]){var j=!1;g<a.length&&(j=1==(1&a[g]>>>e));var k=f.getMask(b,d,h-i);k&&(j=!j),this.modules[d][h-i]=j,e--,-1==e&&(g++,e=7)}if(d+=c,0>d||this.moduleCount<=d){d-=c,c=-c;break}}}},b.PAD0=236,b.PAD1=17,b.createData=function(a,c,d){for(var e=j.getRSBlocks(a,c),g=new k,h=0;h<d.length;h++){var i=d[h];g.put(i.mode,4),g.put(i.getLength(),f.getLengthInBits(i.mode,a)),i.write(g)}for(var l=0,h=0;h<e.length;h++)l+=e[h].dataCount;if(g.getLengthInBits()>8*l)throw new Error("code length overflow. ("+g.getLengthInBits()+">"+8*l+")");for(g.getLengthInBits()+4<=8*l&&g.put(0,4);0!=g.getLengthInBits()%8;)g.putBit(!1);for(;;){if(g.getLengthInBits()>=8*l)break;if(g.put(b.PAD0,8),g.getLengthInBits()>=8*l)break;g.put(b.PAD1,8)}return b.createBytes(g,e)},b.createBytes=function(a,b){for(var c=0,d=0,e=0,g=new Array(b.length),h=new Array(b.length),j=0;j<b.length;j++){var k=b[j].dataCount,l=b[j].totalCount-k;d=Math.max(d,k),e=Math.max(e,l),g[j]=new Array(k);for(var m=0;m<g[j].length;m++)g[j][m]=255&a.buffer[m+c];c+=k;var n=f.getErrorCorrectPolynomial(l),o=new i(g[j],n.getLength()-1),p=o.mod(n);h[j]=new Array(n.getLength()-1);for(var m=0;m<h[j].length;m++){var q=m+p.getLength()-h[j].length;h[j][m]=q>=0?p.get(q):0}}for(var r=0,m=0;m<b.length;m++)r+=b[m].totalCount;for(var s=new Array(r),t=0,m=0;d>m;m++)for(var j=0;j<b.length;j++)m<g[j].length&&(s[t++]=g[j][m]);for(var m=0;e>m;m++)for(var j=0;j<b.length;j++)m<h[j].length&&(s[t++]=h[j][m]);return s};for(var c={MODE_NUMBER:1,MODE_ALPHA_NUM:2,MODE_8BIT_BYTE:4,MODE_KANJI:8},d={L:1,M:0,Q:3,H:2},e={PATTERN000:0,PATTERN001:1,PATTERN010:2,PATTERN011:3,PATTERN100:4,PATTERN101:5,PATTERN110:6,PATTERN111:7},f={PATTERN_POSITION_TABLE:[[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]],G15:1335,G18:7973,G15_MASK:21522,getBCHTypeInfo:function(a){for(var b=a<<10;f.getBCHDigit(b)-f.getBCHDigit(f.G15)>=0;)b^=f.G15<<f.getBCHDigit(b)-f.getBCHDigit(f.G15);return(a<<10|b)^f.G15_MASK},getBCHTypeNumber:function(a){for(var b=a<<12;f.getBCHDigit(b)-f.getBCHDigit(f.G18)>=0;)b^=f.G18<<f.getBCHDigit(b)-f.getBCHDigit(f.G18);return a<<12|b},getBCHDigit:function(a){for(var b=0;0!=a;)b++,a>>>=1;return b},getPatternPosition:function(a){return f.PATTERN_POSITION_TABLE[a-1]},getMask:function(a,b,c){switch(a){case e.PATTERN000:return 0==(b+c)%2;case e.PATTERN001:return 0==b%2;case e.PATTERN010:return 0==c%3;case e.PATTERN011:return 0==(b+c)%3;case e.PATTERN100:return 0==(Math.floor(b/2)+Math.floor(c/3))%2;case e.PATTERN101:return 0==b*c%2+b*c%3;case e.PATTERN110:return 0==(b*c%2+b*c%3)%2;case e.PATTERN111:return 0==(b*c%3+(b+c)%2)%2;default:throw new Error("bad maskPattern:"+a)}},getErrorCorrectPolynomial:function(a){for(var b=new i([1],0),c=0;a>c;c++)b=b.multiply(new i([1,g.gexp(c)],0));return b},getLengthInBits:function(a,b){if(b>=1&&10>b)switch(a){case c.MODE_NUMBER:return 10;case c.MODE_ALPHA_NUM:return 9;case c.MODE_8BIT_BYTE:return 8;case c.MODE_KANJI:return 8;default:throw new Error("mode:"+a)}else if(27>b)switch(a){case c.MODE_NUMBER:return 12;case c.MODE_ALPHA_NUM:return 11;case c.MODE_8BIT_BYTE:return 16;case c.MODE_KANJI:return 10;default:throw new Error("mode:"+a)}else{if(!(41>b))throw new Error("type:"+b);switch(a){case c.MODE_NUMBER:return 14;case c.MODE_ALPHA_NUM:return 13;case c.MODE_8BIT_BYTE:return 16;case c.MODE_KANJI:return 12;default:throw new Error("mode:"+a)}}},getLostPoint:function(a){for(var b=a.getModuleCount(),c=0,d=0;b>d;d++)for(var e=0;b>e;e++){for(var f=0,g=a.isDark(d,e),h=-1;1>=h;h++)if(!(0>d+h||d+h>=b))for(var i=-1;1>=i;i++)0>e+i||e+i>=b||(0!=h||0!=i)&&g==a.isDark(d+h,e+i)&&f++;f>5&&(c+=3+f-5)}for(var d=0;b-1>d;d++)for(var e=0;b-1>e;e++){var j=0;a.isDark(d,e)&&j++,a.isDark(d+1,e)&&j++,a.isDark(d,e+1)&&j++,a.isDark(d+1,e+1)&&j++,(0==j||4==j)&&(c+=3)}for(var d=0;b>d;d++)for(var e=0;b-6>e;e++)a.isDark(d,e)&&!a.isDark(d,e+1)&&a.isDark(d,e+2)&&a.isDark(d,e+3)&&a.isDark(d,e+4)&&!a.isDark(d,e+5)&&a.isDark(d,e+6)&&(c+=40);for(var e=0;b>e;e++)for(var d=0;b-6>d;d++)a.isDark(d,e)&&!a.isDark(d+1,e)&&a.isDark(d+2,e)&&a.isDark(d+3,e)&&a.isDark(d+4,e)&&!a.isDark(d+5,e)&&a.isDark(d+6,e)&&(c+=40);for(var k=0,e=0;b>e;e++)for(var d=0;b>d;d++)a.isDark(d,e)&&k++;var l=Math.abs(100*k/b/b-50)/5;return c+=10*l}},g={glog:function(a){if(1>a)throw new Error("glog("+a+")");return g.LOG_TABLE[a]},gexp:function(a){for(;0>a;)a+=255;for(;a>=256;)a-=255;return g.EXP_TABLE[a]},EXP_TABLE:new Array(256),LOG_TABLE:new Array(256)},h=0;8>h;h++)g.EXP_TABLE[h]=1<<h;for(var h=8;256>h;h++)g.EXP_TABLE[h]=g.EXP_TABLE[h-4]^g.EXP_TABLE[h-5]^g.EXP_TABLE[h-6]^g.EXP_TABLE[h-8];for(var h=0;255>h;h++)g.LOG_TABLE[g.EXP_TABLE[h]]=h;i.prototype={get:function(a){return this.num[a]},getLength:function(){return this.num.length},multiply:function(a){for(var b=new Array(this.getLength()+a.getLength()-1),c=0;c<this.getLength();c++)for(var d=0;d<a.getLength();d++)b[c+d]^=g.gexp(g.glog(this.get(c))+g.glog(a.get(d)));return new i(b,0)},mod:function(a){if(this.getLength()-a.getLength()<0)return this;for(var b=g.glog(this.get(0))-g.glog(a.get(0)),c=new Array(this.getLength()),d=0;d<this.getLength();d++)c[d]=this.get(d);for(var d=0;d<a.getLength();d++)c[d]^=g.gexp(g.glog(a.get(d))+b);return new i(c,0).mod(a)}},j.RS_BLOCK_TABLE=[[1,26,19],[1,26,16],[1,26,13],[1,26,9],[1,44,34],[1,44,28],[1,44,22],[1,44,16],[1,70,55],[1,70,44],[2,35,17],[2,35,13],[1,100,80],[2,50,32],[2,50,24],[4,25,9],[1,134,108],[2,67,43],[2,33,15,2,34,16],[2,33,11,2,34,12],[2,86,68],[4,43,27],[4,43,19],[4,43,15],[2,98,78],[4,49,31],[2,32,14,4,33,15],[4,39,13,1,40,14],[2,121,97],[2,60,38,2,61,39],[4,40,18,2,41,19],[4,40,14,2,41,15],[2,146,116],[3,58,36,2,59,37],[4,36,16,4,37,17],[4,36,12,4,37,13],[2,86,68,2,87,69],[4,69,43,1,70,44],[6,43,19,2,44,20],[6,43,15,2,44,16],[4,101,81],[1,80,50,4,81,51],[4,50,22,4,51,23],[3,36,12,8,37,13],[2,116,92,2,117,93],[6,58,36,2,59,37],[4,46,20,6,47,21],[7,42,14,4,43,15],[4,133,107],[8,59,37,1,60,38],[8,44,20,4,45,21],[12,33,11,4,34,12],[3,145,115,1,146,116],[4,64,40,5,65,41],[11,36,16,5,37,17],[11,36,12,5,37,13],[5,109,87,1,110,88],[5,65,41,5,66,42],[5,54,24,7,55,25],[11,36,12],[5,122,98,1,123,99],[7,73,45,3,74,46],[15,43,19,2,44,20],[3,45,15,13,46,16],[1,135,107,5,136,108],[10,74,46,1,75,47],[1,50,22,15,51,23],[2,42,14,17,43,15],[5,150,120,1,151,121],[9,69,43,4,70,44],[17,50,22,1,51,23],[2,42,14,19,43,15],[3,141,113,4,142,114],[3,70,44,11,71,45],[17,47,21,4,48,22],[9,39,13,16,40,14],[3,135,107,5,136,108],[3,67,41,13,68,42],[15,54,24,5,55,25],[15,43,15,10,44,16],[4,144,116,4,145,117],[17,68,42],[17,50,22,6,51,23],[19,46,16,6,47,17],[2,139,111,7,140,112],[17,74,46],[7,54,24,16,55,25],[34,37,13],[4,151,121,5,152,122],[4,75,47,14,76,48],[11,54,24,14,55,25],[16,45,15,14,46,16],[6,147,117,4,148,118],[6,73,45,14,74,46],[11,54,24,16,55,25],[30,46,16,2,47,17],[8,132,106,4,133,107],[8,75,47,13,76,48],[7,54,24,22,55,25],[22,45,15,13,46,16],[10,142,114,2,143,115],[19,74,46,4,75,47],[28,50,22,6,51,23],[33,46,16,4,47,17],[8,152,122,4,153,123],[22,73,45,3,74,46],[8,53,23,26,54,24],[12,45,15,28,46,16],[3,147,117,10,148,118],[3,73,45,23,74,46],[4,54,24,31,55,25],[11,45,15,31,46,16],[7,146,116,7,147,117],[21,73,45,7,74,46],[1,53,23,37,54,24],[19,45,15,26,46,16],[5,145,115,10,146,116],[19,75,47,10,76,48],[15,54,24,25,55,25],[23,45,15,25,46,16],[13,145,115,3,146,116],[2,74,46,29,75,47],[42,54,24,1,55,25],[23,45,15,28,46,16],[17,145,115],[10,74,46,23,75,47],[10,54,24,35,55,25],[19,45,15,35,46,16],[17,145,115,1,146,116],[14,74,46,21,75,47],[29,54,24,19,55,25],[11,45,15,46,46,16],[13,145,115,6,146,116],[14,74,46,23,75,47],[44,54,24,7,55,25],[59,46,16,1,47,17],[12,151,121,7,152,122],[12,75,47,26,76,48],[39,54,24,14,55,25],[22,45,15,41,46,16],[6,151,121,14,152,122],[6,75,47,34,76,48],[46,54,24,10,55,25],[2,45,15,64,46,16],[17,152,122,4,153,123],[29,74,46,14,75,47],[49,54,24,10,55,25],[24,45,15,46,46,16],[4,152,122,18,153,123],[13,74,46,32,75,47],[48,54,24,14,55,25],[42,45,15,32,46,16],[20,147,117,4,148,118],[40,75,47,7,76,48],[43,54,24,22,55,25],[10,45,15,67,46,16],[19,148,118,6,149,119],[18,75,47,31,76,48],[34,54,24,34,55,25],[20,45,15,61,46,16]],j.getRSBlocks=function(a,b){var c=j.getRsBlockTable(a,b);if(void 0==c)throw new Error("bad rs block @ typeNumber:"+a+"/errorCorrectLevel:"+b);for(var d=c.length/3,e=[],f=0;d>f;f++)for(var g=c[3*f+0],h=c[3*f+1],i=c[3*f+2],k=0;g>k;k++)e.push(new j(h,i));return e},j.getRsBlockTable=function(a,b){switch(b){case d.L:return j.RS_BLOCK_TABLE[4*(a-1)+0];case d.M:return j.RS_BLOCK_TABLE[4*(a-1)+1];case d.Q:return j.RS_BLOCK_TABLE[4*(a-1)+2];case d.H:return j.RS_BLOCK_TABLE[4*(a-1)+3];default:return void 0}},k.prototype={get:function(a){var b=Math.floor(a/8);return 1==(1&this.buffer[b]>>>7-a%8)},put:function(a,b){for(var c=0;b>c;c++)this.putBit(1==(1&a>>>b-c-1))},getLengthInBits:function(){return this.length},putBit:function(a){var b=Math.floor(this.length/8);this.buffer.length<=b&&this.buffer.push(0),a&&(this.buffer[b]|=128>>>this.length%8),this.length++}};var l=[[17,14,11,7],[32,26,20,14],[53,42,32,24],[78,62,46,34],[106,84,60,44],[134,106,74,58],[154,122,86,64],[192,152,108,84],[230,180,130,98],[271,213,151,119],[321,251,177,137],[367,287,203,155],[425,331,241,177],[458,362,258,194],[520,412,292,220],[586,450,322,250],[644,504,364,280],[718,560,394,310],[792,624,442,338],[858,666,482,382],[929,711,509,403],[1003,779,565,439],[1091,857,611,461],[1171,911,661,511],[1273,997,715,535],[1367,1059,751,593],[1465,1125,805,625],[1528,1190,868,658],[1628,1264,908,698],[1732,1370,982,742],[1840,1452,1030,790],[1952,1538,1112,842],[2068,1628,1168,898],[2188,1722,1228,958],[2303,1809,1283,983],[2431,1911,1351,1051],[2563,1989,1423,1093],[2699,2099,1499,1139],[2809,2213,1579,1219],[2953,2331,1663,1273]],o=function(){var a=function(a,b){this._el=a,this._htOption=b};return a.prototype.draw=function(a){function g(a,b){var c=document.createElementNS("http://www.w3.org/2000/svg",a);for(var d in b)b.hasOwnProperty(d)&&c.setAttribute(d,b[d]);return c}var b=this._htOption,c=this._el,d=a.getModuleCount();Math.floor(b.width/d),Math.floor(b.height/d),this.clear();var h=g("svg",{viewBox:"0 0 "+String(d)+" "+String(d),width:"100%",height:"100%",fill:b.colorLight});h.setAttributeNS("http://www.w3.org/2000/xmlns/","xmlns:xlink","http://www.w3.org/1999/xlink"),c.appendChild(h),h.appendChild(g("rect",{fill:b.colorDark,width:"1",height:"1",id:"template"}));for(var i=0;d>i;i++)for(var j=0;d>j;j++)if(a.isDark(i,j)){var k=g("use",{x:String(i),y:String(j)});k.setAttributeNS("http://www.w3.org/1999/xlink","href","#template"),h.appendChild(k)}},a.prototype.clear=function(){for(;this._el.hasChildNodes();)this._el.removeChild(this._el.lastChild)},a}(),p="svg"===document.documentElement.tagName.toLowerCase(),q=p?o:m()?function(){function a(){this._elImage.src=this._elCanvas.toDataURL("image/png"),this._elImage.style.display="block",this._elCanvas.style.display="none"}function d(a,b){var c=this;if(c._fFail=b,c._fSuccess=a,null===c._bSupportDataURI){var d=document.createElement("img"),e=function(){c._bSupportDataURI=!1,c._fFail&&_fFail.call(c)},f=function(){c._bSupportDataURI=!0,c._fSuccess&&c._fSuccess.call(c)};return d.onabort=e,d.onerror=e,d.onload=f,d.src="data:image/gif;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg==",void 0}c._bSupportDataURI===!0&&c._fSuccess?c._fSuccess.call(c):c._bSupportDataURI===!1&&c._fFail&&c._fFail.call(c)}if(this._android&&this._android<=2.1){var b=1/window.devicePixelRatio,c=CanvasRenderingContext2D.prototype.drawImage;CanvasRenderingContext2D.prototype.drawImage=function(a,d,e,f,g,h,i,j){if("nodeName"in a&&/img/i.test(a.nodeName))for(var l=arguments.length-1;l>=1;l--)arguments[l]=arguments[l]*b;else"undefined"==typeof j&&(arguments[1]*=b,arguments[2]*=b,arguments[3]*=b,arguments[4]*=b);c.apply(this,arguments)}}var e=function(a,b){this._bIsPainted=!1,this._android=n(),this._htOption=b,this._elCanvas=document.createElement("canvas"),this._elCanvas.width=b.width,this._elCanvas.height=b.height,a.appendChild(this._elCanvas),this._el=a,this._oContext=this._elCanvas.getContext("2d"),this._bIsPainted=!1,this._elImage=document.createElement("img"),this._elImage.style.display="none",this._el.appendChild(this._elImage),this._bSupportDataURI=null};return e.prototype.draw=function(a){var b=this._elImage,c=this._oContext,d=this._htOption,e=a.getModuleCount(),f=d.width/e,g=d.height/e,h=Math.round(f),i=Math.round(g);b.style.display="none",this.clear();for(var j=0;e>j;j++)for(var k=0;e>k;k++){var l=a.isDark(j,k),m=k*f,n=j*g;c.strokeStyle=l?d.colorDark:d.colorLight,c.lineWidth=1,c.fillStyle=l?d.colorDark:d.colorLight,c.fillRect(m,n,f,g),c.strokeRect(Math.floor(m)+.5,Math.floor(n)+.5,h,i),c.strokeRect(Math.ceil(m)-.5,Math.ceil(n)-.5,h,i)}this._bIsPainted=!0},e.prototype.makeImage=function(){this._bIsPainted&&d.call(this,a)},e.prototype.isPainted=function(){return this._bIsPainted},e.prototype.clear=function(){this._oContext.clearRect(0,0,this._elCanvas.width,this._elCanvas.height),this._bIsPainted=!1},e.prototype.round=function(a){return a?Math.floor(1e3*a)/1e3:a},e}():function(){var a=function(a,b){this._el=a,this._htOption=b};return a.prototype.draw=function(a){for(var b=this._htOption,c=this._el,d=a.getModuleCount(),e=Math.floor(b.width/d),f=Math.floor(b.height/d),g=['<table style="border:0;border-collapse:collapse;">'],h=0;d>h;h++){g.push("<tr>");for(var i=0;d>i;i++)g.push('<td style="border:0;border-collapse:collapse;padding:0;margin:0;width:'+e+"px;height:"+f+"px;background-color:"+(a.isDark(h,i)?b.colorDark:b.colorLight)+';"></td>');g.push("</tr>")}g.push("</table>"),c.innerHTML=g.join("");var j=c.childNodes[0],k=(b.width-j.offsetWidth)/2,l=(b.height-j.offsetHeight)/2;k>0&&l>0&&(j.style.margin=l+"px "+k+"px")},a.prototype.clear=function(){this._el.innerHTML=""},a}();QRCode=function(a,b){if(this._htOption={width:256,height:256,typeNumber:4,colorDark:"#000000",colorLight:"#ffffff",correctLevel:d.H},"string"==typeof b&&(b={text:b}),b)for(var c in b)this._htOption[c]=b[c];"string"==typeof a&&(a=document.getElementById(a)),this._android=n(),this._el=a,this._oQRCode=null,this._oDrawing=new q(this._el,this._htOption),this._htOption.text&&this.makeCode(this._htOption.text)},QRCode.prototype.makeCode=function(a){this._oQRCode=new b(r(a,this._htOption.correctLevel),this._htOption.correctLevel),this._oQRCode.addData(a),this._oQRCode.make(),this._el.title=a,this._oDrawing.draw(this._oQRCode),this.makeImage()},QRCode.prototype.makeImage=function(){"function"==typeof this._oDrawing.makeImage&&(!this._android||this._android>=3)&&this._oDrawing.makeImage()},QRCode.prototype.clear=function(){this._oDrawing.clear()},QRCode.CorrectLevel=d}();
 </script>
@@ -10114,449 +10214,11 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
 /******/ ])["default"];
 });
 </script>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  html{font-size:16px;overscroll-behavior:none;}
-  /* Blocks pull-to-refresh on mobile — page still scrolls normally, just won't bounce/reload on swipe-down */
-  :root{
-    --bg:linear-gradient(180deg,#F8FAFC 0%,#EFF6FF 100%);
-    --bg-solid:#F8FAFC;
-    --surface:#ffffff;
-    --surface2:#F8FAFC;
-    --surface3:#F1F5F9;
-    --border:#E2E8F0;
-    --border2:#CBD5E1;
-    --text-primary:#1E293B;
-    --text-secondary:#475569;
-    --text-muted:#64748B;
-    --text-faint:#94A3B8;
-    --text-disabled:#CBD5E1;
-    --shadow:rgba(0,0,0,0.06);
-    --pill-bg:#F1F5F9;
-    --input-bg:#FAFAFA;
-    --accent:#EA580C;
-    --accent2:#F97316;
-    --green:#22C55E;
-    --blue:#3B82F6;
-    --red:#EF4444;
-    --purple:#A855F7;
-  }
-  body.dark{
-    --bg:linear-gradient(180deg,#0F172A 0%,#1E293B 100%);
-    --bg-solid:#0F172A;
-    --surface:#1E293B;
-    --surface2:#0F172A;
-    --surface3:#334155;
-    --border:#334155;
-    --border2:#475569;
-    --text-primary:#F1F5F9;
-    --text-secondary:#CBD5E1;
-    --text-muted:#94A3B8;
-    --text-faint:#64748B;
-    --text-disabled:#475569;
-    --shadow:rgba(0,0,0,0.3);
-    --pill-bg:#334155;
-    --input-bg:#1E293B;
-    --accent:#EA580C;
-    --accent2:#F97316;
-    --green:#22C55E;
-    --blue:#3B82F6;
-    --red:#EF4444;
-    --purple:#A855F7;
-  }
-  body{background:var(--bg);min-height:100vh;font-family:'Outfit',sans-serif;color:var(--text-primary);overscroll-behavior:none;}
-  /* Suppress all text selection/callout on elements that handle long press */
-  .no-select{
-    -webkit-user-select:none;
-    -moz-user-select:none;
-    -ms-user-select:none;
-    user-select:none;
-    -webkit-touch-callout:none;
-    -webkit-tap-highlight-color:transparent;
-  }
-  .no-select *{
-    -webkit-user-select:none;
-    -moz-user-select:none;
-    -ms-user-select:none;
-    user-select:none;
-    -webkit-touch-callout:none;
-  }
-  /* Quick combo button text rendered via CSS content so Safari has no DOM text nodes to select */
-  .qc-blade::before{ content:attr(data-label); font-size:13px; font-weight:800; display:block; }
-  .qc-parts::before{ content:attr(data-label); font-size:11px; opacity:0.7; display:block; }
-  /* Block all text selection on the blade picker page so long-press never triggers highlight */
-  .picker-page{
-    -webkit-user-select:none;
-    -moz-user-select:none;
-    user-select:none;
-    -webkit-touch-callout:none;
-  }
-  /* Restore selection inside inputs so the search bar still works normally */
-  .picker-page input{
-    -webkit-user-select:text;
-    user-select:text;
-  }
-  input,textarea{color:var(--text-primary);background:var(--input-bg);}
-  input::placeholder{color:var(--text-faint);}
-  /* Bottom bar always uses surface color */
-  .bottom-bar{background:var(--surface);}
-  /* Player view classes */
-  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
-  @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-  .fade-in{animation:fadeIn 0.3s ease both;}
-  .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22C55E;animation:pulse 1.5s ease infinite;margin-right:5px;}
-</style>
-</head>
-<body>
-<div id="root"></div>
 
-<!-- OAuth callback handler — plain JS, runs immediately before Babel loads -->
-<script>
-(function() {
-  var params = new URLSearchParams(window.location.search);
-  var hashParams = new URLSearchParams(window.location.hash.slice(1)); // implicit flow token lives here
-  var code = params.get("code");
-  var oauthError = params.get("error");
-  var accessTokenDirect = hashParams.get("access_token"); // present when response_type=token
-  if (!code && !oauthError && !accessTokenDirect) return; // not a callback page, do nothing
-
-  // Mark page as OAuth callback so Babel IIFE skips itself
-  window.__NCBLAST_OAUTH_CALLBACK__ = true;
-
-  // Remove #root id so React never mounts on this tab
-  var rootEl = document.getElementById("root");
-  if (rootEl) rootEl.removeAttribute("id");
-
-  // Strip ?code from URL before anything else
-  window.history.replaceState({}, document.title, "/");
-
-  var WORKER = "https://challonge-proxy.danny61734.workers.dev";
-  // state may be in query string (code flow) or URL hash (implicit flow)
-  var oauthStateParam = params.get("state") || hashParams.get("state") || "";
-  var sessionId = oauthStateParam.split(".")[0] || "";
-  var isPopup = !!window.opener;
-
-  // Progress overlay — safe, never touches existing body content
-  var progressDiv = document.createElement("div");
-  progressDiv.style.cssText = "position:fixed;inset:0;background:#0f172a;z-index:99999;display:flex;align-items:center;justify-content:center;font-family:sans-serif;";
-  progressDiv.innerHTML = '<div style="text-align:center;padding:32px;max-width:500px;"><div id="ob-icon" style="font-size:48px;margin-bottom:16px">⏳</div><p id="ob-msg" style="font-size:16px;color:#94a3b8;margin:0 0 8px"></p><p id="ob-detail" style="font-size:12px;color:#475569;margin:0;word-break:break-all;"></p></div>';
-  document.body.appendChild(progressDiv);
-
-  function setStatus(icon, msg, detail) {
-    var i = document.getElementById("ob-icon"); if (i) i.textContent = icon;
-    var m = document.getElementById("ob-msg"); if (m) m.textContent = msg;
-    var d = document.getElementById("ob-detail"); if (d) d.textContent = detail || "";
-  }
-
-  function signalResult(msg) {
-    try { localStorage.setItem("ncblast-oauth-result-mobile", JSON.stringify(Object.assign({}, msg, {ts: Date.now()}))); } catch(_) {}
-    if (isPopup) {
-      try { window.opener.postMessage({type:"ncblast-oauth-result", sessionId: sessionId, ok: msg.ok, token: msg.token, username: msg.username, error: msg.error, detail: msg.detail || ""}, window.location.origin); } catch(_) {}
-      try { window.close(); } catch(_) {}
-    }
-    setStatus(msg.ok ? "✅" : "❌",
-      msg.ok ? "Logged in as " + msg.username : "Login failed",
-      msg.ok ? "You can close this tab." : (msg.error || "Unknown error"));
-  }
-
-  if (oauthError) {
-    signalResult({ok: false, error: "Challonge error: " + (params.get("error_description") || oauthError)});
-    return;
-  }
-
-  // Username resolution via Worker /auth/me
-  function resolveUsername(token) {
-    setStatus("⏳", "Looking up username…", "");
-    return fetch(WORKER + "/auth/me", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({token: token})
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      if (d.ok && d.username) return d.username;
-      throw new Error(d.error || "Username lookup failed");
-    });
-  }
-
-  // ── Implicit grant: token came back directly in the URL hash (response_type=token) ──
-  // No exchange needed — skip straight to username resolution.
-  if (accessTokenDirect) {
-    setStatus("⏳", "Resolving username…", "Implicit token received");
-    resolveUsername(accessTokenDirect)
-      .then(function(username) {
-        signalResult({ok: true, token: accessTokenDirect, username: username});
-      })
-      .catch(function(err) {
-        var raw = (err && err.message) ? err.message : String(err);
-        signalResult({ok: false, error: raw, detail: raw});
-      });
-    return;
-  }
-
-  // ── Code flow: exchange the ?code= for an access token ──
-  // Attempt A: Worker calls connect.challonge.com server-side.
-  //   Known issue: Cloudflare bot-protection on connect.challonge.com challenges the Worker.
-  // Attempt B: Browser calls connect.challonge.com directly (CORS permitting).
-  //   This is the live path. Error detail will tell us if CORS blocks it.
-
-  function attemptWorkerExchange() {
-    setStatus("⏳", "Trying server exchange…", "Attempt A");
-    return fetch(WORKER + "/auth/exchange", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({code: code, redirect_uri: "https://ncblast.pages.dev"})
-    })
-    .then(function(r) {
-      return r.text().then(function(t) { return {status: r.status, text: t}; });
-    })
-    .then(function(rt) {
-      var d;
-      try { d = JSON.parse(rt.text); }
-      catch(_) { throw new Error("Worker non-JSON (HTTP " + rt.status + "): " + rt.text.slice(0, 80)); }
-      if (!d.ok || !d.access_token)
-        throw new Error("Worker failed (HTTP " + rt.status + "): " + (d.error || "no token"));
-      return {token: d.access_token, username: d.username || null};
-    });
-  }
-
-  function attemptBrowserExchange(workerErrMsg) {
-    setStatus("⏳", "Trying browser exchange…", "Attempt B (A: " + workerErrMsg.slice(0, 60) + ")");
-    return fetch(WORKER + "/auth/exchange-params", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({code: code})
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(p) {
-      if (!p.client_id) throw new Error("exchange-params failed: " + (p.error || JSON.stringify(p).slice(0, 60)));
-      setStatus("⏳", "Calling Challonge directly…", "If this fails with CORS, browser exchange is also blocked");
-      var body = "grant_type=authorization_code" +
-        "&code=" + encodeURIComponent(code) +
-        "&client_id=" + encodeURIComponent(p.client_id) +
-        "&client_secret=" + encodeURIComponent(p.client_secret) +
-        "&redirect_uri=" + encodeURIComponent(p.redirect_uri);
-      return fetch("https://connect.challonge.com/oauth/token", {
-        method: "POST",
-        headers: {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
-        body: body
-      });
-    })
-    .then(function(r) { return r.text().then(function(t) { return {status: r.status, text: t}; }); })
-    .then(function(rt) {
-      var d;
-      try { d = JSON.parse(rt.text); }
-      catch(_) { throw new Error("Challonge non-JSON (HTTP " + rt.status + "): " + rt.text.slice(0, 120)); }
-      if (!d.access_token)
-        throw new Error("Challonge rejected (HTTP " + rt.status + "): " + (d.error_description || d.error || rt.text.slice(0, 120)));
-      return {token: d.access_token, username: null};
-    });
-  }
-
-  attemptWorkerExchange()
-    .catch(function(errA) { return attemptBrowserExchange(errA.message); })
-    .then(function(result) {
-      if (result.username) {
-        signalResult({ok: true, token: result.token, username: result.username});
-      } else {
-        return resolveUsername(result.token).then(function(username) {
-          signalResult({ok: true, token: result.token, username: username});
-        });
-      }
-    })
-    .catch(function(err) {
-      var raw = (err && err.message) ? err.message : String(err);
-      var friendly = raw;
-      if (raw.indexOf("Failed to fetch") !== -1 || raw.indexOf("Load failed") !== -1 || raw.indexOf("NetworkError") !== -1)
-        friendly = "CORS block — browser can't reach Challonge token endpoint directly. Both exchange paths failed.";
-      signalResult({ok: false, error: friendly, detail: raw});
-    });
-})();
-</script>
 
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
 
-// ── OAuth callback detection ──────────────────────────────────────────────
-// Runs before React mounts. Detects an OAuth redirect (code in URL), exchanges
-// the code for a token, fetches the username from Challonge directly (browser
-// can reach /v2/me.json even though the Worker can't), then signals the waiting
-// tab via postMessage (desktop popup) or localStorage (mobile new tab).
-(function handleOAuthCallback() {
-  // Handled by plain <script> above — skip if flag is set
-  if (window.__NCBLAST_OAUTH_CALLBACK__) return;
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const hashParams = new URLSearchParams(window.location.hash.slice(1));
-    const code  = params.get("code");
-    const error = params.get("error");
-    const errorDesc = params.get("error_description");
-    const accessTokenDirect = hashParams.get("access_token"); // implicit flow
-
-    if (!code && !error && !accessTokenDirect) {
-      try { sessionStorage.removeItem("ncblast-oauth-pending"); } catch(_) {}
-      return;
-    }
-
-    // We're an OAuth callback page — block React from mounting by clearing #root
-    // and marking the page as handled. React's ReactDOM.render() targets #root;
-    // if it's gone, React won't overwrite our callback UI.
-    window.__NCBLAST_OAUTH_CALLBACK__ = true;
-    var rootEl = document.getElementById("root");
-    if (rootEl) rootEl.removeAttribute("id"); // React can't find #root → won't mount
-    document.documentElement.style.display = "none";
-    window.history.replaceState({}, document.title, "/");
-
-    // Safety net: if anything goes wrong and signalResult never fires,
-    // show an error after 20 seconds instead of staying blank.
-    var blankSafetyTimer = setTimeout(function() {
-      showProgress("⏱ Login timed out — you can close this tab and try again.");
-    }, 20000);
-
-    // The OAuth state param is "sessionId.randomSuffix" — sessionId routes the
-    // message back to the right hook instance (prevents two popups cross-firing).
-    const oauthStateParam = params.get("state") || hashParams.get("state") || "";
-    const sessionId = oauthStateParam.split(".")[0] || "";
-
-    const isPopup = !!window.opener;
-
-    const signalResult = (msg) => {
-      clearTimeout(blankSafetyTimer);
-      if (isPopup) {
-        // Desktop: send via postMessage and close immediately
-        try { window.opener.postMessage({ type: "ncblast-oauth-result", sessionId, ...msg }, window.location.origin); } catch(_) {}
-        try { window.close(); } catch(_) {}
-      } else {
-        // New-tab flow: write result to a fixed localStorage key so the original tab's
-        // poller picks it up. The original tab stays alive — no redirect needed.
-        // Show a "you can close this tab" message either way.
-        try { localStorage.setItem("ncblast-oauth-result-mobile", JSON.stringify({ ...msg, ts: Date.now() })); } catch(_) {}
-        document.documentElement.style.display = "";
-        document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#94a3b8;padding:32px;text-align:center;">' +
-          '<div style="font-size:48px;margin-bottom:16px">' + (msg.ok ? "✅" : "❌") + '</div>' +
-          '<p style="font-size:20px;font-weight:800;color:' + (msg.ok ? "#22c55e" : "#ef4444") + ';margin:0 0 8px">' + (msg.ok ? "Logged in as " + msg.username : "Login failed") + '</p>' +
-          '<p style="font-size:14px;margin:0 0 0;color:#64748b">' + (msg.ok ? "You can close this tab and return to NC BLAST." : (msg.error || "An unknown error occurred.")) + '</p>' +
-          '</div>';
-      }
-    };
-
-    if (error) {
-      signalResult({ ok: false, error: "Challonge error: " + (errorDesc || error) });
-      return;
-    }
-
-    const WORKER = "https://challonge-proxy.danny61734.workers.dev";
-
-    // Show live progress in a fixed overlay — never touch body.innerHTML early
-    // (replacing body kills Babel scripts still loading, breaking all JS execution)
-    var progressDiv = null;
-    function showProgress(msg) {
-      if (!progressDiv) {
-        progressDiv = document.createElement("div");
-        progressDiv.style.cssText = "position:fixed;inset:0;background:#0f172a;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:sans-serif;";
-        progressDiv.innerHTML = '<p id="ncblast-progress" style="font-size:16px;color:#94a3b8;margin:0;padding:32px;text-align:center;"></p>';
-        document.body.appendChild(progressDiv);
-      }
-      var el = document.getElementById("ncblast-progress");
-      if (el) el.textContent = msg;
-      document.documentElement.style.display = "";
-    }
-
-    function resolveUsername(token) {
-      // Try Worker /auth/me (which tries connect userinfo then api.challonge.com)
-      return fetch(WORKER + "/auth/me", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: token }),
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(me) {
-        if (me.ok && me.username) return me.username;
-        throw new Error(me.error || "Username lookup failed");
-      });
-    }
-
-    // ── Implicit grant: token already in URL hash, no exchange needed ──
-    if (accessTokenDirect) {
-      showProgress("Resolving username…");
-      resolveUsername(accessTokenDirect)
-        .then(function(username) {
-          signalResult({ ok: true, token: accessTokenDirect, username: username });
-        })
-        .catch(function(err) {
-          var raw = (err && err.message) ? err.message : String(err);
-          signalResult({ ok: false, error: raw, detail: raw });
-        });
-      return;
-    }
-
-    // ── Code flow: Worker exchange → browser exchange fallback ──
-    showProgress("Trying server exchange…");
-    fetch(WORKER + "/auth/exchange", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: code, redirect_uri: "https://ncblast.pages.dev" }),
-    })
-    .then(function(r) { return r.text().then(function(t) { return { status: r.status, text: t }; }); })
-    .then(function(rt) {
-      var d;
-      try { d = JSON.parse(rt.text); }
-      catch(_) { throw new Error("Worker non-JSON (HTTP " + rt.status + "): " + rt.text.slice(0, 80)); }
-      if (!d.ok || !d.access_token)
-        throw new Error("Worker failed (HTTP " + rt.status + "): " + (d.error || "no token"));
-      return { token: d.access_token, username: d.username || null };
-    })
-    .catch(function(errA) {
-      showProgress("Trying browser exchange… (A: " + errA.message.slice(0, 50) + ")");
-      return fetch(WORKER + "/auth/exchange-params", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({code: code}),
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(p) {
-        if (!p.client_id) throw new Error("exchange-params failed: " + (p.error || "no client_id"));
-        var body = "grant_type=authorization_code&code=" + encodeURIComponent(code) +
-          "&client_id=" + encodeURIComponent(p.client_id) +
-          "&client_secret=" + encodeURIComponent(p.client_secret) +
-          "&redirect_uri=" + encodeURIComponent(p.redirect_uri);
-        return fetch("https://connect.challonge.com/oauth/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
-          body: body,
-        });
-      })
-      .then(function(r) { return r.text().then(function(t) { return { status: r.status, text: t }; }); })
-      .then(function(rt) {
-        var d;
-        try { d = JSON.parse(rt.text); }
-        catch(_) { throw new Error("Challonge non-JSON (HTTP " + rt.status + "): " + rt.text.slice(0, 120)); }
-        if (!d.access_token)
-          throw new Error("Challonge rejected (HTTP " + rt.status + "): " + (d.error_description || d.error || rt.text.slice(0, 120)));
-        return { token: d.access_token, username: null };
-      });
-    })
-    .then(function(result) {
-      if (result.username) return signalResult({ ok: true, token: result.token, username: result.username });
-      showProgress("Looking up username…");
-      return resolveUsername(result.token).then(function(u) {
-        signalResult({ ok: true, token: result.token, username: u });
-      });
-    })
-    .catch(function(finalErr) {
-      var raw = (finalErr && finalErr.message) ? finalErr.message : String(finalErr);
-      var friendly = raw;
-      if (raw.indexOf("Failed to fetch") !== -1 || raw.indexOf("Load failed") !== -1 || raw.indexOf("NetworkError") !== -1)
-        friendly = "CORS block — browser can't reach Challonge token endpoint directly. Both exchange paths failed.";
-      signalResult({ ok: false, error: friendly, detail: raw });
-    });
-  } catch(outerErr) {
-    try {
-      var msg = "IIFE crash: " + (outerErr && outerErr.message ? outerErr.message : String(outerErr));
-      localStorage.setItem("ncblast-oauth-result-mobile", JSON.stringify({ ok: false, error: msg, ts: Date.now() }));
-      showProgress("❌ " + msg);
-    } catch(_) {}
-  }
-})();
 /* ═══════════════════════════════════════
    VIEWPORT SCALE
 ═══════════════════════════════════════ */
@@ -10593,188 +10255,6 @@ const KEYS = { parts: "bx-library-v10", players: "bx-roster-v2", combos: "bx-com
 const OVERLAY_WORKER = "https://challonge-proxy.danny61734.workers.dev";
 const COMBO_CACHE_TTL = 60 * 60 * 1000; // 1 hour in ms
 
-/* ═══════════════════════════════════════
-   CHALLONGE OAUTH HOOK
-   Handles the device-flow login sequence.
-   Usage: const auth = useChallongeAuth();
-   auth.state: "idle" | "polling" | "done" | "error"
-   auth.userCode: string shown to user
-   auth.verificationUri: URL to open
-   auth.username: resolved Challonge username (when done)
-   auth.start(): kick off the flow
-   auth.reset(): go back to idle
-═══════════════════════════════════════ */
-function useChallongeAuth() {
-  const REDIRECT_URI = "https://ncblast.pages.dev";
-
-  // Only treat sessionStorage flags as valid if we JUST came back from Challonge.
-  // "just came back" = ncblast-oauth-pending was set (IIFE is running or just finished).
-  // A stale ncblast-oauth-error from a previous session should NOT init as "error" —
-  // that would show the error screen with a Back button that sends to main menu.
-  const justReturned = (() => {
-    try {
-      return sessionStorage.getItem("ncblast-oauth-pending")        === "1" ||
-             sessionStorage.getItem("ncblast-oauth-done")           === "1" ||
-             sessionStorage.getItem("ncblast-oauth-had-error")      === "1" ||
-             sessionStorage.getItem("ncblast-oauth-needs-username") === "1";
-    } catch(_) { return false; }
-  })();
-
-  const initState = (() => {
-    if (!justReturned) return "idle";
-    try {
-      if (sessionStorage.getItem("ncblast-oauth-pending")        === "1") return "exchanging";
-      if (sessionStorage.getItem("ncblast-oauth-needs-username") === "1") return "confirm";
-      if (sessionStorage.getItem("ncblast-oauth-done")           === "1") return "done";
-      if (sessionStorage.getItem("ncblast-oauth-had-error")      === "1") return "error";
-    } catch(_) {}
-    return "idle";
-  })();
-
-  const initError = (() => {
-    try {
-      if (sessionStorage.getItem("ncblast-oauth-had-error") === "1")
-        return sessionStorage.getItem("ncblast-oauth-error") || "Challonge returned an error.";
-    } catch(_) {}
-    return "";
-  })();
-
-  const initUser = (() => {
-    if (!justReturned) return null;
-    try { return sessionStorage.getItem("ncblast-auth-user") || null; } catch(_) { return null; }
-  })();
-
-  const [state, setState]       = React.useState(initState);
-  const [username, setUsername] = React.useState(initUser);
-  const [errorMsg, setErrorMsg] = React.useState(initError);
-  const pollRef = React.useRef(null);
-
-  React.useEffect(() => {
-    try {
-      sessionStorage.removeItem("ncblast-oauth-done");
-      if (initState !== "error") {
-        sessionStorage.removeItem("ncblast-oauth-error");
-        sessionStorage.removeItem("ncblast-oauth-had-error");
-      }
-      if (initState !== "done" && initState !== "confirm") {
-        sessionStorage.removeItem("ncblast-auth-token");
-        sessionStorage.removeItem("ncblast-auth-user");
-      }
-    } catch(_) {}
-  }, []);
-
-  // Poll while exchange is in flight
-  React.useEffect(() => {
-    if (state !== "exchanging") return;
-    pollRef.current = setInterval(() => {
-      try {
-        if (sessionStorage.getItem("ncblast-oauth-pending") !== "1") {
-          clearInterval(pollRef.current);
-          const needsUser = sessionStorage.getItem("ncblast-oauth-needs-username") === "1";
-          const user = sessionStorage.getItem("ncblast-auth-user");
-          const err  = sessionStorage.getItem("ncblast-oauth-error");
-          sessionStorage.removeItem("ncblast-oauth-error");
-          sessionStorage.removeItem("ncblast-oauth-pending");
-          if (needsUser) { setState("confirm"); }
-          else if (user) { setUsername(user); setState("done"); }
-          else { setErrorMsg(err || "Login failed."); setState("error"); }
-        }
-      } catch(_) { clearInterval(pollRef.current); setState("error"); setErrorMsg("Login failed."); }
-    }, 300);
-    return () => clearInterval(pollRef.current);
-  }, [state]);
-
-  const confirm = React.useCallback(async (claimedUsername) => {
-    const token = sessionStorage.getItem("ncblast-auth-token");
-    if (!token || !claimedUsername) return;
-    setState("exchanging");
-    try {
-      const res = await fetch(`${OVERLAY_WORKER}/auth/confirm`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, username: claimedUsername.trim().toLowerCase() }),
-      });
-      const d = await res.json();
-      sessionStorage.removeItem("ncblast-oauth-needs-username");
-      if (d.ok) {
-        sessionStorage.setItem("ncblast-auth-user", d.username);
-        sessionStorage.setItem("ncblast-oauth-done", "1");
-        try { localStorage.setItem("ncblast-saved-username", d.username); } catch(_) {}
-        setUsername(d.username);
-        setState("done");
-      } else {
-        setErrorMsg(d.error || "Confirmation failed.");
-        setState("error");
-      }
-    } catch(e) {
-      setErrorMsg(e.message || "Connection error.");
-      setState("error");
-    }
-  }, []);
-
-  const reset = React.useCallback(() => {
-    clearInterval(pollRef.current);
-    try {
-      sessionStorage.removeItem("ncblast-auth-token");
-      sessionStorage.removeItem("ncblast-auth-user");
-      sessionStorage.removeItem("ncblast-oauth-pending");
-      sessionStorage.removeItem("ncblast-oauth-done");
-      sessionStorage.removeItem("ncblast-oauth-error");
-      sessionStorage.removeItem("ncblast-oauth-had-error");
-      sessionStorage.removeItem("ncblast-oauth-needs-username");
-    } catch(_) {}
-    setState("idle");
-    setUsername(null);
-    setErrorMsg("");
-  }, []);
-  const start = React.useCallback(async () => {
-    setErrorMsg("");
-    setState("navigating");
-    try { sessionStorage.removeItem("ncblast-oauth-error"); sessionStorage.removeItem("ncblast-oauth-had-error"); } catch(_) {}
-    // Ask Worker for the authorize URL (keeps client_id server-side)
-    try {
-      // Generate a fresh random state value each attempt — forces Challonge to treat it as new.
-      const oauthState = Math.random().toString(36).slice(2) + Date.now().toString(36);
-      try { sessionStorage.setItem("ncblast-oauth-state", oauthState); } catch(_) {}
-      const res = await fetch(
-        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&state=${encodeURIComponent(oauthState)}`,
-        { signal: AbortSignal.timeout(8000) }
-      );
-      const data = await res.json();
-      if (!data.url) throw new Error(data.error || "No URL returned");
-      // Navigate the current tab — works on all browsers including mobile Safari
-      window.location.href = data.url;
-    } catch(e) {
-      setErrorMsg("Couldn't reach the server. Try again.");
-      setState("error");
-    }
-  }, []);
-
-  React.useEffect(() => () => clearInterval(pollRef.current), []);
-
-  // Auto-confirm using saved username — no manual entry for returning users
-  React.useEffect(() => {
-    if (state !== "confirm") return;
-    try {
-      const saved = localStorage.getItem("ncblast-saved-username");
-      if (saved) confirm(saved);
-    } catch(_) {}
-  }, [state]);
-
-  return { state, username, errorMsg, start, reset, confirm };
-}
-
-/* ═══════════════════════════════════════
-   CHALLONGE AUTH — POPUP VARIANT
-   Opens a small browser window for login instead of redirecting the whole tab.
-   The popup exchanges the code, posts the token back, then closes itself.
-   The main tab's state is never lost — no page reload needed.
-
-   auth.state: "idle" | "waiting" | "confirm" | "confirming" | "done" | "error"
-   auth.username: resolved username (when done)
-   auth.start(): open the popup
-   auth.reset(): go back to idle
-═══════════════════════════════════════ */
 function useChallongeAuthPopup() {
   const [state, setState]       = React.useState("idle");
   const [username, setUsername] = React.useState(null);
@@ -10890,123 +10370,7 @@ function useChallongeAuthPopup() {
 
   return { state, username, errorMsg, errorDetail, start, reset, confirm, retry, submitUsername };
 }
-/* ═══════════════════════════════════════
-   CHALLONGE LOGIN SCREEN
-   Reusable UI for the device-flow login.
-   Props:
-     auth        — result of useChallongeAuth()
-     title       — heading text
-     subtitle    — subheading text
-     onCancel    — back/cancel callback
-═══════════════════════════════════════ */
-function ChallongeLoginScreen({ auth, title, subtitle, onCancel }) {
-  const [usernameInput, setUsernameInput] = React.useState(() => {
-    try { return localStorage.getItem("ncblast-saved-username") || ""; } catch(_) { return ""; }
-  });
-  return (
-    <div style={{
-      minHeight:"100vh", display:"flex", flexDirection:"column",
-      alignItems:"center", justifyContent:"center",
-      background:"var(--bg)", padding:"32px 24px", fontFamily:"'Outfit',sans-serif"
-    }}>
-      <div style={{width:"100%", maxWidth:340}}>
-        <div style={{textAlign:"center", marginBottom:28}}>
-          <div style={{fontSize:40, marginBottom:10}}>🔗</div>
-          <h2 style={{fontSize:22, fontWeight:900, color:"var(--text-primary)", margin:"0 0 6px"}}>{title}</h2>
-          {subtitle && <p style={{fontSize:13, color:"var(--text-muted)", margin:0, lineHeight:1.5}}>{subtitle}</p>}
-        </div>
 
-        {auth.state === "idle" && (
-          <button onClick={auth.start} style={{
-            width:"100%", padding:"18px 0", borderRadius:14, border:"none",
-            background:"linear-gradient(135deg,#EA580C,#DC2626)",
-            color:"#fff", fontSize:16, fontWeight:900,
-            fontFamily:"'Outfit',sans-serif", cursor:"pointer",
-            boxShadow:"0 8px 24px rgba(234,88,12,0.35)", marginBottom:14,
-          }}>
-            Log in with Challonge
-          </button>
-        )}
-
-        {(auth.state === "navigating" || auth.state === "exchanging") && (
-          <div style={{textAlign:"center", marginBottom:16}}>
-            <div style={{
-              background:"var(--surface)", borderRadius:16, padding:"24px 20px",
-              border:"2px solid #EA580C", marginBottom:16,
-            }}>
-              <div style={{width:40, height:40, margin:"0 auto 14px", borderRadius:"50%",
-                border:"3px solid var(--border2)", borderTopColor:"#EA580C",
-                animation:"spin 1s linear infinite"}}/>
-              <p style={{fontSize:14, fontWeight:800, color:"var(--text-primary)", margin:"0 0 6px"}}>
-                {auth.state === "navigating" ? "Opening Challonge…" : "Completing login…"}
-              </p>
-              <p style={{fontSize:12, color:"var(--text-muted)", margin:0, lineHeight:1.5}}>
-                {auth.state === "navigating"
-                  ? "You'll be taken to Challonge to log in, then brought back here automatically."
-                  : "Verifying your account, just a moment."}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {auth.state === "confirm" && (
-          <div style={{marginBottom:16}}>
-            <div style={{background:"var(--surface)", borderRadius:14, padding:"18px 16px", border:"2px solid #EA580C", marginBottom:14}}>
-              <p style={{fontSize:13, fontWeight:700, color:"var(--text-primary)", margin:"0 0 6px"}}>✅ Challonge login successful!</p>
-              <p style={{fontSize:12, color:"var(--text-muted)", margin:"0 0 14px", lineHeight:1.5}}>Enter your Challonge username to finish.</p>
-              <input type="text" placeholder="your-challonge-username" value={usernameInput}
-                onChange={e => setUsernameInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && usernameInput.trim()) auth.confirm(usernameInput.trim()); }}
-                style={{width:"100%", padding:"11px 12px", borderRadius:10, boxSizing:"border-box",
-                  border:"1.5px solid var(--border2)", background:"var(--surface2)",
-                  color:"var(--text-primary)", fontSize:14, fontFamily:"'Outfit',sans-serif",
-                  outline:"none", marginBottom:10}} autoFocus />
-              <button onClick={() => { if (usernameInput.trim()) auth.confirm(usernameInput.trim()); }}
-                disabled={!usernameInput.trim()}
-                style={{width:"100%", padding:"13px 0", borderRadius:12, border:"none",
-                  background:usernameInput.trim()?"#EA580C":"var(--border2)",
-                  color:"#fff", fontSize:14, fontWeight:800,
-                  fontFamily:"'Outfit',sans-serif", cursor:usernameInput.trim()?"pointer":"default"}}>Confirm</button>
-            </div>
-          </div>
-        )}
-
-        {auth.state === "done" && (
-          <div style={{textAlign:"center", marginBottom:16}}>
-            <div style={{fontSize:40, marginBottom:8}}>✅</div>
-            <p style={{fontSize:16, fontWeight:800, color:"#22C55E", margin:"0 0 4px"}}>Logged in!</p>
-            <p style={{fontSize:13, color:"var(--text-muted)"}}>{auth.username}</p>
-          </div>
-        )}
-
-        {auth.state === "error" && (
-          <div style={{marginBottom:16}}>
-            <p style={{fontSize:13, color:"#EF4444", textAlign:"center", fontWeight:600, marginBottom:14}}>
-              ⚠ {auth.errorMsg}
-            </p>
-            <button onClick={auth.start} style={{
-              width:"100%", padding:"14px 0", borderRadius:12, border:"none",
-              background:"#EA580C", color:"#fff", fontSize:14, fontWeight:800,
-              fontFamily:"'Outfit',sans-serif", cursor:"pointer", marginBottom:10,
-            }}>Try Again</button>
-          </div>
-        )}
-
-        <button onClick={onCancel} style={{
-          width:"100%", padding:"12px 0", borderRadius:12,
-          border:"2px solid var(--border)", background:"none",
-          color:"var(--text-muted)", fontSize:13, fontWeight:700,
-          fontFamily:"'Outfit',sans-serif", cursor:"pointer",
-        }}>← Back</button>
-      </div>
-    </div>
-  );
-}
-
-// Push a player's combos to the Worker KV so other devices can load them
-// ── Combo Registry Helpers (tournament-scoped) ───────────────────────────────
-// normalizePlayerKey: consistent lowercase+trim used as the lookup key in the
-// combo registry. Applied on both client and Worker so names always match.
 function normalizePlayerKey(name) {
   return (name || "").trim().toLowerCase();
 }
