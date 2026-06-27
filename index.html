@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: OAuth diagnostic — removed CORS-broken browser-direct fallback (Attempt B); single Worker-exchange path only; errorDetail propagated through postMessage and localStorage to show real Challonge error in UI -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: OAuth switched to implicit grant (response_type=token) — Challonge sends token directly in URL hash, no server-side exchange needed; Worker bot-block bypassed entirely; code-flow kept as dead fallback -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10215,9 +10215,11 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
 <script>
 (function() {
   var params = new URLSearchParams(window.location.search);
+  var hashParams = new URLSearchParams(window.location.hash.slice(1)); // implicit flow token lives here
   var code = params.get("code");
   var oauthError = params.get("error");
-  if (!code && !oauthError) return; // not a callback page, do nothing
+  var accessTokenDirect = hashParams.get("access_token"); // present when response_type=token
+  if (!code && !oauthError && !accessTokenDirect) return; // not a callback page, do nothing
 
   // Mark page as OAuth callback so Babel IIFE skips itself
   window.__NCBLAST_OAUTH_CALLBACK__ = true;
@@ -10230,7 +10232,8 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
   window.history.replaceState({}, document.title, "/");
 
   var WORKER = "https://challonge-proxy.danny61734.workers.dev";
-  var oauthStateParam = params.get("state") || "";
+  // state may be in query string (code flow) or URL hash (implicit flow)
+  var oauthStateParam = params.get("state") || hashParams.get("state") || "";
   var sessionId = oauthStateParam.split(".")[0] || "";
   var isPopup = !!window.opener;
 
@@ -10262,7 +10265,7 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
     return;
   }
 
-  // Username resolution (only needed if exchange response doesn't include it)
+  // Username resolution via Worker /auth/me
   function resolveUsername(token) {
     setStatus("⏳", "Looking up username…", "");
     return fetch(WORKER + "/auth/me", {
@@ -10277,6 +10280,22 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
     });
   }
 
+  // ── Implicit grant: token came back directly in the URL hash (response_type=token) ──
+  // No exchange needed — skip straight to username resolution.
+  if (accessTokenDirect) {
+    setStatus("⏳", "Resolving username…", "Implicit token received");
+    resolveUsername(accessTokenDirect)
+      .then(function(username) {
+        signalResult({ok: true, token: accessTokenDirect, username: username});
+      })
+      .catch(function(err) {
+        var raw = (err && err.message) ? err.message : String(err);
+        signalResult({ok: false, error: raw, detail: raw});
+      });
+    return;
+  }
+
+  // ── Code flow: exchange the ?code= via the Worker (fallback) ──
   setStatus("⏳", "Contacting server…", "");
 
   // Single-path: Worker calls connect.challonge.com server-side.
@@ -10332,11 +10351,13 @@ const { useState, useEffect, useRef, useCallback } = React;
   if (window.__NCBLAST_OAUTH_CALLBACK__) return;
   try {
     const params = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
     const code  = params.get("code");
     const error = params.get("error");
     const errorDesc = params.get("error_description");
+    const accessTokenDirect = hashParams.get("access_token"); // implicit flow
 
-    if (!code && !error) {
+    if (!code && !error && !accessTokenDirect) {
       try { sessionStorage.removeItem("ncblast-oauth-pending"); } catch(_) {}
       return;
     }
@@ -10358,7 +10379,7 @@ const { useState, useEffect, useRef, useCallback } = React;
 
     // The OAuth state param is "sessionId.randomSuffix" — sessionId routes the
     // message back to the right hook instance (prevents two popups cross-firing).
-    const oauthStateParam = params.get("state") || "";
+    const oauthStateParam = params.get("state") || hashParams.get("state") || "";
     const sessionId = oauthStateParam.split(".")[0] || "";
 
     const isPopup = !!window.opener;
@@ -10419,8 +10440,21 @@ const { useState, useEffect, useRef, useCallback } = React;
       });
     }
 
-    // Single-path exchange: Worker calls connect.challonge.com server-side.
-    // No browser-direct fallback — CORS blocks direct browser→Challonge token calls.
+    // ── Implicit grant: token already in URL hash, no exchange needed ──
+    if (accessTokenDirect) {
+      showProgress("Resolving username…");
+      resolveUsername(accessTokenDirect)
+        .then(function(username) {
+          signalResult({ ok: true, token: accessTokenDirect, username: username });
+        })
+        .catch(function(err) {
+          var raw = (err && err.message) ? err.message : String(err);
+          signalResult({ ok: false, error: raw, detail: raw });
+        });
+      return;
+    }
+
+    // ── Code flow: exchange the ?code= via the Worker (fallback) ──
     showProgress("Contacting server…");
     fetch(WORKER + "/auth/exchange", {
       method: "POST",
@@ -10642,7 +10676,7 @@ function useChallongeAuth() {
       const oauthState = Math.random().toString(36).slice(2) + Date.now().toString(36);
       try { sessionStorage.setItem("ncblast-oauth-state", oauthState); } catch(_) {}
       const res = await fetch(
-        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&state=${encodeURIComponent(oauthState)}`,
+        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&state=${encodeURIComponent(oauthState)}`,
         { signal: AbortSignal.timeout(8000) }
       );
       const data = await res.json();
@@ -10772,7 +10806,7 @@ function useChallongeAuthPopup() {
     try {
       const oauthState = sessionIdRef.current + "." + Math.random().toString(36).slice(2);
       const res = await fetch(
-        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent("https://ncblast.pages.dev")}&response_type=code&state=${encodeURIComponent(oauthState)}`,
+        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent("https://ncblast.pages.dev")}&response_type=token&state=${encodeURIComponent(oauthState)}`,
         { signal: AbortSignal.timeout(8000) }
       );
       const data = await res.json();
