@@ -10319,10 +10319,8 @@ const { useState, useEffect, useRef, useCallback } = React;
         })
         .catch(function(e) {
           signalResult({ ok: false, error: "Username lookup failed: " + (e.message || "network error") });
+        });
       });
-    })
-    .catch(function(e) {
-      signalResult({ ok: false, error: e.message || "Connection error" });
     });
   } catch(_) {}
 })();
