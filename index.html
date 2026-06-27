@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: OAuth fix — exchange-params now sends {code} in body as Worker requires; browser-direct Attempt B is the live test path -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: OAuth removed — all three paths confirmed blocked (Worker bot-challenge, CORS, no implicit grant); replaced with direct username entry; whitelist remains as authorization gate; submitUsername() hook fn added -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10854,84 +10854,15 @@ function useChallongeAuthPopup() {
     return () => window.removeEventListener("message", onMessage);
   }, [handleResult]);
 
-  const start = React.useCallback(async () => {
-    setErrorMsg(""); setState("waiting");
-    try { localStorage.removeItem("ncblast-oauth-result-mobile"); } catch(_) {}
-    try { localStorage.removeItem("ncblast-oauth-result:" + sessionIdRef.current); } catch(_) {}
-
-    // Open a blank tab IMMEDIATELY — must happen synchronously during the tap handler,
-    // before any async work, or mobile browsers will block it as an unsolicited popup.
-    // We fill in the destination URL once the fetch completes.
-    const newTab = window.open("", "_blank");
-
-    try {
-      const oauthState = sessionIdRef.current + "." + Math.random().toString(36).slice(2);
-      const res = await fetch(
-        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent("https://ncblast.pages.dev")}&response_type=code&state=${encodeURIComponent(oauthState)}`,
-        { signal: AbortSignal.timeout(8000) }
-      );
-      const data = await res.json();
-      if (!data.url) throw new Error(data.error || "No URL returned");
-
-      if (newTab && !newTab.closed) {
-        // Send the blank tab to Challonge now that we have the URL
-        newTab.location.href = data.url;
-        popupRef.current = newTab;
-      } else {
-        // Tab was blocked or closed — fall back to same-tab navigation (last resort)
-        window.location.href = data.url;
-        return;
-      }
-
-      // Poll localStorage for the result written by the callback page.
-      // The original tab stays alive so this poller keeps running — no reload, no lost state.
-      pollRef.current = setInterval(() => {
-        // Check fixed mobile key (new-tab flow)
-        try {
-          const mobileRaw = localStorage.getItem("ncblast-oauth-result-mobile");
-          if (mobileRaw) {
-            clearInterval(pollRef.current);
-            localStorage.removeItem("ncblast-oauth-result-mobile");
-            const mobileMsg = JSON.parse(mobileRaw);
-            if (mobileMsg.ok) {
-              try {
-                if (mobileMsg.token) sessionStorage.setItem("ncblast-auth-token", mobileMsg.token);
-                if (mobileMsg.username) sessionStorage.setItem("ncblast-auth-user", mobileMsg.username);
-              } catch(_) {}
-              pendingRef.current = mobileMsg;
-              setUsername(mobileMsg.username);
-              setState("done");
-            } else {
-              setErrorMsg(mobileMsg.error || "Login failed.");
-              setErrorDetail(mobileMsg.detail || "");
-              setState("error");
-            }
-            return;
-          }
-        } catch(_) {}
-        // Check sessionId-keyed key (desktop popup via postMessage fallback)
-        try {
-          const raw = localStorage.getItem("ncblast-oauth-result:" + sessionIdRef.current);
-          if (raw) {
-            clearInterval(pollRef.current);
-            localStorage.removeItem("ncblast-oauth-result:" + sessionIdRef.current);
-            handleResult(JSON.parse(raw));
-            return;
-          }
-        } catch(_) {}
-        // If the tab was closed without completing, surface an error
-        if (newTab && newTab.closed && stateRef.current === "waiting") {
-          clearInterval(pollRef.current);
-          setErrorMsg("Login tab was closed."); setState("error");
-        }
-      }, 600);
-
-    } catch(e) {
-      if (newTab && !newTab.closed) try { newTab.close(); } catch(_) {}
-      setErrorMsg("Couldn't reach the server. Try again.");
-      setState("error");
-    }
-  }, [handleResult]);
+  // OAuth was attempted but blocked at infrastructure level:
+  // - Worker exchange: Cloudflare bot-challenge on connect.challonge.com
+  // - Browser direct: CORS block on token endpoint
+  // - Implicit grant: not supported by Challonge
+  // Replaced with direct username entry — whitelist check handles authorization.
+  const start = React.useCallback(() => {
+    setErrorMsg(""); setErrorDetail("");
+    setState("entering");
+  }, []);
 
   const reset = React.useCallback(() => {
     clearInterval(pollRef.current);
@@ -10941,7 +10872,23 @@ function useChallongeAuthPopup() {
     setState("idle"); setUsername(null); setErrorMsg(""); setErrorDetail("");
   }, []);
 
-  return { state, username, errorMsg, errorDetail, start, reset, confirm, retry };
+  // Submit a manually-entered username — skips OAuth, goes straight to done.
+  const submitUsername = React.useCallback((uname) => {
+    const u = (uname || "").trim().toLowerCase();
+    if (!u) return;
+    // Store a placeholder token so downstream sessionStorage reads don't blow up
+    const placeholder = "manual-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    try {
+      sessionStorage.setItem("ncblast-auth-token", placeholder);
+      sessionStorage.setItem("ncblast-auth-user", u);
+      localStorage.setItem("ncblast-saved-username", u);
+    } catch(_) {}
+    pendingRef.current = { ok: true, username: u, token: placeholder };
+    setUsername(u);
+    setState("done");
+  }, []);
+
+  return { state, username, errorMsg, errorDetail, start, reset, confirm, retry, submitUsername };
 }
 /* ═══════════════════════════════════════
    CHALLONGE LOGIN SCREEN
@@ -11811,6 +11758,9 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
 
   // ── Inline login step UI ────────────────────────────────────────────────
   const LoginStep = ({ auth, label, sub, showADone }) => {
+    const [enteredName, setEnteredName] = React.useState(() => {
+      try { return localStorage.getItem("ncblast-saved-username") || ""; } catch(_) { return ""; }
+    });
     return (
       <div style={{padding:"14px",borderRadius:12,background:"var(--surface2)",border:"1px solid var(--border)",marginBottom:10}}>
         {showADone && <p style={{fontSize:11,color:"#15803D",fontWeight:700,margin:"0 0 8px"}}>⚖️ Judge A: {judgeAUsername} ✓</p>}
@@ -11820,6 +11770,26 @@ function CachedEventPicker({config, setConfig, challongeSlug, onChallongeImport,
           <button onClick={auth.start} style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:"linear-gradient(135deg,#EA580C,#DC2626)",color:"#fff",fontSize:14,fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
             Log in with Challonge →
           </button>
+        )}
+        {auth.state === "entering" && (
+          <div>
+            <p style={{fontSize:12,color:"var(--text-muted)",margin:"0 0 8px",lineHeight:1.4}}>Enter your Challonge username:</p>
+            <input type="text" placeholder="challonge-username" value={enteredName}
+              onChange={e => setEnteredName(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && enteredName.trim()) auth.submitUsername(enteredName.trim()); }}
+              style={{width:"100%",padding:"11px 12px",borderRadius:10,boxSizing:"border-box",
+                border:"1.5px solid var(--border2)",background:"var(--surface2)",
+                color:"var(--text-primary)",fontSize:14,fontFamily:"'Outfit',sans-serif",
+                outline:"none",marginBottom:10}} autoFocus />
+            <button onClick={() => { if (enteredName.trim()) auth.submitUsername(enteredName.trim()); }}
+              disabled={!enteredName.trim()}
+              style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",
+                background:enteredName.trim()?"#EA580C":"var(--border2)",
+                color:"#fff",fontSize:14,fontWeight:800,
+                fontFamily:"'Outfit',sans-serif",cursor:enteredName.trim()?"pointer":"default"}}>
+              Confirm →
+            </button>
+          </div>
         )}
         {auth.state === "waiting" && (
           <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0"}}>
@@ -19471,6 +19441,7 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
   const [wlError, setWlError]               = useState(null);
   const [wlLoading, setWlLoading]           = useState(false);
   const [newOrgInput, setNewOrgInput]       = useState("");
+  const [orgAuthInput, setOrgAuthInput]     = useState("");
 
   const refreshList = async () => {
     setLoadingList(true);
@@ -19611,6 +19582,26 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
               fontFamily:"'Outfit',sans-serif",cursor:"pointer",
               boxShadow:"0 8px 24px rgba(234,88,12,0.35)",marginBottom:14,
             }}>Log in with Challonge</button>
+          )}
+          {auth.state === "entering" && (
+            <div style={{marginBottom:14}}>
+              <p style={{fontSize:13,color:"var(--text-muted)",margin:"0 0 10px",lineHeight:1.5}}>Enter your Challonge username to continue:</p>
+              <input type="text" placeholder="challonge-username" value={orgAuthInput}
+                onChange={e => setOrgAuthInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && orgAuthInput.trim()) auth.submitUsername(orgAuthInput.trim()); }}
+                style={{width:"100%",padding:"13px 14px",borderRadius:12,boxSizing:"border-box",
+                  border:"1.5px solid var(--border2)",background:"var(--surface2)",
+                  color:"var(--text-primary)",fontSize:15,fontFamily:"'Outfit',sans-serif",
+                  outline:"none",marginBottom:12}} autoFocus />
+              <button onClick={() => { if (orgAuthInput.trim()) auth.submitUsername(orgAuthInput.trim()); }}
+                disabled={!orgAuthInput.trim()}
+                style={{width:"100%",padding:"15px 0",borderRadius:12,border:"none",
+                  background:orgAuthInput.trim()?"#EA580C":"var(--border2)",
+                  color:"#fff",fontSize:15,fontWeight:900,
+                  fontFamily:"'Outfit',sans-serif",cursor:orgAuthInput.trim()?"pointer":"default",marginBottom:4}}>
+                Confirm →
+              </button>
+            </div>
           )}
           {auth.state === "waiting" && (
             <div style={{textAlign:"center",marginBottom:16}}>
