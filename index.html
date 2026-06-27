@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: Player view removed (230KB); org components restored after accidental deletion; org login updated to manual username entry matching judge flow -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: Match underway check non-blocking (Build Decks no longer waits for Challonge attribution); 4s timeout on underway fetch; prev combos get hold-to-edit-one-part (pcEditMenu) matching quick combo behavior -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12089,6 +12089,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const [matchStartIdx,setMatchStartIdx] = useState(0);
   const [picker,setPicker] = useState(null);
   const [qcEditMenu,setQcEditMenu] = useState(null); // { qi, qc } — which quick combo is showing the part-edit menu
+  const [pcEditMenu,setPcEditMenu] = useState(null); // { ci, combo } — which prev combo is showing the part-edit menu
   const [pickerHistory,setPickerHistory] = useState([]); // stack of previous picker states for undo
   const openPicker = (val) => {
     setPickerHistory(h => picker ? [...h, picker] : h);
@@ -13383,7 +13384,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           return (
             <div style={{marginBottom:12}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                <p style={{fontSize:9,fontWeight:700,color:"#7C3AED",letterSpacing:1.5,textTransform:"uppercase",margin:0}}>🕐 Previous Combos</p>
+                <p style={{fontSize:9,fontWeight:700,color:"#7C3AED",letterSpacing:1.5,textTransform:"uppercase",margin:0}}>🕐 Previous Combos <span style={{fontWeight:400,opacity:0.7,letterSpacing:0}}>· hold to edit one part</span></p>
                 <button onClick={clearCombos}
                   style={{background:"none",border:"1px solid #EF444450",borderRadius:6,padding:"2px 8px",fontSize:9,fontWeight:700,color:"#EF4444",fontFamily:"'Outfit',sans-serif",cursor:"pointer",letterSpacing:0.3}}>
                   Clear Previous Combos
@@ -13396,25 +13397,77 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                   const bitTaken=(who===1?d1:d2).map((dc,i)=>i!==slot?dc.bit:null).filter(Boolean).includes(c.bit);
                   const anyTaken=bTaken||rTaken||bitTaken;
                   const bladeColor=BLADE_COLORS[c.blade]||"#64748B";
+                  const isMenuOpen=pcEditMenu?.ci===ci;
+                  let pcLpTimer=null;
+                  const startPcLongPress=()=>{
+                    if(anyTaken)return;
+                    pcLpTimer=setTimeout(()=>{ setPcEditMenu({ci,combo:c}); pcLpTimer=null; },300);
+                  };
+                  const cancelPcLongPress=()=>{ if(pcLpTimer){clearTimeout(pcLpTimer);pcLpTimer=null;} };
+                  const applyAndEditPrevPart=(partCat)=>{
+                    setPcEditMenu(null);
+                    const nd=who===1?[...d1]:[...d2];
+                    nd[slot]={blade:c.blade,ratchet:c.ratchet,bit:c.bit};
+                    if(who===1)setD1(nd); else setD2(nd);
+                    const wasReview=picker?.returnToReview||false;
+                    openPicker({who,slot,cat:partCat,returnToReview:wasReview,qcEdit:true,editingPart:true});
+                  };
                   return (
-                    <button key={ci} disabled={anyTaken}
-                      onClick={()=>{
-                        if(anyTaken)return;
-                        const nd=who===1?[...d1]:[...d2];
-                        nd[slot]={blade:c.blade,ratchet:c.ratchet,bit:c.bit};
-                        if(who===1)setD1(nd); else setD2(nd);
-                        const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
-                        // quick-pick fills a whole combo — cat is effectively "bit" (final step)
-                        advanceDeckPicker(who,slot,"bit",freshD1,freshD2,picker?.returnToReview,c.bit,false);
-                      }}
-                      style={{padding:"8px 4px",borderRadius:9,border:`2px solid ${anyTaken?"var(--border)":bladeColor+"50"}`,background:anyTaken?"var(--surface3)":bladeColor+"10",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2}}>
-                      <span style={{fontSize:13,fontWeight:800}}>{c.blade}</span>
-                      <span style={{fontSize:11,opacity:0.65}}>{c.ratchet} · {c.bit}</span>
-                      {anyTaken&&<span style={{fontSize:9,color:"var(--text-faint)"}}>IN USE</span>}
-                    </button>
+                    <div key={ci} style={{position:"relative"}}>
+                      <button
+                        className="no-select"
+                        disabled={anyTaken}
+                        onClick={()=>{
+                          if(anyTaken||isMenuOpen)return;
+                          const nd=who===1?[...d1]:[...d2];
+                          nd[slot]={blade:c.blade,ratchet:c.ratchet,bit:c.bit};
+                          if(who===1)setD1(nd); else setD2(nd);
+                          const freshD1=who===1?nd:d1; const freshD2=who===2?nd:d2;
+                          advanceDeckPicker(who,slot,"bit",freshD1,freshD2,picker?.returnToReview,c.bit,false);
+                        }}
+                        onMouseDown={startPcLongPress}
+                        onMouseUp={cancelPcLongPress}
+                        onMouseLeave={cancelPcLongPress}
+                        onTouchStart={e=>{e.preventDefault();startPcLongPress();}}
+                        onTouchEnd={cancelPcLongPress}
+                        onTouchCancel={cancelPcLongPress}
+                        onContextMenu={e=>e.preventDefault()}
+                        style={{width:"100%",padding:"8px 4px",borderRadius:isMenuOpen?"9px 9px 0 0":9,border:`2px solid ${isMenuOpen?bladeColor:anyTaken?"var(--border)":bladeColor+"50"}`,borderBottom:isMenuOpen?`2px solid ${bladeColor}`:undefined,background:isMenuOpen?bladeColor+"22":anyTaken?"var(--surface3)":bladeColor+"10",color:anyTaken?"var(--text-disabled)":"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:56,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,userSelect:"none",WebkitUserSelect:"none",WebkitTouchCallout:"none",touchAction:"none"}}>
+                        <span style={{fontSize:13,fontWeight:800}}>{c.blade}</span>
+                        <span style={{fontSize:11,opacity:0.65}}>{c.ratchet?`${c.ratchet} · ${c.bit}`:c.bit}</span>
+                        {anyTaken&&<span style={{fontSize:9,color:"var(--text-faint)"}}>IN USE</span>}
+                        {isMenuOpen&&<span style={{fontSize:8,color:bladeColor,marginTop:1,fontWeight:800}}>EDITING ▾</span>}
+                      </button>
+                      {isMenuOpen&&(
+                        <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:50,border:`2px solid ${bladeColor}`,borderTop:"none",borderRadius:"0 0 9px 9px",background:"var(--surface)",overflow:"hidden",boxShadow:`0 6px 20px ${bladeColor}30`}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 8px",background:bladeColor+"18",borderBottom:`1px solid ${bladeColor}30`}}>
+                            <span style={{fontSize:8,fontWeight:700,color:bladeColor,textTransform:"uppercase",letterSpacing:0.5}}>Edit one part:</span>
+                            <button onClick={e=>{e.stopPropagation();setPcEditMenu(null);}} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text-faint)",fontSize:12,lineHeight:1,padding:"0 2px"}}>✕</button>
+                          </div>
+                          <button onClick={()=>applyAndEditPrevPart("blade")}
+                            style={{width:"100%",padding:"9px 10px",border:"none",borderBottom:`1px solid ${bladeColor}20`,background:"none",cursor:"pointer",textAlign:"center",fontFamily:"'Outfit',sans-serif"}}>
+                            <span style={{fontSize:11,fontWeight:800,color:"#EA580C",textTransform:"uppercase",letterSpacing:0.5}}>Blade</span>
+                          </button>
+                          {c.ratchet&&(
+                            <button onClick={()=>applyAndEditPrevPart("ratchet")}
+                              style={{width:"100%",padding:"9px 10px",border:"none",borderBottom:`1px solid ${bladeColor}20`,background:"none",cursor:"pointer",textAlign:"center",fontFamily:"'Outfit',sans-serif"}}>
+                              <span style={{fontSize:11,fontWeight:800,color:"#1D4ED8",textTransform:"uppercase",letterSpacing:0.5}}>Ratchet</span>
+                            </button>
+                          )}
+                          <button onClick={()=>applyAndEditPrevPart("bit")}
+                            style={{width:"100%",padding:"9px 10px",border:"none",background:"none",cursor:"pointer",textAlign:"center",fontFamily:"'Outfit',sans-serif"}}>
+                            <span style={{fontSize:11,fontWeight:800,color:"#15803D",textTransform:"uppercase",letterSpacing:0.5}}>Bit</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
+              {pcEditMenu&&(
+                <div onClick={()=>setPcEditMenu(null)}
+                  style={{position:"fixed",inset:0,zIndex:40}}/>
+              )}
             </div>
           );
         })()}
@@ -13661,6 +13714,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Auth-Token": judgeToken, "X-Auth-User": judgeUser },
           body: JSON.stringify({ slug: challongeSlug, matchId }),
+          signal: AbortSignal.timeout(4000),
         });
         const d = await res.json();
         if (d.ok) {
@@ -13938,7 +13992,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                   {underwayStatus==="checking"&&(
                     <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",borderRadius:9,background:"var(--surface2)",border:"1.5px solid var(--border)"}}>
                       <div style={{width:12,height:12,borderRadius:"50%",border:"2px solid var(--border2)",borderTopColor:"#EA580C",animation:"spin 1s linear infinite",flexShrink:0}}/>
-                      <p style={{fontSize:12,color:"var(--text-muted)",margin:0,fontWeight:600}}>Verifying Challonge access…</p>
+                      <p style={{fontSize:12,color:"var(--text-muted)",margin:0,fontWeight:600}}>Marking match in progress…</p>
                     </div>
                   )}
                   {underwayStatus==="ok"&&(
@@ -13955,8 +14009,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                   )}
                   {/* Build Decks — blocked while checking, blocked on denied, allowed otherwise */}
                   <button style={{...S.pri,margin:0,
-                    opacity:(activeCanProceed&&underwayStatus!=="checking")?1:0.4}}
-                    disabled={!activeCanProceed||underwayStatus==="checking"}
+                    opacity:activeCanProceed?1:0.4}}
+                    disabled={!activeCanProceed}
                     onClick={()=>{refreshCombos();setMatchStartIdx(log.length);setFuture([]);setCurSet(1);setShuf(1);setPts([0,0]);setSets([0,0]);setUsed1([]);setUsed2([]);setLerStrikes([0,0]);setSetScores([]);setDeckReview(true);setPhase("deck");}}>
                     Build Decks →
                   </button>
