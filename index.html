@@ -10240,11 +10240,10 @@ const { useState, useEffect, useRef, useCallback } = React;
     window.history.replaceState({}, document.title, "/");
 
     // Safety net: if anything goes wrong and signalResult never fires,
-    // show an error after 12 seconds instead of staying blank.
+    // show an error after 20 seconds instead of staying blank.
     var blankSafetyTimer = setTimeout(function() {
-      document.documentElement.style.display = "";
-      document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#94a3b8;padding:32px;text-align:center;"><div style="font-size:48px;margin-bottom:16px">❌</div><p style="font-size:18px;font-weight:800;color:#ef4444;margin:0 0 8px">Login timed out</p><p style="font-size:13px;color:#64748b">You can close this tab and try again.</p></div>';
-    }, 12000);
+      showProgress("⏱ Login timed out — you can close this tab and try again.");
+    }, 20000);
 
     // The OAuth state param is "sessionId.randomSuffix" — sessionId routes the
     // message back to the right hook instance (prevents two popups cross-firing).
@@ -10280,10 +10279,18 @@ const { useState, useEffect, useRef, useCallback } = React;
 
     const WORKER = "https://challonge-proxy.danny61734.workers.dev";
 
-    // Show live progress so we can see exactly which step stalls
+    // Show live progress in a fixed overlay — never touch body.innerHTML early
+    // (replacing body kills Babel scripts still loading, breaking all JS execution)
+    var progressDiv = null;
     function showProgress(msg) {
-      document.documentElement.style.display = "";
-      document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#94a3b8;padding:32px;text-align:center;"><p style="font-size:16px;margin:0;color:#94a3b8">' + msg + '</p></div>';
+      if (!progressDiv) {
+        progressDiv = document.createElement("div");
+        progressDiv.style.cssText = "position:fixed;inset:0;background:#0f172a;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:sans-serif;";
+        progressDiv.innerHTML = '<p id="ncblast-progress" style="font-size:16px;color:#94a3b8;margin:0;padding:32px;text-align:center;"></p>';
+        document.body.appendChild(progressDiv);
+      }
+      var el = document.getElementById("ncblast-progress");
+      if (el) el.textContent = msg;
       document.documentElement.style.display = "";
     }
 
@@ -10346,7 +10353,6 @@ const { useState, useEffect, useRef, useCallback } = React;
     }
 
     // Get exchange-params from Worker first (needed for browser exchange fallback)
-    showProgress("Completing login...");
     fetch(WORKER + "/auth/exchange-params", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -10372,15 +10378,10 @@ const { useState, useEffect, useRef, useCallback } = React;
       signalResult({ ok: false, error: finalErr.message || String(finalErr) });
     });
   } catch(outerErr) {
-    // Last-resort catch — write the error to localStorage so the org view can display it
     try {
-      localStorage.setItem("ncblast-oauth-result-mobile", JSON.stringify({
-        ok: false,
-        error: "IIFE crash: " + (outerErr && outerErr.message ? outerErr.message : String(outerErr)),
-        ts: Date.now()
-      }));
-      document.documentElement.style.display = "";
-      document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#94a3b8;padding:32px;text-align:center;"><div style="font-size:48px;margin-bottom:16px">❌</div><p style="font-size:18px;font-weight:800;color:#ef4444;margin:0 0 8px">Login error</p><p style="font-size:13px;margin:0;color:#64748b">' + (outerErr && outerErr.message ? outerErr.message : String(outerErr)) + '</p></div>';
+      var msg = "IIFE crash: " + (outerErr && outerErr.message ? outerErr.message : String(outerErr));
+      localStorage.setItem("ncblast-oauth-result-mobile", JSON.stringify({ ok: false, error: msg, ts: Date.now() }));
+      showProgress("❌ " + msg);
     } catch(_) {}
   }
 })();
