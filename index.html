@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: OAuth back to response_type=code; Attempt A=Worker exchange (bot-blocked), Attempt B=browser-direct exchange with clear diagnostic labels; CORS block surfaces explicitly if both paths fail -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: OAuth fix — exchange-params now sends {code} in body as Worker requires; browser-direct Attempt B is the live test path -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10326,7 +10326,7 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
     return fetch(WORKER + "/auth/exchange-params", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({})
+      body: JSON.stringify({code: code})
     })
     .then(function(r) { return r.json(); })
     .then(function(p) {
@@ -10510,7 +10510,7 @@ const { useState, useEffect, useRef, useCallback } = React;
     .catch(function(errA) {
       showProgress("Trying browser exchange… (A: " + errA.message.slice(0, 50) + ")");
       return fetch(WORKER + "/auth/exchange-params", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({code: code}),
       })
       .then(function(r) { return r.json(); })
       .then(function(p) {
