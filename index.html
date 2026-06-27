@@ -10210,6 +10210,135 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
 </head>
 <body>
 <div id="root"></div>
+
+<!-- OAuth callback handler — plain JS, runs immediately before Babel loads -->
+<script>
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var code = params.get("code");
+  var oauthError = params.get("error");
+  if (!code && !oauthError) return; // not a callback page, do nothing
+
+  // Mark page as OAuth callback so Babel IIFE skips itself
+  window.__NCBLAST_OAUTH_CALLBACK__ = true;
+
+  // Remove #root id so React never mounts on this tab
+  var rootEl = document.getElementById("root");
+  if (rootEl) rootEl.removeAttribute("id");
+
+  // Strip ?code from URL before anything else
+  window.history.replaceState({}, document.title, "/");
+
+  var WORKER = "https://challonge-proxy.danny61734.workers.dev";
+  var oauthStateParam = params.get("state") || "";
+  var sessionId = oauthStateParam.split(".")[0] || "";
+  var isPopup = !!window.opener;
+
+  // Progress overlay — safe, never touches existing body content
+  var progressDiv = document.createElement("div");
+  progressDiv.style.cssText = "position:fixed;inset:0;background:#0f172a;z-index:99999;display:flex;align-items:center;justify-content:center;font-family:sans-serif;";
+  progressDiv.innerHTML = '<div style="text-align:center;padding:32px;max-width:500px;"><div id="ob-icon" style="font-size:48px;margin-bottom:16px">⏳</div><p id="ob-msg" style="font-size:16px;color:#94a3b8;margin:0 0 8px"></p><p id="ob-detail" style="font-size:12px;color:#475569;margin:0;word-break:break-all;"></p></div>';
+  document.body.appendChild(progressDiv);
+
+  function setStatus(icon, msg, detail) {
+    var i = document.getElementById("ob-icon"); if (i) i.textContent = icon;
+    var m = document.getElementById("ob-msg"); if (m) m.textContent = msg;
+    var d = document.getElementById("ob-detail"); if (d) d.textContent = detail || "";
+  }
+
+  function signalResult(msg) {
+    try { localStorage.setItem("ncblast-oauth-result-mobile", JSON.stringify(Object.assign({}, msg, {ts: Date.now()}))); } catch(_) {}
+    if (isPopup) {
+      try { window.opener.postMessage({type:"ncblast-oauth-result", sessionId: sessionId, ok: msg.ok, token: msg.token, username: msg.username, error: msg.error}, window.location.origin); } catch(_) {}
+      try { window.close(); } catch(_) {}
+    }
+    setStatus(msg.ok ? "✅" : "❌",
+      msg.ok ? "Logged in as " + msg.username : "Login failed",
+      msg.ok ? "You can close this tab." : (msg.error || "Unknown error"));
+  }
+
+  if (oauthError) {
+    signalResult({ok: false, error: "Challonge error: " + (params.get("error_description") || oauthError)});
+    return;
+  }
+
+  // ATTEMPT A: Worker does token exchange directly (simplest path)
+  function attemptA() {
+    setStatus("⏳", "Exchanging code (method A)...", "Worker direct exchange");
+    return fetch(WORKER + "/auth/exchange", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({code: code, redirect_uri: "https://ncblast.pages.dev"})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok && d.access_token) return d.access_token;
+      throw new Error("A failed: " + (d.error || JSON.stringify(d).slice(0,100)));
+    });
+  }
+
+  // ATTEMPT B: Browser calls connect.challonge.com directly with creds from Worker
+  function attemptB(reason) {
+    setStatus("⏳", "Exchanging code (method B)...", "Browser direct. A failed: " + reason);
+    return fetch(WORKER + "/auth/exchange-params", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({code: code})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(p) {
+      if (!p.client_id) throw new Error("No client_id: " + JSON.stringify(p).slice(0,100));
+      var body = "grant_type=authorization_code" +
+        "&code=" + encodeURIComponent(code) +
+        "&client_id=" + encodeURIComponent(p.client_id) +
+        "&client_secret=" + encodeURIComponent(p.client_secret) +
+        "&redirect_uri=" + encodeURIComponent(p.redirect_uri);
+      return fetch("https://connect.challonge.com/oauth/token", {
+        method: "POST",
+        headers: {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+        body: body
+      });
+    })
+    .then(function(r) { return r.text().then(function(t) { return {status: r.status, text: t}; }); })
+    .then(function(rt) {
+      var d;
+      try { d = JSON.parse(rt.text); } catch(_) { throw new Error("B non-JSON HTTP " + rt.status + ": " + rt.text.slice(0,100)); }
+      if (d.access_token) return d.access_token;
+      throw new Error("B failed HTTP " + rt.status + ": " + (d.error_description || d.error || rt.text.slice(0,100)));
+    });
+  }
+
+  // Username resolution
+  function resolveUsername(token) {
+    setStatus("⏳", "Looking up username...", "");
+    return fetch(WORKER + "/auth/me", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token: token})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok && d.username) return d.username;
+      throw new Error(d.error || "No username returned");
+    });
+  }
+
+  setStatus("⏳", "Completing login...", "");
+
+  // Try A, fall back to B, then resolve username
+  attemptA()
+    .catch(function(errA) { return attemptB(errA.message); })
+    .then(function(token) {
+      return resolveUsername(token).then(function(username) {
+        signalResult({ok: true, token: token, username: username});
+      });
+    })
+    .catch(function(err) {
+      signalResult({ok: false, error: err.message || String(err)});
+    });
+})();
+</script>
+
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
 
@@ -10219,6 +10348,8 @@ const { useState, useEffect, useRef, useCallback } = React;
 // can reach /v2/me.json even though the Worker can't), then signals the waiting
 // tab via postMessage (desktop popup) or localStorage (mobile new tab).
 (function handleOAuthCallback() {
+  // Handled by plain <script> above — skip if flag is set
+  if (window.__NCBLAST_OAUTH_CALLBACK__) return;
   try {
     const params = new URLSearchParams(window.location.search);
     const code  = params.get("code");
