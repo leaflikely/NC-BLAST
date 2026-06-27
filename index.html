@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-13 | session: CRITICAL FIX — restored OrgApp, PinModal, OrgConfirmUsername, OrgTournamentSelect, and workerGet() which were all accidentally deleted during player-view removal. Org view errors and judge blank screen both traced to missing workerGet definition -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: OAuth IIFE updated — browser now does token exchange directly with connect.challonge.com via exchange-params route, bypassing Worker bot-block -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10200,7 +10200,12 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
   input::placeholder{color:var(--text-faint);}
   /* Bottom bar always uses surface color */
   .bottom-bar{background:var(--surface);}
+  /* Player view classes */
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
   @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+  .fade-in{animation:fadeIn 0.3s ease both;}
+  .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22C55E;animation:pulse 1.5s ease infinite;margin-right:5px;}
 </style>
 </head>
 <body>
@@ -10263,46 +10268,57 @@ const { useState, useEffect, useRef, useCallback } = React;
 
     const WORKER = "https://challonge-proxy.danny61734.workers.dev";
 
-    // Exchange code for token, then call Worker /auth/me to resolve the username.
-    // The Worker makes the Challonge API call server-side — avoids the browser
-    // Content-Type injection issue that causes Challonge to return 415.
-    fetch(WORKER + "/auth/exchange", {
+    // Step 1: Get credentials from Worker (Worker never touches connect.challonge.com
+    // directly — Cloudflare's bot protection blocks Worker IPs from that domain).
+    // Step 2: Browser does the token exchange directly with connect.challonge.com.
+    // Step 3: Browser calls Worker /auth/me to resolve the Challonge username.
+    fetch(WORKER + "/auth/exchange-params", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, redirect_uri: "https://ncblast.pages.dev" }),
+      body: JSON.stringify({ code }),
     })
     .then(function(r) { return r.json(); })
-    .then(function(d) {
-      if (!d.ok || !d.access_token) {
-        signalResult({ ok: false, error: d.error || "Login failed" });
+    .then(function(params) {
+      if (!params.client_id) {
+        signalResult({ ok: false, error: params.error || "Could not get exchange credentials" });
         return;
       }
-      var token = d.access_token;
-      // If Challonge included the username in the token exchange response, use it directly.
-      if (d.username) {
-        signalResult({ ok: true, token: token, username: d.username });
-        return;
-      }
-      // Username not in exchange response — show debug info and fall through to /auth/me attempt.
-      if (d.debugKeys) {
-        console.warn("[NC BLAST] Token exchange response fields:", d.debugKeys);
-      }
-      // Ask the Worker to resolve the username — it calls Challonge from the server side
-      return fetch(WORKER + "/auth/me", {
+      // Browser calls connect.challonge.com directly — bypasses Worker IP bot block
+      var body = new URLSearchParams({
+        grant_type: "authorization_code",
+        code: code,
+        client_id: params.client_id,
+        client_secret: params.client_secret,
+        redirect_uri: params.redirect_uri,
+      });
+      return fetch("https://connect.challonge.com/oauth/token", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: token }),
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+        body: body.toString(),
       })
       .then(function(r) { return r.json(); })
-      .then(function(me) {
-        if (me.ok && me.username) {
-          signalResult({ ok: true, token: token, username: me.username });
-        } else {
-          signalResult({ ok: false, error: me.error || "Couldn't read username from Challonge." });
+      .then(function(d) {
+        if (!d.access_token) {
+          signalResult({ ok: false, error: d.error_description || d.error || "Token exchange failed" });
+          return;
         }
-      })
-      .catch(function(e) {
-        signalResult({ ok: false, error: "Username lookup failed: " + (e.message || "network error") });
+        var token = d.access_token;
+        // Ask the Worker to resolve the username via connect.challonge.com/oauth/userinfo
+        return fetch(WORKER + "/auth/me", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: token }),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(me) {
+          if (me.ok && me.username) {
+            signalResult({ ok: true, token: token, username: me.username });
+          } else {
+            signalResult({ ok: false, error: me.error || "Couldn't read username from Challonge." });
+          }
+        })
+        .catch(function(e) {
+          signalResult({ ok: false, error: "Username lookup failed: " + (e.message || "network error") });
       });
     })
     .catch(function(e) {
@@ -10344,13 +10360,7 @@ function useScale() {
 ═══════════════════════════════════════ */
 const KEYS = { parts: "bx-library-v10", players: "bx-roster-v2", combos: "bx-combos-v1", matchLog: "bx-matchlog-v1", challongeMap: "bx-challonge-map-v1", overlaySlot: "bx-overlay-slot-v1", lastJudge: "ncblast-last-judge-v1" };
 const OVERLAY_WORKER = "https://challonge-proxy.danny61734.workers.dev";
-
-// Shared fetch helper — GET request to the Worker, throws on non-OK responses.
-async function workerGet(path, signal) {
-  const res = await fetch(`${OVERLAY_WORKER}${path}`, { signal });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
+const COMBO_CACHE_TTL = 60 * 60 * 1000; // 1 hour in ms
 
 /* ═══════════════════════════════════════
    CHALLONGE OAUTH HOOK
@@ -10700,6 +10710,120 @@ function useChallongeAuthPopup() {
 
   return { state, username, errorMsg, start, reset, confirm, retry };
 }
+/* ═══════════════════════════════════════
+   CHALLONGE LOGIN SCREEN
+   Reusable UI for the device-flow login.
+   Props:
+     auth        — result of useChallongeAuth()
+     title       — heading text
+     subtitle    — subheading text
+     onCancel    — back/cancel callback
+═══════════════════════════════════════ */
+function ChallongeLoginScreen({ auth, title, subtitle, onCancel }) {
+  const [usernameInput, setUsernameInput] = React.useState(() => {
+    try { return localStorage.getItem("ncblast-saved-username") || ""; } catch(_) { return ""; }
+  });
+  return (
+    <div style={{
+      minHeight:"100vh", display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center",
+      background:"var(--bg)", padding:"32px 24px", fontFamily:"'Outfit',sans-serif"
+    }}>
+      <div style={{width:"100%", maxWidth:340}}>
+        <div style={{textAlign:"center", marginBottom:28}}>
+          <div style={{fontSize:40, marginBottom:10}}>🔗</div>
+          <h2 style={{fontSize:22, fontWeight:900, color:"var(--text-primary)", margin:"0 0 6px"}}>{title}</h2>
+          {subtitle && <p style={{fontSize:13, color:"var(--text-muted)", margin:0, lineHeight:1.5}}>{subtitle}</p>}
+        </div>
+
+        {auth.state === "idle" && (
+          <button onClick={auth.start} style={{
+            width:"100%", padding:"18px 0", borderRadius:14, border:"none",
+            background:"linear-gradient(135deg,#EA580C,#DC2626)",
+            color:"#fff", fontSize:16, fontWeight:900,
+            fontFamily:"'Outfit',sans-serif", cursor:"pointer",
+            boxShadow:"0 8px 24px rgba(234,88,12,0.35)", marginBottom:14,
+          }}>
+            Log in with Challonge
+          </button>
+        )}
+
+        {(auth.state === "navigating" || auth.state === "exchanging") && (
+          <div style={{textAlign:"center", marginBottom:16}}>
+            <div style={{
+              background:"var(--surface)", borderRadius:16, padding:"24px 20px",
+              border:"2px solid #EA580C", marginBottom:16,
+            }}>
+              <div style={{width:40, height:40, margin:"0 auto 14px", borderRadius:"50%",
+                border:"3px solid var(--border2)", borderTopColor:"#EA580C",
+                animation:"spin 1s linear infinite"}}/>
+              <p style={{fontSize:14, fontWeight:800, color:"var(--text-primary)", margin:"0 0 6px"}}>
+                {auth.state === "navigating" ? "Opening Challonge…" : "Completing login…"}
+              </p>
+              <p style={{fontSize:12, color:"var(--text-muted)", margin:0, lineHeight:1.5}}>
+                {auth.state === "navigating"
+                  ? "You'll be taken to Challonge to log in, then brought back here automatically."
+                  : "Verifying your account, just a moment."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {auth.state === "confirm" && (
+          <div style={{marginBottom:16}}>
+            <div style={{background:"var(--surface)", borderRadius:14, padding:"18px 16px", border:"2px solid #EA580C", marginBottom:14}}>
+              <p style={{fontSize:13, fontWeight:700, color:"var(--text-primary)", margin:"0 0 6px"}}>✅ Challonge login successful!</p>
+              <p style={{fontSize:12, color:"var(--text-muted)", margin:"0 0 14px", lineHeight:1.5}}>Enter your Challonge username to finish.</p>
+              <input type="text" placeholder="your-challonge-username" value={usernameInput}
+                onChange={e => setUsernameInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && usernameInput.trim()) auth.confirm(usernameInput.trim()); }}
+                style={{width:"100%", padding:"11px 12px", borderRadius:10, boxSizing:"border-box",
+                  border:"1.5px solid var(--border2)", background:"var(--surface2)",
+                  color:"var(--text-primary)", fontSize:14, fontFamily:"'Outfit',sans-serif",
+                  outline:"none", marginBottom:10}} autoFocus />
+              <button onClick={() => { if (usernameInput.trim()) auth.confirm(usernameInput.trim()); }}
+                disabled={!usernameInput.trim()}
+                style={{width:"100%", padding:"13px 0", borderRadius:12, border:"none",
+                  background:usernameInput.trim()?"#EA580C":"var(--border2)",
+                  color:"#fff", fontSize:14, fontWeight:800,
+                  fontFamily:"'Outfit',sans-serif", cursor:usernameInput.trim()?"pointer":"default"}}>Confirm</button>
+            </div>
+          </div>
+        )}
+
+        {auth.state === "done" && (
+          <div style={{textAlign:"center", marginBottom:16}}>
+            <div style={{fontSize:40, marginBottom:8}}>✅</div>
+            <p style={{fontSize:16, fontWeight:800, color:"#22C55E", margin:"0 0 4px"}}>Logged in!</p>
+            <p style={{fontSize:13, color:"var(--text-muted)"}}>{auth.username}</p>
+          </div>
+        )}
+
+        {auth.state === "error" && (
+          <div style={{marginBottom:16}}>
+            <p style={{fontSize:13, color:"#EF4444", textAlign:"center", fontWeight:600, marginBottom:14}}>
+              ⚠ {auth.errorMsg}
+            </p>
+            <button onClick={auth.start} style={{
+              width:"100%", padding:"14px 0", borderRadius:12, border:"none",
+              background:"#EA580C", color:"#fff", fontSize:14, fontWeight:800,
+              fontFamily:"'Outfit',sans-serif", cursor:"pointer", marginBottom:10,
+            }}>Try Again</button>
+          </div>
+        )}
+
+        <button onClick={onCancel} style={{
+          width:"100%", padding:"12px 0", borderRadius:12,
+          border:"2px solid var(--border)", background:"none",
+          color:"var(--text-muted)", fontSize:13, fontWeight:700,
+          fontFamily:"'Outfit',sans-serif", cursor:"pointer",
+        }}>← Back</button>
+      </div>
+    </div>
+  );
+}
+
+// Push a player's combos to the Worker KV so other devices can load them
 // ── Combo Registry Helpers (tournament-scoped) ───────────────────────────────
 // normalizePlayerKey: consistent lowercase+trim used as the lookup key in the
 // combo registry. Applied on both client and Worker so names always match.
@@ -10747,6 +10871,13 @@ function getCombosFromRegistry(registry, playerName) {
   return registry[normalizePlayerKey(playerName)] || [];
 }
 
+// Legacy stubs — kept so player view ComboTab still works during transition
+async function pushComboCacheToWorker(playerName, combos) {
+  // no-op: player view now calls pushCombosForTournament directly
+}
+async function fetchComboCacheFromWorker(playerName) {
+  return []; // no-op: judge view now uses fetchCombosForTournament
+}
 function sGet(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch { return fb; } }
 function sSave(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
 
@@ -13138,21 +13269,17 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     };
     const newLog=[...log,entry];
     setLog(newLog); sSave(KEYS.matchLog, newLog); setFuture([]); setPts(np);
+    // Push to stream overlay (fire and forget)
+    pushOverlay({lastFinish:{type:fin.id,scorerIdx:scoringPi},pts:np});
 
     const setWon = config.pts>0 && np[scoringPi]>=config.pts;
-    // Compute the updated sets count now (before React re-renders) so the overlay
-    // push gets the correct final dot count — React setState is async and would be stale.
-    const nsEarly = setWon ? (() => { const a=[sets[0],sets[1]]; a[scoringPi]+=1; return a; })() : [...sets];
-    // Push to stream overlay with correct sets count (fire and forget).
-    // force=true bypasses the 500ms debounce so a set win always reaches the overlay.
-    pushOverlay({lastFinish:{type:fin.id,scorerIdx:scoringPi},pts:np,sets:nsEarly}, setWon);
 
     // LER — 1-strike system: first LER adds a strike, second converts to a point
     if(fin.id==="LER"){
       if(setWon){
-        setSets(nsEarly);
+        const ns=[sets[0],sets[1]]; ns[scoringPi]+=1; setSets(ns);
         setSetScores(ss=>[...ss,{p1:np[0],p2:np[1]}]);
-        if(nsEarly[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
+        if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
         else {
           if(config.tm){const loserPi=1-scoringPi;setSideAssign({pickPriority:loserPi});setSidePicker({priority:loserPi});}
           setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(1);
@@ -13168,9 +13295,9 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     const nu1=[...used1,r1]; const nu2=[...used2,r2];
     setUsed1(nu1); setUsed2(nu2); setR1(null); setR2(null);
     if(setWon){
-      setSets(nsEarly);
+      const ns=[sets[0],sets[1]]; ns[scoringPi]+=1; setSets(ns);
       setSetScores(ss=>[...ss,{p1:np[0],p2:np[1]}]);
-      if(nsEarly[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
+      if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
       else {
         if(config.tm){ const loserPi=1-scoringPi; setSideAssign({pickPriority:loserPi}); setSidePicker({priority:loserPi}); }
         setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(1);
@@ -13252,12 +13379,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     }
   };
 
-  const pushOverlay = (extraState={}, force=false) => {
+  const pushOverlay = (extraState={}) => {
     // Throttle: never fire more than once per 500ms. Prevents runaway loops
     // if something triggers pushOverlay in a tight re-render cycle.
-    // Pass force=true to bypass the debounce for critical state (set wins, match over).
     const now = Date.now();
-    if(!force && now - pushOverlayDebounceRef.current < 500) return;
+    if(now - pushOverlayDebounceRef.current < 500) return;
     pushOverlayDebounceRef.current = now;
     const activeComboOf = (deck, idx) => {
       const c = idx !== null ? deck[idx] : null;
@@ -15812,77 +15938,1173 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
 }
 
 
-
-
 /* ═══════════════════════════════════════
-   ROLE PICKER SCREEN
+   PLAYER APP ENTRY (embedded from player view)
+   All components above prefixed/namespaced to avoid collision.
 ═══════════════════════════════════════ */
 
-function RolePicker({onSelect, judge, sharedJudges, onLogout}) {
-  const loggedIn = sharedJudges ? `${sharedJudges.judgeA} & ${sharedJudges.judgeB}` : (judge || null);
+
+/* ─── Player-only helpers ──────────────────────────────────────── */
+async function workerGet(path, signal){
+  const res = await fetch(`${OVERLAY_WORKER}${path}`,{signal});
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// Aliases — player deck builder uses these names; they point to the judge-side constants
+const DEFAULT_BLADES   = DEFAULT_PARTS.blades;
+const DEFAULT_RATCHETS = DEFAULT_PARTS.ratchets;
+const DEFAULT_BITS     = DEFAULT_PARTS.bits;
+const TOP10_BLADES   = TOP10.blades;
+const TOP10_RATCHETS = TOP10.ratchets;
+const TOP10_BITS     = TOP10.bits;
+const STORAGE_KEY = "ncblast-player-v1"; // player session storage key
+
+/* ─── Part Button (player deck builder) ───────────────────────── */
+function PartBtn({name, selected, taken, accent, onClick}){
+  const words = name.split(" ").filter(Boolean);
   return (
-    <div style={{
-      minHeight:"100vh", display:"flex", flexDirection:"column",
-      alignItems:"center", justifyContent:"center",
-      background:"var(--bg)", padding:"32px 24px", fontFamily:"'Outfit',sans-serif"
-    }}>
-      <div style={{textAlign:"center", marginBottom:40}}>
-        <div style={{fontSize:48, marginBottom:12}}>⚔️</div>
-        <h1 style={{fontSize:32, fontWeight:900, color:"var(--text-primary)", margin:"0 0 6px"}}>
-          NC <span style={{color:"#EA580C"}}>BLAST</span>
-        </h1>
-        <p style={{fontSize:13, color:"var(--text-muted)", margin:0}}>NorCal Battle Log and Stat Tracker</p>
+    <button onClick={()=>!taken&&onClick()} disabled={taken}
+      style={{
+        padding:"8px 4px", borderRadius:9, cursor:taken?"not-allowed":"pointer",
+        border: selected ? `2px solid ${accent||"var(--accent)"}` : taken ? "2px solid #334155" : accent ? `2px solid ${accent}50` : "2px solid var(--border2)",
+        background: selected ? (accent||"var(--accent)") : taken ? "var(--surface3)" : accent ? accent+"18" : "var(--surface2)",
+        color: selected ? "#fff" : taken ? "var(--text-faint)" : "var(--text-primary)",
+        opacity: taken ? 0.4 : 1,
+        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+        textAlign:"center",lineHeight:1.1,fontFamily:"'Outfit',sans-serif",
+        position:"relative",width:"100%",minHeight:42,
+      }}>
+      {words.map((w,i)=><span key={i} style={{fontSize:words.length>1?11:13,fontWeight:800}}>{w}</span>)}
+      {taken&&<span style={{position:"absolute",bottom:2,fontSize:7,fontWeight:700,color:"var(--text-faint)"}}>IN USE</span>}
+    </button>
+  );
+}
+
+/* ─── Deck Builder (3 combos, linear flow, same UX as judge) ──── */
+function DeckBuilder({playerName, initialDeck, onSave, onCancel, savedCombos=[], parts={}}){
+  const emptyC = ()=>({blade:null,ratchet:null,bit:null});
+  const [deck, setDeck] = useState(()=>initialDeck||[emptyC(),emptyC(),emptyC()]);
+  const [step, setStep] = useState(null); // null=review | {slot,cat} | {cx,...}
+  const [search, setSearch] = useState("");
+  const [cxPicker, setCxPicker] = useState(null);
+  const [cxOpen, setCxOpen] = useState(false);
+  const [crossoverOpen, setCrossoverOpen] = useState(false);
+  const stepHistory = useRef([]);
+
+  const allReady = deck.every(c=>c.blade&&c.bit&&(c.ratchet||NO_RATCHET_BLADES.includes(c.blade)));
+
+  // Taken parts (across all slots, excluding current slot)
+  const takenFor = (slot, cat) => {
+    if(cat==="blade") return deck.filter((_,i)=>i!==slot).map(c=>c.blade).filter(Boolean);
+    if(cat==="ratchet") return deck.filter((_,i)=>i!==slot).map(c=>c.ratchet).filter(Boolean);
+    if(cat==="bit") return deck.filter((_,i)=>i!==slot).map(c=>c.bit).filter(Boolean);
+    return [];
+  };
+
+  const openStep = (s) => {
+    // Skip ratchet step if Bullet Griffon is already selected in that slot
+    if(s?.cat === "ratchet" && NO_RATCHET_BLADES.includes(deck[s.slot]?.blade)) {
+      s = {...s, cat: "bit"};
+    }
+    if(step) stepHistory.current.push(step);
+    setStep(s); setSearch(""); setCxOpen(false); setCrossoverOpen(false);
+  };
+  const goBack = () => {
+    const prev = stepHistory.current.pop();
+    setStep(prev||null); setSearch(""); setCxPicker(null); setCxOpen(false); setCrossoverOpen(false);
+  };
+
+  const setPart = (slot, cat, val) => {
+    const nd = [...deck]; nd[slot]={...nd[slot],[cat]:val}; setDeck(nd);
+  };
+
+  const advanceAfter = (slot, cat, pickedName) => {
+    const cats=["blade","ratchet","bit"];
+    const ci=cats.indexOf(cat);
+    if(ci<2){
+      let nextCat = cats[ci+1];
+      // Use pickedName when advancing from blade — avoids reading stale React state after setPart
+      const bladeName = cat==="blade" ? pickedName : deck[slot]?.blade;
+      if(nextCat==="ratchet" && NO_RATCHET_BLADES.includes(bladeName)) nextCat="bit";
+      openStep({slot,cat:nextCat});
+    } else if(slot<2) openStep({slot:slot+1,cat:"blade"});
+    else { setStep(null); stepHistory.current=[]; }
+  };
+
+  const startBuild = () => openStep({slot:0,cat:"blade"});
+
+  // ── Review screen ──
+  if(!step){
+    const comboNames = ["First","Second","Third"];
+    return (
+      <div style={{display:"flex",flexDirection:"column",gap:0,height:"100%"}}>
+        <div style={{padding:"16px 16px 12px",borderBottom:"1px solid var(--border)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:2}}>
+            <button onClick={onCancel} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",padding:"2px 0",fontSize:13,fontWeight:600,fontFamily:"'Outfit',sans-serif"}}>← Back</button>
+          </div>
+          <h2 style={{fontSize:20,fontWeight:900,color:"var(--text-primary)",margin:0}}>Your Deck</h2>
+          <p style={{fontSize:12,color:"var(--text-muted)",marginTop:2}}>Build 3 combos for <strong style={{color:"var(--accent2)"}}>{playerName}</strong></p>
+        </div>
+
+        {/* Saved combos quick-load */}
+        {savedCombos.length > 0 && (
+          <div style={{padding:"12px 16px 0"}}>
+            <p style={{fontSize:10,fontWeight:700,color:"var(--text-muted)",letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>⏱ Previous Combos</p>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {savedCombos.slice(0,3).map((c,i)=>{
+                const nc = normalizeCombo(c);
+                const str = comboStr(nc);
+                if(!str) return null;
+                return (
+                  <button key={i} onClick={()=>{
+                    // Fill into first available empty slot
+                    const emptyIdx = deck.findIndex(s=>!s.blade);
+                    const targetIdx = emptyIdx>=0 ? emptyIdx : 0;
+                    const nd=[...deck]; nd[targetIdx]={...nc}; setDeck(nd);
+                  }}
+                    style={{padding:"9px 12px",borderRadius:10,border:"1px solid #EA580C40",background:"#EA580C0D",color:"var(--text-primary)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textAlign:"left"}}>
+                    <span style={{color:"var(--accent)",fontSize:10,marginRight:6}}>⚡</span>{str}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div style={{flex:1,overflowY:"auto",padding:"12px 16px"}}>
+          {deck.map((c,i)=>{
+            const nc = normalizeCombo(c);
+            const isNoRatchet = NO_RATCHET_BLADES.includes(nc.blade);
+            const ready = nc.blade&&nc.bit&&(nc.ratchet||isNoRatchet);
+            return (
+              <div key={i} style={{marginBottom:10,padding:"12px 14px",borderRadius:13,border:`2px solid ${ready?"#22C55E40":"var(--border)"}`,background:ready?"#22C55E08":"var(--surface2)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <span style={{fontSize:10,fontWeight:700,color:ready?"#22C55E":"var(--text-faint)",letterSpacing:1,textTransform:"uppercase"}}>{comboNames[i]} Combo {ready?"✓":""}</span>
+                  <button onClick={()=>openStep({slot:i,cat:"blade"})}
+                    style={{fontSize:11,fontWeight:700,color:"var(--accent2)",background:"none",border:"none",cursor:"pointer",fontFamily:"'Outfit',sans-serif"}}>
+                    {ready?"Edit":"Build →"}
+                  </button>
+                </div>
+                {ready ? (
+                  <div style={{display:"flex",gap:6}}>
+                    {(isNoRatchet?["blade","bit"]:["blade","ratchet","bit"]).map(cat=>(
+                      <button key={cat} onClick={()=>openStep({slot:i,cat,returnToReview:true})}
+                        style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface3)",color:"var(--text-secondary)",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textAlign:"center",lineHeight:1.2}}>
+                        <div style={{fontSize:8,color:"var(--text-faint)",marginBottom:2,textTransform:"uppercase",letterSpacing:0.5}}>{cat}</div>
+                        {nc[cat]}
+                      </button>
+                    ))}
+                  </div>
+                ):(
+                  <p style={{fontSize:12,color:"var(--text-faint)",margin:0}}>Tap Build to add a combo</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{padding:"12px 16px 20px",borderTop:"1px solid var(--border)"}}>
+          {!allReady && (
+            <button onClick={startBuild} style={{display:"block",width:"100%",padding:"14px 0",borderRadius:12,border:"none",background:"var(--accent)",color:"#fff",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:8}}>
+              {deck.some(c=>c.blade) ? "Continue Building" : "Start Building →"}
+            </button>
+          )}
+          {allReady && (
+            <button onClick={()=>onSave(deck)} style={{display:"block",width:"100%",padding:"14px 0",borderRadius:12,border:"none",background:"#22C55E",color:"#fff",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:8}}>
+              ✓ Save Deck Registration
+            </button>
+          )}
+          <button onClick={onCancel} style={{display:"block",width:"100%",padding:"11px 0",borderRadius:12,border:"2px solid var(--border)",background:"transparent",color:"var(--text-muted)",fontSize:13,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── CX picker ──
+  if(step?.cx){
+    const {slot,cxStep,chip,blade,overBlade,returnToReview} = step;
+    const usedCxBlades = deck.filter((_,i)=>i!==slot).map(c=>{
+      if(!c.blade) return null;
+      const match = c.blade.match(/(?:Standard|Emperor|Valkyrie)\s+(\w+)|^(\w+)\s+(?:Heavy|Wheel|Slash|Free|Dual|Round|Bumper|Turn|Charge|Jaggy|Assault|Massive|Zillion|Knuckle|Vertical|Erase)/);
+      return null; // simplified — just prevent same full blade string
+    }).filter(Boolean);
+
+    const buildFinalName = (assist) => {
+      const base = overBlade ? `${blade} ${overBlade}` : blade;
+      return chip==="Standard" ? `${base} ${assist}` : `${chip} ${base} ${assist}`;
+    };
+    const advanceCx = (finalBladeName) => {
+      setPart(slot, "blade", finalBladeName);
+      if(returnToReview){ setStep({slot,cat:"ratchet",returnToReview:true}); return; }
+      openStep({slot,cat:"ratchet"});
+    };
+    // Read CX lists from parts.cx which includes user additions
+    const _dbPcx = (parts && parts.cx) || {};
+    const _dbCxBlades  = _dbPcx.cx_blades  || CX_BLADES;
+    const _dbCxeBlades = _dbPcx.cxe_blades || CXE_BLADES;
+    const _dbCxeOver   = _dbPcx.cxe_over   || CXE_OVER_BLADES;
+    const _dbAssists   = _dbPcx.assist     || CX_ASSISTS;
+
+    return (
+      <div style={{position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",zIndex:10}}>
+        <div style={{padding:"14px 16px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={goBack} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"'Outfit',sans-serif"}}>← Back</button>
+          <span style={{fontSize:15,fontWeight:800,color:"#0D9488"}}>CX Builder</span>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"16px"}}>
+          {cxStep==="chip"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <p style={{fontSize:14,fontWeight:700,color:"var(--text-secondary)",marginBottom:8}}>Choose Gear Chip</p>
+              {CX_CHIPS.map(ch=>(
+                <button key={ch} onClick={()=>setStep({...step,cxStep:"blade",chip:ch})}
+                  style={{padding:"16px 20px",borderRadius:12,border:"2px solid #0D948840",background:"var(--surface2)",color:"var(--text-primary)",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textAlign:"left"}}>
+                  {ch}
+                  {ch==="Standard"&&<span style={{fontSize:11,fontWeight:500,color:"var(--text-muted)",display:"block",marginTop:2}}>Multiple allowed</span>}
+                </button>
+              ))}
+            </div>
+          )}
+          {cxStep==="blade"&&(
+            <div>
+              <p style={{fontSize:14,fontWeight:700,color:"var(--text-secondary)",marginBottom:12}}>Choose CX Blade</p>
+              <div style={{marginBottom:12,background:"#0D948818",borderRadius:10,padding:"10px",border:"1px solid #0D948830"}}>
+                <p style={{fontSize:9,fontWeight:700,color:"#0D9488",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>★ Most Popular</p>
+                <button onClick={()=>setStep({...step,cxStep:"assist",blade:"Blast"})}
+                  style={{width:"100%",padding:"12px",borderRadius:9,border:"2px solid #0D9488",background:"#0D948822",color:"var(--text-primary)",fontSize:14,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                  Blast
+                </button>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:6}}>
+                  {["Heavy","Wheel"].map(assist=>{
+                    const fn = chip==="Standard"?`Blast ${assist}`:`${chip} Blast ${assist}`;
+                    return (
+                      <button key={assist} onClick={()=>advanceCx(fn)}
+                        style={{padding:"8px 4px",borderRadius:8,border:"2px solid #0D948860",background:"#0D948818",color:"var(--text-primary)",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                        Blast {assist}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+                {_dbCxBlades.filter(b=>b!=="Blast").map(b=>(
+                  <button key={b} onClick={()=>setStep({...step,cxStep:"assist",blade:b})}
+                    style={{padding:"10px 4px",borderRadius:9,border:"2px solid var(--border2)",background:"var(--surface2)",color:"var(--text-primary)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",minHeight:40,textAlign:"center"}}>
+                    {b}
+                  </button>
+                ))}
+              </div>
+              <div style={{marginTop:12,borderTop:"2px dashed var(--border)",paddingTop:12}}>
+                <p style={{fontSize:9,fontWeight:700,color:"#A855F7",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>CXE Blades</p>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                  {_dbCxeBlades.map(b=>(
+                    <button key={b} onClick={()=>setStep({...step,cxStep:"over_blade",blade:b,isCXE:true})}
+                      style={{padding:"12px 4px",borderRadius:9,border:"2px solid #A855F760",background:"#A855F715",color:"var(--text-primary)",fontSize:13,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",minHeight:44,textAlign:"center"}}>
+                      {b}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          {cxStep==="over_blade"&&(
+            <div>
+              <p style={{fontSize:14,fontWeight:700,color:"var(--text-secondary)",marginBottom:12}}>Choose Over Blade for <strong style={{color:"#A855F7"}}>{blade}</strong></p>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                {_dbCxeOver.map(ob=>(
+                  <button key={ob} onClick={()=>setStep({...step,cxStep:"assist",overBlade:ob})}
+                    style={{padding:"16px 4px",borderRadius:12,border:"2px solid #A855F760",background:"#A855F715",color:"var(--text-primary)",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",minHeight:56,textAlign:"center"}}>
+                    {ob}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {cxStep==="assist"&&(
+            <div>
+              <p style={{fontSize:14,fontWeight:700,color:"var(--text-secondary)",marginBottom:12}}>Choose Assist for <strong style={{color:"#0D9488"}}>{blade}{overBlade?` ${overBlade}`:""}</strong></p>
+              <div style={{marginBottom:10,background:"#0F766E0D",borderRadius:10,padding:"8px 10px",border:"1px solid #0F766E30"}}>
+                <p style={{fontSize:9,fontWeight:700,color:"#0F766E",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>★ Top 5</p>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
+                  {CX_ASSIST_TOP5.map(a=>(
+                    <button key={a} onClick={()=>advanceCx(buildFinalName(a))}
+                      style={{padding:"10px 4px",borderRadius:8,border:"2px solid #0F766E60",background:"#0F766E14",color:"var(--text-primary)",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",minHeight:36,textAlign:"center"}}>
+                      {a}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+                {_dbAssists.filter(a=>!CX_ASSIST_TOP5.includes(a)).map(a=>(
+                  <button key={a} onClick={()=>advanceCx(buildFinalName(a))}
+                    style={{padding:"10px 4px",borderRadius:9,border:"2px solid var(--border2)",background:"var(--surface2)",color:"var(--text-primary)",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",minHeight:36,textAlign:"center"}}>
+                    {a}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Part picker ──
+  const {slot, cat, returnToReview} = step;
+  const taken = takenFor(slot, cat);
+  const current = deck[slot]?.[cat]||null;
+  const comboNames = ["First","Second","Third"];
+  const comboLabel = comboNames[slot];
+
+  let list, top10;
+  if(cat==="blade"){ list=DEFAULT_BLADES; top10=TOP10_BLADES; }
+  else if(cat==="ratchet"){ list=DEFAULT_RATCHETS; top10=TOP10_RATCHETS; }
+  else { list=DEFAULT_BITS; top10=TOP10_BITS; }
+
+  const rest = list.filter(n=>!top10.includes(n));
+  const CROSSOVER_BLADES_ALL = ["Bumblebee","Captain America","Chewbacca","Darth Vader","Draciel Shield","Dragoon Storm","Dranzer Spiral","Driger S","General Grievous","Green Goblin","Iron Man","Lightning L-Drago","Luke Skywalker","Megatron","Miles Morales","Moff Gideon","Mosasaurus","Obi-Wan Kenobi","Optimus Primal","Optimus Prime","Quetzalcoatlus","Red Hulk","Rock Leone","Soundwave","Spider-Man","Spinosaurus","Starscream","Storm Pegasus","Storm Spriggan","Storm Trooper","T.Rex","Thanos","The Mandalorian","Venom","Victory Valkyrie","Xeno Xcalibur"];
+  const filteredRest = search ? rest.filter(n=>!CROSSOVER_BLADES_ALL.includes(n)&&n.toLowerCase().includes(search.toLowerCase())) : rest.filter(n=>!CROSSOVER_BLADES_ALL.includes(n));
+  const filteredTop = search ? top10.filter(n=>n.toLowerCase().includes(search.toLowerCase())) : top10;
+  const filteredCross = search ? CROSSOVER_BLADES_ALL.filter(n=>n.toLowerCase().includes(search.toLowerCase())) : CROSSOVER_BLADES_ALL;
+
+  const pick = (name) => {
+    setPart(slot,cat,name);
+    if(returnToReview){ setStep(null); stepHistory.current=[]; return; }
+    advanceAfter(slot,cat,name);
+  };
+
+  const totalSteps = 18;
+  const stepNum = slot*3 + ["blade","ratchet","bit"].indexOf(cat);
+  const pct = Math.round((stepNum/totalSteps)*100);
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"var(--bg)",display:"flex",flexDirection:"column",zIndex:10}}>
+      {/* Header */}
+      <div style={{padding:"12px 14px 10px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+          <button onClick={goBack} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"'Outfit',sans-serif"}}>← Back</button>
+          <div style={{flex:1,height:4,background:"var(--surface3)",borderRadius:2,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${pct}%`,background:"var(--accent)",borderRadius:2,transition:"width 0.2s"}}/>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",letterSpacing:1,textTransform:"uppercase",marginBottom:1}}>{comboLabel} Combo</p>
+            <h2 style={{fontSize:18,fontWeight:900,color:"var(--accent2)",margin:0}}>Pick {cat.charAt(0).toUpperCase()+cat.slice(1)}</h2>
+          </div>
+          {cat==="blade"&&(
+            <button onClick={()=>setStep({cx:true,slot,cxStep:"chip",chip:null,blade:null,returnToReview})}
+              style={{padding:"6px 12px",borderRadius:8,border:"2px solid #0D948860",background:"#0D948818",color:"#0D9488",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              CX →
+            </button>
+          )}
+        </div>
       </div>
 
-      <p style={{
-        fontSize:22, fontWeight:800, color:"var(--text-primary)",
-        marginBottom:24, textAlign:"center"
-      }}>I am…</p>
+      {/* Search */}
+      <div style={{padding:"8px 14px",flexShrink:0,borderBottom:"1px solid var(--border)"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)}
+          placeholder={`Search ${cat}s...`}
+          style={{width:"100%",padding:"8px 12px",borderRadius:9,border:"2px solid var(--border2)",background:"var(--surface2)",color:"var(--text-primary)",fontSize:13,fontFamily:"'Outfit',sans-serif",outline:"none"}}/>
+      </div>
 
-      <div style={{display:"flex", flexDirection:"column", gap:14, width:"100%", maxWidth:320}}>
-        <button onClick={()=>onSelect("judge")} style={{
-          padding:"20px 0", borderRadius:16, border:"none",
-          background:"linear-gradient(135deg,#EA580C,#DC2626)",
-          color:"#fff", fontSize:18, fontWeight:900,
-          fontFamily:"'Outfit',sans-serif", cursor:"pointer",
-          boxShadow:"0 8px 24px rgba(234,88,12,0.35)",
-        }}>
-          ⚖️ A Judge
-        </button>
+      {/* Parts grid */}
+      <div style={{flex:1,overflowY:"auto",padding:"10px 14px"}}>
 
-        <button onClick={()=>onSelect("org")} style={{
-          padding:"20px 0", borderRadius:16,
-          border:"2px solid var(--border2)",
-          background:"var(--surface)",
-          color:"var(--text-secondary)", fontSize:18, fontWeight:900,
-          fontFamily:"'Outfit',sans-serif", cursor:"pointer",
-        }}>
-          📋 An Organizer
-        </button>
+        {/* Quick combos (blade only, no search) */}
+        {cat==="blade"&&!search&&(
+          <div style={{marginBottom:10}}>
+            <p style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>⚡ Quick Combos</p>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
+              {QUICK_COMBOS.map((qc,i)=>{
+                // Check all three parts against other slots — no duplicates allowed across any part type
+                const takenBlades = deck.filter((_,si)=>si!==slot).map(c=>c.blade).filter(Boolean);
+                const takenRatchets = deck.filter((_,si)=>si!==slot).map(c=>c.ratchet).filter(Boolean);
+                const takenBits = deck.filter((_,si)=>si!==slot).map(c=>c.bit).filter(Boolean);
+                const anyTaken = takenBlades.includes(qc.blade)
+                  || (qc.ratchet && takenRatchets.includes(qc.ratchet))
+                  || takenBits.includes(qc.bit);
+                const bladeColor = BLADE_COLORS[qc.blade] || "#EA580C";
+                return (
+                  <button key={i} disabled={anyTaken} onClick={()=>{
+                    if(anyTaken)return;
+                    const nd=[...deck];
+                    nd[slot]={blade:qc.blade,ratchet:qc.ratchet,bit:qc.bit};
+                    setDeck(nd);
+                    if(returnToReview){setStep(null);stepHistory.current=[];}
+                    else advanceAfter(slot,"bit");
+                  }}
+                    style={{padding:"7px 4px",borderRadius:9,border:`2px solid ${anyTaken?"var(--border)":bladeColor+"60"}`,background:anyTaken?"var(--surface3)":bladeColor+"12",color:anyTaken?"var(--text-faint)":"var(--text-primary)",fontSize:10,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:anyTaken?"not-allowed":"pointer",textAlign:"center",lineHeight:1.3,opacity:anyTaken?0.4:1,minHeight:48,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:1}}>
+                    <div style={{fontSize:11,fontWeight:800}}>{qc.blade}</div>
+                    <div style={{fontSize:9,color:"var(--text-muted)",marginTop:1}}>{qc.ratchet?`${qc.ratchet} · ${qc.bit}`:qc.bit}</div>
+                    {anyTaken&&<div style={{fontSize:8,color:"var(--text-faint)"}}>IN USE</div>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-        {onLogout && (
-          <button onClick={onLogout} style={{
-            padding:"12px 0", borderRadius:12,
-            border:"2px solid var(--border)",
-            background:"transparent",
-            color:"var(--text-faint)", fontSize:12, fontWeight:600,
-            fontFamily:"'Outfit',sans-serif", cursor:"pointer", marginTop:4,
-          }}>
-            {loggedIn ? `🚪 Log out (${loggedIn})` : "🚪 Log out / Reset Session"}
-          </button>
+        {/* Top 10 */}
+        {filteredTop.length>0&&(
+          <div style={{marginBottom:10}}>
+            {!search&&<p style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>★ Top 15</p>}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5}}>
+              {filteredTop.map(n=>{
+                const bc = cat==="blade"?BLADE_COLORS[n]:null;
+                return <PartBtn key={n} name={n} selected={current===n} taken={taken.includes(n)} accent={bc||"#EA580C"} onClick={()=>pick(n)}/>;
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Rest */}
+        {filteredRest.length>0&&(
+          <div style={{marginBottom:10}}>
+            {!search&&cat==="blade"&&<p style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>All Blades</p>}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5}}>
+              {filteredRest.map(n=>(
+                <PartBtn key={n} name={n} selected={current===n} taken={taken.includes(n)} accent={null} onClick={()=>pick(n)}/>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Crossover blades (blade only) */}
+        {cat==="blade"&&(
+          <div style={{marginTop:8,borderTop:"2px dashed var(--border)",paddingTop:10}}>
+            <button onClick={()=>setCrossoverOpen(o=>!o)}
+              style={{background:"none",border:"none",color:"var(--text-muted)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:crossoverOpen?8:0}}>
+              🌐 Crossover Blades {crossoverOpen?"▲":"▼"}
+            </button>
+            {crossoverOpen&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5}}>
+                {filteredCross.map(n=>(
+                  <PartBtn key={n} name={n} selected={current===n} taken={taken.includes(n)} accent={null} onClick={()=>pick(n)}/>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Ratchet/bit list for non-blade */}
+        {(cat==="ratchet"||cat==="bit")&&filteredRest.length===0&&filteredTop.length===0&&(
+          <p style={{color:"var(--text-faint)",fontSize:13,textAlign:"center",padding:"20px 0"}}>No results for "{search}"</p>
         )}
       </div>
-
-      <p style={{
-        fontSize:11, color:"var(--text-faint)", marginTop:32,
-        textAlign:"center", lineHeight:1.6
-      }}>
-        Your choice is saved on this device.<br/>
-        You can switch anytime from inside the app.
-      </p>
     </div>
   );
 }
+
+/* ─── Finish type display helpers ─────────────────────────────── */
+const FINISH_META = {
+  XTR:  {label:"XTREME FINISH", emoji:"⚡", color:"#F59E0B", pts:"+3"},
+  BST:  {label:"BURST FINISH",  emoji:"💥", color:"#EF4444", pts:"+2"},
+  OVR:  {label:"OVER FINISH",   emoji:"🌊", color:"#3B82F6", pts:"+2"},
+  SPF:  {label:"SPIN FINISH",   emoji:"🌀", color:"#8B5CF6", pts:"+1"},
+  OF2:  {label:"OWN FINISH",    emoji:"😬", color:"#6B7280", pts:"+2"},
+  OF3:  {label:"OWN FINISH",    emoji:"😬", color:"#6B7280", pts:"+3"},
+  LER:  {label:"LAUNCH ERROR",  emoji:"⚠️",  color:"#F97316", pts:"+1"},
+  "LER-STRIKE": {label:"LER STRIKE", emoji:"⚠️", color:"#F97316", pts:""},
+};
+
+/* ─── Live Score View — long-poll, full viewing experience ────── */
+function LiveScoreView({matchId, slot, initialState, onClose}){
+  const [state, setState]           = useState(initialState);
+  const [etag, setEtag]             = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(Date.now());
+  const [announcement, setAnnouncement] = useState(null); // {label,emoji,color,pts,scorer,combo}
+  const [setWinMsg, setSetWinMsg]   = useState(null); // {winner,set} shown briefly after a set ends
+  const abortRef  = useRef(null);
+  const annoTimer = useRef(null);
+  const setWinTimer = useRef(null);
+
+  // Derive display values safely
+  const s = state || {};
+  const p1 = s.p1||"Player 1";
+  const p2 = s.p2||"Player 2";
+  const p1pts = s.pts?.[0]||0, p2pts = s.pts?.[1]||0;
+  const p1sets = s.sets?.[0]||0, p2sets = s.sets?.[1]||0;
+  const need = s.setsNeeded||2;
+  const pointLimit = s.pointLimit||0;
+
+  // Show finish announcement for 2.5s when lastFinish changes
+  const lastFinishRef = useRef(null);
+  useEffect(()=>{
+    if(!s.lastFinish) return;
+    const lf = s.lastFinish;
+    const key = `${lf.type}-${lf.scorerIdx}-${p1pts}-${p2pts}`;
+    if(lastFinishRef.current===key) return;
+    lastFinishRef.current = key;
+    const meta = FINISH_META[lf.type];
+    if(!meta) return;
+    const scorerName = lf.scorerIdx===0 ? p1 : p2;
+    const scorerColor = lf.scorerIdx===0 ? "#3B82F6" : "#EF4444";
+    setAnnouncement({...meta, scorer:scorerName, scorerColor});
+    clearTimeout(annoTimer.current);
+    annoTimer.current = setTimeout(()=>setAnnouncement(null), 2500);
+  },[s.lastFinish, p1pts, p2pts]);
+
+  // Detect set wins by watching sets[]
+  const prevSetsRef = useRef([p1sets, p2sets]);
+  useEffect(()=>{
+    const [prev1, prev2] = prevSetsRef.current;
+    if(p1sets > prev1){ setSetWinMsg({winner:p1, color:"#3B82F6", set:p1sets+p2sets}); clearTimeout(setWinTimer.current); setWinTimer.current=setTimeout(()=>setSetWinMsg(null),3000); }
+    else if(p2sets > prev2){ setSetWinMsg({winner:p2, color:"#EF4444", set:p1sets+p2sets}); clearTimeout(setWinTimer.current); setWinTimer.current=setTimeout(()=>setSetWinMsg(null),3000); }
+    prevSetsRef.current = [p1sets, p2sets];
+  },[p1sets, p2sets]);
+
+  // Long-poll loop — holds connection open up to 25s, returns instantly on change
+  useEffect(()=>{
+    let cancelled = false;
+    let currentEtag = etag;
+
+    const poll = async () => {
+      if(cancelled) return;
+      try {
+        abortRef.current = new AbortController();
+        const pollParam = matchId
+          ? `matchId=${encodeURIComponent(matchId)}`
+          : `slot=${slot}`;
+        const res = await fetch(
+          `${OVERLAY_WORKER}/overlay/poll?${pollParam}&etag=${encodeURIComponent(currentEtag||"")}`,
+          { signal: abortRef.current.signal }
+        );
+        if(cancelled) return;
+        if(res.ok){
+          const data = await res.json();
+          if(data.state){ setState(data.state); setLastUpdated(Date.now()); }
+          if(data.etag){ currentEtag = data.etag; setEtag(data.etag); }
+        }
+      } catch(e){
+        if(e.name==="AbortError") return;
+        // Network error — wait 500ms then retry
+        await new Promise(r=>setTimeout(r,500));
+      }
+      if(!cancelled) poll(); // loop
+    };
+
+    poll();
+    return ()=>{
+      cancelled = true;
+      abortRef.current?.abort();
+      clearTimeout(annoTimer.current);
+      clearTimeout(setWinTimer.current);
+    };
+  },[slot]);
+
+  // ── Match Over Screen ──
+  if(s.matchOver){
+    const p1won = p1sets >= need;
+    const winner = p1won ? p1 : p2;
+    const loser  = p1won ? p2 : p1;
+    const winColor = p1won ? "#3B82F6" : "#EF4444";
+    return (
+      <div style={{position:"fixed",inset:0,background:"var(--bg)",zIndex:200,display:"flex",flexDirection:"column",overflowY:"auto"}}>
+        <div style={{padding:"12px 14px",display:"flex",alignItems:"center",justifyContent:"flex-end",flexShrink:0}}>
+          <button onClick={onClose} style={{background:"var(--surface2)",border:"2px solid var(--border)",borderRadius:8,padding:"5px 12px",color:"var(--text-muted)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>← Back</button>
+        </div>
+        {/* Winner hero */}
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px 20px",textAlign:"center"}}>
+          <div style={{fontSize:56,marginBottom:12}}>🏆</div>
+          <p style={{fontSize:11,fontWeight:800,color:winColor,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Match Over</p>
+          <h1 style={{fontSize:36,fontWeight:900,color:winColor,margin:"0 0 6px",lineHeight:1.1}}>{winner}</h1>
+          <p style={{fontSize:16,color:"var(--text-muted)",marginBottom:24}}>defeats {loser}</p>
+          {/* Set score */}
+          <div style={{display:"flex",alignItems:"center",gap:20,marginBottom:24}}>
+            <div style={{textAlign:"center"}}>
+              <p style={{fontSize:11,fontWeight:700,color:"#3B82F6",marginBottom:4}}>{p1}</p>
+              <p style={{fontSize:42,fontWeight:900,color:"#3B82F6",lineHeight:1}}>{p1sets}</p>
+            </div>
+            <p style={{fontSize:24,color:"var(--text-faint)",fontWeight:700}}>–</p>
+            <div style={{textAlign:"center"}}>
+              <p style={{fontSize:11,fontWeight:700,color:"#EF4444",marginBottom:4}}>{p2}</p>
+              <p style={{fontSize:42,fontWeight:900,color:"#EF4444",lineHeight:1}}>{p2sets}</p>
+            </div>
+          </div>
+          {s.judge&&<p style={{fontSize:12,color:"var(--text-faint)"}}>Judged by {s.judge}</p>}
+          {s.tournamentName&&<p style={{fontSize:11,color:"var(--text-faint)",marginTop:4}}>{s.tournamentName}</p>}
+        </div>
+        {/* Combo history summary */}
+        {s.comboHistory?.length>0&&(
+          <div style={{padding:"0 16px 24px",flexShrink:0}}>
+            <p style={{fontSize:10,fontWeight:800,color:"var(--text-faint)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Battle Log</p>
+            {[...s.comboHistory].reverse().map((h,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid var(--border)"}}>
+                <span style={{fontSize:12,fontWeight:700,color:h.scorerIdx===0?"#3B82F6":"#EF4444"}}>{h.scorer}</span>
+                <span style={{fontSize:11,color:"var(--text-muted)"}}>{h.typeName} <span style={{color:"#22C55E",fontWeight:700}}>+{h.points}</span></span>
+                <span style={{fontSize:10,color:"var(--text-faint)",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.winnerCombo||"—"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Waiting / idle screen (slot exists but no active match) ──
+  if(!state){
+    return (
+      <div style={{position:"fixed",inset:0,background:"var(--bg)",zIndex:200,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+        <div style={{padding:"12px 14px",position:"absolute",top:0,right:0}}>
+          <button onClick={onClose} style={{background:"var(--surface2)",border:"2px solid var(--border)",borderRadius:8,padding:"5px 12px",color:"var(--text-muted)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>← Back</button>
+        </div>
+        <div style={{textAlign:"center",padding:"0 32px"}}>
+          <div style={{fontSize:48,marginBottom:16}}>⏳</div>
+          <h2 style={{fontSize:20,fontWeight:900,color:"var(--text-primary)",marginBottom:8}}>Waiting for Match</h2>
+          <p style={{fontSize:13,color:"var(--text-muted)",lineHeight:1.6}}>The judge hasn't started scoring yet. This screen will update automatically when the match begins.</p>
+          <div style={{marginTop:20,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+            <span className="live-dot"/>
+            <span style={{fontSize:11,color:"var(--text-faint)"}}>Listening for updates…</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const secAgo = Math.floor((Date.now()-lastUpdated)/1000);
+
+  // ── Set win flash overlay ──
+  const SetWinFlash = setWinMsg ? (
+    <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+      background:"rgba(0,0,0,0.75)",zIndex:10,pointerEvents:"none"}}>
+      <div style={{textAlign:"center",padding:"24px 32px",borderRadius:20,border:`2px solid ${setWinMsg.color}`,background:"var(--surface)"}}>
+        <p style={{fontSize:11,fontWeight:800,color:setWinMsg.color,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Set {setWinMsg.set} Won</p>
+        <p style={{fontSize:28,fontWeight:900,color:setWinMsg.color,margin:0}}>{setWinMsg.winner}</p>
+      </div>
+    </div>
+  ) : null;
+
+  // ── Finish announcement banner ──
+  const AnnouncementBanner = announcement ? (
+    <div style={{margin:"0 16px 12px",padding:"12px 16px",borderRadius:16,flexShrink:0,
+      background:`${announcement.color}18`,border:`2px solid ${announcement.color}60`,
+      textAlign:"center"}}>
+      <p style={{fontSize:20,margin:"0 0 2px"}}>{announcement.emoji}</p>
+      <p style={{fontSize:15,fontWeight:900,color:announcement.color,letterSpacing:1,margin:"0 0 2px"}}>{announcement.label} {announcement.pts}</p>
+      <p style={{fontSize:12,color:"var(--text-muted)",margin:0}}>
+        <span style={{color:announcement.scorerColor,fontWeight:700}}>{announcement.scorer}</span> scores
+      </p>
+    </div>
+  ) : null;
+
+  // ── Main live view ──
+  return (
+    <div style={{position:"fixed",inset:0,background:"var(--bg)",zIndex:200,display:"flex",flexDirection:"column",overflowY:"auto"}}>
+      {SetWinFlash}
+
+      {/* Top bar */}
+      <div style={{padding:"12px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span className="live-dot"/>
+          <span style={{fontSize:13,fontWeight:800,color:"#22C55E",letterSpacing:0.5}}>LIVE</span>
+          <span style={{fontSize:10,color:"var(--text-faint)"}}>· {secAgo<3?"just updated":`${secAgo}s ago`}</span>
+        </div>
+        <button onClick={onClose} style={{background:"var(--surface2)",border:"2px solid var(--border)",borderRadius:8,padding:"5px 12px",color:"var(--text-muted)",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          ← Back
+        </button>
+      </div>
+
+      {/* Context strip */}
+      <div style={{padding:"8px 16px",borderBottom:"1px solid var(--border)",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span style={{fontSize:11,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.5}}>{s.tournamentName||"NC BLAST"}</span>
+        {s.judge&&<span style={{fontSize:11,color:"var(--text-faint)"}}>Judge: <strong style={{color:"var(--text-muted)"}}>{s.judge}</strong></span>}
+      </div>
+
+      {/* Shuffle timer banner */}
+      {s.shuffling&&(
+        <div style={{padding:"12px 16px",background:"#F59E0B18",borderBottom:"2px solid #F59E0B40",flexShrink:0,display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:20}}>⏱</span>
+          <div>
+            <p style={{fontSize:13,fontWeight:900,color:"#F59E0B",margin:0,letterSpacing:0.5}}>Shuffle Time</p>
+            <p style={{fontSize:11,color:"var(--text-muted)",margin:0}}>Players are selecting their bey order</p>
+          </div>
+        </div>
+      )}
+
+      {/* Set tracker */}
+      {need>1&&(
+        <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+            <span style={{fontSize:11,fontWeight:700,color:"#3B82F6"}}>{p1sets} set{p1sets!==1?"s":""}</span>
+            <span style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",letterSpacing:1,textTransform:"uppercase"}}>Set {s.curSet||1} of {need}</span>
+            <span style={{fontSize:11,fontWeight:700,color:"#EF4444"}}>{p2sets} set{p2sets!==1?"s":""}</span>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            {Array.from({length:need}).map((_,i)=>(
+              <div key={i} style={{flex:1,height:8,borderRadius:4,
+                background: i<p1sets ? "#3B82F6" : i<p1sets+p2sets ? "#EF4444" : "var(--surface3)"}}>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Score — main event */}
+      <div style={{display:"flex",alignItems:"stretch",justifyContent:"center",padding:"16px",gap:0,flexShrink:0}}>
+        {/* P1 */}
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:8,paddingRight:8,borderRight:"1px solid var(--border)"}}>
+          <p style={{fontSize:13,fontWeight:800,color:"#3B82F6",textAlign:"center",width:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",margin:0}}>{p1}</p>
+          <div style={{fontSize:84,fontWeight:900,color:"#3B82F6",lineHeight:1}}>{p1pts}</div>
+          {/* Progress bar */}
+          {pointLimit>0&&(
+            <div style={{width:"100%",height:6,borderRadius:3,background:"var(--surface3)",overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${Math.min(100,(p1pts/pointLimit)*100)}%`,background:"#3B82F6",borderRadius:3}}/>
+            </div>
+          )}
+          {pointLimit>0&&<p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>{p1pts} / {pointLimit}</p>}
+        </div>
+
+        {/* P2 */}
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:8,paddingLeft:8}}>
+          <p style={{fontSize:13,fontWeight:800,color:"#EF4444",textAlign:"center",width:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",margin:0}}>{p2}</p>
+          <div style={{fontSize:84,fontWeight:900,color:"#EF4444",lineHeight:1}}>{p2pts}</div>
+          {/* Progress bar */}
+          {pointLimit>0&&(
+            <div style={{width:"100%",height:6,borderRadius:3,background:"var(--surface3)",overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${Math.min(100,(p2pts/pointLimit)*100)}%`,background:"#EF4444",borderRadius:3}}/>
+            </div>
+          )}
+          {pointLimit>0&&<p style={{fontSize:10,color:"var(--text-faint)",margin:0}}>{p2pts} / {pointLimit}</p>}
+        </div>
+      </div>
+
+      {/* Finish announcement — inline below score */}
+      {AnnouncementBanner}
+
+      {/* Active combos */}
+      {(s.p1ActiveCombo||s.p2ActiveCombo)&&(
+        <div style={{padding:"0 16px 12px",flexShrink:0}}>
+          <p style={{fontSize:10,fontWeight:800,color:"var(--text-faint)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Active Combos This Battle</p>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {[{combo:s.p1ActiveCombo,name:p1,color:"#3B82F6"},{combo:s.p2ActiveCombo,name:p2,color:"#EF4444"}].map((item,i)=>(
+              <div key={i} style={{padding:"10px",borderRadius:12,background:`${item.color}12`,border:`2px solid ${item.color}30`,textAlign:"center"}}>
+                <p style={{fontSize:10,fontWeight:800,color:item.color,marginBottom:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}</p>
+                {item.combo?(
+                  <>
+                    <p style={{fontSize:12,fontWeight:800,color:"var(--text-primary)",margin:0,lineHeight:1.3}}>{item.combo.blade}</p>
+                    <p style={{fontSize:10,color:"var(--text-muted)",marginTop:2}}>{item.combo.ratchet} · {normalizeBit(item.combo.bit)}</p>
+                  </>
+                ):<p style={{fontSize:12,color:"var(--text-faint)",margin:0}}>—</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Combo history trail */}
+      {s.comboHistory?.length>0&&(
+        <div style={{padding:"0 16px 16px",flexShrink:0}}>
+          <p style={{fontSize:10,fontWeight:800,color:"var(--text-faint)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Recent Battles</p>
+          <div style={{display:"flex",flexDirection:"column",gap:0,borderRadius:12,overflow:"hidden",border:"1px solid var(--border)"}}>
+            {[...s.comboHistory].reverse().map((h,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:i%2===0?"var(--surface2)":"var(--surface)",borderBottom:i<s.comboHistory.length-1?"1px solid var(--border)":"none"}}>
+                <span style={{fontSize:11,fontWeight:800,color:h.scorerIdx===0?"#3B82F6":"#EF4444",minWidth:60,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.scorer}</span>
+                <span style={{fontSize:10,color:"var(--text-muted)",flex:1,textAlign:"center",padding:"0 6px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.winnerCombo||"—"}</span>
+                <span style={{fontSize:10,fontWeight:700,color:"#22C55E",flexShrink:0}}>{h.typeName} +{h.points}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Pairings Tab ────────────────────────────────────────────── */
+function PairingsTab({slug, myName, liveSlots}){
+  const [pairings, setPairings] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [liveView, setLiveView] = useState(null);
+  const [collapsedRounds, setCollapsedRounds] = useState(new Set());
+
+  const load = useCallback(async()=>{
+    if(!slug){setError("No tournament loaded.");return;}
+    setLoading(true); setError(null);
+    try {
+      const data = await workerGet(`/pairings?slug=${encodeURIComponent(slug)}`);
+      const pairs = data.pairings||[];
+      setPairings(pairs);
+      // Auto-collapse only fully-complete rounds that are not the latest round
+      const grouped = {};
+      pairs.forEach(m=>{ const r=m.round||0; if(!grouped[r]) grouped[r]=[]; grouped[r].push(m); });
+      const rounds = Object.keys(grouped).map(Number).sort((a,b)=>a-b);
+      const toCollapse = new Set();
+      rounds.forEach((r,i)=>{
+        const allDone = grouped[r].every(m=>m.state==="complete");
+        const isLast = i===rounds.length-1;
+        if(allDone && !isLast) toCollapse.add(r);
+      });
+      setCollapsedRounds(toCollapse);
+    } catch(e){ setError("Couldn't load matches. Try again."); }
+    finally{ setLoading(false); }
+  },[slug]);
+
+  useEffect(()=>{ load(); },[load]);
+
+  // Build lookups so we can light up individual pairing cards:
+  // 1. By Challonge match ID (exact, preferred — no name ambiguity)
+  // 2. By player name pair as a fallback for non-Challonge matches
+  const liveByMatchId = {};
+  const liveByPlayers = {};
+  liveSlots.forEach(s=>{
+    if(!s.state) return;
+    if(s.state.challongeMatchId) {
+      liveByMatchId[String(s.state.challongeMatchId)] = s;
+    }
+    const p1 = (s.state.p1||"").toLowerCase().trim();
+    const p2 = (s.state.p2||"").toLowerCase().trim();
+    if(p1 && p2) {
+      liveByPlayers[`${p1}|${p2}`] = s;
+      liveByPlayers[`${p2}|${p1}`] = s;
+    }
+  });
+
+  const getLiveSlot = (m) => {
+    // Try match ID first — most reliable
+    if(m.id && liveByMatchId[String(m.id)]) return liveByMatchId[String(m.id)];
+    // Fall back to name matching
+    const n1 = (m.player1_name||"").toLowerCase().trim();
+    const n2 = (m.player2_name||"").toLowerCase().trim();
+    return liveByPlayers[`${n1}|${n2}`] || liveByPlayers[`${n2}|${n1}`] || null;
+  };
+
+  // Only allow toggling collapse on fully-complete rounds
+  const toggleRound = (r, allDone) => {
+    if(!allDone) return; // active rounds cannot be collapsed
+    setCollapsedRounds(prev=>{
+      const next = new Set(prev);
+      next.has(r) ? next.delete(r) : next.add(r);
+      return next;
+    });
+  };
+
+  // Group by round
+  const grouped = {};
+  (pairings||[]).forEach(m=>{
+    const r = m.round||0;
+    if(!grouped[r]) grouped[r]=[];
+    grouped[r].push(m);
+  });
+  const rounds = Object.keys(grouped).map(Number).sort((a,b)=>a-b);
+
+  const isMyMatch = (m) => myName && (
+    (m.player1_name&&m.player1_name.toLowerCase()===myName.toLowerCase()) ||
+    (m.player2_name&&m.player2_name.toLowerCase()===myName.toLowerCase())
+  );
+
+  if(!slug) return <div style={{padding:"32px 16px",textAlign:"center",color:"var(--text-muted)"}}>No tournament linked. Ask your organizer for the tournament link.</div>;
+
+  // If a live view is open, render it full screen instead of this tab
+  if(liveView) return <LiveScoreView matchId={liveView.matchId} slot={liveView.slot} initialState={liveView.state} onClose={()=>setLiveView(null)}/>;
+
+  return (
+    <div style={{padding:"12px 14px",paddingBottom:20}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <h2 style={{fontSize:18,fontWeight:900,margin:0}}>Bracket</h2>
+        <button onClick={load} disabled={loading} style={{background:"none",border:"2px solid var(--border)",borderRadius:8,padding:"5px 10px",color:"var(--text-muted)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          {loading?"...":"↻ Refresh"}
+        </button>
+      </div>
+      {error&&<p style={{color:"#EF4444",fontSize:13,marginBottom:12}}>{error}</p>}
+      {loading&&!pairings&&<p style={{color:"var(--text-muted)",fontSize:13}}>Loading matches…</p>}
+      {rounds.map(r=>{
+        const allDone = grouped[r].every(m=>m.state==="complete");
+        const collapsed = allDone && collapsedRounds.has(r); // only complete rounds can be collapsed
+        const hasMyMatch = grouped[r].some(m=>isMyMatch(m));
+        const roundLabel = r<0 ? `Top Cut — Round ${Math.abs(r)}` : `Swiss Round ${r}`;
+        return (
+          <div key={r} style={{marginBottom:12}}>
+            {/* Round header */}
+            <button
+              onClick={()=>toggleRound(r, allDone)}
+              style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+                width:"100%",padding:"8px 12px",borderRadius:10,marginBottom:collapsed?0:8,
+                border:"1px solid var(--border)",
+                background:"var(--surface3)",
+                cursor:allDone?"pointer":"default",
+                fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:10,fontWeight:800,color:allDone?"var(--text-faint)":"var(--text-secondary)",letterSpacing:1.5,textTransform:"uppercase"}}>{roundLabel}</span>
+                {allDone&&<span style={{fontSize:9,fontWeight:700,color:"#22C55E",background:"#22C55E18",padding:"2px 6px",borderRadius:4}}>COMPLETE</span>}
+                {hasMyMatch&&<span style={{fontSize:9,fontWeight:700,color:"var(--accent)",background:"#EA580C18",padding:"2px 6px",borderRadius:4}}>YOUR ROUND</span>}
+              </div>
+              {/* Only show collapse arrow for complete rounds */}
+              {allDone&&<span style={{fontSize:12,color:"var(--text-faint)"}}>{collapsed?"▼":"▲"}</span>}
+            </button>
+
+            {!collapsed&&grouped[r].map(m=>{
+              const mine = isMyMatch(m);
+              const done = m.state==="complete";
+              const liveSlot = getLiveSlot(m);
+              const isLive = !!liveSlot;
+              const isMyLive = isLive && mine;
+              const liveState = liveSlot?.state;
+              const isShuffling = isLive && !!liveState?.shuffling;
+              const p1pts = liveState?.pts?.[0]??null;
+              const p2pts = liveState?.pts?.[1]??null;
+
+              // Border/background priority: myLive > live > mine > default
+              const borderColor = isMyLive ? "#EA580C80" : isLive ? "#22C55E60" : mine ? "#EA580C60" : "var(--border)";
+              const bgColor     = isMyLive ? "#EA580C0C" : isLive ? "#22C55E0C" : mine ? "#EA580C08" : "var(--surface2)";
+
+              const cardInner = (
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    {/* Status badges */}
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                      {mine&&<span style={{fontSize:9,fontWeight:800,color:"var(--accent)",background:"#EA580C20",padding:"2px 6px",borderRadius:4,letterSpacing:0.5}}>YOU</span>}
+                      {isLive&&!isShuffling&&(
+                        <span style={{display:"flex",alignItems:"center",gap:4,fontSize:9,fontWeight:800,color:"#22C55E",background:"#22C55E18",padding:"2px 7px",borderRadius:4,letterSpacing:0.5}}>
+                          <span className="live-dot" style={{marginRight:0}}/>LIVE · Tap to watch
+                        </span>
+                      )}
+                      {isShuffling&&(
+                        <span style={{fontSize:9,fontWeight:800,color:"#F59E0B",background:"#F59E0B18",padding:"2px 7px",borderRadius:4,letterSpacing:0.5}}>
+                          ⏱ SHUFFLE TIME
+                        </span>
+                      )}
+                      {!isLive&&done&&<span style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",background:"var(--surface3)",padding:"2px 6px",borderRadius:4}}>DONE</span>}
+                    </div>
+                    {/* Player names */}
+                    <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {m.player1_name||"TBD"} <span style={{color:"var(--text-faint)",fontWeight:500}}>vs</span> {m.player2_name||"TBD"}
+                    </p>
+                    {/* Live score preview — only show when not shuffling */}
+                    {isLive&&!isShuffling&&p1pts!==null&&(
+                      <p style={{fontSize:12,fontWeight:800,color:"var(--text-muted)",marginTop:3}}>
+                        <span style={{color:"#3B82F6"}}>{p1pts}</span>
+                        <span style={{color:"var(--text-faint)",margin:"0 5px"}}>–</span>
+                        <span style={{color:"#EF4444"}}>{p2pts}</span>
+                      </p>
+                    )}
+                    {/* Completed score */}
+                    {!isLive&&done&&m.scores_csv&&(
+                      <p style={{fontSize:11,color:"var(--text-muted)",marginTop:2}}>
+                        Score: {m.scores_csv} · Winner: <strong style={{color:"var(--text-secondary)"}}>{String(m.winner_id)===String(m.player1_id)?m.player1_name:m.player2_name}</strong>
+                      </p>
+                    )}
+                  </div>
+                  {isLive&&!isShuffling&&<span style={{fontSize:16,flexShrink:0,marginLeft:8}}>👁</span>}
+                  {isShuffling&&<span style={{fontSize:16,flexShrink:0,marginLeft:8}}>⏱</span>}
+                </div>
+              );
+
+              // Live non-shuffling cards are tappable; shuffling and non-live cards are plain divs
+              if(isLive&&!isShuffling){
+                return (
+                  <button key={m.id} className="fade-in"
+                    onClick={()=>setLiveView({matchId:liveSlot.matchId, slot:liveSlot.slot, state:liveState})}
+                    style={{display:"block",width:"100%",padding:"11px 13px",borderRadius:12,marginBottom:7,
+                      border:`2px solid ${borderColor}`,background:bgColor,
+                      cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
+                    {cardInner}
+                  </button>
+                );
+              }
+              return (
+                <div key={m.id} className="fade-in"
+                  style={{padding:"11px 13px",borderRadius:12,marginBottom:7,
+                    border:`2px solid ${borderColor}`,background:bgColor}}>
+                  {cardInner}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+      {pairings&&pairings.length===0&&<p style={{color:"var(--text-muted)",fontSize:13}}>No matches found yet.</p>}
+    </div>
+  );
+}
+
+/* ─── Standings Tab ───────────────────────────────────────────── */
+function StandingsTab({slug, myName}){
+  const [standings, setStandings] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async()=>{
+    if(!slug){setError("No tournament loaded.");return;}
+    setLoading(true); setError(null);
+    try {
+      const data = await workerGet(`/standings?slug=${encodeURIComponent(slug)}`);
+      setStandings(data.standings||[]);
+    } catch(e){ setError("Couldn't load standings. Try again."); }
+    finally{ setLoading(false); }
+  },[slug]);
+
+  useEffect(()=>{ load(); },[load]);
+
+  if(!slug) return <div style={{padding:"32px 16px",textAlign:"center",color:"var(--text-muted)"}}>No tournament linked.</div>;
+
+  return (
+    <div style={{padding:"12px 14px",paddingBottom:20}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <h2 style={{fontSize:18,fontWeight:900,margin:0}}>Standings</h2>
+        <button onClick={load} disabled={loading} style={{background:"none",border:"2px solid var(--border)",borderRadius:8,padding:"5px 10px",color:"var(--text-muted)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          {loading?"...":"↻ Refresh"}
+        </button>
+      </div>
+      {error&&<p style={{color:"#EF4444",fontSize:13,marginBottom:12}}>{error}</p>}
+      {loading&&!standings&&<p style={{color:"var(--text-muted)",fontSize:13}}>Loading…</p>}
+      {standings&&standings.map((p,i)=>{
+        const isMe = myName&&p.name.toLowerCase()===myName.toLowerCase();
+        const medals = ["🥇","🥈","🥉"];
+        return (
+          <div key={p.id} className="fade-in"
+            style={{display:"flex",alignItems:"center",gap:12,padding:"11px 13px",borderRadius:12,marginBottom:6,
+              border:`2px solid ${isMe?"#EA580C60":"var(--border)"}`,
+              background:isMe?"#EA580C08":"var(--surface2)"}}>
+            <div style={{width:28,textAlign:"center",flexShrink:0}}>
+              {i<3?<span style={{fontSize:18}}>{medals[i]}</span>:<span style={{fontSize:13,fontWeight:800,color:"var(--text-faint)"}}>{i+1}</span>}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                {isMe&&<span style={{fontSize:9,fontWeight:800,color:"var(--accent)",background:"#EA580C20",padding:"2px 5px",borderRadius:4}}>YOU</span>}
+                <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",margin:0}}>{p.name}</p>
+              </div>
+              <p style={{fontSize:11,color:"var(--text-muted)",marginTop:1}}>
+                {p.wins}W – {p.losses}L <span style={{color:"var(--text-faint)",marginLeft:6}}>+{p.pointDiff} pts</span>
+              </p>
+            </div>
+            <div style={{textAlign:"right",flexShrink:0}}>
+              <p style={{fontSize:16,fontWeight:900,color:"var(--text-primary)",margin:0}}>{p.wins}-{p.losses}</p>
+              {p.finalRank&&<p style={{fontSize:9,color:"var(--text-faint)",marginTop:1}}>Rank #{p.finalRank}</p>}
+            </div>
+          </div>
+        );
+      })}
+      {standings&&standings.length===0&&<p style={{color:"var(--text-muted)",fontSize:13}}>No standings yet.</p>}
+    </div>
+  );
+}
+
+/* ─── Combo Registration Tab ──────────────────────────────────── */
+function ComboTab({myName, myDeck, onDeckSaved, slug, onCombosFound, parts}){
+  const [building, setBuilding] = useState(false);
+  const [workerCombos, setWorkerCombos] = useState(null); // null=loading, []=loaded empty
+  const [pushStatus, setPushStatus] = useState(null);
+
+  useEffect(()=>{
+    if(!myName || !slug){ setWorkerCombos([]); onCombosFound&&onCombosFound(false); return; }
+    setWorkerCombos(null);
+    (async()=>{
+      try {
+        // Fetch the whole tournament registry, then pull out this player's entry
+        const registry = await fetchCombosForTournament(slug);
+        const fetched = getCombosFromRegistry(registry, myName);
+        setWorkerCombos(fetched);
+        onCombosFound&&onCombosFound(fetched.length>0);
+      } catch(_){
+        setWorkerCombos([]);
+        onCombosFound&&onCombosFound(false);
+      }
+    })();
+  },[myName, slug]);
+
+  const handleSave = async(deck) => {
+    // Only push combos that are fully built — incomplete slots get dropped
+    const readyCombos = deck.filter(comboReady).map(normalizeCombo);
+    setBuilding(false); setPushStatus(null); onDeckSaved(readyCombos);
+    try {
+      // Push to tournament-scoped registry using the same route as judge view
+      await pushCombosForTournament(slug, myName, readyCombos);
+      setPushStatus("ok");
+      setWorkerCombos(readyCombos);
+      onCombosFound&&onCombosFound(readyCombos.length>0);
+    } catch(_){ setPushStatus("error"); }
+  };
+
+  const loading = workerCombos===null;
+  const displayCombos = (workerCombos&&workerCombos.length>0)
+    ? workerCombos
+    : (myDeck&&myDeck.some(c=>c?.blade) ? myDeck.map(normalizeCombo) : []);
+  const hasCombos = displayCombos.some(c=>c.blade);
+  const labels = ["First","Second","Third"];
+
+  if(building){
+    return <DeckBuilder playerName={myName} initialDeck={hasCombos?displayCombos:myDeck} onSave={handleSave} onCancel={()=>setBuilding(false)} savedCombos={displayCombos.filter(c=>c.blade&&c.bit)} parts={parts}/>;
+  }
+
+  return (
+    <div style={{padding:"12px 14px",paddingBottom:20}}>
+      <h2 style={{fontSize:18,fontWeight:900,marginBottom:4}}>Deck Registry</h2>
+
+      {!myName&&(
+        <div style={{padding:"12px 14px",borderRadius:10,background:"#EA580C15",border:"1px solid #EA580C40",fontSize:12,color:"var(--accent2)",marginBottom:16}}>
+          ⚠ Select your name first to view your deck.
+        </div>
+      )}
+
+      {pushStatus==="ok"&&(
+        <div style={{padding:"10px 14px",borderRadius:10,background:"#22C55E15",border:"1px solid #22C55E40",fontSize:12,fontWeight:700,color:"#22C55E",marginBottom:14}}>
+          ✓ Deck saved and shared to all judge devices
+        </div>
+      )}
+      {pushStatus==="error"&&(
+        <div style={{padding:"10px 14px",borderRadius:10,background:"#EF444415",border:"1px solid #EF444440",fontSize:12,fontWeight:700,color:"#EF4444",marginBottom:14}}>
+          ⚠ Saved locally — couldn't sync to network
+        </div>
+      )}
+
+      {myName&&loading&&(
+        <p style={{fontSize:13,color:"var(--text-muted)",marginBottom:16}}>Loading your deck…</p>
+      )}
+
+      {myName&&!loading&&!hasCombos&&(
+        <div style={{padding:"20px 16px",borderRadius:14,background:"#EF444408",border:"2px dashed #EF444440",textAlign:"center",marginBottom:16}}>
+          <div style={{fontSize:36,marginBottom:10}}>📋</div>
+          <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",marginBottom:8}}>No combos saved.</p>
+          <p style={{fontSize:12,color:"var(--text-muted)",lineHeight:1.6,margin:0}}>
+            Help your judge by building your deck here for faster deck verification!
+          </p>
+        </div>
+      )}
+
+      {myName&&!loading&&hasCombos&&(
+        <>
+          <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:12,lineHeight:1.6}}>
+            This is your most recently saved deck. It was registered by either you from right here or by a judge from your last match. If you don't plan to play this deck next round, try editing it here to help your next match run smoother and more quickly!
+          </p>
+          <div style={{marginBottom:16}}>
+            {displayCombos.slice(0,3).map((c,i)=>{
+              const nc = normalizeCombo(c);
+              const isNoRatchet = NO_RATCHET_BLADES.includes(nc.blade);
+              const ready = nc.blade&&nc.bit&&(nc.ratchet||isNoRatchet);
+              return (
+                <div key={i} style={{padding:"10px 13px",borderRadius:11,marginBottom:6,
+                  border:`2px solid ${ready?"#22C55E40":"var(--border)"}`,
+                  background:ready?"#22C55E08":"var(--surface2)"}}>
+                  <p style={{fontSize:10,fontWeight:700,color:ready?"#22C55E":"var(--text-faint)",marginBottom:ready?4:0,letterSpacing:0.5,textTransform:"uppercase"}}>{labels[i]} Combo</p>
+                  {ready
+                    ?<p style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",margin:0}}>{comboStr(nc)}</p>
+                    :<p style={{fontSize:12,color:"var(--text-faint)",margin:0}}>Not built</p>}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {myName&&!loading&&(
+        <button onClick={()=>setBuilding(true)}
+          style={{display:"block",width:"100%",padding:"14px 0",borderRadius:12,
+            background:hasCombos?"var(--surface3)":"var(--accent)",
+            color:hasCombos?"var(--text-secondary)":"#fff",
+            fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:10,
+            border:`2px solid ${hasCombos?"var(--border)":"transparent"}`}}>
+          {hasCombos?"✏ Edit Deck":"Build Your Deck →"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+
 
 /* ═══════════════════════════════════════
    PIN MODAL — on-screen 4-digit keypad
@@ -17221,15 +18443,12 @@ function OrgApp({onSwitchRole}) {
           const borderColor = live ? "#22C55E" : done ? "var(--border)" : "var(--border2)";
           const bgColor = live ? "#22C55E0A" : "var(--surface)";
 
-          // Judge-player warning: highlight player names that belong to stationed judges.
-          // Floaters are judges without a stadium assignment — they display like regular players.
-          // Match by mapped bracket name first, fall back to raw Challonge username.
+          // Judge-player warning: highlight player names that belong to judges
+          // Match by mapped bracket name first, fall back to raw Challonge username
           const isJudgeByName = (displayName) => {
             if (!displayName) return false;
             const dl = displayName.toLowerCase();
             return judgeWhitelist.some(u => {
-              // Only highlight if this judge has a stadium assignment (not a floater)
-              if (!stadiumAssign[u]) return false;
               const mapped = judgeNameMap[u.toLowerCase()];
               return mapped ? mapped.toLowerCase() === dl : u.toLowerCase() === dl;
             });
@@ -18375,6 +19594,564 @@ function OrgTournamentSelect({onSelect, onSwitchRole}) {
   );
 }
 
+/* ─── Match History Tab ───────────────────────────────────────── */
+function HistoryTab({slug, myName}){
+  const [pairings, setPairings] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [expanded, setExpanded] = useState({}); // matchId -> true/false
+  const [battleLogs, setBattleLogs] = useState({}); // matchId -> {loading, data, error}
+
+  const load = useCallback(async()=>{
+    if(!slug||!myName){setError(!slug?"No tournament loaded.":"Select your name to view history.");return;}
+    setLoading(true); setError(null);
+    try {
+      const data = await workerGet(`/pairings?slug=${encodeURIComponent(slug)}`);
+      setPairings(data.pairings||[]);
+    } catch(e){ setError("Couldn't load match history."); }
+    finally{ setLoading(false); }
+  },[slug,myName]);
+
+  useEffect(()=>{ load(); },[load]);
+
+  const myMatches = (pairings||[]).filter(m=>{
+    if(!myName) return false;
+    return (m.player1_name&&m.player1_name.toLowerCase()===myName.toLowerCase()) ||
+           (m.player2_name&&m.player2_name.toLowerCase()===myName.toLowerCase());
+  }).filter(m=>m.state==="complete").sort((a,b)=>(a.round||0)-(b.round||0));
+
+  const wins = myMatches.filter(m=>{
+    const isP1 = myName&&m.player1_name&&m.player1_name.toLowerCase()===myName.toLowerCase();
+    const myId = isP1 ? m.player1_id : m.player2_id;
+    return String(m.winner_id)===String(myId);
+  }).length;
+  const losses = myMatches.length - wins;
+
+  const toggleExpand = async (m) => {
+    const id = m.id;
+    const nowExpanded = !expanded[id];
+    setExpanded(prev=>({...prev,[id]:nowExpanded}));
+    // If opening and not yet fetched, fetch the battle log
+    if(nowExpanded && !battleLogs[id]){
+      setBattleLogs(prev=>({...prev,[id]:{loading:true,data:null,error:null}}));
+      try {
+        const params = new URLSearchParams();
+        if(m.id) params.set("matchId", m.id);
+        if(m.player1_name) params.set("p1", m.player1_name);
+        if(m.player2_name) params.set("p2", m.player2_name);
+        // Use raw fetch instead of workerGet so we can handle 404 gracefully
+        const res = await fetch(`${OVERLAY_WORKER}/matchlog?${params.toString()}`, {signal: AbortSignal.timeout(8000)});
+        if(res.ok){
+          const data = await res.json();
+          setBattleLogs(prev=>({...prev,[id]:{loading:false,data:data.found?data:null,error:null}}));
+        } else {
+          // 404 or other error from worker — treat as no log available
+          setBattleLogs(prev=>({...prev,[id]:{loading:false,data:null,error:null}}));
+        }
+      } catch(e){
+        // Network error — treat as no log rather than showing a scary error
+        setBattleLogs(prev=>({...prev,[id]:{loading:false,data:null,error:null}}));
+      }
+    }
+  };
+
+  if(!slug||!myName) return (
+    <div style={{padding:"32px 16px",textAlign:"center",color:"var(--text-muted)"}}>
+      {!slug?"No tournament loaded.":"Select your name to view your match history."}
+    </div>
+  );
+
+  return (
+    <div style={{padding:"12px 14px",paddingBottom:20}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <h2 style={{fontSize:18,fontWeight:900,margin:0}}>My Matches</h2>
+        <button onClick={load} disabled={loading} style={{background:"none",border:"2px solid var(--border)",borderRadius:8,padding:"5px 10px",color:"var(--text-muted)",fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          {loading?"...":"↻"}
+        </button>
+      </div>
+
+      {myMatches.length>0&&(
+        <div style={{display:"flex",gap:10,marginBottom:16}}>
+          {[{label:"Wins",val:wins,color:"#22C55E"},{label:"Losses",val:losses,color:"#EF4444"},{label:"Matches",val:myMatches.length,color:"var(--text-secondary)"}].map(s=>(
+            <div key={s.label} style={{flex:1,padding:"10px 0",borderRadius:10,background:"var(--surface2)",border:"1px solid var(--border)",textAlign:"center"}}>
+              <p style={{fontSize:22,fontWeight:900,color:s.color,margin:0}}>{s.val}</p>
+              <p style={{fontSize:10,color:"var(--text-faint)",fontWeight:600,margin:0}}>{s.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error&&<p style={{color:"#EF4444",fontSize:13,marginBottom:12}}>{error}</p>}
+      {loading&&!pairings&&<p style={{color:"var(--text-muted)",fontSize:13}}>Loading…</p>}
+
+      {myMatches.map((m,i)=>{
+        const isP1 = myName&&m.player1_name&&m.player1_name.toLowerCase()===myName.toLowerCase();
+        const opponent = isP1 ? m.player2_name : m.player1_name;
+        const myId = isP1 ? m.player1_id : m.player2_id;
+        const won = String(m.winner_id)===String(myId);
+        const roundLabel = m.round<0 ? `Top Cut R${Math.abs(m.round)}` : `Swiss R${m.round}`;
+        const isOpen = !!expanded[m.id];
+        const logEntry = battleLogs[m.id];
+
+        return (
+          <div key={m.id} className="fade-in" style={{borderRadius:12,marginBottom:8,
+            border:`2px solid ${won?"#22C55E40":"#EF444430"}`,
+            background:won?"#22C55E08":"#EF444408",overflow:"hidden"}}>
+
+            {/* Match summary row — tap to expand */}
+            <button onClick={()=>toggleExpand(m)}
+              style={{display:"block",width:"100%",padding:"12px 14px",background:"transparent",border:"none",cursor:"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:0.5,marginBottom:3}}>{roundLabel}</p>
+                  <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0}}>
+                    <span style={{color:won?"#22C55E":"#EF4444",marginRight:6}}>{won?"W":"L"}</span>vs {opponent||"Unknown"}
+                  </p>
+                  {m.scores_csv&&<p style={{fontSize:11,color:"var(--text-muted)",marginTop:3}}>Score: {m.scores_csv}</p>}
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,marginLeft:8}}>
+                  <span style={{fontSize:22}}>{won?"🏆":"💢"}</span>
+                  <span style={{fontSize:14,color:"var(--text-faint)",lineHeight:1}}>{isOpen?"▲":"▼"}</span>
+                </div>
+              </div>
+            </button>
+
+            {/* Expanded battle log */}
+            {isOpen&&(
+              <div style={{borderTop:`1px solid ${won?"#22C55E30":"#EF444430"}`,padding:"10px 14px 12px"}}>
+                {logEntry?.loading&&(
+                  <p style={{fontSize:12,color:"var(--text-faint)",margin:0}}>Loading battle log…</p>
+                )}
+                {logEntry?.error&&(
+                  <p style={{fontSize:12,color:"#EF4444",margin:0}}>{logEntry.error}</p>
+                )}
+                {logEntry&&!logEntry.loading&&!logEntry.data&&!logEntry.error&&(
+                  <p style={{fontSize:12,color:"var(--text-faint)",margin:0,lineHeight:1.5}}>
+                    No battle log available — this match wasn't scored through NC BLAST.
+                  </p>
+                )}
+                {logEntry?.data?.comboHistory?.length>0&&(
+                  <div>
+                    <p style={{fontSize:9,fontWeight:800,color:"var(--text-faint)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Battle Log</p>
+                    {logEntry.data.comboHistory.map((h,bi)=>{
+                      const meta = FINISH_META[h.typeName]||FINISH_META[h.type]||{emoji:"🌀",color:"var(--text-muted)",label:h.typeName||"?"};
+                      const isMyBattle = myName&&h.scorer&&h.scorer.toLowerCase()===myName.toLowerCase();
+                      return (
+                        <div key={bi} style={{
+                          display:"flex",alignItems:"center",gap:8,
+                          padding:"7px 0",
+                          borderBottom:bi<logEntry.data.comboHistory.length-1?"1px solid var(--border)":"none",
+                        }}>
+                          <span style={{fontSize:16,flexShrink:0,width:22,textAlign:"center"}}>{meta.emoji}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <p style={{fontSize:12,fontWeight:700,color:isMyBattle?"var(--accent2)":"var(--text-primary)",margin:0}}>
+                              {h.scorer||"?"}
+                              <span style={{fontSize:11,fontWeight:500,color:"var(--text-muted)",marginLeft:5}}>
+                                {meta.label} <span style={{color:"#22C55E",fontWeight:800}}>+{h.points}</span>
+                              </span>
+                            </p>
+                            {h.winnerCombo&&<p style={{fontSize:10,color:"var(--text-faint)",margin:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.winnerCombo}</p>}
+                          </div>
+                          {h.set>1&&<span style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",flexShrink:0}}>S{h.set}</span>}
+                        </div>
+                      );
+                    })}
+                    {logEntry.data.judge&&(
+                      <p style={{fontSize:10,color:"var(--text-faint)",marginTop:8,margin:0}}>Judged by {logEntry.data.judge}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {pairings&&myMatches.length===0&&(
+        <div style={{textAlign:"center",padding:"32px 0",color:"var(--text-muted)"}}>
+          <p style={{fontSize:32,marginBottom:8}}>⏳</p>
+          <p style={{fontSize:14,fontWeight:600}}>No completed matches yet</p>
+          <p style={{fontSize:12,marginTop:4}}>Your results will appear here as matches finish.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Name Picker ─────────────────────────────────────────────── */
+function NamePicker({participants, onSelect, currentName}){
+  const [search, setSearch] = useState("");
+  const filtered = participants.filter(n=>n.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div style={{padding:"16px 14px"}}>
+      <h2 style={{fontSize:18,fontWeight:900,marginBottom:4}}>Who are you?</h2>
+      <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:12}}>Select your name from the tournament roster.</p>
+      <input value={search} onChange={e=>setSearch(e.target.value)}
+        placeholder="Search your name..."
+        style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"2px solid var(--border2)",background:"var(--surface2)",color:"var(--text-primary)",fontSize:13,fontFamily:"'Outfit',sans-serif",outline:"none",marginBottom:12}}/>
+      <div style={{display:"flex",flexDirection:"column",gap:7,maxHeight:320,overflowY:"auto"}}>
+        {filtered.map(n=>(
+          <button key={n} onClick={()=>onSelect(n)}
+            style={{padding:"12px 14px",borderRadius:11,border:`2px solid ${currentName===n?"var(--accent)":"var(--border)"}`,
+              background:currentName===n?"#EA580C15":"var(--surface2)",
+              color:currentName===n?"var(--accent2)":"var(--text-primary)",
+              fontSize:14,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",textAlign:"left"}}>
+            {currentName===n&&<span style={{marginRight:6}}>✓</span>}{n}
+          </button>
+        ))}
+        {filtered.length===0&&<p style={{color:"var(--text-faint)",fontSize:13}}>No results.</p>}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Tournament Loader ───────────────────────────────────────── */
+function TournamentLoader({onLoaded, onSwitchRole}){
+  const [cachedList, setCachedList] = useState([]);
+  const [loadingList, setLoadingList] = useState(true);
+  const [loadingSlug, setLoadingSlug] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+
+  useEffect(() => {
+    workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>{}).finally(()=>setLoadingList(false));
+  }, []);
+
+  const handleSelect = async (t) => {
+    setLoadingSlug(t.slug); setLoadError(null);
+    try {
+      const data = await workerGet(`/?slug=${encodeURIComponent(t.slug)}`);
+      const extractP = (p) => p.participant || p;
+      const participants = (data.participants||[]).map(p=>(extractP(p).display_name||extractP(p).username||extractP(p).name||"").trim()).filter(Boolean);
+      if(!participants.length) throw new Error("No participants found for this event.");
+      onLoaded(t.slug, participants);
+    } catch(e) { setLoadError(e.message||"Failed to load."); }
+    finally { setLoadingSlug(null); }
+  };
+
+  const refresh = () => {
+    setCachedList([]); setLoadingList(true); setLoadError(null);
+    workerGet("/list").then(d => setCachedList(d.tournaments||[])).catch(()=>{}).finally(()=>setLoadingList(false));
+  };
+
+  return (
+    <div style={{padding:"20px 16px"}}>
+      <div style={{textAlign:"center",marginBottom:24}}>
+        <div style={{fontSize:40,marginBottom:8}}>⚔️</div>
+        <h1 style={{fontSize:28,fontWeight:900,margin:0}}>NC <span style={{color:"var(--accent)"}}>BLAST</span></h1>
+        <p style={{fontSize:12,color:"var(--text-muted)",marginTop:4}}>Player View</p>
+      </div>
+      <div style={{background:"var(--surface)",borderRadius:16,padding:"18px 16px",border:"1px solid var(--border)",marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+          <p style={{fontSize:14,fontWeight:800,margin:0}}>Join Your Tournament</p>
+          <button onClick={refresh} disabled={loadingList}
+            style={{background:"none",border:"1px solid var(--border)",borderRadius:8,padding:"4px 10px",fontSize:11,fontWeight:700,color:"var(--text-muted)",fontFamily:"'Outfit',sans-serif",cursor:loadingList?"not-allowed":"pointer",opacity:loadingList?0.5:1}}>
+            {loadingList?"…":"↻ Refresh"}
+          </button>
+        </div>
+        <p style={{fontSize:12,color:"var(--text-muted)",marginBottom:12,lineHeight:1.5}}>Select today's event from the list below.</p>
+        {loadingList && <p style={{fontSize:13,color:"var(--text-muted)",textAlign:"center",padding:"12px 0"}}>⏳ Loading events…</p>}
+        {!loadingList && cachedList.length === 0 && (
+          <p style={{fontSize:12,color:"var(--text-faint)",textAlign:"center",padding:"12px 0",lineHeight:1.6}}>
+            No tournaments are available right now.<br/>Ask your organizer to set up the event first.
+          </p>
+        )}
+        {loadError && <p style={{fontSize:12,color:"#EF4444",fontWeight:600,marginBottom:8}}>{loadError}</p>}
+        {cachedList.map(t => (
+          <button key={t.slug} onClick={()=>!loadingSlug&&handleSelect(t)}
+            style={{display:"block",width:"100%",padding:"13px 14px",borderRadius:12,border:"1px solid var(--border)",background:loadingSlug===t.slug?"var(--surface3)":"var(--surface2)",cursor:loadingSlug?"not-allowed":"pointer",textAlign:"left",fontFamily:"'Outfit',sans-serif",marginBottom:8,opacity:loadingSlug&&loadingSlug!==t.slug?0.5:1}}>
+            <p style={{fontSize:14,fontWeight:800,color:"var(--text-primary)",margin:0}}>{t.name||t.slug}</p>
+            <p style={{fontSize:10,color:"var(--text-faint)",margin:"2px 0 0"}}>{loadingSlug===t.slug?"Loading…":t.slug}</p>
+          </button>
+        ))}
+      </div>
+      {onSwitchRole && (
+        <button onClick={onSwitchRole}
+          style={{display:"block",width:"100%",padding:"11px 0",borderRadius:10,border:"2px solid var(--border)",background:"none",color:"var(--text-faint)",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          ↩ Switch View
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PlayerApp({onSwitchRole}){
+  const [session, setSession] = useState(()=>sGet(STORAGE_KEY,{slug:null,participants:[],myName:null,myDeck:null}));
+  const [tab, setTab] = useState("pairings");
+  const [namePickerOpen, setNamePickerOpen] = useState(false);
+  const [liveSlots, setLiveSlots] = useState([]);
+  const [eventDeleted, setEventDeleted] = useState(false);
+  const [playerHasCombos, setPlayerHasCombos] = useState(true); // default true — no badge flash before load
+  const pollRef = useRef(null);
+  const deletionPollRef = useRef(null);
+
+  // Destructure early so all hooks below can reference slug
+  const {slug, participants, myName, myDeck} = session;
+
+  const updateSession = (patch) => {
+    setSession(s=>{const next={...s,...patch}; sSave(STORAGE_KEY,next); return next;});
+  };
+
+  const handleEventDeletedDismiss = () => {
+    setEventDeleted(false);
+    updateSession({slug:null,participants:[],myName:null,myDeck:null});
+  };
+
+  // Poll for event deletion every 20s
+  useEffect(()=>{
+    if(!slug) return;
+    const checkDeletion = async () => {
+      try {
+        const data = await workerGet("/list");
+        const slugs = (data.tournaments||[]).map(t=>t.slug);
+        if(!slugs.includes(slug)) setEventDeleted(true);
+      } catch(_){}
+    };
+    deletionPollRef.current = setInterval(checkDeletion, 20000);
+    return ()=>clearInterval(deletionPollRef.current);
+  },[slug]);
+
+  // Check URL param for slug on load
+  useEffect(()=>{
+    const params = new URLSearchParams(window.location.search);
+    const paramSlug = params.get("slug")||params.get("tournament");
+    if(paramSlug&&!slug){
+      (async()=>{
+        try {
+          const data = await workerGet(`/?slug=${encodeURIComponent(paramSlug)}`);
+          const parts = (data.participants||[]).map(p=>(p.participant?.display_name||p.participant?.username||p.participant?.name||"").trim()).filter(Boolean);
+          if(parts.length) updateSession({slug:paramSlug,participants:parts});
+        } catch(_){}
+      })();
+    }
+  },[]);
+
+  // Poll live match state every 5 seconds
+  useEffect(()=>{
+    if(!slug) return;
+    const poll = async() => {
+      try {
+        const data = await workerGet("/overlay/all");
+        const seen = new Set();
+        const deduped = (data.slots||[]).filter(s=>{
+          if(!s.state||!s.state.p1) return false;
+          const key = s.matchId||s.slot;
+          if(seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setLiveSlots(deduped);
+      } catch(_){}
+    };
+    poll();
+    pollRef.current = setInterval(poll, 5000);
+    return ()=>clearInterval(pollRef.current);
+  },[slug]);
+
+  const TABS = [
+    {id:"pairings",label:"Bracket",icon:"🗓"},
+    {id:"standings",label:"Standings",icon:"🏅"},
+    {id:"combos",label:"Deck",icon:"🌀"},
+    {id:"history",label:"History",icon:"📋"},
+  ];
+
+  const deckNeedsBadge = !!myName && !playerHasCombos;
+
+  if(!slug){
+    return <TournamentLoader onLoaded={(s,p)=>updateSession({slug:s,participants:p,myName:null,myDeck:null})} onSwitchRole={onSwitchRole}/>;
+  }
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"100dvh",maxWidth:480,margin:"0 auto"}}>
+      {/* Top bar */}
+      <div style={{padding:"10px 14px",background:"var(--surface)",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {onSwitchRole&&(
+              <button onClick={onSwitchRole} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:18,padding:"0 4px 0 0",lineHeight:1,fontFamily:"'Outfit',sans-serif"}}>←</button>
+            )}
+            <span style={{fontSize:16,fontWeight:900}}>⚔️ NC <span style={{color:"var(--accent)"}}>BLAST</span></span>
+            {liveSlots.length>0&&(
+              <div style={{display:"flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:20,background:"#22C55E20",border:"1px solid #22C55E40"}}>
+                <span className="live-dot"/>
+                <span style={{fontSize:9,fontWeight:800,color:"#22C55E",letterSpacing:0.5}}>{liveSlots.length} LIVE</span>
+              </div>
+            )}
+          </div>
+          <button onClick={()=>setNamePickerOpen(true)}
+            style={{padding:"6px 11px",borderRadius:20,border:`2px solid ${myName?"var(--accent)":"var(--border2)"}`,
+              background:myName?"#EA580C15":"var(--surface2)",
+              color:myName?"var(--accent2)":"var(--text-muted)",
+              fontSize:11,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            {myName||"Select Name"}
+          </button>
+        </div>
+        {slug&&<p style={{fontSize:9,color:"var(--text-faint)",marginTop:3,fontWeight:600,letterSpacing:0.5}}>{slug}</p>}
+      </div>
+
+      {/* Content */}
+      <div style={{flex:1,overflowY:"auto"}}>
+        {tab==="pairings"&&<PairingsTab slug={slug} myName={myName} liveSlots={liveSlots}/>}
+        {tab==="standings"&&<StandingsTab slug={slug} myName={myName}/>}
+        {tab==="combos"&&<ComboTab myName={myName} myDeck={myDeck} slug={slug} parts={parts}
+          onDeckSaved={deck=>updateSession({myDeck:deck})}
+          onCombosFound={found=>setPlayerHasCombos(found)}/>}
+        {tab==="history"&&<HistoryTab slug={slug} myName={myName}/>}
+      </div>
+
+      {/* Bottom nav */}
+      <div style={{display:"flex",background:"var(--surface)",borderTop:"1px solid var(--border)",flexShrink:0}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)}
+            style={{flex:1,padding:"10px 0",background:"none",border:"none",cursor:"pointer",
+              display:"flex",flexDirection:"column",alignItems:"center",gap:2,
+              borderTop:`2px solid ${tab===t.id?"var(--accent)":"transparent"}`,
+              transition:"border-color 0.15s"}}>
+            <div style={{position:"relative",display:"inline-flex"}}>
+              <span style={{fontSize:18}}>{t.icon}</span>
+              {t.id==="combos"&&deckNeedsBadge&&(
+                <span style={{position:"absolute",top:-4,right:-7,background:"#EF4444",color:"#fff",borderRadius:"50%",width:14,height:14,fontSize:9,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Outfit',sans-serif",lineHeight:1}}>1</span>
+              )}
+            </div>
+            <span style={{fontSize:9,fontWeight:700,color:tab===t.id?"var(--accent)":"var(--text-faint)",fontFamily:"'Outfit',sans-serif",letterSpacing:0.3}}>{t.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Event deleted notification */}
+      {eventDeleted&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(15,23,42,0.85)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 24px"}}>
+          <div style={{background:"var(--surface)",borderRadius:20,padding:"28px 22px",maxWidth:320,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.4)",border:"2px solid #EF4444",textAlign:"center"}}>
+            <div style={{fontSize:40,marginBottom:12}}>🗑️</div>
+            <p style={{fontSize:17,fontWeight:900,color:"var(--text-primary)",marginBottom:8}}>Event Removed</p>
+            <p style={{fontSize:13,color:"var(--text-secondary)",marginBottom:22,lineHeight:1.5}}>This tournament has been removed from the NC BLAST cache by the organizer.</p>
+            <button onClick={handleEventDeletedDismiss}
+              style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",background:"#EA580C",color:"#fff",fontSize:15,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+              Back to Event Select
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Name picker overlay */}
+      {namePickerOpen&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:100,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+          <div style={{background:"var(--surface)",borderRadius:"20px 20px 0 0",maxHeight:"80vh",overflowY:"auto",paddingBottom:"env(safe-area-inset-bottom)"}}>
+            <div style={{padding:"12px 14px 0",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid var(--border)"}}>
+              <span style={{fontSize:15,fontWeight:800}}>Select Your Name</span>
+              <button onClick={()=>setNamePickerOpen(false)} style={{background:"none",border:"none",color:"var(--text-muted)",cursor:"pointer",fontSize:22,fontFamily:"'Outfit',sans-serif"}}>×</button>
+            </div>
+            <NamePicker participants={participants} currentName={myName}
+              onSelect={name=>{ setPlayerHasCombos(true); updateSession({myName:name, myDeck:null}); setNamePickerOpen(false); }}/>
+            <div style={{padding:"0 14px 16px"}}>
+              <button onClick={()=>{updateSession({slug:null,participants:[],myName:null,myDeck:null});setNamePickerOpen(false);}}
+                style={{width:"100%",padding:"11px 0",borderRadius:10,border:"2px solid var(--border)",background:"transparent",color:"var(--text-faint)",fontSize:12,fontWeight:600,fontFamily:"'Outfit',sans-serif",cursor:"pointer",marginBottom:8}}>
+                Switch Tournament
+              </button>
+              {onSwitchRole&&(
+                <button onClick={()=>{setNamePickerOpen(false);onSwitchRole();}}
+                  style={{width:"100%",padding:"11px 0",borderRadius:10,border:"2px solid #EA580C40",background:"#EA580C0D",color:"#EA580C",fontSize:12,fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+                  ⚖️ Switch to Judge Mode
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+/* ═══════════════════════════════════════
+   ROLE PICKER SCREEN
+═══════════════════════════════════════ */
+const ROLE_KEY = "ncblast-role-v1";
+
+function RolePicker({onSelect, judge, sharedJudges, onLogout}) {
+  const loggedIn = sharedJudges ? `${sharedJudges.judgeA} & ${sharedJudges.judgeB}` : (judge || null);
+  return (
+    <div style={{
+      minHeight:"100vh", display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center",
+      background:"var(--bg)", padding:"32px 24px", fontFamily:"'Outfit',sans-serif"
+    }}>
+      <div style={{textAlign:"center", marginBottom:40}}>
+        <div style={{fontSize:48, marginBottom:12}}>⚔️</div>
+        <h1 style={{fontSize:32, fontWeight:900, color:"var(--text-primary)", margin:"0 0 6px"}}>
+          NC <span style={{color:"#EA580C"}}>BLAST</span>
+        </h1>
+        <p style={{fontSize:13, color:"var(--text-muted)", margin:0}}>NorCal Battle Log and Stat Tracker</p>
+      </div>
+
+      <p style={{
+        fontSize:22, fontWeight:800, color:"var(--text-primary)",
+        marginBottom:24, textAlign:"center"
+      }}>I am…</p>
+
+      <div style={{display:"flex", flexDirection:"column", gap:14, width:"100%", maxWidth:320}}>
+        <button onClick={()=>onSelect("judge")} style={{
+          padding:"20px 0", borderRadius:16, border:"none",
+          background:"linear-gradient(135deg,#EA580C,#DC2626)",
+          color:"#fff", fontSize:18, fontWeight:900,
+          fontFamily:"'Outfit',sans-serif", cursor:"pointer",
+          boxShadow:"0 8px 24px rgba(234,88,12,0.35)",
+        }}>
+          ⚖️ A Judge
+        </button>
+
+        <div style={{position:"relative"}}>
+          <button disabled style={{
+            width:"100%", padding:"20px 0", borderRadius:16,
+            border:"2px solid #1E293B",
+            background:"#0F172A",
+            color:"#334155", fontSize:18, fontWeight:900,
+            fontFamily:"'Outfit',sans-serif", cursor:"not-allowed",
+          }}>
+            🏆 A Player
+          </button>
+          <span style={{
+            position:"absolute", top:"50%", right:16, transform:"translateY(-50%)",
+            fontSize:10, fontWeight:800, color:"#475569",
+            background:"#1E293B", borderRadius:6, padding:"3px 8px",
+            textTransform:"uppercase", letterSpacing:0.8,
+          }}>Coming Soon</span>
+        </div>
+
+        <button onClick={()=>onSelect("org")} style={{
+          padding:"20px 0", borderRadius:16,
+          border:"2px solid var(--border2)",
+          background:"var(--surface)",
+          color:"var(--text-secondary)", fontSize:18, fontWeight:900,
+          fontFamily:"'Outfit',sans-serif", cursor:"pointer",
+        }}>
+          📋 An Organizer
+        </button>
+
+        {onLogout && (
+          <button onClick={onLogout} style={{
+            padding:"12px 0", borderRadius:12,
+            border:"2px solid var(--border)",
+            background:"transparent",
+            color:"var(--text-faint)", fontSize:12, fontWeight:600,
+            fontFamily:"'Outfit',sans-serif", cursor:"pointer", marginTop:4,
+          }}>
+            {loggedIn ? `🚪 Log out (${loggedIn})` : "🚪 Log out / Reset Session"}
+          </button>
+        )}
+      </div>
+
+      <p style={{
+        fontSize:11, color:"var(--text-faint)", marginTop:32,
+        textAlign:"center", lineHeight:1.6
+      }}>
+        Your choice is saved on this device.<br/>
+        You can switch anytime from inside the app.
+      </p>
+    </div>
+  );
+}
 
 /* ═══════════════════════════════════════
    MAIN APP
@@ -18578,6 +20355,7 @@ function BeyJudgeApp() {
     sSave(KEYS.challongeMap,{});
     try{sessionStorage.removeItem("ncblast-auth-token");sessionStorage.removeItem("ncblast-auth-user");}catch{}
   }}/>;
+  if(role==="player") return <PlayerApp onSwitchRole={()=>chooseRole(null)}/>;
   if(role==="org") return <OrgApp onSwitchRole={()=>chooseRole(null)}/>;
 
   return (
@@ -18596,7 +20374,7 @@ function BeyJudgeApp() {
           </div>
         </div>
       )}
-      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen(config.tm?"match":"players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap,names)=>{setJudgeEventDeleted(false);setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});if(names&&names.length){const fresh=[...new Set(names)];setPlayers(fresh);sSave(KEYS.players,fresh);}}} onJudgeVerified={(payload)=>{
+      {screen==="format"&&<FormatScreen config={config} setConfig={setConfig} parts={parts} onNext={()=>setScreen("players")} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} onSwitchRole={()=>chooseRole(null)} challongeSlug={challongeSlug} onChallongeImport={(slug,pmap,names)=>{setJudgeEventDeleted(false);setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});if(names&&names.length){const fresh=[...new Set(names)];setPlayers(fresh);sSave(KEYS.players,fresh);}}} onJudgeVerified={(payload)=>{
         if (payload && typeof payload === "object" && payload.mode === "shared") {
           setSharedJudges({ judgeA: payload.judgeA, judgeB: payload.judgeB });
           setJudge(""); // will be chosen per-match
@@ -18608,7 +20386,7 @@ function BeyJudgeApp() {
         }
       }}/>}
       {screen==="players"&&<PlayersScreen players={players} setPlayers={setPlayers} onNext={()=>setScreen("match")} onBack={()=>setScreen("format")} toggleDark={toggleDark} dark={dark} onChallongeImport={(slug,pmap)=>{setChallongeSlug(slug);setChallongeParticipants(pmap);sSave(KEYS.challongeMap,{slug,participants:pmap});}} tournamentMode={config.tm}/>}
-      {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sharedJudges={sharedJudges} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen(config.tm?"format":"players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
+      {screen==="match"&&<MatchScreen config={config} parts={parts} players={players} judge={judge} setJudge={setJudge} sharedJudges={sharedJudges} sheetsStatus={sheetsStatus} setSheetsStatus={setSheetsStatus} onBack={()=>setScreen("players")} onMainMenu={()=>setScreen("format")} onDownloadCSV={handleDownloadCSV} onSendSheets={handleSendSheets} onOpenLib={()=>setLibOpen(true)} dark={dark} toggleDark={toggleDark} challongeSlug={challongeSlug} challongeParticipants={challongeParticipants}/>}
     </div>
   );
 }
