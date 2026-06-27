@@ -10230,15 +10230,20 @@ const { useState, useEffect, useRef, useCallback } = React;
       return;
     }
 
-    // We're an OAuth callback page — hide app UI immediately so nothing flashes
-    // before this window closes or shows a "you can close this tab" message.
+    // We're an OAuth callback page — block React from mounting by clearing #root
+    // and marking the page as handled. React's ReactDOM.render() targets #root;
+    // if it's gone, React won't overwrite our callback UI.
+    window.__NCBLAST_OAUTH_CALLBACK__ = true;
+    var rootEl = document.getElementById("root");
+    if (rootEl) rootEl.removeAttribute("id"); // React can't find #root → won't mount
     document.documentElement.style.display = "none";
     window.history.replaceState({}, document.title, "/");
 
     // Safety net: if anything goes wrong and signalResult never fires,
-    // restore the page after 12 seconds so it doesn't stay permanently blank.
+    // show an error after 12 seconds instead of staying blank.
     var blankSafetyTimer = setTimeout(function() {
       document.documentElement.style.display = "";
+      document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#94a3b8;padding:32px;text-align:center;"><div style="font-size:48px;margin-bottom:16px">❌</div><p style="font-size:18px;font-weight:800;color:#ef4444;margin:0 0 8px">Login timed out</p><p style="font-size:13px;color:#64748b">You can close this tab and try again.</p></div>';
     }, 12000);
 
     // The OAuth state param is "sessionId.randomSuffix" — sessionId routes the
@@ -20414,7 +20419,9 @@ function BeyJudgeApp() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<BeyJudgeApp/>);
+if (!window.__NCBLAST_OAUTH_CALLBACK__) {
+  ReactDOM.createRoot(document.getElementById("root")).render(<BeyJudgeApp/>);
+}
 </script>
 </body>
 </html>
