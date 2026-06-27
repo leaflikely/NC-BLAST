@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: OAuth switched to implicit grant (response_type=token) — Challonge sends token directly in URL hash, no server-side exchange needed; Worker bot-block bypassed entirely; code-flow kept as dead fallback -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: OAuth back to response_type=code; Attempt A=Worker exchange (bot-blocked), Attempt B=browser-direct exchange with clear diagnostic labels; CORS block surfaces explicitly if both paths fail -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10295,46 +10295,83 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
     return;
   }
 
-  // ── Code flow: exchange the ?code= via the Worker (fallback) ──
-  setStatus("⏳", "Contacting server…", "");
+  // ── Code flow: exchange the ?code= for an access token ──
+  // Attempt A: Worker calls connect.challonge.com server-side.
+  //   Known issue: Cloudflare bot-protection on connect.challonge.com challenges the Worker.
+  // Attempt B: Browser calls connect.challonge.com directly (CORS permitting).
+  //   This is the live path. Error detail will tell us if CORS blocks it.
 
-  // Single-path: Worker calls connect.challonge.com server-side.
-  // No browser-direct fallback — CORS blocks direct browser→Challonge token calls.
-  fetch(WORKER + "/auth/exchange", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({code: code, redirect_uri: "https://ncblast.pages.dev"})
-  })
-  .then(function(r) {
-    setStatus("⏳", "Processing…", "Server responded HTTP " + r.status);
-    return r.text().then(function(t) { return {status: r.status, text: t}; });
-  })
-  .then(function(rt) {
-    var d;
-    try { d = JSON.parse(rt.text); }
-    catch(_) {
-      throw new Error("Server returned non-JSON (HTTP " + rt.status + "): " + rt.text.slice(0, 150));
-    }
-    if (!d.ok || !d.access_token) {
-      throw new Error("Token exchange failed (HTTP " + rt.status + "): " + (d.error || "no access_token in response"));
-    }
-    // Use username from exchange response if present — saves a round trip
-    if (d.username) return {token: d.access_token, username: d.username};
-    return resolveUsername(d.access_token).then(function(u) {
-      return {token: d.access_token, username: u};
+  function attemptWorkerExchange() {
+    setStatus("⏳", "Trying server exchange…", "Attempt A");
+    return fetch(WORKER + "/auth/exchange", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({code: code, redirect_uri: "https://ncblast.pages.dev"})
+    })
+    .then(function(r) {
+      return r.text().then(function(t) { return {status: r.status, text: t}; });
+    })
+    .then(function(rt) {
+      var d;
+      try { d = JSON.parse(rt.text); }
+      catch(_) { throw new Error("Worker non-JSON (HTTP " + rt.status + "): " + rt.text.slice(0, 80)); }
+      if (!d.ok || !d.access_token)
+        throw new Error("Worker failed (HTTP " + rt.status + "): " + (d.error || "no token"));
+      return {token: d.access_token, username: d.username || null};
     });
-  })
-  .then(function(result) {
-    signalResult({ok: true, token: result.token, username: result.username});
-  })
-  .catch(function(err) {
-    var raw = (err && err.message) ? err.message : String(err);
-    // Map low-level network errors to something more useful
-    var friendly = raw;
-    if (raw.indexOf("Failed to fetch") !== -1 || raw.indexOf("Load failed") !== -1 || raw.indexOf("NetworkError") !== -1)
-      friendly = "Network error: couldn't reach the server. Check your connection and try again.";
-    signalResult({ok: false, error: friendly, detail: raw});
-  });
+  }
+
+  function attemptBrowserExchange(workerErrMsg) {
+    setStatus("⏳", "Trying browser exchange…", "Attempt B (A: " + workerErrMsg.slice(0, 60) + ")");
+    return fetch(WORKER + "/auth/exchange-params", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(p) {
+      if (!p.client_id) throw new Error("exchange-params failed: " + (p.error || JSON.stringify(p).slice(0, 60)));
+      setStatus("⏳", "Calling Challonge directly…", "If this fails with CORS, browser exchange is also blocked");
+      var body = "grant_type=authorization_code" +
+        "&code=" + encodeURIComponent(code) +
+        "&client_id=" + encodeURIComponent(p.client_id) +
+        "&client_secret=" + encodeURIComponent(p.client_secret) +
+        "&redirect_uri=" + encodeURIComponent(p.redirect_uri);
+      return fetch("https://connect.challonge.com/oauth/token", {
+        method: "POST",
+        headers: {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+        body: body
+      });
+    })
+    .then(function(r) { return r.text().then(function(t) { return {status: r.status, text: t}; }); })
+    .then(function(rt) {
+      var d;
+      try { d = JSON.parse(rt.text); }
+      catch(_) { throw new Error("Challonge non-JSON (HTTP " + rt.status + "): " + rt.text.slice(0, 120)); }
+      if (!d.access_token)
+        throw new Error("Challonge rejected (HTTP " + rt.status + "): " + (d.error_description || d.error || rt.text.slice(0, 120)));
+      return {token: d.access_token, username: null};
+    });
+  }
+
+  attemptWorkerExchange()
+    .catch(function(errA) { return attemptBrowserExchange(errA.message); })
+    .then(function(result) {
+      if (result.username) {
+        signalResult({ok: true, token: result.token, username: result.username});
+      } else {
+        return resolveUsername(result.token).then(function(username) {
+          signalResult({ok: true, token: result.token, username: username});
+        });
+      }
+    })
+    .catch(function(err) {
+      var raw = (err && err.message) ? err.message : String(err);
+      var friendly = raw;
+      if (raw.indexOf("Failed to fetch") !== -1 || raw.indexOf("Load failed") !== -1 || raw.indexOf("NetworkError") !== -1)
+        friendly = "CORS block — browser can't reach Challonge token endpoint directly. Both exchange paths failed.";
+      signalResult({ok: false, error: friendly, detail: raw});
+    });
 })();
 </script>
 
@@ -10454,38 +10491,62 @@ const { useState, useEffect, useRef, useCallback } = React;
       return;
     }
 
-    // ── Code flow: exchange the ?code= via the Worker (fallback) ──
-    showProgress("Contacting server…");
+    // ── Code flow: Worker exchange → browser exchange fallback ──
+    showProgress("Trying server exchange…");
     fetch(WORKER + "/auth/exchange", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code: code, redirect_uri: "https://ncblast.pages.dev" }),
     })
-    .then(function(r) {
-      showProgress("Processing… (HTTP " + r.status + ")");
-      return r.text().then(function(t) { return { status: r.status, text: t }; });
-    })
+    .then(function(r) { return r.text().then(function(t) { return { status: r.status, text: t }; }); })
     .then(function(rt) {
       var d;
       try { d = JSON.parse(rt.text); }
-      catch(_) { throw new Error("Server returned non-JSON (HTTP " + rt.status + "): " + rt.text.slice(0, 150)); }
-      if (!d.ok || !d.access_token) {
-        throw new Error("Token exchange failed (HTTP " + rt.status + "): " + (d.error || "no access_token"));
-      }
-      if (d.username) return { token: d.access_token, username: d.username };
-      showProgress("Looking up username…");
-      return resolveUsername(d.access_token).then(function(u) {
-        return { token: d.access_token, username: u };
+      catch(_) { throw new Error("Worker non-JSON (HTTP " + rt.status + "): " + rt.text.slice(0, 80)); }
+      if (!d.ok || !d.access_token)
+        throw new Error("Worker failed (HTTP " + rt.status + "): " + (d.error || "no token"));
+      return { token: d.access_token, username: d.username || null };
+    })
+    .catch(function(errA) {
+      showProgress("Trying browser exchange… (A: " + errA.message.slice(0, 50) + ")");
+      return fetch(WORKER + "/auth/exchange-params", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(p) {
+        if (!p.client_id) throw new Error("exchange-params failed: " + (p.error || "no client_id"));
+        var body = "grant_type=authorization_code&code=" + encodeURIComponent(code) +
+          "&client_id=" + encodeURIComponent(p.client_id) +
+          "&client_secret=" + encodeURIComponent(p.client_secret) +
+          "&redirect_uri=" + encodeURIComponent(p.redirect_uri);
+        return fetch("https://connect.challonge.com/oauth/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
+          body: body,
+        });
+      })
+      .then(function(r) { return r.text().then(function(t) { return { status: r.status, text: t }; }); })
+      .then(function(rt) {
+        var d;
+        try { d = JSON.parse(rt.text); }
+        catch(_) { throw new Error("Challonge non-JSON (HTTP " + rt.status + "): " + rt.text.slice(0, 120)); }
+        if (!d.access_token)
+          throw new Error("Challonge rejected (HTTP " + rt.status + "): " + (d.error_description || d.error || rt.text.slice(0, 120)));
+        return { token: d.access_token, username: null };
       });
     })
     .then(function(result) {
-      signalResult({ ok: true, token: result.token, username: result.username });
+      if (result.username) return signalResult({ ok: true, token: result.token, username: result.username });
+      showProgress("Looking up username…");
+      return resolveUsername(result.token).then(function(u) {
+        signalResult({ ok: true, token: result.token, username: u });
+      });
     })
     .catch(function(finalErr) {
       var raw = (finalErr && finalErr.message) ? finalErr.message : String(finalErr);
       var friendly = raw;
       if (raw.indexOf("Failed to fetch") !== -1 || raw.indexOf("Load failed") !== -1 || raw.indexOf("NetworkError") !== -1)
-        friendly = "Network error: couldn't reach the server. Check your connection and try again.";
+        friendly = "CORS block — browser can't reach Challonge token endpoint directly. Both exchange paths failed.";
       signalResult({ ok: false, error: friendly, detail: raw });
     });
   } catch(outerErr) {
@@ -10676,7 +10737,7 @@ function useChallongeAuth() {
       const oauthState = Math.random().toString(36).slice(2) + Date.now().toString(36);
       try { sessionStorage.setItem("ncblast-oauth-state", oauthState); } catch(_) {}
       const res = await fetch(
-        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&state=${encodeURIComponent(oauthState)}`,
+        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&state=${encodeURIComponent(oauthState)}`,
         { signal: AbortSignal.timeout(8000) }
       );
       const data = await res.json();
@@ -10806,7 +10867,7 @@ function useChallongeAuthPopup() {
     try {
       const oauthState = sessionIdRef.current + "." + Math.random().toString(36).slice(2);
       const res = await fetch(
-        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent("https://ncblast.pages.dev")}&response_type=token&state=${encodeURIComponent(oauthState)}`,
+        `${OVERLAY_WORKER}/auth/authorize-url?redirect_uri=${encodeURIComponent("https://ncblast.pages.dev")}&response_type=code&state=${encodeURIComponent(oauthState)}`,
         { signal: AbortSignal.timeout(8000) }
       );
       const data = await res.json();
