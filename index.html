@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: DeckOrderScreen added between shuffle timer and battle — drag to set play order; r1/r2 auto-advance after each battle; combo picker row removed; TO button removed -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: DeckOrderScreen fix — replaced needsOrder boolean with phase==="order" so the order screen is driven by the existing phase system; non-TM Start Match → phase=order; TM dismissTimer → phase=order -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12206,7 +12206,6 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const [matchStartIdx,setMatchStartIdx] = useState(0);
   const [picker,setPicker] = useState(null);
   const [qcEditMenu,setQcEditMenu] = useState(null); // { qi, qc } — which quick combo is showing the part-edit menu
-  const [needsOrder,setNeedsOrder] = useState(false); // true → show DeckOrderScreen before battle
   const [pcEditMenu,setPcEditMenu] = useState(null); // { ci, combo } — which prev combo is showing the part-edit menu
   const [pickerHistory,setPickerHistory] = useState([]); // stack of previous picker states for undo
   const openPicker = (val) => {
@@ -12454,7 +12453,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
         else {
           if(config.tm){const loserPi=1-scoringPi;setSideAssign({pickPriority:loserPi});setSidePicker({priority:loserPi});}
-          else { setNeedsOrder(true); }
+          else { setPhase("order"); }
           setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(1);
           setLerStrikes([0,0]);
         }
@@ -12476,11 +12475,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
       else {
         if(config.tm){ const loserPi=1-scoringPi; setSideAssign({pickPriority:loserPi}); setSidePicker({priority:loserPi}); }
-        else { setNeedsOrder(true); }
+        else { setPhase("order"); }
         setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(1);
       }
     } else {
-      if(nu1.length>=3&&nu2.length>=3){ if(config.tm){ setShuffleTimer("active"); pushOverlay({shuffling:true}); } else { setUsed1([]); setUsed2([]); setShuf(s=>s+1); setNeedsOrder(true); } }
+      if(nu1.length>=3&&nu2.length>=3){ if(config.tm){ setShuffleTimer("active"); pushOverlay({shuffling:true}); } else { setUsed1([]); setUsed2([]); setShuf(s=>s+1); setPhase("order"); } }
       // stay on battle screen — combos reset via setR1/setR2 null above
     }
   };
@@ -12669,7 +12668,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     }
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(1);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setUnderwayStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);setNeedsOrder(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
+  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(1);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setUnderwayStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
 
   // ── Handoff helpers ──────────────────────────────────────────────────────
   // Generates a random 6-character token (letters + numbers)
@@ -12954,6 +12953,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       setAbandonConfirm(true); return;
     }
     // Layer 6: in battle with no battles yet — safe to go back to deck
+    if(phase==="order"){ setPhase("deck"); setDeckReview(true); return; }
     if(phase==="battle"){ setPhase("deck"); setDeckReview(true); return; }
     // Layer 8: in deck phase — back to pick
     if(phase==="deck"){ setPhase("pick"); return; }
@@ -14219,9 +14219,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           // Save decks to registry NOW so the next judge can see them immediately,
           // before the match has finished. Also saved again at match completion as a backup.
           pushDeckToRegistry();
-          if(config.tm){setSideAssign({pickPriority:null});setSidePicker({priority:null});}
-          else{setNeedsOrder(true);}
-          setPhase("battle");
+          if(config.tm){setSideAssign({pickPriority:null});setSidePicker({priority:null});setPhase("battle");}
+          else{setPhase("order");}
         }}>Start Match ⚔️</button>
         {!allDone&&<p style={S.hint}>Tap any missing part above to continue</p>}
       </div>
@@ -14230,16 +14229,16 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
 
   // ── Shuffle Timer Screen ────────────────────────────────────────────────────
   if(shuffleTimer){
-    const dismissTimer = () => { pushOverlay({shuffling:false}); setShuffleTimer(null); setUsed1([]); setUsed2([]); if(shuffleTimer==="active"){ setShuf(s=>s+1); } setNeedsOrder(true); };
+    const dismissTimer = () => { pushOverlay({shuffling:false}); setShuffleTimer(null); setUsed1([]); setUsed2([]); if(shuffleTimer==="active"){ setShuf(s=>s+1); } setPhase("order"); };
     return <ShuffleTimerInner onDismiss={dismissTimer} p1={p1} p2={p2} sets={sets} pts={pts} need={need} curSet={curSet} config={config} swapped={swapped}/>;
   }
 
-  // ── Deck Order Screen — after shuffle, before battle ──────────────────────
-  if(needsOrder&&phase==="battle"&&!shuffleTimer&&!sidePicker&&!sideAssign){
+  // ── Deck Order Screen — phase driven, clean and unambiguous ─────────────
+  if(phase==="order"){
     return <DeckOrderScreen
       p1={p1} p2={p2} d1={d1} d2={d2} setD1={setD1} setD2={setD2}
       curSet={curSet} shuf={shuf} swapped={swapped}
-      onConfirm={()=>{ setNeedsOrder(false); setR1(0); setR2(0); }}
+      onConfirm={()=>{ setPhase("battle"); setR1(0); setR2(0); }}
     />;
   }
 
