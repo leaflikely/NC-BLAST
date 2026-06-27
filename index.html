@@ -10280,22 +10280,51 @@ const { useState, useEffect, useRef, useCallback } = React;
 
     const WORKER = "https://challonge-proxy.danny61734.workers.dev";
 
-    // Step 1: Get credentials from Worker (Worker never touches connect.challonge.com
-    // directly — Cloudflare's bot protection blocks Worker IPs from that domain).
-    // Step 2: Browser does the token exchange directly with connect.challonge.com.
-    // Step 3: Browser calls Worker /auth/me to resolve the Challonge username.
-    fetch(WORKER + "/auth/exchange-params", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(params) {
-      if (!params.client_id) {
-        signalResult({ ok: false, error: params.error || "Could not get exchange credentials" });
-        return;
-      }
-      // Browser calls connect.challonge.com directly — bypasses Worker IP bot block
+    // Show live progress so we can see exactly which step stalls
+    function showProgress(msg) {
+      document.documentElement.style.display = "";
+      document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#94a3b8;padding:32px;text-align:center;"><p style="font-size:16px;margin:0;color:#94a3b8">' + msg + '</p></div>';
+      document.documentElement.style.display = "";
+    }
+
+    function resolveUsername(token) {
+      // Try Worker /auth/me (which tries connect userinfo then api.challonge.com)
+      return fetch(WORKER + "/auth/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: token }),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(me) {
+        if (me.ok && me.username) return me.username;
+        throw new Error(me.error || "Username lookup failed");
+      });
+    }
+
+    function tryWorkerExchange() {
+      // Attempt 1: Worker does the token exchange directly
+      // (Previously bot-blocked, but worth retrying with connect.challonge.com)
+      showProgress("Step 1/3: Contacting server...");
+      return fetch(WORKER + "/auth/exchange", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code, redirect_uri: "https://ncblast.pages.dev" }),
+      })
+      .then(function(r) {
+        if (!r.ok) throw new Error("Worker exchange HTTP " + r.status);
+        return r.text();
+      })
+      .then(function(t) {
+        var d;
+        try { d = JSON.parse(t); } catch(_) { throw new Error("Worker exchange non-JSON: " + t.slice(0,100)); }
+        if (!d.ok || !d.access_token) throw new Error(d.error || "No token in worker exchange response");
+        return d.access_token;
+      });
+    }
+
+    function tryBrowserExchange(params) {
+      // Attempt 2: Browser calls connect.challonge.com directly
+      showProgress("Step 2/3: Exchanging authorization code...");
       var tokenBody = "grant_type=authorization_code" +
         "&code=" + encodeURIComponent(code) +
         "&client_id=" + encodeURIComponent(params.client_id) +
@@ -10307,39 +10336,40 @@ const { useState, useEffect, useRef, useCallback } = React;
         body: tokenBody,
       })
       .then(function(r) {
-        if (!r.ok) {
-          return r.text().then(function(t) {
-            signalResult({ ok: false, error: "Token exchange HTTP " + r.status + ": " + t.slice(0,200) });
-            return null;
-          });
-        }
-        return r.json();
-      })
-      .then(function(d) {
-        if (!d) return; // already handled above
-        if (!d.access_token) {
-          signalResult({ ok: false, error: d.error_description || d.error || "Token exchange failed: " + JSON.stringify(d).slice(0,200) });
-          return;
-        }
-        var token = d.access_token;
-        // Ask the Worker to resolve the username via connect.challonge.com/oauth/userinfo
-        return fetch(WORKER + "/auth/me", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: token }),
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(me) {
-          if (me.ok && me.username) {
-            signalResult({ ok: true, token: token, username: me.username });
-          } else {
-            signalResult({ ok: false, error: me.error || "Couldn't read username from Challonge." });
-          }
-        })
-        .catch(function(e) {
-          signalResult({ ok: false, error: "Username lookup failed: " + (e.message || "network error") });
+        return r.text().then(function(t) {
+          var d;
+          try { d = JSON.parse(t); } catch(_) { throw new Error("Token endpoint non-JSON (HTTP " + r.status + "): " + t.slice(0,150)); }
+          if (!r.ok || !d.access_token) throw new Error(d.error_description || d.error || "No access_token (HTTP " + r.status + "): " + t.slice(0,150));
+          return d.access_token;
         });
       });
+    }
+
+    // Get exchange-params from Worker first (needed for browser exchange fallback)
+    showProgress("Completing login...");
+    fetch(WORKER + "/auth/exchange-params", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: code }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(exchangeParams) {
+      // Try Worker-direct first, fall back to browser-direct if it fails
+      return tryWorkerExchange()
+        .catch(function(workerErr) {
+          showProgress("Step 2/3: Trying browser exchange... (" + workerErr.message + ")");
+          if (!exchangeParams.client_id) throw new Error("exchange-params missing client_id: " + (exchangeParams.error || JSON.stringify(exchangeParams).slice(0,100)));
+          return tryBrowserExchange(exchangeParams);
+        });
+    })
+    .then(function(token) {
+      showProgress("Step 3/3: Looking up username...");
+      return resolveUsername(token).then(function(username) {
+        signalResult({ ok: true, token: token, username: username });
+      });
+    })
+    .catch(function(finalErr) {
+      signalResult({ ok: false, error: finalErr.message || String(finalErr) });
     });
   } catch(outerErr) {
     // Last-resort catch — write the error to localStorage so the org view can display it
