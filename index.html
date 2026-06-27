@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: Match underway check non-blocking (Build Decks no longer waits for Challonge attribution); 4s timeout on underway fetch; prev combos get hold-to-edit-one-part (pcEditMenu) matching quick combo behavior -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: DeckOrderScreen added between shuffle timer and battle — drag to set play order; r1/r2 auto-advance after each battle; combo picker row removed; TO button removed -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12067,6 +12067,123 @@ function ShuffleTimerInner({onDismiss, p1, p2, sets, pts, need, curSet, config, 
   );
 }
 
+
+/* ═══════════════════════════════════════
+   DECK ORDER SCREEN
+   Between shuffle timer and battle: judge sets each player's play order.
+   Drag cards up/down to reorder — top card goes first.
+═══════════════════════════════════════ */
+function DeckOrderScreen({p1,p2,d1,d2,setD1,setD2,curSet,shuf,swapped,onConfirm}) {
+  const [lOrder,setLOrder] = React.useState([0,1,2]);
+  const [rOrder,setROrder] = React.useState([0,1,2]);
+  const [drag,setDrag]     = React.useState(null);
+  // drag = {side:"l"|"r", fromVisIdx, toVisIdx, startY}
+
+  // Match display order to battle screen: swapped → left=p2
+  const leftName  = swapped?p2:p1;  const rightName  = swapped?p1:p2;
+  const leftDeck  = swapped?d2:d1;  const rightDeck  = swapped?d1:d2;
+  const leftColor = swapped?"#DC2626":"#2563EB"; const rightColor = swapped?"#2563EB":"#DC2626";
+  const leftSet   = swapped?setD2:setD1;         const rightSet   = swapped?setD1:setD2;
+
+  const CARD_H = 76; // estimated card+gap height for drag threshold
+
+  const visOrder = (order, side) => {
+    if (!drag||drag.side!==side||drag.fromVisIdx===drag.toVisIdx) return order;
+    const n=[...order]; const [item]=n.splice(drag.fromVisIdx,1); n.splice(drag.toVisIdx,0,item); return n;
+  };
+
+  const onDown = (side,visIdx,e) => {
+    e.preventDefault();
+    try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}
+    setDrag({side,fromVisIdx:visIdx,toVisIdx:visIdx,startY:e.clientY});
+  };
+  const onMove = (side,e) => {
+    if(!drag||drag.side!==side)return;
+    const to=Math.max(0,Math.min(2,Math.round(drag.fromVisIdx+(e.clientY-drag.startY)/CARD_H)));
+    if(to!==drag.toVisIdx) setDrag(d=>d?{...d,toVisIdx:to}:d);
+  };
+  const onUp = (side,setter,order,e) => {
+    if(!drag||drag.side!==side)return;
+    if(drag.fromVisIdx!==drag.toVisIdx){
+      setter(o=>{const n=[...o];const[item]=n.splice(drag.fromVisIdx,1);n.splice(drag.toVisIdx,0,item);return n;});
+    }
+    setDrag(null);
+  };
+
+  const confirm = () => {
+    leftSet(lOrder.map(i=>leftDeck[i]));
+    rightSet(rOrder.map(i=>rightDeck[i]));
+    onConfirm();
+  };
+
+  const col = (side,name,deck,order,setter,color) => {
+    const vo = visOrder(order,side);
+    const draggedDeckIdx = drag?.side===side ? order[drag.fromVisIdx] : -1;
+    return (
+      <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
+        <p style={{fontSize:11,fontWeight:900,color,textAlign:"center",margin:"0 0 10px",
+                   letterSpacing:0.5,textTransform:"uppercase"}}>{name}</p>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {vo.map((deckIdx,visIdx)=>{
+            const c=deck[deckIdx];
+            const isHeld=deckIdx===draggedDeckIdx;
+            return (
+              <div key={deckIdx}
+                onPointerDown={e=>onDown(side,visIdx,e)}
+                onPointerMove={e=>onMove(side,e)}
+                onPointerUp={e=>onUp(side,setter,order,e)}
+                onPointerCancel={()=>setDrag(null)}
+                onContextMenu={e=>e.preventDefault()}
+                style={{padding:"10px 10px",borderRadius:11,
+                  border:`2px solid ${isHeld?color+"A0":color+"35"}`,
+                  background:isHeld?color+"18":"var(--surface2)",
+                  display:"flex",alignItems:"center",gap:8,
+                  cursor:isHeld?"grabbing":"grab",touchAction:"none",
+                  userSelect:"none",WebkitUserSelect:"none",WebkitTouchCallout:"none",
+                  boxShadow:isHeld?`0 6px 20px ${color}28`:"none",
+                  transition:isHeld?"none":"background 0.1s,border-color 0.1s,box-shadow 0.1s"}}>
+                <span style={{fontSize:14,fontWeight:900,color,opacity:0.55,
+                              minWidth:16,textAlign:"center",flexShrink:0}}>{visIdx+1}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"var(--text-primary)",
+                               lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",
+                               textOverflow:"ellipsis"}}>{c?.blade||"—"}</div>
+                  {c?.ratchet&&<div style={{fontSize:10,color:"var(--text-muted)",lineHeight:1.3}}>{c.ratchet}</div>}
+                  <div style={{fontSize:10,color:"var(--text-muted)",lineHeight:1.3}}>{c?.bit||""}</div>
+                </div>
+                <div style={{fontSize:18,opacity:0.22,color:"var(--text-muted)",lineHeight:1,flexShrink:0}}>⠿</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"var(--bg-solid)",display:"flex",
+                 flexDirection:"column",boxSizing:"border-box",fontFamily:"'Outfit',sans-serif"}}>
+      <div style={{padding:"14px 16px 12px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
+        <p style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:1.5,
+                   textTransform:"uppercase",margin:"0 0 3px"}}>SET {curSet} · SHUFFLE {shuf}</p>
+        <h2 style={{fontSize:18,fontWeight:900,color:"var(--text-primary)",margin:"0 0 2px"}}>Set Deck Order</h2>
+        <p style={{fontSize:11,color:"var(--text-muted)",margin:0}}>Drag beys into play order — top goes first</p>
+      </div>
+      <div style={{flex:1,display:"flex",gap:10,padding:"14px 12px",overflow:"hidden"}}>
+        {col("l",leftName,leftDeck,lOrder,setLOrder,leftColor)}
+        {col("r",rightName,rightDeck,rOrder,setROrder,rightColor)}
+      </div>
+      <div style={{padding:"12px 14px 16px",borderTop:"1px solid var(--border)",flexShrink:0}}>
+        <button onClick={confirm} style={{width:"100%",padding:"16px 0",borderRadius:14,border:"none",
+          background:"linear-gradient(135deg,#7C3AED,#4C1D95)",color:"#fff",fontSize:16,fontWeight:900,
+          fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
+          Start Battle ⚔️
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsStatus,setSheetsStatus,onBack,onMainMenu,onDownloadCSV,onSendSheets,onOpenLib,dark,toggleDark,challongeSlug,challongeParticipants}) {
   const [phase,setPhase] = useState("pick");
   const [abandonConfirm,setAbandonConfirm] = useState(false);
@@ -12089,6 +12206,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const [matchStartIdx,setMatchStartIdx] = useState(0);
   const [picker,setPicker] = useState(null);
   const [qcEditMenu,setQcEditMenu] = useState(null); // { qi, qc } — which quick combo is showing the part-edit menu
+  const [needsOrder,setNeedsOrder] = useState(false); // true → show DeckOrderScreen before battle
   const [pcEditMenu,setPcEditMenu] = useState(null); // { ci, combo } — which prev combo is showing the part-edit menu
   const [pickerHistory,setPickerHistory] = useState([]); // stack of previous picker states for undo
   const openPicker = (val) => {
@@ -12336,6 +12454,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
         else {
           if(config.tm){const loserPi=1-scoringPi;setSideAssign({pickPriority:loserPi});setSidePicker({priority:loserPi});}
+          else { setNeedsOrder(true); }
           setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(1);
           setLerStrikes([0,0]);
         }
@@ -12347,17 +12466,21 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     // Any score change clears all LER strikes
     setLerStrikes([0,0]);
     const nu1=[...used1,r1]; const nu2=[...used2,r2];
-    setUsed1(nu1); setUsed2(nu2); setR1(null); setR2(null);
+    setUsed1(nu1); setUsed2(nu2);
+    // Auto-advance to next unused bey; null if all used (shuffle triggers)
+    const nxR1=[0,1,2].find(i=>!nu1.includes(i)); const nxR2=[0,1,2].find(i=>!nu2.includes(i));
+    setR1(nxR1!==undefined?nxR1:null); setR2(nxR2!==undefined?nxR2:null);
     if(setWon){
       const ns=[sets[0],sets[1]]; ns[scoringPi]+=1; setSets(ns);
       setSetScores(ss=>[...ss,{p1:np[0],p2:np[1]}]);
       if(ns[scoringPi]>=need){ saveCombosToStorage(); setPhase("over"); }
       else {
         if(config.tm){ const loserPi=1-scoringPi; setSideAssign({pickPriority:loserPi}); setSidePicker({priority:loserPi}); }
+        else { setNeedsOrder(true); }
         setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(1);
       }
     } else {
-      if(nu1.length>=3&&nu2.length>=3){ if(config.tm){ setShuffleTimer("active"); pushOverlay({shuffling:true}); } else { setUsed1([]); setUsed2([]); setShuf(s=>s+1); } }
+      if(nu1.length>=3&&nu2.length>=3){ if(config.tm){ setShuffleTimer("active"); pushOverlay({shuffling:true}); } else { setUsed1([]); setUsed2([]); setShuf(s=>s+1); setNeedsOrder(true); } }
       // stay on battle screen — combos reset via setR1/setR2 null above
     }
   };
@@ -12546,7 +12669,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     }
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(1);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setUnderwayStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
+  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(1);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setUnderwayStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);setNeedsOrder(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
 
   // ── Handoff helpers ──────────────────────────────────────────────────────
   // Generates a random 6-character token (letters + numbers)
@@ -14097,6 +14220,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
           // before the match has finished. Also saved again at match completion as a backup.
           pushDeckToRegistry();
           if(config.tm){setSideAssign({pickPriority:null});setSidePicker({priority:null});}
+          else{setNeedsOrder(true);}
           setPhase("battle");
         }}>Start Match ⚔️</button>
         {!allDone&&<p style={S.hint}>Tap any missing part above to continue</p>}
@@ -14106,8 +14230,17 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
 
   // ── Shuffle Timer Screen ────────────────────────────────────────────────────
   if(shuffleTimer){
-    const dismissTimer = () => { pushOverlay({shuffling:false}); setShuffleTimer(null); setUsed1([]); setUsed2([]); if(shuffleTimer==="active"){ setShuf(s=>s+1); } };
+    const dismissTimer = () => { pushOverlay({shuffling:false}); setShuffleTimer(null); setUsed1([]); setUsed2([]); if(shuffleTimer==="active"){ setShuf(s=>s+1); } setNeedsOrder(true); };
     return <ShuffleTimerInner onDismiss={dismissTimer} p1={p1} p2={p2} sets={sets} pts={pts} need={need} curSet={curSet} config={config} swapped={swapped}/>;
+  }
+
+  // ── Deck Order Screen — after shuffle, before battle ──────────────────────
+  if(needsOrder&&phase==="battle"&&!shuffleTimer&&!sidePicker&&!sideAssign){
+    return <DeckOrderScreen
+      p1={p1} p2={p2} d1={d1} d2={d2} setD1={setD1} setD2={setD2}
+      curSet={curSet} shuf={shuf} swapped={swapped}
+      onConfirm={()=>{ setNeedsOrder(false); setR1(0); setR2(0); }}
+    />;
   }
 
   // ── Side Assignment Modal ──────────────────────────────────────────────────
@@ -14492,14 +14625,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
               🔀
             </button>
           )}
-          {/* Contact TO button — only shown when a Challonge match is active */}
-          {challongeMatchId&&challongeSlug&&(
-            <button type="button" onClick={()=>setPingModal(true)}
-              style={{flex:1,height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",background:"#DC2626",border:"none",color:"#fff",borderRadius:bp(6),fontSize:bf(9),fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:"pointer",lineHeight:1,minWidth:0}}
-              title="Contact Tournament Organizer">
-              🚨 TO
-            </button>
-          )}
+
           {/* Layout edit mode toggle */}
           <button type="button" onClick={()=>setLayoutEditMode(m=>!m)}
             style={{flex:1,height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",background:layoutEditMode?"#7C3AED":"none",border:layoutEditMode?"none":`1px solid ${config.tm?"rgba(255,255,255,0.3)":"var(--border2)"}`,color:layoutEditMode?"#fff":config.tm?"#E9D5FF":"var(--text-muted)",borderRadius:bp(6),fontSize:bf(13),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",lineHeight:1,position:"relative",zIndex:160,minWidth:0}}
@@ -14644,40 +14770,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       )}
       {!layoutEditMode&&<div style={{height:bp(5),flexShrink:0}}/>}
 
-      {/* ── Combo picker row — between combo display and finish buttons ── */}
-      <div ref={comboPickerSectionRef} style={{height:sectionH.picker||COMBO_ROW_H,display:"flex",gap:bp(6),padding:`0 ${bp(10)}px`,flexShrink:0,marginBottom:0}}>
-        {[dA,dB].map(side=>(
-          <div key={side.ci} style={{flex:1,display:"flex",gap:bp(4),minWidth:0}}>
-            {side.deck.map((combo,i)=>{
-              const isUsed = side.used.includes(i);
-              const isSel = side.ri===i;
-              return (
-                <div key={i} style={{flex:"1 1 0",minWidth:0,height:"100%",position:"relative"}}>
-                  <ScaledBtn
-                    disabled={isUsed}
-                    onClick={()=>{ if(!isUsed){ const newIdx=isSel?null:i; side.setRi(newIdx); if(side.ci===0) pushOverlay({p1ComboIdx:newIdx}); else pushOverlay({p2ComboIdx:newIdx}); } }}
-                    baseStyle={{position:"absolute",inset:0,borderRadius:bp(7),border:`2px solid ${isUsed?"var(--border)":isSel?side.cl:"var(--border2)"}`,background:isUsed?"var(--surface2)":isSel?side.cl:"var(--surface)",color:isUsed?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)",fontFamily:"'Outfit',sans-serif",cursor:isUsed?"not-allowed":"pointer",opacity:isUsed?0.4:1,display:"flex",flexDirection:"column",overflow:"hidden",width:"100%",height:"100%",boxSizing:"border-box"}}
-                    renderContent={frac=>(
-                      <>
-                        {isUsed&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none"}}><svg width="18" height="18" viewBox="0 0 40 40" fill="none" stroke="#DC2626" strokeWidth="4" strokeLinecap="round" opacity="0.5"><line x1="8" y1="8" x2="32" y2="32"/><line x1="32" y1="8" x2="8" y2="32"/></svg></div>}
-                        <ComboLabel
-                          blade={combo.blade||null}
-                          ratchet={null}
-                          bit={combo.bit||null}
-                          color={isUsed?"var(--text-disabled)":isSel?"#fff":"var(--text-primary)"}
-                          color2={isUsed?"var(--text-disabled)":isSel?"rgba(255,255,255,0.8)":"var(--text-secondary)"}
-                          empty={!combo.blade}
-                          emptyText="—"
-                        />
-                      </>
-                    )}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
+      {/* Combo picker removed — order set in DeckOrderScreen, r1/r2 auto-advance after each battle */}
 
       {/* ── Height slider: below combo picker — resizes combo picker ↕ finish buttons only ── */}
       {layoutEditMode&&(
@@ -14802,7 +14895,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                     renderContent={frac=>(
                       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
                         <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:canConfirm?0:1,pointerEvents:"none"}}>
-                          <FitText ratio={0.40} style={{fontWeight:900}}>{side.ri!==null?"Pick finish ↑":"Pick combo ↑"}</FitText>
+                          <FitText ratio={0.40} style={{fontWeight:900}}>Pick finish ↑</FitText>
                         </div>
                         <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:canConfirm?1:0,pointerEvents:"none"}}>
                           <FitText ratio={0.40} style={{fontWeight:900}}>{`Confirm ${(side.pending?.name||"").replace(/ Finish$/,"").replace(/ Error$/,"")}`}</FitText>
