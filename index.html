@@ -10336,7 +10336,18 @@ const { useState, useEffect, useRef, useCallback } = React;
         });
       });
     });
-  } catch(_) {}
+  } catch(outerErr) {
+    // Last-resort catch — write the error to localStorage so the org view can display it
+    try {
+      localStorage.setItem("ncblast-oauth-result-mobile", JSON.stringify({
+        ok: false,
+        error: "IIFE crash: " + (outerErr && outerErr.message ? outerErr.message : String(outerErr)),
+        ts: Date.now()
+      }));
+      document.documentElement.style.display = "";
+      document.body.innerHTML = '<div style="font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f172a;color:#94a3b8;padding:32px;text-align:center;"><div style="font-size:48px;margin-bottom:16px">❌</div><p style="font-size:18px;font-weight:800;color:#ef4444;margin:0 0 8px">Login error</p><p style="font-size:13px;margin:0;color:#64748b">' + (outerErr && outerErr.message ? outerErr.message : String(outerErr)) + '</p></div>';
+    } catch(_) {}
+  }
 })();
 /* ═══════════════════════════════════════
    VIEWPORT SCALE
