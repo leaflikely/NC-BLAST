@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: DeckOrderScreen redesigned — vertical stack (top/bottom players), click-to-order (tap combos in play order), sequential locking (bottom disabled until top done), reset by tapping any ordered combo, Start Match button -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: DeckOrderScreen v3 — vertical column of 6 combo buttons, either player can go first, in-progress lock prevents interleaving, done players can always reset -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12074,88 +12074,95 @@ function ShuffleTimerInner({onDismiss, p1, p2, sets, pts, need, curSet, config, 
    Drag cards up/down to reorder — top card goes first.
 ═══════════════════════════════════════ */
 function DeckOrderScreen({p1,p2,d1,d2,setD1,setD2,curSet,shuf,swapped,onConfirm}) {
-  // Click-to-order: tap combos in the desired play order (1st tap = plays first).
-  // Top player always goes first; bottom is locked until top is complete.
-  // Tapping any combo when order is already set resets that player's picks.
-  const [topOrder, setTopOrder] = React.useState([]); // deck indices in click order
+  // Click-to-order: tap combos in desired play order (1st tap = plays first).
+  // No initial lock — either player can go first.
+  // Once a player has 1+ picks in progress (not yet done), the other side locks
+  // so the judge finishes one player at a time. A done player can always reset.
+  const [topOrder, setTopOrder] = React.useState([]);
   const [botOrder, setBotOrder] = React.useState([]);
 
-  // Match display order to battle screen (swapped flag mirrors the swap button)
-  const topName  = swapped ? p2 : p1;   const botName  = swapped ? p1 : p2;
-  const topDeck  = swapped ? d2 : d1;   const botDeck  = swapped ? d1 : d2;
-  const topColor = swapped ? "#DC2626" : "#2563EB";
-  const botColor = swapped ? "#2563EB" : "#DC2626";
-  const topSet   = swapped ? setD2 : setD1;
-  const botSet   = swapped ? setD1 : setD2;
+  const topName  = swapped?p2:p1;  const botName  = swapped?p1:p2;
+  const topDeck  = swapped?d2:d1;  const botDeck  = swapped?d1:d2;
+  const topColor = swapped?"#DC2626":"#2563EB";
+  const botColor = swapped?"#2563EB":"#DC2626";
+  const topSet   = swapped?setD2:setD1;
+  const botSet   = swapped?setD1:setD2;
 
-  const topDone  = topOrder.length === 3;
-  const botDone  = botOrder.length === 3;
-  const bothDone = topDone && botDone;
+  const topDone = topOrder.length===3;
+  const botDone = botOrder.length===3;
+
+  // Lock the other side while one side has partial picks in progress
+  const topInProgress = topOrder.length>0 && !topDone;
+  const botInProgress = botOrder.length>0 && !botDone;
+  const topLocked = botInProgress && !topDone;
+  const botLocked = topInProgress && !botDone;
 
   const handleTop = (deckIdx) => {
-    if (topDone) {
-      // Reset top (and bot, since bot locks when top isn't done)
-      setTopOrder([]); setBotOrder([]); return;
-    }
-    if (topOrder.includes(deckIdx)) {
-      setTopOrder([]); return; // tap an already-picked combo → reset
-    }
-    setTopOrder(prev => [...prev, deckIdx]);
+    if(topLocked) return;
+    if(topDone){ setTopOrder([]); return; }
+    if(topOrder.includes(deckIdx)){ setTopOrder([]); return; }
+    setTopOrder(p=>[...p,deckIdx]);
   };
-
   const handleBot = (deckIdx) => {
-    if (!topDone) return; // locked until top is set
-    if (botDone) { setBotOrder([]); return; }
-    if (botOrder.includes(deckIdx)) { setBotOrder([]); return; }
-    setBotOrder(prev => [...prev, deckIdx]);
+    if(botLocked) return;
+    if(botDone){ setBotOrder([]); return; }
+    if(botOrder.includes(deckIdx)){ setBotOrder([]); return; }
+    setBotOrder(p=>[...p,deckIdx]);
   };
 
   const confirm = () => {
-    if (!bothDone) return;
-    topSet(topOrder.map(i => topDeck[i]));
-    botSet(botOrder.map(i => botDeck[i]));
+    if(!topDone||!botDone) return;
+    topSet(topOrder.map(i=>topDeck[i]));
+    botSet(botOrder.map(i=>botDeck[i]));
     onConfirm();
   };
 
-  const renderPlayer = (name, deck, order, isDone, color, isLocked, onClick) => (
-    <div style={{padding:"16px 14px 18px", borderBottom:"1px solid var(--border)"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-        <p style={{fontSize:14,fontWeight:900,color,margin:0}}>{name}</p>
+  const renderSection = (name, deck, order, isDone, color, isLocked, onClick) => (
+    <>
+      {/* Player name header */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+                   padding:"10px 16px 8px",background:"var(--surface)",
+                   borderBottom:"1px solid var(--border)"}}>
+        <p style={{fontSize:13,fontWeight:900,color,margin:0,letterSpacing:0.2}}>{name}</p>
         <p style={{fontSize:10,color:"var(--text-faint)",margin:0,fontStyle:"italic"}}>
-          {isDone ? "✓ tap any to reset" : isLocked ? "locked — set above first" : order.length===0 ? "tap in play order" : `${3-order.length} left`}
+          {isDone?"✓ tap to reset":isLocked?"wait…":order.length===0?"tap in play order":`${3-order.length} left`}
         </p>
       </div>
-      <div style={{display:"flex",gap:8}}>
-        {deck.map((combo,deckIdx) => {
-          const pos = order.indexOf(deckIdx); // -1 = not yet picked
-          const isPicked = pos !== -1;
-          return (
-            <button key={deckIdx} onClick={()=>onClick(deckIdx)} disabled={isLocked}
-              style={{flex:1,padding:"10px 6px",borderRadius:11,
-                border:`2px solid ${isPicked?color:isLocked?"var(--border)":color+"40"}`,
-                background:isPicked?color+"1A":isLocked?"var(--surface3)":"var(--surface2)",
-                color:isLocked?"var(--text-disabled)":"var(--text-primary)",
-                cursor:isLocked?"not-allowed":"pointer",opacity:isLocked?0.4:1,
-                display:"flex",flexDirection:"column",alignItems:"center",
-                justifyContent:"center",gap:2,minHeight:72,
-                fontFamily:"'Outfit',sans-serif",position:"relative"}}>
-              {isPicked && (
-                <span style={{position:"absolute",top:4,right:5,
-                  fontSize:11,fontWeight:900,color,
-                  background:color+"25",borderRadius:5,padding:"1px 5px",lineHeight:1.4}}>
-                  {pos+1}
-                </span>
-              )}
-              <span style={{fontSize:12,fontWeight:800,textAlign:"center",
-                            wordBreak:"break-word",lineHeight:1.2,maxWidth:"100%",
-                            padding:"0 2px"}}>{combo.blade||"—"}</span>
-              {combo.ratchet && <span style={{fontSize:10,opacity:0.7}}>{combo.ratchet}</span>}
-              <span style={{fontSize:10,opacity:0.65}}>{combo.bit||""}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
+      {/* Three combo buttons stacked */}
+      {deck.map((combo,deckIdx)=>{
+        const pos=order.indexOf(deckIdx);
+        const isPicked=pos!==-1;
+        return (
+          <button key={deckIdx} onClick={()=>onClick(deckIdx)} disabled={isLocked}
+            style={{width:"100%",padding:"13px 16px",display:"flex",alignItems:"center",gap:14,
+              border:"none",borderBottom:"1px solid var(--border)",
+              background:isPicked?color+"14":isLocked?"var(--surface3)":"var(--surface2)",
+              color:isLocked?"var(--text-disabled)":"var(--text-primary)",
+              cursor:isLocked?"not-allowed":"pointer",opacity:isLocked?0.4:1,
+              fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
+            {/* Position badge */}
+            <div style={{width:26,height:26,borderRadius:7,flexShrink:0,
+              background:isPicked?color:"var(--border)",
+              display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <span style={{fontSize:13,fontWeight:900,
+                            color:isPicked?"#fff":"var(--text-faint)",lineHeight:1}}>
+                {isPicked?pos+1:"·"}
+              </span>
+            </div>
+            {/* Combo name */}
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:800,
+                           color:isPicked?color:"var(--text-primary)",lineHeight:1.2}}>
+                {combo.blade||"—"}
+              </div>
+              <div style={{fontSize:11,color:"var(--text-muted)",lineHeight:1.4}}>
+                {combo.ratchet?`${combo.ratchet} · ${combo.bit}`:(combo.bit||"")}
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </>
   );
 
   return (
@@ -12167,15 +12174,16 @@ function DeckOrderScreen({p1,p2,d1,d2,setD1,setD2,curSet,shuf,swapped,onConfirm}
         <h2 style={{fontSize:17,fontWeight:900,color:"var(--text-primary)",margin:0}}>Set Deck Order</h2>
       </div>
       <div style={{flex:1,overflowY:"auto"}}>
-        {renderPlayer(topName,topDeck,topOrder,topDone,topColor,false,handleTop)}
-        {renderPlayer(botName,botDeck,botOrder,botDone,botColor,!topDone,handleBot)}
+        {renderSection(topName,topDeck,topOrder,topDone,topColor,topLocked,handleTop)}
+        {renderSection(botName,botDeck,botOrder,botDone,botColor,botLocked,handleBot)}
       </div>
       <div style={{padding:"12px 14px 16px",borderTop:"1px solid var(--border)",flexShrink:0}}>
-        <button onClick={confirm} disabled={!bothDone}
+        <button onClick={confirm} disabled={!topDone||!botDone}
           style={{width:"100%",padding:"16px 0",borderRadius:14,border:"none",
-            background:bothDone?"linear-gradient(135deg,#7C3AED,#4C1D95)":"var(--border2)",
+            background:(topDone&&botDone)?"linear-gradient(135deg,#7C3AED,#4C1D95)":"var(--border2)",
             color:"#fff",fontSize:16,fontWeight:900,
-            fontFamily:"'Outfit',sans-serif",cursor:bothDone?"pointer":"not-allowed"}}>
+            fontFamily:"'Outfit',sans-serif",
+            cursor:(topDone&&botDone)?"pointer":"not-allowed"}}>
           Start Match
         </button>
       </div>
