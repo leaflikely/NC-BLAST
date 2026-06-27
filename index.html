@@ -10235,6 +10235,12 @@ const { useState, useEffect, useRef, useCallback } = React;
     document.documentElement.style.display = "none";
     window.history.replaceState({}, document.title, "/");
 
+    // Safety net: if anything goes wrong and signalResult never fires,
+    // restore the page after 12 seconds so it doesn't stay permanently blank.
+    var blankSafetyTimer = setTimeout(function() {
+      document.documentElement.style.display = "";
+    }, 12000);
+
     // The OAuth state param is "sessionId.randomSuffix" — sessionId routes the
     // message back to the right hook instance (prevents two popups cross-firing).
     const oauthStateParam = params.get("state") || "";
@@ -10243,6 +10249,7 @@ const { useState, useEffect, useRef, useCallback } = React;
     const isPopup = !!window.opener;
 
     const signalResult = (msg) => {
+      clearTimeout(blankSafetyTimer);
       if (isPopup) {
         // Desktop: send via postMessage and close immediately
         try { window.opener.postMessage({ type: "ncblast-oauth-result", sessionId, ...msg }, window.location.origin); } catch(_) {}
@@ -10284,22 +10291,29 @@ const { useState, useEffect, useRef, useCallback } = React;
         return;
       }
       // Browser calls connect.challonge.com directly — bypasses Worker IP bot block
-      var body = new URLSearchParams({
-        grant_type: "authorization_code",
-        code: code,
-        client_id: params.client_id,
-        client_secret: params.client_secret,
-        redirect_uri: params.redirect_uri,
-      });
+      var tokenBody = "grant_type=authorization_code" +
+        "&code=" + encodeURIComponent(code) +
+        "&client_id=" + encodeURIComponent(params.client_id) +
+        "&client_secret=" + encodeURIComponent(params.client_secret) +
+        "&redirect_uri=" + encodeURIComponent(params.redirect_uri);
       return fetch("https://connect.challonge.com/oauth/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" },
-        body: body.toString(),
+        body: tokenBody,
       })
-      .then(function(r) { return r.json(); })
+      .then(function(r) {
+        if (!r.ok) {
+          return r.text().then(function(t) {
+            signalResult({ ok: false, error: "Token exchange HTTP " + r.status + ": " + t.slice(0,200) });
+            return null;
+          });
+        }
+        return r.json();
+      })
       .then(function(d) {
+        if (!d) return; // already handled above
         if (!d.access_token) {
-          signalResult({ ok: false, error: d.error_description || d.error || "Token exchange failed" });
+          signalResult({ ok: false, error: d.error_description || d.error || "Token exchange failed: " + JSON.stringify(d).slice(0,200) });
           return;
         }
         var token = d.access_token;
