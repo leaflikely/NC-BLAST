@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: UXE tab added to parts library (Bullet Griffon, Cutter Shinobi, Rampart Aegis, Valor Bison); UXE_BLADES constant replaces NO_RATCHET_BLADES hardcoded list; all UXE blades skip ratchet in deck builder -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: ShuffleOrderScreen v4 — auto-completes 3rd combo on 2nd click; drag-to-reorder when order is set (hasMoved threshold); undo to shuffle boundary presets previous order (orderPreset/presetOrder); drag handle shows on ordered combos -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11900,45 +11900,98 @@ function ComboLabel({blade, ratchet, bit, color, color2, empty, emptyText}) {
    Timer is a compact countdown in the header (no clock, no pause).
    Expired → non-blocking red banner only. Deck order can be set at any time.
 ═══════════════════════════════════════ */
-function ShuffleOrderScreen({showTimer,onConfirm,p1,p2,d1,d2,setD1,setD2,sets,pts,need,curSet,shuf,config,swapped}) {
-  // Timer
-  const TOTAL = 60;
-  const [seconds,setSeconds] = React.useState(TOTAL);
-  const [expired,setExpired] = React.useState(false);
-  const timerRef = React.useRef(null);
+function ShuffleOrderScreen({showTimer,onConfirm,p1,p2,d1,d2,setD1,setD2,sets,pts,need,curSet,shuf,config,swapped,presetOrder}) {
+  // ── Timer ──────────────────────────────────────────────────────────────────
+  const TOTAL=60;
+  const [seconds,setSeconds]=React.useState(TOTAL);
+  const [expired,setExpired]=React.useState(false);
+  const timerRef=React.useRef(null);
   React.useEffect(()=>{
-    if(!showTimer) return;
-    timerRef.current = setInterval(()=>{
-      setSeconds(s=>{ if(s<=1){ clearInterval(timerRef.current); setExpired(true); return 0; } return s-1; });
+    if(!showTimer)return;
+    timerRef.current=setInterval(()=>{
+      setSeconds(s=>{if(s<=1){clearInterval(timerRef.current);setExpired(true);return 0;}return s-1;});
     },1000);
-    return ()=>clearInterval(timerRef.current);
+    return()=>clearInterval(timerRef.current);
   },[showTimer]);
-  const timerColor = seconds>20?"#22C55E":seconds>10?"#F59E0B":"#EF4444";
+  const timerColor=seconds>20?"#22C55E":seconds>10?"#F59E0B":"#EF4444";
 
-  // Deck order state
-  const [topOrder,setTopOrder] = React.useState([]);
-  const [botOrder,setBotOrder] = React.useState([]);
+  // ── Deck order ──────────────────────────────────────────────────────────────
+  // presetOrder=true → coming from undo; previous order already in d1/d2,
+  // so start both as [0,1,2] (ordered) so judge can drag-adjust or tap to reset.
+  const [topOrder,setTopOrder]=React.useState(()=>presetOrder?[0,1,2]:[]);
+  const [botOrder,setBotOrder]=React.useState(()=>presetOrder?[0,1,2]:[]);
+  const [drag,setDrag]=React.useState(null);
+  // drag={side:"top"|"bot", fromIdx, toIdx, startY, hasMoved}
+
   const topName=swapped?p2:p1; const botName=swapped?p1:p2;
   const topDeck=swapped?d2:d1; const botDeck=swapped?d1:d2;
   const topColor=swapped?"#DC2626":"#2563EB"; const botColor=swapped?"#2563EB":"#DC2626";
   const topSet=swapped?setD2:setD1; const botSet=swapped?setD1:setD2;
-  const topDone=topOrder.length===3; const botDone=botOrder.length===3;
-  const topInProgress=topOrder.length>0&&!topDone; const botInProgress=botOrder.length>0&&!botDone;
-  const topLocked=botInProgress&&!topDone; const botLocked=topInProgress&&!botDone;
-  const handleTop=(i)=>{ if(topLocked)return; if(topDone){setTopOrder([]);return;} if(topOrder.includes(i)){setTopOrder([]);return;} setTopOrder(p=>[...p,i]); };
-  const handleBot=(i)=>{ if(botLocked)return; if(botDone){setBotOrder([]);return;} if(botOrder.includes(i)){setBotOrder([]);return;} setBotOrder(p=>[...p,i]); };
-  const canStart=topDone&&botDone;
-  const confirm=()=>{ if(!canStart)return; topSet(topOrder.map(i=>topDeck[i])); botSet(botOrder.map(i=>botDeck[i])); onConfirm(); };
 
-  // Score summary
+  const topDone=topOrder.length===3; const botDone=botOrder.length===3;
+  const topInProgress=topOrder.length>0&&!topDone;
+  const botInProgress=botOrder.length>0&&!botDone;
+  const topLocked=botInProgress&&!topDone;
+  const botLocked=topInProgress&&!botDone;
+
+  // Click handler — auto-completes 3rd combo after 2nd click
+  const clickCombo=(order,setOrder,isLocked,isDone)=>(i)=>{
+    if(isLocked)return;
+    if(isDone){setOrder([]);return;} // tap on done player = reset
+    if(order.includes(i)){setOrder([]);return;} // tap already-picked = reset
+    const next=[...order,i];
+    if(next.length===2){
+      const rem=[0,1,2].find(x=>!next.includes(x));
+      setOrder([...next,rem]); // auto-select the only remaining combo
+    } else {
+      setOrder(next);
+    }
+  };
+
+  // Drag handlers (only active when player's order is set)
+  const CARD_H=68;
+  const startDrag=(side,idx,e)=>{
+    e.preventDefault();
+    try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}
+    setDrag({side,fromIdx:idx,toIdx:idx,startY:e.clientY,hasMoved:false});
+  };
+  const moveDrag=(side,e)=>{
+    if(!drag||drag.side!==side)return;
+    const dy=e.clientY-drag.startY;
+    const toIdx=Math.max(0,Math.min(2,Math.round(drag.fromIdx+dy/CARD_H)));
+    setDrag(d=>d?{...d,toIdx,hasMoved:d.hasMoved||Math.abs(dy)>8}:d);
+  };
+  const endDrag=(side,setter,e)=>{
+    if(!drag||drag.side!==side)return;
+    if(drag.hasMoved&&drag.fromIdx!==drag.toIdx){
+      setter(o=>{const n=[...o];const[item]=n.splice(drag.fromIdx,1);n.splice(drag.toIdx,0,item);return n;});
+    } else if(!drag.hasMoved){
+      setter([]); // tap while done = reset to empty (re-pick)
+    }
+    setDrag(null);
+  };
+  const getVisOrder=(order,side)=>{
+    if(!drag||drag.side!==side||drag.fromIdx===drag.toIdx)return order;
+    const n=[...order];const[item]=n.splice(drag.fromIdx,1);n.splice(drag.toIdx,0,item);return n;
+  };
+
+  const canStart=topDone&&botDone;
+  const confirm=()=>{
+    if(!canStart)return;
+    topSet(topOrder.map(i=>topDeck[i]));
+    botSet(botOrder.map(i=>botDeck[i]));
+    onConfirm();
+  };
+
+  // ── Score summary ──────────────────────────────────────────────────────────
   const summary=()=>{
-    if(!p1||!p2) return null;
-    const isBO3=config&&config.bo>1; const ptLimit=config&&config.pts>0?config.pts:null;
-    const lName=swapped?p2:p1; const rName=swapped?p1:p2;
-    const lSets=swapped?sets[1]:sets[0]; const rSets=swapped?sets[0]:sets[1];
-    const lPts=swapped?pts[1]:pts[0]; const rPts=swapped?pts[0]:pts[1];
-    const lCol=swapped?"#EF4444":"#3B82F6"; const rCol=swapped?"#3B82F6":"#EF4444";
-    return (
+    if(!p1||!p2)return null;
+    const isBO3=config&&config.bo>1;const ptLimit=config&&config.pts>0?config.pts:null;
+    const lName=swapped?p2:p1;const rName=swapped?p1:p2;
+    const lSets=swapped?sets[1]:sets[0];const rSets=swapped?sets[0]:sets[1];
+    const lPts=swapped?pts[1]:pts[0];const rPts=swapped?pts[0]:pts[1];
+    const lCol=swapped?"#EF4444":"#3B82F6";const rCol=swapped?"#3B82F6":"#EF4444";
+    return(
       <div style={{margin:"10px 14px 4px",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:12,overflow:"hidden"}}>
         {isBO3&&(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px 5px",borderBottom:"1px solid var(--border2)"}}>
           <span style={{fontSize:11,fontWeight:700,color:lCol,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:100}}>{lName}</span>
@@ -11964,40 +12017,83 @@ function ShuffleOrderScreen({showTimer,onConfirm,p1,p2,d1,d2,setD1,setD2,sets,pt
     );
   };
 
-  // Player order section (vertical combo buttons)
-  const section=(name,deck,order,isDone,color,isLocked,onClick)=>(
-    <>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px 8px",background:"var(--surface)",borderBottom:"1px solid var(--border)"}}>
-        <p style={{fontSize:13,fontWeight:900,color,margin:0}}>{name}</p>
-        <p style={{fontSize:10,color:"var(--text-faint)",margin:0,fontStyle:"italic"}}>
-          {isDone?"✓ tap to reset":isLocked?"wait…":order.length===0?"tap in play order":`${3-order.length} left`}
-        </p>
-      </div>
-      {deck.map((combo,deckIdx)=>{
-        const pos=order.indexOf(deckIdx); const isPicked=pos!==-1;
-        return (
-          <button key={deckIdx} onClick={()=>onClick(deckIdx)} disabled={isLocked}
-            style={{width:"100%",padding:"13px 16px",display:"flex",alignItems:"center",gap:14,
-              border:"none",borderBottom:"1px solid var(--border)",
-              background:isPicked?color+"14":isLocked?"var(--surface3)":"var(--surface2)",
-              color:isLocked?"var(--text-disabled)":"var(--text-primary)",
-              cursor:isLocked?"not-allowed":"pointer",opacity:isLocked?0.4:1,
-              fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
-            <div style={{width:26,height:26,borderRadius:7,flexShrink:0,
-              background:isPicked?color:"var(--border)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <span style={{fontSize:13,fontWeight:900,color:isPicked?"#fff":"var(--text-faint)",lineHeight:1}}>{isPicked?pos+1:"·"}</span>
-            </div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:14,fontWeight:800,color:isPicked?color:"var(--text-primary)",lineHeight:1.2}}>{combo.blade||"—"}</div>
-              <div style={{fontSize:11,color:"var(--text-muted)",lineHeight:1.4}}>{combo.ratchet?`${combo.ratchet} · ${combo.bit}`:(combo.bit||"")}</div>
-            </div>
-          </button>
-        );
-      })}
-    </>
-  );
+  // ── Player section ──────────────────────────────────────────────────────────
+  const section=(name,deck,order,setter,isDone,color,isLocked)=>{
+    const side=name===topName?"top":"bot";
+    const visOrder=isDone?getVisOrder(order,side):null;
+    const statusText=isDone
+      ?"drag to reorder · tap to reset"
+      :isLocked?"wait…"
+      :order.length===0?"tap in play order"
+      :order.length===2?"auto-selecting last…"
+      :`${3-order.length} left`;
+    return(
+      <>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px 8px",background:"var(--surface)",borderBottom:"1px solid var(--border)"}}>
+          <p style={{fontSize:13,fontWeight:900,color,margin:0}}>{name}</p>
+          <p style={{fontSize:10,color:isDone?"var(--text-faint)":"var(--text-faint)",margin:0,fontStyle:"italic"}}>{statusText}</p>
+        </div>
+        {isDone
+          // ── ORDER SET: draggable cards ──────────────────────────────────────
+          ? visOrder.map((deckIdx,visIdx)=>{
+              const combo=deck[deckIdx];
+              const isDraggingThis=drag?.side===side&&drag.fromIdx===visIdx&&drag.hasMoved;
+              return(
+                <div key={deckIdx}
+                  onPointerDown={e=>startDrag(side,visIdx,e)}
+                  onPointerMove={e=>moveDrag(side,e)}
+                  onPointerUp={e=>endDrag(side,setter,e)}
+                  onPointerCancel={()=>setDrag(null)}
+                  onContextMenu={e=>e.preventDefault()}
+                  style={{width:"100%",padding:"13px 16px",display:"flex",alignItems:"center",gap:14,
+                    borderBottom:"1px solid var(--border)",
+                    background:isDraggingThis?color+"22":color+"14",
+                    cursor:isDraggingThis?"grabbing":"grab",
+                    touchAction:"none",userSelect:"none",WebkitUserSelect:"none",
+                    boxShadow:isDraggingThis?`0 4px 16px ${color}28`:"none",
+                    transition:isDraggingThis?"none":"background 0.1s,box-shadow 0.1s",
+                    fontFamily:"'Outfit',sans-serif",boxSizing:"border-box"}}>
+                  <div style={{width:26,height:26,borderRadius:7,flexShrink:0,
+                    background:color,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <span style={{fontSize:13,fontWeight:900,color:"#fff",lineHeight:1}}>{visIdx+1}</span>
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:800,color,lineHeight:1.2}}>{combo.blade||"—"}</div>
+                    <div style={{fontSize:11,color:"var(--text-muted)",lineHeight:1.4}}>{combo.ratchet?`${combo.ratchet} · ${combo.bit}`:(combo.bit||"")}</div>
+                  </div>
+                  <div style={{fontSize:18,opacity:0.3,color:"var(--text-muted)",lineHeight:1,flexShrink:0}}>⠿</div>
+                </div>
+              );
+            })
+          // ── ORDER NOT SET: tappable buttons ──────────────────────────────────
+          : deck.map((combo,deckIdx)=>{
+              const pos=order.indexOf(deckIdx);const isPicked=pos!==-1;
+              const handler=clickCombo(order,setter,isLocked,isDone);
+              return(
+                <button key={deckIdx} onClick={()=>handler(deckIdx)} disabled={isLocked}
+                  style={{width:"100%",padding:"13px 16px",display:"flex",alignItems:"center",gap:14,
+                    border:"none",borderBottom:"1px solid var(--border)",
+                    background:isPicked?color+"14":isLocked?"var(--surface3)":"var(--surface2)",
+                    color:isLocked?"var(--text-disabled)":"var(--text-primary)",
+                    cursor:isLocked?"not-allowed":"pointer",opacity:isLocked?0.4:1,
+                    fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
+                  <div style={{width:26,height:26,borderRadius:7,flexShrink:0,
+                    background:isPicked?color:"var(--border)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <span style={{fontSize:13,fontWeight:900,color:isPicked?"#fff":"var(--text-faint)",lineHeight:1}}>{isPicked?pos+1:"·"}</span>
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:800,color:isPicked?color:"var(--text-primary)",lineHeight:1.2}}>{combo.blade||"—"}</div>
+                    <div style={{fontSize:11,color:"var(--text-muted)",lineHeight:1.4}}>{combo.ratchet?`${combo.ratchet} · ${combo.bit}`:(combo.bit||"")}</div>
+                  </div>
+                </button>
+              );
+            })
+        }
+      </>
+    );
+  };
 
-  return (
+  return(
     <div style={{position:"fixed",inset:0,background:"var(--bg-solid)",display:"flex",flexDirection:"column",boxSizing:"border-box",fontFamily:"'Outfit',sans-serif",zIndex:600}}>
       {expired&&(
         <div style={{background:"#DC2626",padding:"7px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
@@ -12019,8 +12115,8 @@ function ShuffleOrderScreen({showTimer,onConfirm,p1,p2,d1,d2,setD1,setD2,sets,pt
       </div>
       <div style={{flex:1,overflowY:"auto"}}>
         {summary()}
-        {section(topName,topDeck,topOrder,topDone,topColor,topLocked,handleTop)}
-        {section(botName,botDeck,botOrder,botDone,botColor,botLocked,handleBot)}
+        {section(topName,topDeck,topOrder,setTopOrder,topDone,topColor,topLocked)}
+        {section(botName,botDeck,botOrder,setBotOrder,botDone,botColor,botLocked)}
       </div>
       <div style={{padding:"12px 14px 16px",borderTop:"1px solid var(--border)",flexShrink:0}}>
         <button onClick={confirm} disabled={!canStart}
@@ -12058,6 +12154,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const [picker,setPicker] = useState(null);
   const [qcEditMenu,setQcEditMenu] = useState(null); // { qi, qc } — which quick combo is showing the part-edit menu
   const [pcEditMenu,setPcEditMenu] = useState(null); // { ci, combo } — which prev combo is showing the part-edit menu
+  const [orderPreset,setOrderPreset] = useState(false); // true → ShuffleOrderScreen pre-fills from restored undo deck order
   const [pickerHistory,setPickerHistory] = useState([]); // stack of previous picker states for undo
   const openPicker = (val) => {
     setPickerHistory(h => picker ? [...h, picker] : h);
@@ -12354,6 +12451,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     // re-show ShuffleOrderScreen so the judge can re-set the deck order.
     if(l._u1.length===0&&l._u2.length===0){
       setR1(null); setR2(null);
+      setOrderPreset(true); // restore previous shuffle order on the order screen
       setPhase("order");
     } else {
       // Auto-advance to next unused bey (combo picker was removed)
@@ -12833,7 +12931,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       setAbandonConfirm(true); return;
     }
     // Layer 6: in battle with no battles yet — safe to go back to deck
-    if(phase==="order"){ setPhase("deck"); setDeckReview(true); return; }
+    if(phase==="order"){ setPhase("deck"); setDeckReview(true); setOrderPreset(false); return; }
     if(phase==="battle"){ setPhase("deck"); setDeckReview(true); return; }
     // Layer 8: in deck phase — back to pick
     if(phase==="deck"){ setPhase("pick"); return; }
@@ -14115,11 +14213,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       showTimer={!!shuffleTimer}
       onConfirm={()=>{
         if(shuffleTimer){ pushOverlay({shuffling:false}); if(shuffleTimer==="active"){ setUsed1([]); setUsed2([]); setShuf(s=>s+1); } setShuffleTimer(null); }
-        setPhase("battle"); setR1(0); setR2(0);
+        setOrderPreset(false); setPhase("battle"); setR1(0); setR2(0);
       }}
       p1={p1} p2={p2} d1={d1} d2={d2} setD1={setD1} setD2={setD2}
       sets={sets} pts={pts} need={need} curSet={curSet} shuf={displayShuf}
-      config={config} swapped={swapped}
+      config={config} swapped={swapped} presetOrder={orderPreset}
     />;
   }
 
@@ -14215,6 +14313,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       if(last._d2) setD2(last._d2);
       if(last._u1.length===0&&last._u2.length===0){
         setR1(null); setR2(null);
+        setOrderPreset(true);
         setPhase("order");
       } else {
         const nxR1=[0,1,2].find(i=>!last._u1.includes(i));
