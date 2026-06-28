@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: Match history shows combos (p1Combo/p2Combo per battle); undo/redo restored: _d1/_d2 deck snapshots in log, deck restored on undo, auto-advance r1/r2, ShuffleOrderScreen re-shown on shuffle boundary undo -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: UXE tab added to parts library (Bullet Griffon, Cutter Shinobi, Rampart Aegis, Valor Bison); UXE_BLADES constant replaces NO_RATCHET_BLADES hardcoded list; all UXE blades skip ratchet in deck builder -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10528,11 +10528,12 @@ function mergeWithDefaults(saved) {
     cxe_blades: mergeList(CXE_BLADES,        savedCx.cxe_blades),
     cxe_over:   mergeList(CXE_OVER_BLADES,   savedCx.cxe_over),
     assist:     mergeList(CX_ASSISTS,         savedCx.assist),
+    uxe:        mergeList(UXE_BLADES,         savedCx.uxe),
   };
   // parts.blades stays as the flat union of everything (used by deck builder logic)
   const allCxParts = [...new Set([
     ...cx.crossover, ...cx.gear_chips, ...cx.cx_blades,
-    ...cx.cxe_blades, ...cx.cxe_over, ...cx.assist
+    ...cx.cxe_blades, ...cx.cxe_over, ...cx.assist, ...cx.uxe
   ])];
   return {
     blades: mergeList(DEFAULT_PARTS.blades, [...(saved.blades||[]), ...allCxParts]),
@@ -10573,7 +10574,9 @@ const PENALTY = [
   {id:"LER",p:1,name:"Launch Error",penalty:true},
 ];
 
-const NO_RATCHET_BLADES = ["Bullet Griffon"];
+// UXE Expanded line: blade + bit only, no ratchet slot.
+const UXE_BLADES = ["Bullet Griffon","Cutter Shinobi","Rampart Aegis","Valor Bison"];
+const NO_RATCHET_BLADES = UXE_BLADES;
 const emptyCombo = () => ({blade:null,ratchet:null,bit:null});
 const comboStr = (c) => {
   if(!c?.blade||!c?.bit) return "—";
@@ -10663,6 +10666,7 @@ function LibraryManager({parts,setParts,onClose}) {
     {k:"cxe_blades",   l:"CXE Blades",      c:"#7C3AED", src:"blades"},
     {k:"cxe_over",     l:"CXE Over",        c:"#7C3AED", src:"blades"},
     {k:"assist",       l:"Assist Blades",   c:"#7C3AED", src:"blades"},
+    {k:"uxe",          l:"UXE",             c:"#D97706", src:"blades"},
     {k:"ratchets",     l:"Ratchets",        c:"#1D4ED8", src:"ratchets"},
     {k:"bits",         l:"Bits",            c:"#15803D", src:"bits"},
   ];
@@ -10699,7 +10703,7 @@ function LibraryManager({parts,setParts,onClose}) {
     } finally { setSaving(false); }
   };
 
-  const CX_TAB_KEYS = ["crossover","gear_chips","cx_blades","cxe_blades","cxe_over","assist"];
+  const CX_TAB_KEYS = ["crossover","gear_chips","cx_blades","cxe_blades","cxe_over","assist","uxe"];
   const requestAdd = () => {
     const v = inp.trim();
     if (!v) return;
@@ -10773,8 +10777,9 @@ function LibraryManager({parts,setParts,onClose}) {
   const libCxeBlades = cx.cxe_blades || CXE_BLADES;
   const libCxeOver   = cx.cxe_over   || CXE_OVER_BLADES;
   const libAssists   = cx.assist     || CX_ASSISTS;
-  // Standard blades = everything in parts.blades not claimed by any CX/crossover category
-  const allCxNames    = new Set([...libChips,...libCxBlades,...libCxeBlades,...libCxeOver,...libAssists]);
+  const libUxeBlades = cx.uxe        || UXE_BLADES;
+  // Standard blades = everything in parts.blades not claimed by any CX/crossover/UXE category
+  const allCxNames    = new Set([...libChips,...libCxBlades,...libCxeBlades,...libCxeOver,...libAssists,...libUxeBlades]);
   const allXoverNames = new Set(libCrossover);
   const standardBlades = parts.blades.filter(p=>!allCxNames.has(p)&&!allXoverNames.has(p));
   const tabCount = (t) => {
@@ -10785,6 +10790,7 @@ function LibraryManager({parts,setParts,onClose}) {
     if(t.k==="cxe_blades")return libCxeBlades.length;
     if(t.k==="cxe_over")  return libCxeOver.length;
     if(t.k==="assist")    return libAssists.length;
+    if(t.k==="uxe")       return libUxeBlades.length;
     return parts[t.src]?.length || 0;
   };
 
@@ -10900,6 +10906,7 @@ function LibraryManager({parts,setParts,onClose}) {
             cxe_blades: {list:libCxeBlades,   label:"CXE Blades",         empty:"No CXE blades in library"},
             cxe_over:   {list:libCxeOver,     label:"CXE Over Blades",    empty:"No CXE Over Blades in library"},
             assist:     {list:libAssists,     label:"Assist Blades",      empty:"No assist blades in library"},
+            uxe:        {list:libUxeBlades,   label:"UXE Blades",         empty:"No UXE blades in library"},
           };
           if(cxTabMap[tab]){
             const {list, label, empty} = cxTabMap[tab];
