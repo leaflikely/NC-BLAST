@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: org view pairings auto-poll every 30s (bypass_cache=1) so completed matches clear automatically without manual ↻ — fixes ghost matches in swiss tracker and match call helper -->
+<!-- NC BLAST index.html | last updated: 2026-06-28 | session: Record Deck button enlarged + filled; Own x2/x3 score buttons labeled (No Contact) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14158,7 +14158,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                 <p style={{fontSize:13,fontWeight:800,color:pl.cl,margin:0}}>{pl.name}</p>
                 {!pl.deck.every(comboReady)&&(
                   <button onClick={()=>openPicker({who:pl.who,slot:0,cat:"blade"})}
-                    style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:7,border:`1.5px solid ${pl.cl}`,background:`${pl.cl}14`,color:pl.cl,fontFamily:"'Outfit',sans-serif",cursor:"pointer",whiteSpace:"nowrap"}}>
+                    style={{fontSize:15,fontWeight:800,padding:"10px 20px",borderRadius:10,border:`2.5px solid ${pl.cl}`,background:pl.cl,color:"#fff",fontFamily:"'Outfit',sans-serif",cursor:"pointer",whiteSpace:"nowrap",boxShadow:`0 2px 8px ${pl.cl}55`,letterSpacing:0.3}}>
                     Record Deck →
                   </button>
                 )}
@@ -14855,7 +14855,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
               {[...FINISH,...PENALTY.filter(f=>f.id!=="LER")].map(f=>{
                 const isSel = side.pending?.id===f.id;
                 const isFinish = !f.penalty;
-                const label = f.id==="OF2"?"Own ×2":f.id==="OF3"?"Own ×3":f.name;
+                const label = f.id==="OF2"?"Own ×2 (No Contact)":f.id==="OF3"?"Own ×3 (No Contact)":f.name;
                 const active = bothCombosSelected && !layoutEditMode;
                 return (
                   <ScaledBtn key={f.id}
@@ -15699,31 +15699,7 @@ function OrgApp({onSwitchRole}) {
     pollLive();
     liveSlotRef.current = setInterval(pollLive, 5000);
 
-    // Auto-refresh pairings every 30s so completed matches disappear without
-    // requiring the TO to manually press ↻.  Uses bypass_cache=1 so we always
-    // get the true Challonge state, not a stale KV snapshot.
-    const pollPairings = async () => {
-      try {
-        const data = await workerGet(`/pairings?slug=${encodeURIComponent(slug)}&bypass_cache=1`);
-        const fresh = data.pairings || [];
-        setPairings(fresh);
-        // Prune completed matches out of station queues and the locked set so
-        // the match call helper stops listing matches that are already done.
-        const doneIds = new Set(fresh.filter(m => m.state === 'complete').map(m => m.id));
-        if (doneIds.size > 0) {
-          setStationQueues(prev => {
-            const n = {};
-            Object.keys(prev).forEach(l => { n[l] = (prev[l]||[]).filter(id => !doneIds.has(id)); });
-            return n;
-          });
-          setLockedMatchIds(prev => { const n = new Set(prev); doneIds.forEach(id => n.delete(id)); return n; });
-        }
-      } catch(_) {} // network hiccup — try again next tick
-    };
-    // First refresh 5 s after mount (lets the initial cached load settle first),
-    // then every 30 s thereafter.
-    const pairPollFirst    = setTimeout(pollPairings, 5000);
-    const pairPollInterval = setInterval(pollPairings, 30000);
+    // Poll judge presence every 15s
 
     // Long-poll for pings
     const pollPings = async () => {
@@ -15747,8 +15723,6 @@ function OrgApp({onSwitchRole}) {
 
     return () => {
       clearInterval(liveSlotRef.current);
-      clearTimeout(pairPollFirst);
-      clearInterval(pairPollInterval);
       clearTimeout(pingPollRef.current);
     };
   }, [slug]);
