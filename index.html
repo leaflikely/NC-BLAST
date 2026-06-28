@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: ShuffleOrderScreen v4 — auto-completes 3rd combo on 2nd click; drag-to-reorder when order is set (hasMoved threshold); undo to shuffle boundary presets previous order (orderPreset/presetOrder); drag handle shows on ordered combos -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: drag animation follows finger (translateY + CSS transition on other cards); top strip: Log/Undo/Redo/Swap labeled center buttons, compact square 📡/🔀/⠿/☀ right buttons -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11953,13 +11953,13 @@ function ShuffleOrderScreen({showTimer,onConfirm,p1,p2,d1,d2,setD1,setD2,sets,pt
   const startDrag=(side,idx,e)=>{
     e.preventDefault();
     try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}
-    setDrag({side,fromIdx:idx,toIdx:idx,startY:e.clientY,hasMoved:false});
+    setDrag({side,fromIdx:idx,toIdx:idx,startY:e.clientY,currentY:e.clientY,hasMoved:false});
   };
   const moveDrag=(side,e)=>{
     if(!drag||drag.side!==side)return;
     const dy=e.clientY-drag.startY;
     const toIdx=Math.max(0,Math.min(2,Math.round(drag.fromIdx+dy/CARD_H)));
-    setDrag(d=>d?{...d,toIdx,hasMoved:d.hasMoved||Math.abs(dy)>8}:d);
+    setDrag(d=>d?{...d,toIdx,currentY:e.clientY,hasMoved:d.hasMoved||Math.abs(dy)>8}:d);
   };
   const endDrag=(side,setter,e)=>{
     if(!drag||drag.side!==side)return;
@@ -11970,9 +11970,17 @@ function ShuffleOrderScreen({showTimer,onConfirm,p1,p2,d1,d2,setD1,setD2,sets,pt
     }
     setDrag(null);
   };
-  const getVisOrder=(order,side)=>{
-    if(!drag||drag.side!==side||drag.fromIdx===drag.toIdx)return order;
-    const n=[...order];const[item]=n.splice(drag.fromIdx,1);n.splice(drag.toIdx,0,item);return n;
+  // Drag visual: use original order + translateY so the dragged card truly follows the finger.
+  // Other cards shift via CSS translate when the dragged card passes over them.
+  const getDragOffset=(side,visIdx)=>{
+    if(!drag||drag.side!==side||!drag.hasMoved) return 0;
+    const dy=drag.currentY-drag.startY;
+    const clampedDy=Math.max((-drag.fromIdx-0.5)*CARD_H, Math.min((2-drag.fromIdx+0.5)*CARD_H, dy));
+    if(visIdx===drag.fromIdx) return clampedDy; // dragged card follows finger
+    // Other cards shift to fill the gap
+    if(drag.toIdx>drag.fromIdx && visIdx>drag.fromIdx && visIdx<=drag.toIdx) return -CARD_H;
+    if(drag.toIdx<drag.fromIdx && visIdx<drag.fromIdx && visIdx>=drag.toIdx) return CARD_H;
+    return 0;
   };
 
   const canStart=topDone&&botDone;
@@ -12020,7 +12028,6 @@ function ShuffleOrderScreen({showTimer,onConfirm,p1,p2,d1,d2,setD1,setD2,sets,pt
   // ── Player section ──────────────────────────────────────────────────────────
   const section=(name,deck,order,setter,isDone,color,isLocked)=>{
     const side=name===topName?"top":"bot";
-    const visOrder=isDone?getVisOrder(order,side):null;
     const statusText=isDone
       ?"drag to reorder · tap to reset"
       :isLocked?"wait…"
@@ -12034,10 +12041,11 @@ function ShuffleOrderScreen({showTimer,onConfirm,p1,p2,d1,d2,setD1,setD2,sets,pt
           <p style={{fontSize:10,color:isDone?"var(--text-faint)":"var(--text-faint)",margin:0,fontStyle:"italic"}}>{statusText}</p>
         </div>
         {isDone
-          // ── ORDER SET: draggable cards ──────────────────────────────────────
-          ? visOrder.map((deckIdx,visIdx)=>{
+          // ── ORDER SET: draggable cards — follow-the-finger animation ─────────
+          ? order.map((deckIdx,visIdx)=>{
               const combo=deck[deckIdx];
               const isDraggingThis=drag?.side===side&&drag.fromIdx===visIdx&&drag.hasMoved;
+              const offset=getDragOffset(side,visIdx);
               return(
                 <div key={deckIdx}
                   onPointerDown={e=>startDrag(side,visIdx,e)}
@@ -12047,11 +12055,13 @@ function ShuffleOrderScreen({showTimer,onConfirm,p1,p2,d1,d2,setD1,setD2,sets,pt
                   onContextMenu={e=>e.preventDefault()}
                   style={{width:"100%",padding:"13px 16px",display:"flex",alignItems:"center",gap:14,
                     borderBottom:"1px solid var(--border)",
-                    background:isDraggingThis?color+"22":color+"14",
+                    background:isDraggingThis?color+"28":color+"14",
                     cursor:isDraggingThis?"grabbing":"grab",
                     touchAction:"none",userSelect:"none",WebkitUserSelect:"none",
-                    boxShadow:isDraggingThis?`0 4px 16px ${color}28`:"none",
-                    transition:isDraggingThis?"none":"background 0.1s,box-shadow 0.1s",
+                    boxShadow:isDraggingThis?`0 8px 24px ${color}40`:"none",
+                    transform:`translateY(${offset}px)${isDraggingThis?" scale(1.03)":""}`,
+                    transition:isDraggingThis?"box-shadow 0.1s":"transform 0.12s ease,box-shadow 0.1s",
+                    zIndex:isDraggingThis?10:1,position:"relative",
                     fontFamily:"'Outfit',sans-serif",boxSizing:"border-box"}}>
                   <div style={{width:26,height:26,borderRadius:7,flexShrink:0,
                     background:color,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -14615,49 +14625,76 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         <button style={{...S.back,marginBottom:0,flexShrink:0,fontSize:bf(12),color:config.tm?"#E9D5FF":undefined}} onClick={goBack}>{IC.back}</button>
         {config.bo>1&&<span style={{...S.pill,flexShrink:0,margin:0,fontSize:bf(9),...(config.tm?{background:"rgba(255,255,255,0.18)",color:"#E9D5FF",border:"1px solid rgba(255,255,255,0.2)"}:{})}}>{dA.sets}–{dB.sets}</span>}
 
-        {/* Centre: 📡 + 🔀 (handoff, tm only) + ⠿ — flex:1 so they fill the gap between pills and icon buttons */}
-        <div style={{flex:1,display:"flex",alignItems:"center",gap:bp(4),minWidth:0}}>
-          {/* Stream overlay button */}
-          <button type="button" onClick={()=>setOverlayModal(true)}
-            style={{flex:1,height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",background:overlaySlot>0?"#1D4ED8":"none",border:overlaySlot>0?"none":`1px solid ${config.tm?"rgba(255,255,255,0.3)":"var(--border2)"}`,color:overlaySlot>0?"#fff":config.tm?"#E9D5FF":"var(--text-muted)",borderRadius:bp(6),fontSize:bf(overlaySlot>0?9:13),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",lineHeight:1,minWidth:0}}
-            title="Stream overlay">
-            {overlaySlot>0?`📡 ${overlaySlot}`:"📡"}
-          </button>
-          {/* Handoff QR button — tournament mode only, requires an active Challonge match */}
-          {config.tm&&challongeMatchId&&(
-            <button type="button" onClick={()=>{ if(sharedJudges) { setHandoffMethodPicker(true); } else { startHandoff(); } }}
-              style={{flex:1,height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",color:"#E9D5FF",borderRadius:bp(6),fontSize:bf(13),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",lineHeight:1,minWidth:0}}
-              title="Hand off match to another judge">
-              🔀
-            </button>
-          )}
-
-          {/* Layout edit mode toggle */}
-          <button type="button" onClick={()=>setLayoutEditMode(m=>!m)}
-            style={{flex:1,height:bp(26),display:"flex",alignItems:"center",justifyContent:"center",background:layoutEditMode?"#7C3AED":"none",border:layoutEditMode?"none":`1px solid ${config.tm?"rgba(255,255,255,0.3)":"var(--border2)"}`,color:layoutEditMode?"#fff":config.tm?"#E9D5FF":"var(--text-muted)",borderRadius:bp(6),fontSize:bf(13),fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",lineHeight:1,position:"relative",zIndex:160,minWidth:0}}
-            title={layoutEditMode?"Exit layout edit":"Adjust layout heights"}>
-            ⠿
-          </button>
+        {/* Centre: labeled action buttons — flex:1, clearly visible for judges */}
+        <div style={{flex:1,display:"flex",alignItems:"center",gap:bp(3),minWidth:0}}>
+          {(()=>{
+            const canUndo=log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE";
+            const btnBase={display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+              gap:1,flex:1,height:bp(30),borderRadius:bp(6),border:`1px solid ${config.tm?"rgba(255,255,255,0.25)":"var(--border2)"}`,
+              background:config.tm?"rgba(255,255,255,0.1)":"var(--surface2)",
+              fontFamily:"'Outfit',sans-serif",cursor:"pointer"};
+            const lbl={fontSize:Math.max(6,bf(8)),fontWeight:700,letterSpacing:0.4,lineHeight:1,
+              textTransform:"uppercase",marginTop:1};
+            return(<>
+              <button onClick={()=>setHistoryOpen(true)}
+                style={{...btnBase,color:config.tm?"#C4B5FD":"var(--text-muted)"}}>
+                {IC.history}
+                <span style={{...lbl,color:config.tm?"#C4B5FD":"var(--text-muted)"}}>Log</span>
+              </button>
+              <button onClick={undo} disabled={!canUndo}
+                style={{...btnBase,color:canUndo?(config.tm?"#C4B5FD":"var(--text-muted)"):"var(--text-disabled)",opacity:canUndo?1:0.3,cursor:canUndo?"pointer":"default"}}>
+                {IC.undo}
+                <span style={{...lbl,color:canUndo?(config.tm?"#C4B5FD":"var(--text-muted)"):"var(--text-disabled)"}}>Undo</span>
+              </button>
+              <button onClick={redo} disabled={!future.length}
+                style={{...btnBase,color:future.length?"#EA580C":"var(--text-disabled)",opacity:future.length?1:0.3,cursor:future.length?"pointer":"default"}}>
+                {IC.redo}
+                <span style={{...lbl,color:future.length?"#EA580C":"var(--text-disabled)"}}>Redo</span>
+              </button>
+              {currentSides.p1Side&&(
+                <button type="button" onClick={()=>{
+                  setSwapped(s=>!s);
+                  setCurrentSides(cs=>({p1Side:cs.p2Side,p2Side:cs.p1Side}));
+                  setSideAssign(a=>a?{...a,p1Side:a.p2Side||"",p2Side:a.p1Side||""}:a);
+                }}
+                  style={{...btnBase,color:config.tm?"#E9D5FF":"var(--text-secondary)"}}>
+                  <span style={{fontSize:bf(12),lineHeight:1}}>⇄</span>
+                  <span style={{...lbl,color:config.tm?"#E9D5FF":"var(--text-secondary)"}}>Swap</span>
+                </button>
+              )}
+            </>);
+          })()}
         </div>
 
-        {/* Right: history · undo · redo · dark · swap */}
-        <div style={{display:"flex",alignItems:"center",gap:bp(1),flexShrink:0}}>
-          <button onClick={()=>setHistoryOpen(true)} style={{background:"none",border:"none",color:config.tm?"#C4B5FD":"var(--text-muted)",cursor:"pointer",padding:`${bp(3)}px ${bp(4)}px`,display:"flex",alignItems:"center"}}>{IC.history}</button>
-          <button onClick={undo} disabled={log.length<=matchStartIdx&&log[log.length-1]?.type!=="LER-STRIKE"} style={{background:"none",border:"none",color:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?(config.tm?"#C4B5FD":"var(--text-muted)"):"var(--text-disabled)",cursor:(log.length>matchStartIdx||log[log.length-1]?.type==="LER-STRIKE")?"pointer":"default",padding:`${bp(3)}px ${bp(4)}px`,display:"flex",alignItems:"center"}}>{IC.undo}</button>
-          <button onClick={redo} disabled={!future.length} style={{background:"none",border:"none",color:future.length?"#EA580C":"var(--text-disabled)",cursor:future.length?"pointer":"default",padding:`${bp(3)}px ${bp(4)}px`,display:"flex",alignItems:"center"}}>{IC.redo}</button>
-          <button onClick={toggleDark} style={{background:"none",border:"none",cursor:"pointer",padding:`${bp(3)}px ${bp(3)}px`,fontSize:bf(14),lineHeight:1}}>{dark?"☀️":"🌙"}</button>
-          {currentSides.p1Side&&(
-            <button type="button" onClick={()=>{
-              // Toggle display order only — canonical p1/p2, sets[], pts[], setScores[] are untouched.
-              // Sides follow the display: after swap, left slot shows p2's side label and vice versa.
-              setSwapped(s=>!s);
-              setCurrentSides(cs=>({p1Side:cs.p2Side,p2Side:cs.p1Side}));
-              setSideAssign(a=>a?{...a,p1Side:a.p2Side||"",p2Side:a.p1Side||""}:a);
-            }}
-              style={{padding:`${bp(2)}px ${bp(5)}px`,borderRadius:bp(6),border:config.tm?"1px solid rgba(255,255,255,0.3)":"1px solid var(--border2)",background:config.tm?"rgba(255,255,255,0.15)":"var(--surface)",color:config.tm?"#E9D5FF":"var(--text-secondary)",fontSize:bf(9),fontWeight:700,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-              ⇄ Swap
-            </button>
-          )}
+        {/* Right: compact square utility buttons — 📡 · 🔀 · ⠿ · ☀ */}
+        <div style={{display:"flex",alignItems:"center",gap:bp(3),flexShrink:0}}>
+          {(()=>{
+            const sq={width:bp(28),height:bp(28),display:"flex",alignItems:"center",justifyContent:"center",
+              borderRadius:bp(6),cursor:"pointer",fontSize:bf(13),lineHeight:1,flexShrink:0};
+            return(<>
+              <button type="button" onClick={()=>setOverlayModal(true)}
+                style={{...sq,background:overlaySlot>0?"#1D4ED8":"none",
+                  border:overlaySlot>0?"none":`1px solid ${config.tm?"rgba(255,255,255,0.3)":"var(--border2)"}`,
+                  color:overlaySlot>0?"#fff":config.tm?"#E9D5FF":"var(--text-muted)",
+                  fontSize:bf(overlaySlot>0?8:13),fontWeight:800,fontFamily:"'Outfit',sans-serif"}}
+                title="Stream overlay">
+                {overlaySlot>0?`📡${overlaySlot}`:"📡"}
+              </button>
+              {config.tm&&challongeMatchId&&(
+                <button type="button" onClick={()=>{ if(sharedJudges){setHandoffMethodPicker(true);}else{startHandoff();} }}
+                  style={{...sq,background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",color:"#E9D5FF"}}
+                  title="Hand off match to another judge">🔀</button>
+              )}
+              <button type="button" onClick={()=>setLayoutEditMode(m=>!m)}
+                style={{...sq,background:layoutEditMode?"#7C3AED":"none",
+                  border:layoutEditMode?"none":`1px solid ${config.tm?"rgba(255,255,255,0.3)":"var(--border2)"}`,
+                  color:layoutEditMode?"#fff":config.tm?"#E9D5FF":"var(--text-muted)",
+                  position:"relative",zIndex:160}}
+                title={layoutEditMode?"Exit layout edit":"Adjust layout heights"}>⠿</button>
+              <button onClick={toggleDark}
+                style={{...sq,background:"none",border:"none",fontSize:bf(14)}}>{dark?"☀️":"🌙"}</button>
+            </>);
+          })()}
         </div>
       </div>
 
