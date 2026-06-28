@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: ShuffleOrderScreen — combined timer+order screen; compact countdown in header (no clock, no pause); expired=non-blocking red banner; both players set deck order while timer runs; Start Match confirms both -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: Match history shows combos (p1Combo/p2Combo per battle); undo/redo restored: _d1/_d2 deck snapshots in log, deck restored on undo, auto-advance r1/r2, ShuffleOrderScreen re-shown on shuffle boundary undo -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12281,6 +12281,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       time:new Date().toISOString(),
       _pp:[...pts],_ps:[...sets],_cs:curSet,
       _u1:[...used1],_u2:[...used2],_sh:shuf,_ls:[...lerStrikes],_ss:[...setScores],
+      _d1:d1.map(c=>({...c})),_d2:d2.map(c=>({...c})), // deck order snapshot for undo
     };
     const newLog=[...log,entry];
     setLog(newLog); sSave(KEYS.matchLog, newLog); setFuture([]); setPts(np);
@@ -12339,22 +12340,50 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     if(l._ls) setLerStrikes(l._ls);
     if(l._ss) setSetScores(l._ss);
     setPendingFinish(null);
-    // preserve r1/r2 — do not reset combo selection on undo
-    setPhase("battle");
+    // Restore deck order (ShuffleOrderScreen may have reordered d1/d2)
+    if(l._d1) setD1(l._d1);
+    if(l._d2) setD2(l._d2);
+    // If undo lands at the start of a shuffle (no beys used yet),
+    // re-show ShuffleOrderScreen so the judge can re-set the deck order.
+    if(l._u1.length===0&&l._u2.length===0){
+      setR1(null); setR2(null);
+      setPhase("order");
+    } else {
+      // Auto-advance to next unused bey (combo picker was removed)
+      const nxR1=[0,1,2].find(i=>!l._u1.includes(i));
+      const nxR2=[0,1,2].find(i=>!l._u2.includes(i));
+      setR1(nxR1!==undefined?nxR1:null);
+      setR2(nxR2!==undefined?nxR2:null);
+      setPhase("battle");
+    }
   };
 
   const redo = () => {
     if(!future.length)return;
     const n=future[0]; setFuture(future.slice(1));
     const redoLog=[...log,n]; setLog(redoLog); sSave(KEYS.matchLog, redoLog); setPts([n.p1Score,n.p2Score]);
+    // Restore deck order from the redone entry
+    if(n._d1) setD1(n._d1);
+    if(n._d2) setD2(n._d2);
     const nu1=[...n._u1,n.p1ComboIdx]; const nu2=[...n._u2,n.p2ComboIdx];
-    if(nu1.length>=3&&nu2.length>=3){ setUsed1([]); setUsed2([]); setShuf(n._sh+1); }
-    else { setUsed1(nu1); setUsed2(nu2); setShuf(n._sh); }
-    if(config.pts>0&&(n.p1Score>=config.pts||n.p2Score>=config.pts)){
+    const allUsed = nu1.length>=3&&nu2.length>=3;
+    const setWon = config.pts>0&&(n.p1Score>=config.pts||n.p2Score>=config.pts);
+    if(setWon){
       const ns=[sets[0],sets[1]]; ns[n.scorerIdx]+=1; setSets(ns);
       setSetScores(ss=>[...ss,{p1:n.p1Score,p2:n.p2Score}]);
-      if(ns[n.scorerIdx]>=need)setPhase("over");
-      else { setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(1); }
+      if(ns[n.scorerIdx]>=need){ setPhase("over"); }
+      else { setCurSet(c=>c+1); setPts([0,0]); setUsed1([]); setUsed2([]); setShuf(1); setR1(null); setR2(null); setPhase("order"); }
+    } else if(allUsed){
+      // All beys used — need a new shuffle order
+      setUsed1([]); setUsed2([]); setShuf(n._sh+1);
+      setR1(null); setR2(null); setPhase("order");
+    } else {
+      setUsed1(nu1); setUsed2(nu2); setShuf(n._sh);
+      const nxR1=[0,1,2].find(i=>!nu1.includes(i));
+      const nxR2=[0,1,2].find(i=>!nu2.includes(i));
+      setR1(nxR1!==undefined?nxR1:null);
+      setR2(nxR2!==undefined?nxR2:null);
+      setPhase("battle");
     }
   };
 
@@ -14174,8 +14203,19 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       if(last._ss) setSetScores(last._ss); else setSetScores(ss => ss.slice(0,-1));
       setConfirmState(null);
       setOverBackConfirm(false);
-      setR1(null); setR2(null); setPendingFinish(null);
-      setPhase("battle");
+      setPendingFinish(null);
+      if(last._d1) setD1(last._d1);
+      if(last._d2) setD2(last._d2);
+      if(last._u1.length===0&&last._u2.length===0){
+        setR1(null); setR2(null);
+        setPhase("order");
+      } else {
+        const nxR1=[0,1,2].find(i=>!last._u1.includes(i));
+        const nxR2=[0,1,2].find(i=>!last._u2.includes(i));
+        setR1(nxR1!==undefined?nxR1:null);
+        setR2(nxR2!==undefined?nxR2:null);
+        setPhase("battle");
+      }
     };
 
     return (
@@ -14290,13 +14330,29 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         {/* ── Match history ── */}
         <div style={{...S.card,marginBottom:12}}>
           <p style={{fontSize:12,fontWeight:700,color:"var(--text-primary)",marginBottom:8}}>Match History</p>
-          {log.slice(matchStartIdx).map((e,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:i<log.slice(matchStartIdx).length-1?"1px solid #F1F5F9":"none"}}>
-              <span style={{fontSize:11,color:"var(--text-muted)"}}>S{e.slot} · Set {e.set}{e.p1Side?` · ${e.p1Side}/${e.p2Side}`:""}</span>
-              <span style={{fontSize:11,fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626"}}>{e.scorer} — {e.typeName} +{e.points}{e.penalty?" (pen)":""}</span>
-              <span style={{fontSize:11,color:"var(--text-muted)"}}>{e.p1Score}–{e.p2Score}</span>
+          {log.slice(matchStartIdx).map((e,i)=>{
+            const battles=log.slice(matchStartIdx);
+            return (
+            <div key={i} style={{padding:"6px 0",borderBottom:i<battles.length-1?"1px solid #F1F5F9":"none"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:e.p1Combo?3:0}}>
+                <span style={{fontSize:11,color:"var(--text-muted)",flex:1}}>S{e.slot} · Set {e.set}{e.p1Side?` · ${e.p1Side}/${e.p2Side}`:""}</span>
+                <span style={{fontSize:11,fontWeight:700,color:e.scorerIdx===0?"#2563EB":"#DC2626",flex:2,textAlign:"center"}}>{e.scorer} — {e.typeName} +{e.points}{e.penalty?" (pen)":""}</span>
+                <span style={{fontSize:11,color:"var(--text-muted)",flex:1,textAlign:"right"}}>{e.p1Score}–{e.p2Score}</span>
+              </div>
+              {e.p1Combo&&e.p2Combo&&(
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <span style={{fontSize:10,color:"#2563EB",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {e.p1Combo.blade||"?"}{e.p1Combo.ratchet?` ${e.p1Combo.ratchet}`:""}{e.p1Combo.bit?` · ${e.p1Combo.bit}`:""}
+                  </span>
+                  <span style={{fontSize:9,color:"var(--text-faint)",flexShrink:0}}>vs</span>
+                  <span style={{fontSize:10,color:"#DC2626",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"right"}}>
+                    {e.p2Combo.blade||"?"}{e.p2Combo.ratchet?` ${e.p2Combo.ratchet}`:""}{e.p2Combo.bit?` · ${e.p2Combo.bit}`:""}
+                  </span>
+                </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* ── Tournament mode: player confirms + judge submit modal trigger ── */}
