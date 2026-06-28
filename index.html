@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-27 | session: DeckOrderScreen v3 — vertical column of 6 combo buttons, either player can go first, in-progress lock prevents interleaving, done players can always reset -->
+<!-- NC BLAST index.html | last updated: 2026-06-27 | session: ShuffleOrderScreen — combined timer+order screen; compact countdown in header (no clock, no pause); expired=non-blocking red banner; both players set deck order while timer runs; Start Match confirms both -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11887,251 +11887,87 @@ function ComboLabel({blade, ratchet, bit, color, color2, empty, emptyText}) {
   );
 }
 
-function ShuffleTimerInner({onDismiss, p1, p2, sets, pts, need, curSet, config, swapped}){
+/* ═══════════════════════════════════════
+   SHUFFLE ORDER SCREEN
+   Combined shuffle timer + deck order setting.
+   Timer is a compact countdown in the header (no clock, no pause).
+   Expired → non-blocking red banner only. Deck order can be set at any time.
+═══════════════════════════════════════ */
+function ShuffleOrderScreen({showTimer,onConfirm,p1,p2,d1,d2,setD1,setD2,sets,pts,need,curSet,shuf,config,swapped}) {
+  // Timer
   const TOTAL = 60;
-  const [seconds, setSeconds] = useState(TOTAL);
-  const [expired, setExpired] = useState(false);
-  const [paused, setPaused] = useState(false);
-  const intervalRef = useRef(null);
-  const pausedRef = useRef(false);
-
-  const pauseTimer  = () => { pausedRef.current = true;  setPaused(true);  };
-  const resumeTimer = () => { pausedRef.current = false; setPaused(false); };
-
-  useEffect(()=>{
-    intervalRef.current = setInterval(()=>{
-      if(pausedRef.current) return;
-      setSeconds(s=>{
-        if(s<=1){ clearInterval(intervalRef.current); setExpired(true); return 0; }
-        return s-1;
-      });
+  const [seconds,setSeconds] = React.useState(TOTAL);
+  const [expired,setExpired] = React.useState(false);
+  const timerRef = React.useRef(null);
+  React.useEffect(()=>{
+    if(!showTimer) return;
+    timerRef.current = setInterval(()=>{
+      setSeconds(s=>{ if(s<=1){ clearInterval(timerRef.current); setExpired(true); return 0; } return s-1; });
     },1000);
-    return ()=>clearInterval(intervalRef.current);
-  },[]);
+    return ()=>clearInterval(timerRef.current);
+  },[showTimer]);
+  const timerColor = seconds>20?"#22C55E":seconds>10?"#F59E0B":"#EF4444";
 
-  const fraction = seconds/TOTAL;
-  const handDeg = (1-fraction)*360 - 90;
-  const R = 90;
-  const WCX = 110, WCY = 130;
-  const elapsed = 1 - fraction;
-  const arcAngle = elapsed * 2 * Math.PI;
-  const startX = WCX + R * Math.cos(-Math.PI/2);
-  const startY = WCY + R * Math.sin(-Math.PI/2);
-  const endX = WCX + R * Math.cos(-Math.PI/2 + arcAngle);
-  const endY = WCY + R * Math.sin(-Math.PI/2 + arcAngle);
-  const largeArc = elapsed > 0.5 ? 1 : 0;
+  // Deck order state
+  const [topOrder,setTopOrder] = React.useState([]);
+  const [botOrder,setBotOrder] = React.useState([]);
+  const topName=swapped?p2:p1; const botName=swapped?p1:p2;
+  const topDeck=swapped?d2:d1; const botDeck=swapped?d1:d2;
+  const topColor=swapped?"#DC2626":"#2563EB"; const botColor=swapped?"#2563EB":"#DC2626";
+  const topSet=swapped?setD2:setD1; const botSet=swapped?setD1:setD2;
+  const topDone=topOrder.length===3; const botDone=botOrder.length===3;
+  const topInProgress=topOrder.length>0&&!topDone; const botInProgress=botOrder.length>0&&!botDone;
+  const topLocked=botInProgress&&!topDone; const botLocked=topInProgress&&!botDone;
+  const handleTop=(i)=>{ if(topLocked)return; if(topDone){setTopOrder([]);return;} if(topOrder.includes(i)){setTopOrder([]);return;} setTopOrder(p=>[...p,i]); };
+  const handleBot=(i)=>{ if(botLocked)return; if(botDone){setBotOrder([]);return;} if(botOrder.includes(i)){setBotOrder([]);return;} setBotOrder(p=>[...p,i]); };
+  const canStart=topDone&&botDone;
+  const confirm=()=>{ if(!canStart)return; topSet(topOrder.map(i=>topDeck[i])); botSet(botOrder.map(i=>botDeck[i])); onConfirm(); };
 
-  if(expired){
+  // Score summary
+  const summary=()=>{
+    if(!p1||!p2) return null;
+    const isBO3=config&&config.bo>1; const ptLimit=config&&config.pts>0?config.pts:null;
+    const lName=swapped?p2:p1; const rName=swapped?p1:p2;
+    const lSets=swapped?sets[1]:sets[0]; const rSets=swapped?sets[0]:sets[1];
+    const lPts=swapped?pts[1]:pts[0]; const rPts=swapped?pts[0]:pts[1];
+    const lCol=swapped?"#EF4444":"#3B82F6"; const rCol=swapped?"#3B82F6":"#EF4444";
     return (
-      <div style={{position:"fixed",inset:0,background:"#DC2626",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:600,padding:"24px"}}>
-        <p style={{fontSize:48,fontWeight:900,color:"#fff",textAlign:"center",lineHeight:1.1,marginBottom:16}}>⏱️</p>
-        <p style={{fontSize:28,fontWeight:900,color:"#fff",textAlign:"center",lineHeight:1.2,marginBottom:12,letterSpacing:1}}>SHUFFLE TIME</p>
-        <p style={{fontSize:28,fontWeight:900,color:"#fff",textAlign:"center",lineHeight:1.2,marginBottom:40,letterSpacing:1}}>EXPIRED</p>
-        <button onClick={onDismiss}
-          style={{padding:"16px 40px",borderRadius:16,border:"3px solid rgba(255,255,255,0.5)",background:"rgba(255,255,255,0.15)",color:"#fff",fontSize:18,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer"}}>
-          Continue →
-        </button>
+      <div style={{margin:"10px 14px 4px",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:12,overflow:"hidden"}}>
+        {isBO3&&(<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px 5px",borderBottom:"1px solid var(--border2)"}}>
+          <span style={{fontSize:11,fontWeight:700,color:lCol,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:100}}>{lName}</span>
+          <div style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+            <span style={{fontSize:20,fontWeight:900,color:lCol,minWidth:20,textAlign:"center"}}>{lSets}</span>
+            <span style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",letterSpacing:1}}>SETS</span>
+            <span style={{fontSize:20,fontWeight:900,color:rCol,minWidth:20,textAlign:"center"}}>{rSets}</span>
+          </div>
+          <span style={{fontSize:11,fontWeight:700,color:rCol,flex:1,textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:100}}>{rName}</span>
+        </div>)}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:isBO3?"6px 12px 8px":"8px 12px"}}>
+          {!isBO3&&<span style={{fontSize:10,fontWeight:700,color:lCol,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:100}}>{lName}</span>}
+          {isBO3&&<span style={{fontSize:10,fontWeight:600,color:"var(--text-muted)",flex:1}}>Set {curSet}</span>}
+          <div style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+            <span style={{fontSize:24,fontWeight:900,color:lCol,minWidth:24,textAlign:"center"}}>{lPts}</span>
+            <span style={{fontSize:9,fontWeight:700,color:"var(--text-faint)",letterSpacing:1}}>{ptLimit?"PTS":"–"}</span>
+            <span style={{fontSize:24,fontWeight:900,color:rCol,minWidth:24,textAlign:"center"}}>{rPts}</span>
+          </div>
+          {!isBO3&&<span style={{fontSize:10,fontWeight:700,color:rCol,flex:1,textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:100}}>{rName}</span>}
+          {isBO3&&<span style={{fontSize:10,fontWeight:600,color:"var(--text-muted)",flex:1,textAlign:"right"}}>First to {ptLimit||"∞"}</span>}
+        </div>
       </div>
     );
-  }
-
-  const holdEvents = {
-    onMouseDown: pauseTimer, onMouseUp: resumeTimer, onMouseLeave: resumeTimer,
-    onTouchStart: e=>{e.preventDefault();pauseTimer();}, onTouchEnd: resumeTimer,
   };
 
-  return (
-    <div style={{position:"fixed",inset:0,background:"var(--bg-solid)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",zIndex:600,padding:"24px",gap:0}}>
-      <p style={{fontSize:11,fontWeight:700,letterSpacing:3,color:"var(--text-muted)",textTransform:"uppercase",marginBottom:12}}>Shuffle Order Selection</p>
-
-      {/* Match state summary — visible during shuffle so judges can answer player questions */}
-      {p1&&p2&&(()=>{
-        const isBO3plus = config&&config.bo>1;
-        const ptLimit = config&&config.pts>0?config.pts:null;
-        // Respect the swap state: when swapped, left side = p2 (red), right side = p1 (blue)
-        const leftName  = swapped ? p2 : p1;
-        const rightName = swapped ? p1 : p2;
-        const leftSets  = swapped ? sets[1] : sets[0];
-        const rightSets = swapped ? sets[0] : sets[1];
-        const leftPts   = swapped ? pts[1]  : pts[0];
-        const rightPts  = swapped ? pts[0]  : pts[1];
-        const leftColor  = swapped ? "#EF4444" : "#3B82F6";
-        const rightColor = swapped ? "#3B82F6" : "#EF4444";
-        return (
-          <div style={{width:"100%",maxWidth:340,marginBottom:16,background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:14,overflow:"hidden"}}>
-            {/* Set score row — only shown in BO3+ */}
-            {isBO3plus&&(
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 14px 6px",borderBottom:"1px solid var(--border2)"}}>
-                <span style={{fontSize:11,fontWeight:700,color:leftColor,flex:1,textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:110}}>{leftName}</span>
-                <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                  <span style={{fontSize:22,fontWeight:900,color:leftColor,minWidth:24,textAlign:"center"}}>{leftSets}</span>
-                  <span style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",letterSpacing:1}}>SETS</span>
-                  <span style={{fontSize:22,fontWeight:900,color:rightColor,minWidth:24,textAlign:"center"}}>{rightSets}</span>
-                </div>
-                <span style={{fontSize:11,fontWeight:700,color:rightColor,flex:1,textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:110}}>{rightName}</span>
-              </div>
-            )}
-            {/* Current set point score */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:isBO3plus?"8px 14px 10px":"10px 14px"}}>
-              {!isBO3plus&&<span style={{fontSize:11,fontWeight:700,color:leftColor,flex:1,textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:110}}>{leftName}</span>}
-              {isBO3plus&&<span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)",flex:1,textAlign:"left"}}>Set {curSet}</span>}
-              <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                <span style={{fontSize:28,fontWeight:900,color:leftColor,minWidth:28,textAlign:"center"}}>{leftPts}</span>
-                <span style={{fontSize:10,fontWeight:700,color:"var(--text-faint)",letterSpacing:1}}>{ptLimit?"PTS":"–"}</span>
-                <span style={{fontSize:28,fontWeight:900,color:rightColor,minWidth:28,textAlign:"center"}}>{rightPts}</span>
-              </div>
-              {!isBO3plus&&<span style={{fontSize:11,fontWeight:700,color:rightColor,flex:1,textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:110}}>{rightName}</span>}
-              {isBO3plus&&<span style={{fontSize:11,fontWeight:600,color:"var(--text-muted)",flex:1,textAlign:"right"}}>First to {ptLimit||"∞"}</span>}
-            </div>
-            {/* Win condition reminder */}
-            <div style={{background:"var(--bg-tint,rgba(0,0,0,0.03))",borderTop:"1px solid var(--border2)",padding:"5px 14px",textAlign:"center"}}>
-              <span style={{fontSize:10,fontWeight:600,color:"var(--text-faint)",letterSpacing:0.3}}>
-                {isBO3plus?`First to ${need} set${need>1?"s":""} wins the match`:"First to reach point limit wins"}
-              </span>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Stopwatch SVG — hold to pause */}
-      <div {...holdEvents} style={{cursor:"pointer",userSelect:"none",WebkitUserSelect:"none",touchAction:"none"}}>
-        <svg width="220" height="240" viewBox="0 0 220 260" style={{marginBottom:0,display:"block"}}>
-          {/* Watch body */}
-          <circle cx="110" cy="130" r="96" fill={paused?"#FEF9C3":"var(--surface)"} stroke={paused?"#CA8A04":"var(--border2)"} strokeWidth="4"/>
-          {/* Crown / button at top */}
-          <rect x="96" y="28" width="28" height="12" rx="6" fill="var(--border2)"/>
-          <rect x="104" y="22" width="12" height="10" rx="4" fill="var(--border2)"/>
-          {/* Tick marks */}
-          {Array.from({length:60}).map((_,i)=>{
-            const angle = (i/60)*2*Math.PI - Math.PI/2;
-            const isMajor = i%5===0;
-            const r1 = isMajor ? 78 : 82;
-            const r2 = 90;
-            return <line key={i}
-              x1={110+r1*Math.cos(angle)} y1={130+r1*Math.sin(angle)}
-              x2={110+r2*Math.cos(angle)} y2={130+r2*Math.sin(angle)}
-              stroke={isMajor?"var(--text-secondary)":"var(--border2)"}
-              strokeWidth={isMajor?2:1}
-            />;
-          })}
-          {/* Elapsed arc (red sweep) */}
-          {elapsed > 0 && elapsed < 1 && (
-            <path
-              d={`M ${startX} ${startY} A ${R} ${R} 0 ${largeArc} 1 ${endX} ${endY}`}
-              fill="none" stroke={paused?"#CA8A04":"#EF4444"} strokeWidth="6" strokeLinecap="round"
-              opacity="0.35"
-            />
-          )}
-          {elapsed >= 1 && (
-            <circle cx="110" cy="130" r={R} fill="none" stroke="#EF4444" strokeWidth="6" opacity="0.35"/>
-          )}
-          {/* Center dot */}
-          <circle cx="110" cy="130" r="5" fill="var(--text-secondary)"/>
-          {/* Second hand — grey when paused */}
-          <line
-            x1="110" y1="130"
-            x2={110 + 78*Math.cos(handDeg*Math.PI/180)}
-            y2={130 + 78*Math.sin(handDeg*Math.PI/180)}
-            stroke={paused?"#94A3B8":"#EF4444"} strokeWidth="2.5" strokeLinecap="round"
-          />
-          {/* Counter-weight tail */}
-          <line
-            x1="110" y1="130"
-            x2={110 - 18*Math.cos(handDeg*Math.PI/180)}
-            y2={130 - 18*Math.sin(handDeg*Math.PI/180)}
-            stroke={paused?"#94A3B8":"#EF4444"} strokeWidth="3" strokeLinecap="round"
-          />
-          {/* Pause icon overlay */}
-          {paused && (
-            <g>
-              <rect x="98" y="117" width="9" height="26" rx="3" fill="#CA8A04" opacity="0.9"/>
-              <rect x="113" y="117" width="9" height="26" rx="3" fill="#CA8A04" opacity="0.9"/>
-            </g>
-          )}
-        </svg>
-
-        {/* Countdown number — same hold target */}
-        <p {...holdEvents} style={{fontSize:64,fontWeight:900,color:paused?"#CA8A04":"var(--text-primary)",lineHeight:1,marginBottom:4,fontVariantNumeric:"tabular-nums",textAlign:"center",cursor:"pointer",userSelect:"none",WebkitUserSelect:"none"}}>{seconds}</p>
-      </div>
-
-      <p style={{fontSize:13,fontWeight:600,color:paused?"#CA8A04":"var(--text-muted)",marginBottom:4,marginTop:4}}>
-        {paused?"⏸ Paused — release to resume":"seconds remaining"}
-      </p>
-      <p style={{fontSize:10,fontWeight:600,color:"var(--text-faint)",marginBottom:32,letterSpacing:0.5}}>Hold clock to pause</p>
-
-      <button onClick={onDismiss}
-        style={{padding:"16px 40px",borderRadius:16,border:"none",background:"#22C55E",color:"#fff",fontSize:18,fontWeight:800,fontFamily:"'Outfit',sans-serif",cursor:"pointer",boxShadow:"0 4px 16px rgba(34,197,94,0.35)"}}>
-        ✓ Players Ready
-      </button>
-    </div>
-  );
-}
-
-
-/* ═══════════════════════════════════════
-   DECK ORDER SCREEN
-   Between shuffle timer and battle: judge sets each player's play order.
-   Drag cards up/down to reorder — top card goes first.
-═══════════════════════════════════════ */
-function DeckOrderScreen({p1,p2,d1,d2,setD1,setD2,curSet,shuf,swapped,onConfirm}) {
-  // Click-to-order: tap combos in desired play order (1st tap = plays first).
-  // No initial lock — either player can go first.
-  // Once a player has 1+ picks in progress (not yet done), the other side locks
-  // so the judge finishes one player at a time. A done player can always reset.
-  const [topOrder, setTopOrder] = React.useState([]);
-  const [botOrder, setBotOrder] = React.useState([]);
-
-  const topName  = swapped?p2:p1;  const botName  = swapped?p1:p2;
-  const topDeck  = swapped?d2:d1;  const botDeck  = swapped?d1:d2;
-  const topColor = swapped?"#DC2626":"#2563EB";
-  const botColor = swapped?"#2563EB":"#DC2626";
-  const topSet   = swapped?setD2:setD1;
-  const botSet   = swapped?setD1:setD2;
-
-  const topDone = topOrder.length===3;
-  const botDone = botOrder.length===3;
-
-  // Lock the other side while one side has partial picks in progress
-  const topInProgress = topOrder.length>0 && !topDone;
-  const botInProgress = botOrder.length>0 && !botDone;
-  const topLocked = botInProgress && !topDone;
-  const botLocked = topInProgress && !botDone;
-
-  const handleTop = (deckIdx) => {
-    if(topLocked) return;
-    if(topDone){ setTopOrder([]); return; }
-    if(topOrder.includes(deckIdx)){ setTopOrder([]); return; }
-    setTopOrder(p=>[...p,deckIdx]);
-  };
-  const handleBot = (deckIdx) => {
-    if(botLocked) return;
-    if(botDone){ setBotOrder([]); return; }
-    if(botOrder.includes(deckIdx)){ setBotOrder([]); return; }
-    setBotOrder(p=>[...p,deckIdx]);
-  };
-
-  const confirm = () => {
-    if(!topDone||!botDone) return;
-    topSet(topOrder.map(i=>topDeck[i]));
-    botSet(botOrder.map(i=>botDeck[i]));
-    onConfirm();
-  };
-
-  const renderSection = (name, deck, order, isDone, color, isLocked, onClick) => (
+  // Player order section (vertical combo buttons)
+  const section=(name,deck,order,isDone,color,isLocked,onClick)=>(
     <>
-      {/* Player name header */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
-                   padding:"10px 16px 8px",background:"var(--surface)",
-                   borderBottom:"1px solid var(--border)"}}>
-        <p style={{fontSize:13,fontWeight:900,color,margin:0,letterSpacing:0.2}}>{name}</p>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px 8px",background:"var(--surface)",borderBottom:"1px solid var(--border)"}}>
+        <p style={{fontSize:13,fontWeight:900,color,margin:0}}>{name}</p>
         <p style={{fontSize:10,color:"var(--text-faint)",margin:0,fontStyle:"italic"}}>
           {isDone?"✓ tap to reset":isLocked?"wait…":order.length===0?"tap in play order":`${3-order.length} left`}
         </p>
       </div>
-      {/* Three combo buttons stacked */}
       {deck.map((combo,deckIdx)=>{
-        const pos=order.indexOf(deckIdx);
-        const isPicked=pos!==-1;
+        const pos=order.indexOf(deckIdx); const isPicked=pos!==-1;
         return (
           <button key={deckIdx} onClick={()=>onClick(deckIdx)} disabled={isLocked}
             style={{width:"100%",padding:"13px 16px",display:"flex",alignItems:"center",gap:14,
@@ -12140,24 +11976,13 @@ function DeckOrderScreen({p1,p2,d1,d2,setD1,setD2,curSet,shuf,swapped,onConfirm}
               color:isLocked?"var(--text-disabled)":"var(--text-primary)",
               cursor:isLocked?"not-allowed":"pointer",opacity:isLocked?0.4:1,
               fontFamily:"'Outfit',sans-serif",textAlign:"left"}}>
-            {/* Position badge */}
             <div style={{width:26,height:26,borderRadius:7,flexShrink:0,
-              background:isPicked?color:"var(--border)",
-              display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <span style={{fontSize:13,fontWeight:900,
-                            color:isPicked?"#fff":"var(--text-faint)",lineHeight:1}}>
-                {isPicked?pos+1:"·"}
-              </span>
+              background:isPicked?color:"var(--border)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <span style={{fontSize:13,fontWeight:900,color:isPicked?"#fff":"var(--text-faint)",lineHeight:1}}>{isPicked?pos+1:"·"}</span>
             </div>
-            {/* Combo name */}
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:14,fontWeight:800,
-                           color:isPicked?color:"var(--text-primary)",lineHeight:1.2}}>
-                {combo.blade||"—"}
-              </div>
-              <div style={{fontSize:11,color:"var(--text-muted)",lineHeight:1.4}}>
-                {combo.ratchet?`${combo.ratchet} · ${combo.bit}`:(combo.bit||"")}
-              </div>
+              <div style={{fontSize:14,fontWeight:800,color:isPicked?color:"var(--text-primary)",lineHeight:1.2}}>{combo.blade||"—"}</div>
+              <div style={{fontSize:11,color:"var(--text-muted)",lineHeight:1.4}}>{combo.ratchet?`${combo.ratchet} · ${combo.bit}`:(combo.bit||"")}</div>
             </div>
           </button>
         );
@@ -12166,24 +11991,35 @@ function DeckOrderScreen({p1,p2,d1,d2,setD1,setD2,curSet,shuf,swapped,onConfirm}
   );
 
   return (
-    <div style={{position:"fixed",inset:0,background:"var(--bg-solid)",display:"flex",
-                 flexDirection:"column",boxSizing:"border-box",fontFamily:"'Outfit',sans-serif"}}>
-      <div style={{padding:"12px 16px 10px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
-        <p style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:1.5,
-                   textTransform:"uppercase",margin:"0 0 2px"}}>SET {curSet} · SHUFFLE {shuf}</p>
-        <h2 style={{fontSize:17,fontWeight:900,color:"var(--text-primary)",margin:0}}>Set Deck Order</h2>
+    <div style={{position:"fixed",inset:0,background:"var(--bg-solid)",display:"flex",flexDirection:"column",boxSizing:"border-box",fontFamily:"'Outfit',sans-serif",zIndex:600}}>
+      {expired&&(
+        <div style={{background:"#DC2626",padding:"7px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+          <span style={{fontSize:13,fontWeight:900,color:"#fff"}}>⏱ Time's up</span>
+          <span style={{fontSize:11,color:"rgba(255,255,255,0.8)",marginLeft:"auto"}}>continue when ready</span>
+        </div>
+      )}
+      <div style={{padding:"12px 16px 10px",borderBottom:"1px solid var(--border)",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div>
+          <p style={{fontSize:9,fontWeight:700,color:"var(--text-muted)",letterSpacing:1.5,textTransform:"uppercase",margin:"0 0 2px"}}>SET {curSet} · SHUFFLE {shuf}</p>
+          <h2 style={{fontSize:17,fontWeight:900,color:"var(--text-primary)",margin:0}}>Set Deck Order</h2>
+        </div>
+        {showTimer&&!expired&&(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0,minWidth:44}}>
+            <span style={{fontSize:34,fontWeight:900,color:timerColor,lineHeight:1,fontVariantNumeric:"tabular-nums"}}>{seconds}</span>
+            <span style={{fontSize:9,fontWeight:600,color:"var(--text-faint)"}}>sec</span>
+          </div>
+        )}
       </div>
       <div style={{flex:1,overflowY:"auto"}}>
-        {renderSection(topName,topDeck,topOrder,topDone,topColor,topLocked,handleTop)}
-        {renderSection(botName,botDeck,botOrder,botDone,botColor,botLocked,handleBot)}
+        {summary()}
+        {section(topName,topDeck,topOrder,topDone,topColor,topLocked,handleTop)}
+        {section(botName,botDeck,botOrder,botDone,botColor,botLocked,handleBot)}
       </div>
       <div style={{padding:"12px 14px 16px",borderTop:"1px solid var(--border)",flexShrink:0}}>
-        <button onClick={confirm} disabled={!topDone||!botDone}
+        <button onClick={confirm} disabled={!canStart}
           style={{width:"100%",padding:"16px 0",borderRadius:14,border:"none",
-            background:(topDone&&botDone)?"linear-gradient(135deg,#7C3AED,#4C1D95)":"var(--border2)",
-            color:"#fff",fontSize:16,fontWeight:900,
-            fontFamily:"'Outfit',sans-serif",
-            cursor:(topDone&&botDone)?"pointer":"not-allowed"}}>
+            background:canStart?"linear-gradient(135deg,#7C3AED,#4C1D95)":"var(--border2)",
+            color:"#fff",fontSize:16,fontWeight:900,fontFamily:"'Outfit',sans-serif",cursor:canStart?"pointer":"not-allowed"}}>
           Start Match
         </button>
       </div>
@@ -14236,17 +14072,18 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   }
 
   // ── Shuffle Timer Screen ────────────────────────────────────────────────────
-  if(shuffleTimer){
-    const dismissTimer = () => { pushOverlay({shuffling:false}); setShuffleTimer(null); setUsed1([]); setUsed2([]); if(shuffleTimer==="active"){ setShuf(s=>s+1); } setPhase("order"); };
-    return <ShuffleTimerInner onDismiss={dismissTimer} p1={p1} p2={p2} sets={sets} pts={pts} need={need} curSet={curSet} config={config} swapped={swapped}/>;
-  }
-
-  // ── Deck Order Screen — phase driven, clean and unambiguous ─────────────
-  if(phase==="order"){
-    return <DeckOrderScreen
+  // ── Combined shuffle timer + deck order screen ──────────────────────────
+  if(shuffleTimer||phase==="order"){
+    const displayShuf = shuffleTimer==="active" ? shuf+1 : shuf;
+    return <ShuffleOrderScreen
+      showTimer={!!shuffleTimer}
+      onConfirm={()=>{
+        if(shuffleTimer){ pushOverlay({shuffling:false}); if(shuffleTimer==="active"){ setUsed1([]); setUsed2([]); setShuf(s=>s+1); } setShuffleTimer(null); }
+        setPhase("battle"); setR1(0); setR2(0);
+      }}
       p1={p1} p2={p2} d1={d1} d2={d2} setD1={setD1} setD2={setD2}
-      curSet={curSet} shuf={shuf} swapped={swapped}
-      onConfirm={()=>{ setPhase("battle"); setR1(0); setR2(0); }}
+      sets={sets} pts={pts} need={need} curSet={curSet} shuf={displayShuf}
+      config={config} swapped={swapped}
     />;
   }
 
