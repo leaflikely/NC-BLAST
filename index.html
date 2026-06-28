@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-28 | session: Record Deck button enlarged + filled; Own x2/x3 score buttons labeled (No Contact) -->
+<!-- NC BLAST index.html | last updated: 2026-06-28 | session: drag animation follows finger (translateY + CSS transition on other cards); top strip: Log/Undo/Redo/Swap labeled center buttons, compact square 📡/🔀/⠿/☀ right buttons -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12657,6 +12657,15 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   };
 
   const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(1);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setUnderwayStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
+  // After reset(), restore judge from session storage for solo mode.
+  // Duo mode intentionally leaves judge blank — the per-match picker handles it.
+  const resetAndRestoreJudge = () => {
+    reset();
+    if (!sharedJudges) {
+      const fromSession = (() => { try { return sessionStorage.getItem("ncblast-auth-user") || ""; } catch { return ""; } })();
+      if (fromSession) setJudge(fromSession);
+    }
+  };
 
   // ── Handoff helpers ──────────────────────────────────────────────────────
   // Generates a random 6-character token (letters + numbers)
@@ -12955,7 +12964,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     const trimmed = log.slice(0, matchStartIdx);
     setLog(trimmed); sSave(KEYS.matchLog, trimmed);
     setAbandonConfirm(false);
-    reset();
+    resetAndRestoreJudge();
   };
 
 
@@ -14158,7 +14167,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                 <p style={{fontSize:13,fontWeight:800,color:pl.cl,margin:0}}>{pl.name}</p>
                 {!pl.deck.every(comboReady)&&(
                   <button onClick={()=>openPicker({who:pl.who,slot:0,cat:"blade"})}
-                    style={{fontSize:15,fontWeight:800,padding:"10px 20px",borderRadius:10,border:`2.5px solid ${pl.cl}`,background:pl.cl,color:"#fff",fontFamily:"'Outfit',sans-serif",cursor:"pointer",whiteSpace:"nowrap",boxShadow:`0 2px 8px ${pl.cl}55`,letterSpacing:0.3}}>
+                    style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:7,border:`1.5px solid ${pl.cl}`,background:`${pl.cl}14`,color:pl.cl,fontFamily:"'Outfit',sans-serif",cursor:"pointer",whiteSpace:"nowrap"}}>
                     Record Deck →
                   </button>
                 )}
@@ -14550,7 +14559,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
         })()}
 
         {/* ── Actions ── */}
-        {submitted&&<button style={S.pri} onClick={()=>{setSheetsStatus(null);reset();}}>New Match</button>}
+        {submitted&&<button style={S.pri} onClick={()=>{setSheetsStatus(null);resetAndRestoreJudge();}}>New Match</button>}
         {!config.tm&&(
           <>
             {challongeSlug&&challongeMatchId&&(()=>{
@@ -14564,7 +14573,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
                     {challongeSubmitStatus==="loading"?"Submitting…":`Submit to Challonge${winnerId?"":" ⚠️"}`}
                   </button>;
             })()}
-            <button style={S.pri} onClick={()=>{setSheetsStatus(null);reset();}}>New Match</button>
+            <button style={S.pri} onClick={()=>{setSheetsStatus(null);resetAndRestoreJudge();}}>New Match</button>
           </>
         )}
         <button style={{...S.sec,width:"100%",justifyContent:"center"}} onClick={()=>onDownloadCSV(log.slice(matchStartIdx),{p1,p2,sets,config,winner,shuffles:shuf})}>{IC.download} Download CSV</button>
@@ -14855,7 +14864,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
               {[...FINISH,...PENALTY.filter(f=>f.id!=="LER")].map(f=>{
                 const isSel = side.pending?.id===f.id;
                 const isFinish = !f.penalty;
-                const label = f.id==="OF2"?"Own ×2 (No Contact)":f.id==="OF3"?"Own ×3 (No Contact)":f.name;
+                const label = f.id==="OF2"?"Own ×2":f.id==="OF3"?"Own ×3":f.name;
                 const active = bothCombosSelected && !layoutEditMode;
                 return (
                   <ScaledBtn key={f.id}
@@ -18065,7 +18074,7 @@ function BeyJudgeApp() {
 
   // All judge-side state declared unconditionally (React rules require this)
   const [screen,setScreen] = useState("format");
-  const [config,setConfig] = useState({pts:4,bo:3,tm:false,tournamentName:""});
+  const [config,setConfig] = useState({pts:4,bo:3,tm:true,tournamentName:""});
   const [parts,setParts] = useState({blades:[],ratchets:[],bits:[]});
   const [players,setPlayers] = useState([]);
   const [libOpen,setLibOpen] = useState(false);
