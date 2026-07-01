@@ -12249,6 +12249,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
   const [overlaySlot,setOverlaySlot] = useState(()=>{ try{return parseInt(localStorage.getItem(KEYS.overlaySlot)||"0",10)||0;}catch{return 0;} }); // 0 = disabled, 1-4 = slot number
   const [workerCombos,setWorkerCombos] = useState({}); // { playerName: [combo,...] } loaded from Worker KV
   const workerCombosRef = useRef({}); // mirrors workerCombos — always current, avoids stale closure in saveCombosToStorage
+  const p1Ref = useRef(null); // mirrors p1 state — always current inside async/closure callbacks
+  const p2Ref = useRef(null); // mirrors p2 state — always current inside async/closure callbacks
   const [overlayStatus,setOverlayStatus] = useState(null); // null | "ok" | "error"
   // swapped: purely a display-order flip. When true, p2 is shown on the left (blue side) and p1 on right (red side).
   // sets[], pts[], setScores[] always use canonical index 0=p1 1=p2 regardless of swap.
@@ -12551,7 +12553,11 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     if(!challongeSlug) return;
     const deck1 = d1override || d1;
     const deck2 = d2override || d2;
-    [[p1, deck1],[p2, deck2]].forEach(([name, deck])=>{
+    // Use refs instead of state so this always gets the current player names,
+    // even when called from inside a callback where state may be stale.
+    const curP1 = p1Ref.current;
+    const curP2 = p2Ref.current;
+    [[curP1, deck1],[curP2, deck2]].forEach(([name, deck])=>{
       if(!name) return;
       const readyCombos = deck.filter(comboReady).map(c => ({...normalizeCombo(c), updatedAt: Date.now()}));
       if(!readyCombos.length) return;
@@ -12698,7 +12704,7 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
     }
   };
 
-  const reset = () => { setP1(null);setP2(null);setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(1);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setUnderwayStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
+  const reset = () => { setP1(null);p1Ref.current=null;setP2(null);p2Ref.current=null;setD1([emptyCombo(),emptyCombo(),emptyCombo()]);setD2([emptyCombo(),emptyCombo(),emptyCombo()]);setPts([0,0]);setSets([0,0]);setCurSet(1);setShuf(1);setFuture([]);setR1(null);setR2(null);setUsed1([]);setUsed2([]);setPhase("pick");setSheetsStatus(null);setConfirmState(null);setJudge("");setSetScores([]);setSideAssign(null);setSidePicker(null);setCurrentSides({p1Side:"",p2Side:""});setPickerSearch("");setDeckReview(false);setManualJudge(false);setLerStrikes([0,0]);setChallongeMatchId(null);setChallongeP1ParticipantId(null);setChallongeP2ParticipantId(null);setChallongeSubmitStatus(null);setUnderwayStatus(null);setPendingFinish(null);setMatchStartIdx(sGet(KEYS.matchLog,[]).length);setOverlaySlot(0);setSwapped(false);setShuffleTimer(null);setSharedJudgePicker(false);try{localStorage.setItem(KEYS.overlaySlot,"0");}catch{}; };
   // After reset(), restore judge from session storage for solo mode.
   // Duo mode intentionally leaves judge blank — the per-match picker handles it.
   const resetAndRestoreJudge = () => {
@@ -12953,8 +12959,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
 
     // Restore all match state from the payload
     const judgeFromSession = (() => { try { return sessionStorage.getItem("ncblast-auth-user") || ""; } catch{ return ""; } })();
-    setP1(preview.p1);
-    setP2(preview.p2);
+    setP1(preview.p1); p1Ref.current=preview.p1;
+    setP2(preview.p2); p2Ref.current=preview.p2;
     setD1(preview.d1 || [emptyCombo(),emptyCombo(),emptyCombo()]);
     setD2(preview.d2 || [emptyCombo(),emptyCombo(),emptyCombo()]);
     setPts(preview.pts || [0,0]);
@@ -13839,13 +13845,13 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       const isP1 = tname===p1 || name===p1;
       const isP2 = tname===p2 || name===p2;
       // Always deselect if already assigned — never affects other roles
-      if(isP1){ setP1(null); return; }
-      if(isP2){ setP2(null); return; }
+      if(isP1){ setP1(null); p1Ref.current=null; return; }
+      if(isP2){ setP2(null); p2Ref.current=null; return; }
 
 
       // Unassigned name: fill first open slot p1 → p2
-      if(!p1){ setP1(tname); return; }
-      if(!p2){ setP2(tname); return; }
+      if(!p1){ setP1(tname); p1Ref.current=tname; return; }
+      if(!p2){ setP2(tname); p2Ref.current=tname; return; }
       // All slots full — do nothing
     };
 
@@ -13899,8 +13905,8 @@ function MatchScreen({config,parts,players,judge,setJudge,sharedJudges,sheetsSta
       Object.entries(idMap).forEach(([name,id])=>{ reverseMap[String(id)]=name; });
       const name1 = match.player1_name || reverseMap[String(match.player1_id)] || `ID:${match.player1_id}`;
       const name2 = match.player2_name || reverseMap[String(match.player2_id)] || `ID:${match.player2_id}`;
-      setP1(tn(name1));
-      setP2(tn(name2));
+      setP1(tn(name1)); p1Ref.current=tn(name1);
+      setP2(tn(name2)); p2Ref.current=tn(name2);
       setChallongeMatchId(match.id);
       // For group stage tournaments, winner_id must be player1_id/player2_id (the group player IDs),
       // NOT the real participant.id — Challonge validates winner_id against the match's player IDs directly.
@@ -15739,12 +15745,34 @@ function OrgApp({onSwitchRole}) {
     loadParticipants();
     loadStadiumAssign();
 
-    // Poll live match slots every 5s
+    // Prune completed matches out of station queues.
+    // Called whenever fresh pairings arrive, whether from the manual button or the poll.
+    const pruneCompletedFromQueues = (freshPairings) => {
+      const completeIds = new Set((freshPairings||[]).filter(m => m.state === "complete").map(m => String(m.id)));
+      if (completeIds.size === 0) return;
+      setStationQueues(prev => {
+        const next = {};
+        Object.keys(prev).forEach(l => { next[l] = (prev[l]||[]).filter(id => !completeIds.has(String(id))); });
+        return next;
+      });
+      setLockedMatchIds(prev => { const n = new Set(prev); completeIds.forEach(id => n.delete(id)); return n; });
+    };
+
+    // Poll live match slots AND fresh pairings every 5s so completed matches
+    // disappear from the queue automatically without needing a manual refresh.
     const pollLive = async () => {
       try {
-        const data = await workerGet("/overlay/all");
-        if((data.slots||[]).length > 0) console.log("[BLAST] org liveSlots", data.slots);
-        setLiveSlots(data.slots || []);
+        const [liveData, pairData] = await Promise.all([
+          workerGet("/overlay/all"),
+          workerGet(`/pairings?slug=${encodeURIComponent(slug)}`).catch(() => null),
+        ]);
+        if((liveData.slots||[]).length > 0) console.log("[BLAST] org liveSlots", liveData.slots);
+        setLiveSlots(liveData.slots || []);
+        if (pairData) {
+          const freshPairings = pairData.pairings || [];
+          setPairings(freshPairings);
+          pruneCompletedFromQueues(freshPairings);
+        }
       } catch(e) { console.error("[BLAST] pollLive failed", e); }
     };
     pollLive();
@@ -16509,11 +16537,11 @@ function OrgApp({onSwitchRole}) {
               setPairings(freshPairings);
               setLiveSlots(liveData.slots || []);
               // Prune completed matches from queues so they stop reappearing
-              const completeIds = new Set(freshPairings.filter(m => m.state === 'complete').map(m => m.id));
+              const completeIds = new Set(freshPairings.filter(m => m.state === 'complete').map(m => String(m.id)));
               if (completeIds.size > 0) {
                 setStationQueues(prev => {
                   const next = {};
-                  Object.keys(prev).forEach(l => { next[l] = (prev[l]||[]).filter(id => !completeIds.has(id)); });
+                  Object.keys(prev).forEach(l => { next[l] = (prev[l]||[]).filter(id => !completeIds.has(String(id))); });
                   return next;
                 });
                 setLockedMatchIds(prev => { const n = new Set(prev); completeIds.forEach(id => n.delete(id)); return n; });
