@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-30 | perf+resume+cleanup: JSX precompiled (no more in-browser Babel), fonts/React self-hosted as external files instead of inline base64/CDN, judge match state + org tournament selection now survive a refresh via sessionStorage (see KEYS.matchResume / KEYS.orgResume), dead player-view code removed (TournamentLoader screen + no-op combo stubs) -->
+<!-- NC BLAST index.html | last updated: 2026-06-30 | perf+resume+cleanup+safari-fix: JSX precompiled (no more in-browser Babel), fonts/React self-hosted as external files instead of inline base64/CDN, judge match state + org tournament selection now survive a refresh via sessionStorage (see KEYS.matchResume / KEYS.orgResume), dead player-view code removed (TournamentLoader screen + no-op combo stubs), app script switched from type=module to classic script wrapped in DOMContentLoaded to fix mobile Safari load hang (module/defer execution-order timing was unreliable on iOS Safari) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10257,7 +10257,8 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
 </script>
 
 
-<script type="module">
+<script>
+document.addEventListener("DOMContentLoaded", function() {
 const {
   useState,
   useEffect,
@@ -28461,6 +28462,7 @@ function BeyJudgeApp() {
 if (!window.__NCBLAST_OAUTH_CALLBACK__) {
   ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(BeyJudgeApp, null));
 }
+});
 </script>
 </body>
 </html>
