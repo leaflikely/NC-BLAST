@@ -1,3 +1,4 @@
+// NC BLAST app.js | last updated: 2026-07-01 | fix: refresh-resume save-effect referenced `swapped` before its declaration, throwing on every MatchScreen render and blanking the screen after "Next: Players" — effect moved below the declaration
 const {
   useState,
   useEffect,
@@ -4819,6 +4820,22 @@ function MatchScreen({
   const [underwayStatus, setUnderwayStatus] = useState(null); // null | "checking" | "ok" | "denied" | "error"
   const [pendingFinish, setPendingFinish] = useState(null); // {pi, fin} — selected but not yet confirmed
 
+  const [overlaySlot, setOverlaySlot] = useState(() => {
+    try {
+      return parseInt(localStorage.getItem(KEYS.overlaySlot) || "0", 10) || 0;
+    } catch {
+      return 0;
+    }
+  }); // 0 = disabled, 1-4 = slot number
+  const [workerCombos, setWorkerCombos] = useState({}); // { playerName: [combo,...] } loaded from Worker KV
+  const workerCombosRef = useRef({}); // mirrors workerCombos — always current, avoids stale closure in saveCombosToStorage
+  const p1Ref = useRef(null); // mirrors p1 state — always current inside async/closure callbacks
+  const p2Ref = useRef(null); // mirrors p2 state — always current inside async/closure callbacks
+  const [overlayStatus, setOverlayStatus] = useState(null); // null | "ok" | "error"
+  // swapped: purely a display-order flip. When true, p2 is shown on the left (blue side) and p1 on right (red side).
+  // sets[], pts[], setScores[] always use canonical index 0=p1 1=p2 regardless of swap.
+  const [swapped, setSwapped] = useState(_resume ? _resume.swapped : false);
+
   // Keep a running snapshot of the in-progress match in sessionStorage, so an accidental
   // refresh drops the judge back into the same match instead of a blank picker. Only saves
   // once a match is actually underway (past "pick") — nothing worth resuming before that.
@@ -4837,21 +4854,6 @@ function MatchScreen({
       manualJudge, setScores, sideAssign, currentSides, lerStrikes,
       challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId,
       matchStartIdx, swapped]);
-  const [overlaySlot, setOverlaySlot] = useState(() => {
-    try {
-      return parseInt(localStorage.getItem(KEYS.overlaySlot) || "0", 10) || 0;
-    } catch {
-      return 0;
-    }
-  }); // 0 = disabled, 1-4 = slot number
-  const [workerCombos, setWorkerCombos] = useState({}); // { playerName: [combo,...] } loaded from Worker KV
-  const workerCombosRef = useRef({}); // mirrors workerCombos — always current, avoids stale closure in saveCombosToStorage
-  const p1Ref = useRef(null); // mirrors p1 state — always current inside async/closure callbacks
-  const p2Ref = useRef(null); // mirrors p2 state — always current inside async/closure callbacks
-  const [overlayStatus, setOverlayStatus] = useState(null); // null | "ok" | "error"
-  // swapped: purely a display-order flip. When true, p2 is shown on the left (blue side) and p1 on right (red side).
-  // sets[], pts[], setScores[] always use canonical index 0=p1 1=p2 regardless of swap.
-  const [swapped, setSwapped] = useState(_resume ? _resume.swapped : false);
   const [sideSwapConfirm, setSideSwapConfirm] = useState(false); // swap B/X sides modal
   const [swapStadium, setSwapStadium] = useState(true); // checkbox: swap B/X sides
   const [swapPosition, setSwapPosition] = useState(false); // checkbox: swap p1/p2 in app
