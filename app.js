@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-01 | fix: refresh-resume save-effect referenced `swapped` before its declaration, throwing on every MatchScreen render and blanking the screen after "Next: Players" — effect moved below the declaration
+// NC BLAST app.js | last updated: 2026-07-04 | feature: Undo button added to the Set Deck Order screen (hidden on the very first order screen of a match, and hidden while the shuffle countdown timer is showing), reusing the existing undo() logic so it can drop straight back into the previous battle
 const {
   useState,
   useEffect,
@@ -4150,7 +4150,9 @@ function ShuffleOrderScreen({
   shuf,
   config,
   swapped,
-  presetOrder
+  presetOrder,
+  canUndo,
+  onUndo
 }) {
   // ── Timer ──────────────────────────────────────────────────────────────────
   const TOTAL = 60;
@@ -4663,7 +4665,24 @@ function ShuffleOrderScreen({
       color: "var(--text-primary)",
       margin: 0
     }
-  }, "Set Deck Order")), showTimer && !expired && /*#__PURE__*/React.createElement("div", {
+  }, "Set Deck Order")), !showTimer && canUndo && /*#__PURE__*/React.createElement("button", {
+    onClick: onUndo,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      flexShrink: 0,
+      padding: "8px 12px",
+      borderRadius: 10,
+      border: "1px solid var(--border2)",
+      background: "var(--surface2)",
+      color: "var(--text-muted)",
+      fontFamily: "'Outfit',sans-serif",
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: "pointer"
+    }
+  }, IC.undo, "Undo"), showTimer && !expired && /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       flexDirection: "column",
@@ -9285,7 +9304,9 @@ function MatchScreen({
       shuf: displayShuf,
       config: config,
       swapped: swapped,
-      presetOrder: orderPreset
+      presetOrder: orderPreset,
+      canUndo: log.length > matchStartIdx || log[log.length - 1]?.type === "LER-STRIKE",
+      onUndo: undo
     });
   }
 
