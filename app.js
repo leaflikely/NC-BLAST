@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-04 | feature: Undo button added to the Set Deck Order screen (hidden on the very first order screen of a match, and hidden while the shuffle countdown timer is showing), reusing the existing undo() logic so it can drop straight back into the previous battle
+// NC BLAST app.js | last updated: 2026-07-05 | feature: Misreport Mode — 5th large button ("Fix") on the main scoring screen opens a full editable history of the current match's battles (combo/win-condition/winner editable per row, Launch Errors locked for now), recomputes scores live as edits are made, flags impossible states (reused bey in a shuffle, extra battles after a set/match should have ended) in red, and blocks Save until clear; Set/Shuffle tags are never changed by an edit
 const {
   useState,
   useEffect,
@@ -608,6 +608,18 @@ const IC = {
   }), /*#__PURE__*/React.createElement("path", {
     d: "M20.49 15a9 9 0 1 1-2.13-9.36L23 10"
   })),
+  editLog: /*#__PURE__*/React.createElement("svg", {
+    width: "18",
+    height: "18",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"
+  })),
   gear: /*#__PURE__*/React.createElement("svg", {
     width: "20",
     height: "20",
@@ -697,6 +709,220 @@ const PENALTY = [{
   name: "Launch Error",
   penalty: true
 }];
+const FIN_BY_ID = {};
+[...FINISH, ...PENALTY].forEach(f => {
+  FIN_BY_ID[f.id] = f;
+});
+// Win conditions selectable in Misreport Mode (everything except Launch Error,
+// which stays locked/uneditable for now).
+const MISREPORT_WIN_CONDITIONS = [...FINISH, ...PENALTY.filter(f => f.id !== "LER")];
+
+/* ═══════════════════════════════════════
+   MISREPORT ENGINE
+   Pure function: takes the current match's battle log (with any in-progress
+   edits already merged in) and recomputes scores + finds impossible states.
+   Nothing here touches React state directly — MisreportScreen calls this on
+   every edit to redraw scores/errors, and MatchScreen calls it once more on
+   Save to build the corrected log and the live state to resume the match from.
+
+   Rules baked in on purpose (matches how the live scoring screen behaves):
+   - A battle's Set/Shuffle tag is NEVER changed by an edit. Edits can only
+     make the recorded outcome of a battle disagree with those tags — when
+     that happens we flag it in `errors` instead of silently renumbering.
+   - LER-STRIKE (the warning before a real Launch Error) is a pass-through:
+     it never appears in Misreport Mode and never changes score or bey usage.
+   - A scored Launch Error ("LER") does NOT use up a bey — same as live play.
+   - The "winner" on every row already means "whoever gained the points",
+     including penalty rows, so no separate flip is needed here.
+═══════════════════════════════════════ */
+function computeMisreportLog(entries, config, need) {
+  let runScore = [0, 0]; // running point total within the current frozen `set` tag
+  let curSetTag = null;
+  let setsWon = [0, 0];
+  let setScoresOut = [];
+  const setOverAt = {}; // set tag -> true once someone reached the win target in that set
+  let matchOverAtIdx = null; // sequence index after which the match should already be over
+  const usageByGroup = {}; // "set-shuffle" -> [Set(p1ComboIdx used), Set(p2ComboIdx used)]
+  let lerStrikes = [0, 0];
+  const out = [];
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    const errors = [];
+    if (e.type === "LER-STRIKE") {
+      // Pass-through — doesn't affect score, bey usage, or set progression.
+      const gk = `${e.set}-${e.shuffle}`;
+      out.push({
+        ...e,
+        p1Score: runScore[0],
+        p2Score: runScore[1],
+        errors,
+        _pp: [...runScore],
+        _ps: [...setsWon],
+        _u1: Array.from(usageByGroup[gk]?.[0] || []),
+        _u2: Array.from(usageByGroup[gk]?.[1] || []),
+        _ls: [...lerStrikes],
+        _ss: [...setScoresOut]
+      });
+      const strikeFor = e._lerStrikeFor !== undefined ? e._lerStrikeFor : e.scorerIdx;
+      lerStrikes = [0, 0];
+      lerStrikes[strikeFor] = 1;
+      continue;
+    }
+    if (curSetTag === null || e.set !== curSetTag) {
+      runScore = [0, 0];
+      curSetTag = e.set;
+    }
+    if (setOverAt[e.set]) {
+      errors.push({
+        scope: "row",
+        msg: "This set already ended in an earlier battle — this battle happens after that."
+      });
+    }
+    if (matchOverAtIdx !== null && i > matchOverAtIdx) {
+      errors.push({
+        scope: "row",
+        msg: "The match should have already ended before this battle — a player already reached enough sets to win."
+      });
+    }
+    // Snapshot "before this battle" state for undo/redo bookkeeping.
+    const beforePts = [...runScore];
+    const beforeSets = [...setsWon];
+    const groupKey = `${e.set}-${e.shuffle}`;
+    if (!usageByGroup[groupKey]) usageByGroup[groupKey] = [new Set(), new Set()];
+    const beforeU1 = Array.from(usageByGroup[groupKey][0]);
+    const beforeU2 = Array.from(usageByGroup[groupKey][1]);
+    const beforeLs = [...lerStrikes];
+    const beforeSs = [...setScoresOut];
+    const fin = FIN_BY_ID[e.type];
+    const scoringPi = e.scorerIdx; // slider = whoever gains the points, directly
+    const cap = config.pts > 0 ? config.pts : Infinity;
+    const raw = [...runScore];
+    raw[scoringPi] = Math.min(raw[scoringPi] + fin.p, cap);
+    runScore = raw;
+    // Bey-reuse check — a scored Launch Error does not consume a bey.
+    if (e.type !== "LER") {
+      if (usageByGroup[groupKey][0].has(e.p1ComboIdx)) {
+        errors.push({
+          scope: "p1combo",
+          msg: "This player already used this combo earlier in this shuffle."
+        });
+      } else {
+        usageByGroup[groupKey][0].add(e.p1ComboIdx);
+      }
+      if (usageByGroup[groupKey][1].has(e.p2ComboIdx)) {
+        errors.push({
+          scope: "p2combo",
+          msg: "This player already used this combo earlier in this shuffle."
+        });
+      } else {
+        usageByGroup[groupKey][1].add(e.p2ComboIdx);
+      }
+    }
+    if (config.pts > 0 && runScore[scoringPi] >= config.pts && !setOverAt[e.set]) {
+      setOverAt[e.set] = true;
+      setsWon[scoringPi] += 1;
+      setScoresOut.push({
+        p1: runScore[0],
+        p2: runScore[1]
+      });
+      if (setsWon[scoringPi] >= need && matchOverAtIdx === null) {
+        matchOverAtIdx = i;
+      }
+    }
+    lerStrikes = [0, 0];
+    out.push({
+      ...e,
+      scorer: scoringPi === 0 ? e.p1Name : e.p2Name,
+      typeName: fin.name,
+      points: fin.p,
+      penalty: fin.penalty || false,
+      winnerCombo: comboStr(scoringPi === 0 ? {
+        blade: e.p1Combo?.blade,
+        ratchet: e.p1Combo?.ratchet,
+        bit: e.p1Combo?.bit
+      } : {
+        blade: e.p2Combo?.blade,
+        ratchet: e.p2Combo?.ratchet,
+        bit: e.p2Combo?.bit
+      }),
+      p1Score: runScore[0],
+      p2Score: runScore[1],
+      errors,
+      _pp: beforePts,
+      _ps: beforeSets,
+      _u1: beforeU1,
+      _u2: beforeU2,
+      _ls: beforeLs,
+      _ss: beforeSs
+    });
+  }
+  const hasErrors = out.some(r => r.errors.length > 0);
+  const last = entries[entries.length - 1];
+  let finalState;
+  if (!last) {
+    finalState = {
+      pts: [0, 0],
+      sets: [0, 0],
+      curSet: 1,
+      shuf: 1,
+      used1: [],
+      used2: [],
+      phase: "battle"
+    };
+  } else if (matchOverAtIdx === entries.length - 1) {
+    finalState = {
+      pts: runScore,
+      sets: setsWon,
+      curSet: curSetTag,
+      shuf: last.shuffle,
+      used1: [],
+      used2: [],
+      phase: "over"
+    };
+  } else if (setOverAt[last.set] && last.type !== "LER-STRIKE") {
+    finalState = {
+      pts: [0, 0],
+      sets: setsWon,
+      curSet: curSetTag + 1,
+      shuf: 1,
+      used1: [],
+      used2: [],
+      phase: "order"
+    };
+  } else {
+    const groupKey = `${last.set}-${last.shuffle}`;
+    const u1 = Array.from(usageByGroup[groupKey]?.[0] || []);
+    const u2 = Array.from(usageByGroup[groupKey]?.[1] || []);
+    if (u1.length >= 3 && u2.length >= 3) {
+      finalState = {
+        pts: runScore,
+        sets: setsWon,
+        curSet: curSetTag,
+        shuf: last.shuffle + 1,
+        used1: [],
+        used2: [],
+        phase: "order"
+      };
+    } else {
+      finalState = {
+        pts: runScore,
+        sets: setsWon,
+        curSet: curSetTag,
+        shuf: last.shuffle,
+        used1: u1,
+        used2: u2,
+        phase: "battle"
+      };
+    }
+  }
+  finalState.setScores = setScoresOut;
+  finalState.lerStrikes = lerStrikes;
+  return {
+    rows: out,
+    hasErrors,
+    finalState
+  };
+}
 
 // UXE Expanded line: blade + bit only, no ratchet slot.
 const UXE_BLADES = ["Bullet Griffon", "Cutter Shinobi", "Rampart Aegis", "Valor Bison"];
@@ -4732,6 +4958,546 @@ function ShuffleOrderScreen({
     }
   }, "Start Match")));
 }
+
+/* ═══════════════════════════════════════
+   MISREPORT SCREEN
+   Full chronological, editable history of the CURRENT match only. Lets a
+   judge correct a combo, win condition, or winner on any past battle in this
+   match (Launch Errors are locked for now). Nothing is written back to the
+   real match until "Save Changes" is tapped, and Save is disabled while any
+   row is showing a conflict.
+═══════════════════════════════════════ */
+function MisreportScreen({
+  p1,
+  p2,
+  d1,
+  d2,
+  entries,
+  config,
+  need,
+  onClose,
+  onSave
+}) {
+  const blankDraft = () => entries.map(e => ({
+    p1ComboIdx: e.p1ComboIdx,
+    p2ComboIdx: e.p2ComboIdx,
+    type: e.type,
+    scorerIdx: e.scorerIdx
+  }));
+  const [draft, setDraft] = React.useState(blankDraft);
+  const [confirmReset, setConfirmReset] = React.useState(false);
+  const merged = entries.map((e, i) => {
+    const d = draft[i] || {};
+    const p1ComboIdx = d.p1ComboIdx !== undefined ? d.p1ComboIdx : e.p1ComboIdx;
+    const p2ComboIdx = d.p2ComboIdx !== undefined ? d.p2ComboIdx : e.p2ComboIdx;
+    // Use THIS battle's own deck-order snapshot, not today's live deck order —
+    // the judge can drag-reorder the 3 combos between shuffles, so "combo #2"
+    // from three shuffles ago isn't necessarily the same bey as "combo #2" now.
+    const deck1 = e._d1 || d1 || [];
+    const deck2 = e._d2 || d2 || [];
+    return {
+      ...e,
+      ...d,
+      p1Combo: deck1[p1ComboIdx] ? {
+        ...deck1[p1ComboIdx]
+      } : e.p1Combo,
+      p2Combo: deck2[p2ComboIdx] ? {
+        ...deck2[p2ComboIdx]
+      } : e.p2Combo
+    };
+  });
+  const {
+    rows,
+    hasErrors,
+    finalState
+  } = React.useMemo(() => computeMisreportLog(merged, config, need), [draft, entries, config, need]);
+  const visible = rows.map((r, i) => ({
+    r,
+    i
+  })).filter(x => x.r.type !== "LER-STRIKE");
+  const lastRow = rows.length ? rows[rows.length - 1] : null;
+  const setPts = lastRow ? [lastRow.p1Score, lastRow.p2Score] : [0, 0];
+  const P1C = "#2563EB",
+    P2C = "#DC2626";
+  const updateRow = (i, patch) => {
+    setDraft(d => {
+      const n = [...d];
+      n[i] = {
+        ...n[i],
+        ...patch
+      };
+      return n;
+    });
+  };
+  const comboLabel = c => comboStr(c) === "—" ? "(empty combo)" : comboStr(c);
+  const rowErrorsFor = (r, scope) => r.errors.filter(e => e.scope === scope || e.scope === "row");
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "var(--bg-solid)",
+      display: "flex",
+      flexDirection: "column",
+      boxSizing: "border-box",
+      fontFamily: "'Outfit',sans-serif",
+      zIndex: 700
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "12px 16px 10px",
+      borderBottom: "1px solid var(--border)",
+      flexShrink: 0,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 9,
+      fontWeight: 700,
+      color: "var(--text-muted)",
+      letterSpacing: 1.5,
+      textTransform: "uppercase",
+      margin: "0 0 2px"
+    }
+  }, "Misreport Mode"), /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontSize: 17,
+      fontWeight: 900,
+      color: "var(--text-primary)",
+      margin: 0
+    }
+  }, "Fix Match History")), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      border: "1px solid var(--border2)",
+      background: "var(--surface2)",
+      color: "var(--text-muted)",
+      fontSize: 16,
+      fontWeight: 900,
+      cursor: "pointer",
+      flexShrink: 0
+    }
+  }, "\u2715")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "10px 16px",
+      borderBottom: "1px solid var(--border)",
+      flexShrink: 0,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 18,
+      background: "var(--surface2)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 9,
+      fontWeight: 700,
+      color: "var(--text-muted)",
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      margin: "0 0 2px"
+    }
+  }, "Match Score"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 20,
+      fontWeight: 900,
+      color: "var(--text-primary)",
+      margin: 0
+    }
+  }, finalState.sets[0], "\u2013", finalState.sets[1])), /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 1,
+      height: 30,
+      background: "var(--border2)"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 9,
+      fontWeight: 700,
+      color: "var(--text-muted)",
+      letterSpacing: 1,
+      textTransform: "uppercase",
+      margin: "0 0 2px"
+    }
+  }, "Set Score"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 20,
+      fontWeight: 900,
+      color: "var(--text-primary)",
+      margin: 0
+    }
+  }, setPts[0], "\u2013", setPts[1]))), hasErrors && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#DC2626",
+      color: "#fff",
+      fontSize: 12,
+      fontWeight: 700,
+      padding: "8px 16px",
+      textAlign: "center",
+      flexShrink: 0
+    }
+  }, "Fix the highlighted battles below before saving"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      overflowY: "auto",
+      padding: "10px 12px"
+    }
+  }, visible.length === 0 && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      color: "var(--text-muted)",
+      textAlign: "center",
+      marginTop: 30
+    }
+  }, "No battles logged yet this match."), visible.map(({
+    r,
+    i
+  }, vi) => {
+    const prevTag = vi > 0 ? `${visible[vi - 1].r.set}-${visible[vi - 1].r.shuffle}` : null;
+    const tag = `${r.set}-${r.shuffle}`;
+    const showDivider = vi > 0 && prevTag !== tag;
+    const locked = r.type === "LER";
+    const winnerColor = r.scorerIdx === 0 ? P1C : P2C;
+    const p1Errs = rowErrorsFor(r, "p1combo");
+    const p2Errs = rowErrorsFor(r, "p2combo");
+    const rowErrs = r.errors.filter(e => e.scope === "row");
+    const deck1 = r._d1 || d1 || [];
+    const deck2 = r._d2 || d2 || [];
+    return /*#__PURE__*/React.createElement(React.Fragment, {
+      key: i
+    }, showDivider && /*#__PURE__*/React.createElement("div", {
+      style: {
+        height: 1,
+        background: "var(--border2)",
+        margin: "10px 4px"
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      style: {
+        borderRadius: 12,
+        border: `2px solid ${rowErrs.length ? "#DC2626" : winnerColor}`,
+        background: locked ? "var(--surface2)" : `${winnerColor}12`,
+        padding: "8px 10px",
+        marginBottom: 8,
+        opacity: locked ? 0.75 : 1
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 6
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10,
+        fontWeight: 700,
+        color: "var(--text-muted)",
+        letterSpacing: 0.5,
+        textTransform: "uppercase"
+      }
+    }, "Set ", r.set, " \xB7 Shuffle ", r.shuffle, " \xB7 Battle ", r.slot), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        fontWeight: 800,
+        color: "var(--text-muted)"
+      }
+    }, r.p1Score, "\u2013", r.p2Score)), rowErrs.map((er, ei) => /*#__PURE__*/React.createElement("p", {
+      key: ei,
+      style: {
+        fontSize: 11,
+        fontWeight: 700,
+        color: "#DC2626",
+        margin: "0 0 6px"
+      }
+    }, "\u26A0 ", er.msg)), locked ? /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 12,
+        fontWeight: 700,
+        color: "var(--text-muted)",
+        margin: "4px 0"
+      }
+    }, "Launch Error \u2014 not editable yet") : null, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 8,
+        marginBottom: 8
+      }
+    }, [{
+      name: p1,
+      idx: r.p1ComboIdx,
+      deck: deck1,
+      errs: p1Errs,
+      color: P1C,
+      onChange: v => updateRow(i, {
+        p1ComboIdx: v
+      })
+    }, {
+      name: p2,
+      idx: r.p2ComboIdx,
+      deck: deck2,
+      errs: p2Errs,
+      color: P2C,
+      onChange: v => updateRow(i, {
+        p2ComboIdx: v
+      })
+    }].map((side, si) => /*#__PURE__*/React.createElement("div", {
+      key: si,
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 10,
+        fontWeight: 700,
+        color: side.color,
+        margin: "0 0 2px",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis"
+      }
+    }, side.name), /*#__PURE__*/React.createElement("select", {
+      disabled: locked,
+      value: side.idx,
+      onChange: e => side.onChange(Number(e.target.value)),
+      style: {
+        width: "100%",
+        fontSize: 11,
+        fontWeight: 700,
+        padding: "6px 6px",
+        borderRadius: 8,
+        border: `1.5px solid ${side.errs.length ? "#DC2626" : "var(--border2)"}`,
+        background: side.errs.length ? "#FEE2E2" : "var(--surface)",
+        color: side.errs.length ? "#991B1B" : "var(--text-primary)",
+        fontFamily: "'Outfit',sans-serif"
+      }
+    }, side.deck.map((c, ci) => /*#__PURE__*/React.createElement("option", {
+      key: ci,
+      value: ci
+    }, comboLabel(c)))), side.errs.map((er, ei) => /*#__PURE__*/React.createElement("p", {
+      key: ei,
+      style: {
+        fontSize: 10,
+        fontWeight: 700,
+        color: "#DC2626",
+        margin: "2px 0 0"
+      }
+    }, er.msg))))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 8,
+        alignItems: "flex-end"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 10,
+        fontWeight: 700,
+        color: "var(--text-muted)",
+        margin: "0 0 2px"
+      }
+    }, "Win Condition"), /*#__PURE__*/React.createElement("select", {
+      disabled: locked,
+      value: r.type,
+      onChange: e => updateRow(i, {
+        type: e.target.value
+      }),
+      style: {
+        width: "100%",
+        fontSize: 11,
+        fontWeight: 700,
+        padding: "6px 6px",
+        borderRadius: 8,
+        border: "1.5px solid var(--border2)",
+        background: "var(--surface)",
+        color: "var(--text-primary)",
+        fontFamily: "'Outfit',sans-serif"
+      }
+    }, MISREPORT_WIN_CONDITIONS.map(f => /*#__PURE__*/React.createElement("option", {
+      key: f.id,
+      value: f.id
+    }, f.id === "OF2" ? "Own \xD72" : f.id === "OF3" ? "Own \xD73" : f.name, " (+", f.p, ")")))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 10,
+        fontWeight: 700,
+        color: "var(--text-muted)",
+        margin: "0 0 2px"
+      }
+    }, "Winner"), /*#__PURE__*/React.createElement("div", {
+      onClick: () => !locked && updateRow(i, {
+        scorerIdx: r.scorerIdx === 0 ? 1 : 0
+      }),
+      style: {
+        position: "relative",
+        display: "flex",
+        borderRadius: 8,
+        overflow: "hidden",
+        border: "1.5px solid var(--border2)",
+        height: 30,
+        cursor: locked ? "default" : "pointer",
+        opacity: locked ? 0.6 : 1
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: r.scorerIdx === 0 ? P1C : "var(--surface2)",
+        color: r.scorerIdx === 0 ? "#fff" : "var(--text-muted)",
+        fontSize: 10,
+        fontWeight: 800,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        padding: "0 4px"
+      }
+    }, p1), /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: r.scorerIdx === 1 ? P2C : "var(--surface2)",
+        color: r.scorerIdx === 1 ? "#fff" : "var(--text-muted)",
+        fontSize: 10,
+        fontWeight: 800,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        padding: "0 4px"
+      }
+    }, p2))))));
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "10px 14px 16px",
+      borderTop: "1px solid var(--border)",
+      flexShrink: 0,
+      display: "flex",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setConfirmReset(true),
+    disabled: visible.length === 0,
+    style: {
+      padding: "13px 14px",
+      borderRadius: 12,
+      border: "1px solid var(--border2)",
+      background: "var(--surface2)",
+      color: "var(--text-muted)",
+      fontSize: 13,
+      fontWeight: 800,
+      fontFamily: "'Outfit',sans-serif",
+      cursor: visible.length === 0 ? "default" : "pointer",
+      opacity: visible.length === 0 ? 0.4 : 1
+    }
+  }, "Clear Changes"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onSave(rows, finalState),
+    disabled: hasErrors || visible.length === 0,
+    style: {
+      flex: 1,
+      padding: "13px 0",
+      borderRadius: 12,
+      border: "none",
+      background: hasErrors || visible.length === 0 ? "var(--border2)" : "linear-gradient(135deg,#7C3AED,#4C1D95)",
+      color: "#fff",
+      fontSize: 15,
+      fontWeight: 900,
+      fontFamily: "'Outfit',sans-serif",
+      cursor: hasErrors || visible.length === 0 ? "not-allowed" : "pointer"
+    }
+  }, "Save Changes")), confirmReset && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.5)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 800,
+      padding: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--bg-solid)",
+      borderRadius: 14,
+      padding: 18,
+      maxWidth: 320,
+      width: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 14,
+      fontWeight: 800,
+      color: "var(--text-primary)",
+      margin: "0 0 8px"
+    }
+  }, "Clear all changes?"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "var(--text-muted)",
+      margin: "0 0 14px"
+    }
+  }, "This brings every battle back to what was originally recorded."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setConfirmReset(false),
+    style: {
+      flex: 1,
+      padding: "10px 0",
+      borderRadius: 10,
+      border: "1px solid var(--border2)",
+      background: "var(--surface2)",
+      color: "var(--text-primary)",
+      fontSize: 13,
+      fontWeight: 700,
+      fontFamily: "'Outfit',sans-serif",
+      cursor: "pointer"
+    }
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setDraft(blankDraft());
+      setConfirmReset(false);
+    },
+    style: {
+      flex: 1,
+      padding: "10px 0",
+      borderRadius: 10,
+      border: "none",
+      background: "#DC2626",
+      color: "#fff",
+      fontSize: 13,
+      fontWeight: 800,
+      fontFamily: "'Outfit',sans-serif",
+      cursor: "pointer"
+    }
+  }, "Clear")))));
+}
 function MatchScreen({
   config,
   parts,
@@ -4816,6 +5582,7 @@ function MatchScreen({
     setCxPicker(null);
   };
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [misreportOpen, setMisreportOpen] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
   const [manualJudge, setManualJudge] = useState(_resume ? _resume.manualJudge : false);
   const [setScores, setSetScores] = useState(_resume ? _resume.setScores : []);
@@ -9268,6 +10035,57 @@ function MatchScreen({
     }, "Tap any missing part above to continue"));
   }
 
+  // ── Misreport Mode ───────────────────────────────────────────────────────
+  if (misreportOpen) {
+    return /*#__PURE__*/React.createElement(MisreportScreen, {
+      p1: p1,
+      p2: p2,
+      d1: d1,
+      d2: d2,
+      entries: log.slice(matchStartIdx),
+      config: config,
+      need: need,
+      onClose: () => setMisreportOpen(false),
+      onSave: (newRows, finalState) => {
+        const cleanRows = newRows.map(r => {
+          const {
+            errors,
+            ...rest
+          } = r;
+          return rest;
+        });
+        const newLog = [...log.slice(0, matchStartIdx), ...cleanRows];
+        setLog(newLog);
+        sSave(KEYS.matchLog, newLog);
+        setFuture([]); // edited history invalidates any pending redo stack
+        setPts(finalState.pts);
+        setSets(finalState.sets);
+        setCurSet(finalState.curSet);
+        setShuf(finalState.shuf);
+        setUsed1(finalState.used1);
+        setUsed2(finalState.used2);
+        setSetScores(finalState.setScores);
+        setLerStrikes(finalState.lerStrikes);
+        setPendingFinish(null);
+        if (finalState.phase === "order") {
+          setR1(null);
+          setR2(null);
+          setOrderPreset(true);
+          setPhase("order");
+        } else if (finalState.phase === "over") {
+          setPhase("over");
+        } else {
+          const nxR1 = [0, 1, 2].find(x => !finalState.used1.includes(x));
+          const nxR2 = [0, 1, 2].find(x => !finalState.used2.includes(x));
+          setR1(nxR1 !== undefined ? nxR1 : null);
+          setR2(nxR2 !== undefined ? nxR2 : null);
+          setPhase("battle");
+        }
+        setMisreportOpen(false);
+      }
+    });
+  }
+
   // ── Shuffle Timer Screen ────────────────────────────────────────────────────
   // ── Combined shuffle timer + deck order screen ──────────────────────────
   if (shuffleTimer || phase === "order") {
@@ -10583,7 +11401,21 @@ function MatchScreen({
         ...lbl,
         color: future.length ? "#EA580C" : "var(--text-disabled)"
       }
-    }, "Redo")), currentSides.p1Side && /*#__PURE__*/React.createElement("button", {
+    }, "Redo")), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setMisreportOpen(true),
+      disabled: !canUndo,
+      style: {
+        ...btnBase,
+        color: canUndo ? config.tm ? "#C4B5FD" : "var(--text-muted)" : "var(--text-disabled)",
+        opacity: canUndo ? 1 : 0.3,
+        cursor: canUndo ? "pointer" : "default"
+      }
+    }, IC.editLog, /*#__PURE__*/React.createElement("span", {
+      style: {
+        ...lbl,
+        color: canUndo ? config.tm ? "#C4B5FD" : "var(--text-muted)" : "var(--text-disabled)"
+      }
+    }, "Fix")), currentSides.p1Side && /*#__PURE__*/React.createElement("button", {
       type: "button",
       onClick: () => {
         setSwapped(s => !s);
