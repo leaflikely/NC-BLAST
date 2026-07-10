@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-05 | feature: Misreport Mode — 5th large button ("Fix") on the main scoring screen opens a full editable history of the current match's battles (combo/win-condition/winner editable per row, Launch Errors locked for now), recomputes scores live as edits are made, flags impossible states (reused bey in a shuffle, extra battles after a set/match should have ended) in red, and blocks Save until clear; Set/Shuffle tags are never changed by an edit
+// NC BLAST app.js | last updated: 2026-07-10 | delete-fix+rename: handleDelete now sends username in body (fixes "access token invalid" error for manual-login orgs); added handleRename + inline rename UI (pencil button per tournament row) using existing /name/set Worker route
 const {
   useState,
   useEffect,
@@ -17010,6 +17010,10 @@ function OrgTournamentSelect({
   const [pendingSlug, setPendingSlug] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // slug | null
   const [deleting, setDeleting] = useState(false);
+  const [renameSlug, setRenameSlug] = useState(null); // slug being renamed | null
+  const [renameDraft, setRenameDraft] = useState(""); // current text in rename field
+  const [renaming, setRenaming] = useState(false); // rename in progress
+  const [renameError, setRenameError] = useState(null);
   // Whitelist management
   const [whitelistPanel, setWhitelistPanel] = useState(false);
   const [whitelistData, setWhitelistData] = useState(null);
@@ -17097,6 +17101,7 @@ function OrgTournamentSelect({
   const handleDelete = async slug => {
     setDeleting(true);
     const token = sessionStorage.getItem("ncblast-auth-token");
+    const username = sessionStorage.getItem("ncblast-auth-user") || "";
     try {
       const res = await fetch(`${OVERLAY_WORKER}/delete`, {
         method: "POST",
@@ -17105,7 +17110,8 @@ function OrgTournamentSelect({
           "X-Auth-Token": token
         },
         body: JSON.stringify({
-          slug
+          slug,
+          username
         }),
         signal: AbortSignal.timeout(10000)
       });
@@ -17121,6 +17127,32 @@ function OrgTournamentSelect({
   };
 
   // ── Whitelist management ─────────────────────────────────────────
+  const handleRename = async () => {
+    const name = renameDraft.trim();
+    if (!name) return;
+    setRenaming(true);
+    setRenameError(null);
+    const token = sessionStorage.getItem("ncblast-auth-token");
+    const username = sessionStorage.getItem("ncblast-auth-user") || "";
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/name/set`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Auth-Token": token },
+        body: JSON.stringify({ slug: renameSlug, name, username }),
+        signal: AbortSignal.timeout(10000)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setCachedList(prev => prev.map(t => t.slug === renameSlug ? { ...t, name } : t));
+      setRenameSlug(null);
+      setRenameDraft("");
+    } catch (e) {
+      setRenameError("Rename failed: " + e.message);
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   const loadWhitelist = async key => {
     setWlLoading(true);
     setWlError(null);
@@ -17981,9 +18013,82 @@ function OrgTournamentSelect({
   }, "No cached tournaments. Use the link field above to add one."), cachedList.map(t => /*#__PURE__*/React.createElement("div", {
     key: t.slug,
     style: {
+      marginBottom: 8
+    }
+  }, renameSlug === t.slug ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--surface)",
+      border: "1px solid var(--border)",
+      borderRadius: 12,
+      padding: "10px 12px"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 11,
+      color: "var(--text-muted)",
+      margin: "0 0 6px",
+      fontWeight: 700
+    }
+  }, "Rename \u201C", t.name || t.slug, "\u201D"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    autoFocus: true,
+    value: renameDraft,
+    onChange: e => setRenameDraft(e.target.value),
+    onKeyDown: e => { if (e.key === "Enter") handleRename(); if (e.key === "Escape") { setRenameSlug(null); setRenameDraft(""); setRenameError(null); } },
+    placeholder: t.name || t.slug,
+    style: {
+      flex: 1,
+      padding: "8px 10px",
+      borderRadius: 8,
+      border: "1px solid var(--border)",
+      background: "var(--bg)",
+      color: "var(--text-primary)",
+      fontFamily: "'Outfit',sans-serif",
+      fontSize: 13,
+      fontWeight: 700
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: handleRename,
+    disabled: renaming || !renameDraft.trim(),
+    style: {
+      padding: "0 14px",
+      borderRadius: 8,
+      border: "none",
+      background: "var(--accent)",
+      color: "#fff",
+      fontFamily: "'Outfit',sans-serif",
+      fontSize: 12,
+      fontWeight: 800,
+      cursor: renaming || !renameDraft.trim() ? "not-allowed" : "pointer",
+      opacity: renaming || !renameDraft.trim() ? 0.5 : 1
+    }
+  }, renaming ? "Saving…" : "Save"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => { setRenameSlug(null); setRenameDraft(""); setRenameError(null); },
+    style: {
+      padding: "0 12px",
+      borderRadius: 8,
+      border: "1px solid var(--border)",
+      background: "none",
+      color: "var(--text-muted)",
+      fontFamily: "'Outfit',sans-serif",
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: "pointer"
+    }
+  }, "Cancel")), renameError && /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 11,
+      color: "#EF4444",
+      margin: "6px 0 0"
+    }
+  }, renameError)) : /*#__PURE__*/React.createElement("div", {
+    style: {
       display: "flex",
       gap: 8,
-      marginBottom: 8,
       alignItems: "stretch"
     }
   }, /*#__PURE__*/React.createElement("button", {
@@ -18012,6 +18117,20 @@ function OrgTournamentSelect({
       margin: "2px 0 0"
     }
   }, t.slug, t.orgUsername ? ` · org: ${t.orgUsername}` : "")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => { setRenameSlug(t.slug); setRenameDraft(t.name || t.slug); setRenameError(null); },
+    title: "Rename",
+    style: {
+      padding: "0 12px",
+      borderRadius: 12,
+      border: "1px solid var(--border)",
+      background: "var(--surface)",
+      cursor: "pointer",
+      color: "var(--text-muted)",
+      fontFamily: "'Outfit',sans-serif",
+      fontSize: 14,
+      flexShrink: 0
+    }
+  }, "\u270F\uFE0F"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setDeleteConfirm(t.slug),
     style: {
       padding: "0 14px",
@@ -18025,10 +18144,9 @@ function OrgTournamentSelect({
       fontWeight: 700,
       flexShrink: 0
     }
-  }, "Delete")))));
+  }, "Delete"))))));
 }
 
-/* ─── Match History Tab ───────────────────────────────────────── */
 function HistoryTab({
   slug,
   myName
