@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-10 | delete-fix+rename: handleDelete now sends username in body (fixes "access token invalid" error for manual-login orgs); added handleRename + inline rename UI (pencil button per tournament row) using existing /name/set Worker route
+// NC BLAST app.js | last updated: 2026-07-13 | turbo-operate: Turbo and Operate ratchets are combo-bits (ratchet+bit in one); NO_BIT_RATCHETS constant added; comboReady/comboStr/picker flow/display all updated to skip bit step and show correctly
 const {
   useState,
   useEffect,
@@ -927,20 +927,26 @@ function computeMisreportLog(entries, config, need) {
 // UXE Expanded line: blade + bit only, no ratchet slot.
 const UXE_BLADES = ["Bullet Griffon", "Cutter Shinobi", "Rampart Aegis", "Valor Bison"];
 const NO_RATCHET_BLADES = UXE_BLADES;
+// Combo ratchets that include a built-in bit — no separate bit needed.
+const NO_BIT_RATCHETS = ["Turbo", "Operate"];
 const emptyCombo = () => ({
   blade: null,
   ratchet: null,
   bit: null
 });
 const comboStr = c => {
-  if (!c?.blade || !c?.bit) return "—";
-  if (NO_RATCHET_BLADES.includes(c.blade)) return `${c.blade} ${c.bit}`;
-  return c.ratchet ? `${c.blade} ${c.ratchet} ${c.bit}` : "—";
+  if (!c?.blade) return "—";
+  if (NO_RATCHET_BLADES.includes(c.blade)) return c.bit ? `${c.blade} ${c.bit}` : "—";
+  if (!c.ratchet) return "—";
+  if (NO_BIT_RATCHETS.includes(c.ratchet)) return `${c.blade} ${c.ratchet}`;
+  return c.bit ? `${c.blade} ${c.ratchet} ${c.bit}` : "—";
 };
 const comboReady = c => {
-  if (!c?.blade || !c?.bit) return false;
-  if (NO_RATCHET_BLADES.includes(c.blade)) return true;
-  return !!c.ratchet;
+  if (!c?.blade) return false;
+  if (NO_RATCHET_BLADES.includes(c.blade)) return !!c.bit;
+  if (!c.ratchet) return false;
+  if (NO_BIT_RATCHETS.includes(c.ratchet)) return true;
+  return !!c.bit;
 };
 // Normalize a combo loaded from storage: replace dashes in bit names with spaces
 // Ratchets like "1-60" are intentionally excluded (they contain only digits around the dash)
@@ -4761,7 +4767,7 @@ function ShuffleOrderScreen({
           color: "var(--text-muted)",
           lineHeight: 1.4
         }
-      }, combo.ratchet ? `${combo.ratchet} · ${combo.bit}` : combo.bit || "")), /*#__PURE__*/React.createElement("div", {
+      }, combo.ratchet ? (NO_BIT_RATCHETS.includes(combo.ratchet) ? combo.ratchet : `${combo.ratchet} · ${combo.bit}`) : combo.bit || "")), /*#__PURE__*/React.createElement("div", {
         style: {
           fontSize: 18,
           opacity: 0.3,
@@ -4831,7 +4837,7 @@ function ShuffleOrderScreen({
           color: "var(--text-muted)",
           lineHeight: 1.4
         }
-      }, combo.ratchet ? `${combo.ratchet} · ${combo.bit}` : combo.bit || "")));
+      }, combo.ratchet ? (NO_BIT_RATCHETS.includes(combo.ratchet) ? combo.ratchet : `${combo.ratchet} · ${combo.bit}`) : combo.bit || "")));
     }));
   };
   return /*#__PURE__*/React.createElement("div", {
@@ -6408,13 +6414,25 @@ function MatchScreen({
     const catIdx = cats.indexOf(cat);
     // Still steps remaining in this combo
     if (catIdx < 2) {
-      const nextCat = cat === "blade" && NO_RATCHET_BLADES.includes(name) ? "bit" : cats[catIdx + 1];
-      openPicker({
-        who,
-        slot,
-        cat: nextCat
-      });
-      return;
+      // Blade → skip ratchet for NO_RATCHET blades, otherwise go to ratchet
+      // Ratchet → skip bit for NO_BIT ratchets (they have a built-in bit), otherwise go to bit
+      let nextCat;
+      if (cat === "blade" && NO_RATCHET_BLADES.includes(name)) {
+        nextCat = "bit";
+      } else if (cat === "ratchet" && NO_BIT_RATCHETS.includes(name)) {
+        nextCat = null; // combo is complete — fall through to slot/player advance below
+      } else {
+        nextCat = cats[catIdx + 1];
+      }
+      if (nextCat !== null) {
+        openPicker({
+          who,
+          slot,
+          cat: nextCat
+        });
+        return;
+      }
+      // null nextCat means this combo is done — fall through to the slot/player advance logic below
     }
     // More combos remaining for this player
     if (slot < 2) {
@@ -7430,6 +7448,20 @@ function MatchScreen({
         return null;
       }
     }
+    // Skip bit step for ratchets that include a built-in bit (e.g. Turbo, Operate)
+    if (cat === "bit") {
+      const currentDeck = who === 1 ? d1 : d2;
+      if (NO_BIT_RATCHETS.includes(currentDeck[slot]?.ratchet)) {
+        const nd = [...currentDeck];
+        nd[slot] = {
+          ...nd[slot],
+          bit: null
+        };
+        if (who === 1) setD1(nd);else setD2(nd);
+        advanceDeckPicker(who, slot, "ratchet", who === 1 ? nd : d1, who === 2 ? nd : d2, picker.returnToReview, currentDeck[slot].ratchet, picker.qcEdit);
+        return null;
+      }
+    }
     const list = parts[cat + "s"];
     const cc = {
       blade: "#EA580C",
@@ -7465,13 +7497,18 @@ function MatchScreen({
           if (taken) return;
           const nd = [...deck];
           // Hard rule: NO_RATCHET_BLADES (e.g. Bullet Griffon) cannot physically hold a ratchet.
-          // Null it out in the same state update so it never persists in the deck.
+          // Hard rule: NO_BIT_RATCHETS (e.g. Turbo, Operate) have a built-in bit — no separate bit.
+          // Null out the dependent part in the same state update so stale values never persist.
           const noRatchet = cat === "blade" && NO_RATCHET_BLADES.includes(name);
+          const noBit = cat === "ratchet" && NO_BIT_RATCHETS.includes(name);
           nd[slot] = {
             ...nd[slot],
             [cat]: name,
             ...(noRatchet ? {
               ratchet: null
+            } : {}),
+            ...(noBit ? {
+              bit: null
             } : {})
           };
           setDeck(nd);
@@ -8192,7 +8229,7 @@ function MatchScreen({
             fontSize: 11,
             opacity: 0.65
           }
-        }, c.ratchet ? `${c.ratchet} · ${c.bit}` : c.bit), anyTaken && /*#__PURE__*/React.createElement("span", {
+        }, c.ratchet ? (NO_BIT_RATCHETS.includes(c.ratchet) ? c.ratchet : `${c.ratchet} · ${c.bit}`) : c.bit), anyTaken && /*#__PURE__*/React.createElement("span", {
           style: {
             fontSize: 9,
             color: "var(--text-faint)"
@@ -8467,8 +8504,8 @@ function MatchScreen({
         "aria-label": qc.blade
       }), /*#__PURE__*/React.createElement("div", {
         className: "qc-parts",
-        "data-label": qc.ratchet ? `${qc.ratchet} · ${qc.bit}` : qc.bit,
-        "aria-label": qc.ratchet ? `${qc.ratchet} · ${qc.bit}` : qc.bit
+        "data-label": qc.ratchet ? (NO_BIT_RATCHETS.includes(qc.ratchet) ? qc.ratchet : `${qc.ratchet} · ${qc.bit}`) : qc.bit,
+        "aria-label": qc.ratchet ? (NO_BIT_RATCHETS.includes(qc.ratchet) ? qc.ratchet : `${qc.ratchet} · ${qc.bit}`) : qc.bit
       }), anyTaken && /*#__PURE__*/React.createElement("div", {
         "aria-hidden": "true",
         style: {
