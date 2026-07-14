@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-13 | turbo-operate+cx-guide+stale-slot-fix: NO_BIT_RATCHETS; CX guide overlay; pollLive+refresh button now prune KV overlay slots whose Challonge match is already complete, fixing false "already in match"/"stranded" at round boundaries
+// NC BLAST app.js | last updated: 2026-07-14 | net-error-screen: org verify catch now distinguishes network failure from whitelist rejection; net_error state shows "Can't Reach Server" with retry instead of misleading "Not Authorized" screen
 const {
   useState,
   useEffect,
@@ -17142,7 +17142,7 @@ function OrgTournamentSelect({
 }) {
   // ── Auth state ────────────────────────────────────────────────────
   // On mount, check if there's already a valid session from this browser session.
-  const [authStep, setAuthStep] = useState("checking"); // checking | login | verified | not_org
+  const [authStep, setAuthStep] = useState("checking"); // checking | login | verified | not_org | net_error
   const [orgUsername, setOrgUsername] = useState(null);
   // Use popup variant so OAuth doesn't replace the current page with "close this tab" message
   const auth = useChallongeAuthPopup();
@@ -17192,7 +17192,11 @@ function OrgTournamentSelect({
         username: auth.username
       }),
       signal: AbortSignal.timeout(8000)
-    }).then(r => r.json()).then(d => {
+    }).then(r => {
+      if (!r.ok) { setAuthStep("not_org"); return null; }
+      return r.json();
+    }).then(d => {
+      if (!d) return;
       if (d.ok) {
         setOrgUsername(d.username);
         setAuthStep("verified");
@@ -17200,7 +17204,9 @@ function OrgTournamentSelect({
         setAuthStep("not_org");
       }
     }).catch(() => {
-      setAuthStep("not_org");
+      // Network failure — server was unreachable, not a whitelist rejection.
+      // Show a distinct error so the user isn't misled into thinking their account is blocked.
+      setAuthStep("net_error");
     });
   }, [auth.state, auth.username]);
 
@@ -17694,6 +17700,81 @@ function OrgTournamentSelect({
         marginBottom: 12
       }
     }, "Try a Different Account"), /*#__PURE__*/React.createElement("button", {
+      onClick: onSwitchRole,
+      style: {
+        padding: "10px 28px",
+        borderRadius: 12,
+        border: "2px solid var(--border)",
+        background: "none",
+        color: "var(--text-muted)",
+        fontSize: 13,
+        fontWeight: 700,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: "pointer"
+      }
+    }, "\u2190 Back"));
+  }
+
+  // ── Network error screen ──────────────────────────────────────────
+  if (authStep === "net_error") {
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "var(--bg)",
+        padding: "32px 24px",
+        fontFamily: "'Outfit',sans-serif"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: { fontSize: 40, marginBottom: 12 }
+    }, "\uD83D\uDEF0\uFE0F"), /*#__PURE__*/React.createElement("h2", {
+      style: {
+        fontSize: 20,
+        fontWeight: 900,
+        color: "var(--text-primary)",
+        margin: "0 0 8px",
+        textAlign: "center"
+      }
+    }, "Can't Reach Server"), /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 13,
+        color: "var(--text-muted)",
+        textAlign: "center",
+        lineHeight: 1.6,
+        maxWidth: 320,
+        marginBottom: 24
+      }
+    }, "NC BLAST couldn't connect to the server to verify your account. This is usually a network or security software issue — not an account problem."), /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 12,
+        color: "var(--text-muted)",
+        textAlign: "center",
+        lineHeight: 1.6,
+        maxWidth: 320,
+        marginBottom: 24,
+        fontStyle: "italic"
+      }
+    }, "Try a different network (e.g. hotspot), or check if security software is blocking challonge-proxy.danny61734.workers.dev"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        auth.reset();
+        setAuthStep("login");
+      },
+      style: {
+        padding: "13px 28px",
+        borderRadius: 12,
+        border: "none",
+        background: "var(--accent)",
+        color: "#fff",
+        fontSize: 14,
+        fontWeight: 800,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: "pointer",
+        marginBottom: 12
+      }
+    }, "Retry"), /*#__PURE__*/React.createElement("button", {
       onClick: onSwitchRole,
       style: {
         padding: "10px 28px",
