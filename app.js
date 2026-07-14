@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-13 | turbo-operate+cx-guide: NO_BIT_RATCHETS for Turbo/Operate; CX_PART_IMAGES embedded; 🖼 Guide button on blade/over_blade/assist CX picker steps opens full-screen reference overlay with part images and names
+// NC BLAST app.js | last updated: 2026-07-13 | turbo-operate+cx-guide+stale-slot-fix: NO_BIT_RATCHETS; CX guide overlay; pollLive+refresh button now prune KV overlay slots whose Challonge match is already complete, fixing false "already in match"/"stranded" at round boundaries
 const {
   useState,
   useEffect,
@@ -14043,11 +14043,20 @@ function OrgApp({
       try {
         const [liveData, pairData] = await Promise.all([workerGet("/overlay/all"), workerGet(`/pairings?slug=${encodeURIComponent(slug)}`).catch(() => null)]);
         if ((liveData.slots || []).length > 0) console.log("[BLAST] org liveSlots", liveData.slots);
-        setLiveSlots(liveData.slots || []);
         if (pairData) {
           const freshPairings = pairData.pairings || [];
+          const completeIds = new Set(freshPairings.filter(m => m.state === 'complete').map(m => String(m.id)));
+          // Filter out any KV overlay slots whose Challonge match is already marked complete.
+          // This prevents stale slots from showing players as live or stadiums as stranded.
+          const freshSlots = (liveData.slots || []).filter(s => {
+            const mid = s.state?.challongeMatchId;
+            return !mid || !completeIds.has(String(mid));
+          });
+          setLiveSlots(freshSlots);
           setPairings(freshPairings);
           pruneCompletedFromQueues(freshPairings);
+        } else {
+          setLiveSlots(liveData.slots || []);
         }
       } catch (e) {
         console.error("[BLAST] pollLive failed", e);
@@ -15656,9 +15665,16 @@ function OrgApp({
         }))]);
         const freshPairings = pairData.pairings || [];
         setPairings(freshPairings);
-        setLiveSlots(liveData.slots || []);
         // Prune completed matches from queues so they stop reappearing
         const completeIds = new Set(freshPairings.filter(m => m.state === 'complete').map(m => String(m.id)));
+        // Also filter live slots whose Challonge match is already complete — this prevents
+        // stale KV overlay data from incorrectly marking players as "in a live match"
+        // or stadiums as "stranded" right after a round boundary refresh.
+        const freshSlots = (liveData.slots || []).filter(s => {
+          const mid = s.state?.challongeMatchId;
+          return !mid || !completeIds.has(String(mid));
+        });
+        setLiveSlots(freshSlots);
         if (completeIds.size > 0) {
           setStationQueues(prev => {
             const next = {};
