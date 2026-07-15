@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-14 | net-error-screen: org verify catch now distinguishes network failure from whitelist rejection; net_error state shows "Can't Reach Server" with retry instead of misleading "Not Authorized" screen
+// NC BLAST app.js | last updated: 2026-07-15 | build-decks-await-combo-fetch; org-view-combos-tab with full participant list
 const {
   useState,
   useEffect,
@@ -5724,6 +5724,7 @@ function MatchScreen({
   const [pingStadium, setPingStadium] = useState(null); // selected stadium number
   const [pingSending, setPingSending] = useState(false);
   const [pingSent, setPingSent] = useState(false);
+  const [deckLoadingCombos, setDeckLoadingCombos] = useState(false); // true while awaiting combo fetch before opening deck screen
   // shuffleTimer: null = hidden, "active" = counting down, "expired" = time ran out
   const [shuffleTimer, setShuffleTimer] = useState(null);
   // Section heights in px — null = auto/flex
@@ -9991,11 +9992,13 @@ function MatchScreen({
         style: {
           ...S.pri,
           margin: 0,
-          opacity: activeCanProceed ? 1 : 0.4
+          opacity: activeCanProceed && !deckLoadingCombos ? 1 : 0.4
         },
-        disabled: !activeCanProceed,
-        onClick: () => {
-          refreshCombos();
+        disabled: !activeCanProceed || deckLoadingCombos,
+        onClick: async () => {
+          setDeckLoadingCombos(true);
+          try { await refreshCombos(); } catch (_) {}
+          setDeckLoadingCombos(false);
           setMatchStartIdx(log.length);
           setFuture([]);
           setCurSet(1);
@@ -10009,15 +10012,17 @@ function MatchScreen({
           setDeckReview(true);
           setPhase("deck");
         }
-      }, "Build Decks \u2192")));
+      }, deckLoadingCombos ? "Loading\u2026" : "Build Decks \u2192")));
     })(), pickTab === "roster" && /*#__PURE__*/React.createElement("button", {
       style: {
         ...S.pri,
-        opacity: canProceed ? 1 : 0.4
+        opacity: canProceed && !deckLoadingCombos ? 1 : 0.4
       },
-      disabled: !canProceed,
-      onClick: () => {
-        refreshCombos();
+      disabled: !canProceed || deckLoadingCombos,
+      onClick: async () => {
+        setDeckLoadingCombos(true);
+        try { await refreshCombos(); } catch (_) {}
+        setDeckLoadingCombos(false);
         setMatchStartIdx(log.length);
         setFuture([]);
         setCurSet(1);
@@ -10031,7 +10036,7 @@ function MatchScreen({
         setDeckReview(true);
         setPhase("deck");
       }
-    }, "Build Decks \u2192"), pickTab === "roster" && config.tm && playersSelected && !judge.trim() && /*#__PURE__*/React.createElement("p", {
+    }, deckLoadingCombos ? "Loading\u2026" : "Build Decks \u2192"), pickTab === "roster" && config.tm && playersSelected && !judge.trim() && /*#__PURE__*/React.createElement("p", {
       style: {
         ...S.hint,
         color: "#D97706"
@@ -13525,6 +13530,14 @@ function OrgApp({
   const [scoreLogLoading, setScoreLogLoading] = useState(false);
   const [scoreLogOpen, setScoreLogOpen] = useState(false); // collapsed by default
 
+  // ── Org tab navigation ────────────────────────────────────────────
+  const [orgTab, setOrgTab] = useState("dashboard"); // "dashboard" | "combos"
+
+  // ── Combo Registry tab state ──────────────────────────────────────
+  const [comboRegistry, setComboRegistry] = useState(null); // null = not loaded, {} = loaded
+  const [comboRegistryLoading, setComboRegistryLoading] = useState(false);
+  const [comboRegistryUpdatedAt, setComboRegistryUpdatedAt] = useState(null);
+
   // ── Head judge management state ───────────────────────────────────
   const [headJudges, setHeadJudges] = useState([]);
   const [orgOwnerUsername, setOrgOwnerUsername] = useState(null); // the tournament owner
@@ -14324,12 +14337,200 @@ function OrgApp({
     }
   }, "\u21C4 Switch")), /*#__PURE__*/React.createElement("div", {
     style: {
+      display: "flex",
+      gap: 6,
+      padding: "0 16px 0",
+      borderBottom: "1px solid var(--border)",
+      background: "var(--surface)",
+      flexShrink: 0
+    }
+  }, ["dashboard", "combos"].map(tab => /*#__PURE__*/React.createElement("button", {
+    key: tab,
+    onClick: async () => {
+      setOrgTab(tab);
+      if (tab === "combos" && comboRegistry === null && slug) {
+        setComboRegistryLoading(true);
+        try {
+          // Also ensure participants are loaded for the full player list
+          if (nameMapParticipants.length === 0) await loadParticipants();
+          const data = await fetchCombosForTournament(slug);
+          setComboRegistry(data);
+          setComboRegistryUpdatedAt(Date.now());
+        } catch (_) { setComboRegistry({}); }
+        finally { setComboRegistryLoading(false); }
+      }
+    },
+    style: {
+      background: "none",
+      border: "none",
+      borderBottom: orgTab === tab ? "2px solid #7C3AED" : "2px solid transparent",
+      padding: "10px 4px 8px",
+      fontSize: 11,
+      fontWeight: orgTab === tab ? 800 : 600,
+      color: orgTab === tab ? "#7C3AED" : "var(--text-muted)",
+      fontFamily: "'Outfit',sans-serif",
+      cursor: "pointer",
+      textTransform: "uppercase",
+      letterSpacing: 0.8,
+      marginBottom: -1,
+      transition: "color 0.1s, border-color 0.1s"
+    }
+  }, tab === "dashboard" ? "Dashboard" : "Combos"))), /*#__PURE__*/React.createElement("div", {
+    style: {
       flex: 1,
       overflowY: "auto",
       padding: "16px 24px 40px",
       boxSizing: "border-box"
     }
-  }, (() => {
+  }, orgTab === "combos" ? (() => {
+    // ── Combo Registry tab ───────────────────────────────────────────
+    const refreshComboRegistry = async () => {
+      if (!slug) return;
+      setComboRegistryLoading(true);
+      try {
+        const data = await fetchCombosForTournament(slug);
+        setComboRegistry(data);
+        setComboRegistryUpdatedAt(Date.now());
+      } catch (_) { setComboRegistry({}); }
+      finally { setComboRegistryLoading(false); }
+    };
+
+    // Build full player list: all participants, merged with anyone in KV
+    const participantSet = new Set(nameMapParticipants.map(n => n.trim().toLowerCase()));
+    const kvNames = comboRegistry ? Object.keys(comboRegistry) : [];
+    // Add any KV names not in participant list (edge case: player removed from bracket)
+    const extraKvNames = kvNames.filter(k => !participantSet.has(k));
+    // Final display list: all participants sorted + extras at end
+    const allDisplayNames = [
+      ...nameMapParticipants,
+      ...extraKvNames.map(k => {
+        // Find the original-cased name from the registry if possible; fall back to key
+        const combos = comboRegistry[k] || [];
+        return combos[0]?.player || k;
+      })
+    ];
+
+    const timeStr = comboRegistryUpdatedAt
+      ? new Date(comboRegistryUpdatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : null;
+
+    return /*#__PURE__*/React.createElement("div", null,
+      // Header row: title + refresh button
+      /*#__PURE__*/React.createElement("div", {
+        style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }
+      },
+        /*#__PURE__*/React.createElement("div", null,
+          /*#__PURE__*/React.createElement("p", {
+            style: { fontSize: 12, fontWeight: 800, color: "var(--text-primary)", margin: "0 0 1px" }
+          }, "Combo Registry"),
+          /*#__PURE__*/React.createElement("p", {
+            style: { fontSize: 10, color: "var(--text-muted)", margin: 0 }
+          }, timeStr ? `Last updated ${timeStr}` : "Combos saved by judges during matches")
+        ),
+        /*#__PURE__*/React.createElement("button", {
+          onClick: refreshComboRegistry,
+          disabled: comboRegistryLoading,
+          style: {
+            background: "none",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "5px 10px",
+            fontSize: 11,
+            fontWeight: 700,
+            color: "var(--text-muted)",
+            fontFamily: "'Outfit',sans-serif",
+            cursor: comboRegistryLoading ? "default" : "pointer",
+            opacity: comboRegistryLoading ? 0.5 : 1
+          }
+        }, comboRegistryLoading ? "\u2026" : "\u21BB Refresh")
+      ),
+      // Loading state
+      comboRegistryLoading && comboRegistry === null
+        ? /*#__PURE__*/React.createElement("p", {
+            style: { fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: "32px 0" }
+          }, "Loading\u2026")
+        : comboRegistry === null
+          ? /*#__PURE__*/React.createElement("p", {
+              style: { fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: "32px 0" }
+            }, "Tap Refresh to load combos")
+          : allDisplayNames.length === 0
+            ? /*#__PURE__*/React.createElement("p", {
+                style: { fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: "32px 0" }
+              }, "No players found for this tournament")
+            : /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } },
+                allDisplayNames.map(playerName => {
+                  const key = (playerName || "").trim().toLowerCase();
+                  const combos = (comboRegistry[key] || []).map(normalizeCombo).filter(comboReady);
+                  const hasCombos = combos.length > 0;
+                  return /*#__PURE__*/React.createElement("div", {
+                    key: playerName,
+                    style: {
+                      borderRadius: 10,
+                      border: "1px solid var(--border)",
+                      background: hasCombos ? "var(--surface)" : "var(--surface2)",
+                      padding: "10px 12px"
+                    }
+                  },
+                    /*#__PURE__*/React.createElement("div", {
+                      style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }
+                    },
+                      /*#__PURE__*/React.createElement("p", {
+                        style: {
+                          fontSize: 12,
+                          fontWeight: 800,
+                          color: hasCombos ? "var(--text-primary)" : "var(--text-muted)",
+                          margin: 0,
+                          lineHeight: 1.3
+                        }
+                      }, playerName),
+                      !hasCombos && /*#__PURE__*/React.createElement("span", {
+                        style: {
+                          fontSize: 9,
+                          fontWeight: 700,
+                          color: "var(--text-faint)",
+                          textTransform: "uppercase",
+                          letterSpacing: 0.8,
+                          flexShrink: 0
+                        }
+                      }, "No combos saved")
+                    ),
+                    hasCombos && /*#__PURE__*/React.createElement("div", {
+                      style: { display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }
+                    },
+                      combos.map((c, ci) => {
+                        const bladeColor = BLADE_COLORS[c.blade] || "#64748B";
+                        return /*#__PURE__*/React.createElement("div", {
+                          key: ci,
+                          style: {
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "5px 8px",
+                            borderRadius: 7,
+                            background: bladeColor + "18",
+                            border: `1px solid ${bladeColor}40`
+                          }
+                        },
+                          /*#__PURE__*/React.createElement("span", {
+                            style: {
+                              width: 8,
+                              height: 8,
+                              borderRadius: "50%",
+                              background: bladeColor,
+                              flexShrink: 0
+                            }
+                          }),
+                          /*#__PURE__*/React.createElement("span", {
+                            style: { fontSize: 11, fontWeight: 700, color: "var(--text-primary)" }
+                          }, comboStr(c))
+                        );
+                      })
+                    )
+                  );
+                })
+              )
+    );
+  })() : (() => {
     // Names shown: after a manual refresh use the fresh list, otherwise the auto-loaded list
     const displayNames = rosterRefreshMsg?.ok ? rosterRefreshMsg.names || [] : nameMapParticipants;
     return /*#__PURE__*/React.createElement("div", {
