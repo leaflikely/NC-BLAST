@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-15 | build-decks-await-combo-fetch; org-view-combos-tab with full participant list
+// NC BLAST app.js | last updated: 2026-07-15 | build-decks-await-combo-fetch; org-view-combos-tab with full participant list; delete-unowned-event-with-master-key
 const {
   useState,
   useEffect,
@@ -17422,6 +17422,7 @@ function OrgTournamentSelect({
   const [pendingSlug, setPendingSlug] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // slug | null
   const [deleting, setDeleting] = useState(false);
+  const [deleteOverrideMasterKey, setDeleteOverrideMasterKey] = useState(""); // master key input when deleting an unowned event
   const [renameSlug, setRenameSlug] = useState(null); // slug being renamed | null
   const [renameDraft, setRenameDraft] = useState(""); // current text in rename field
   const [renaming, setRenaming] = useState(false); // rename in progress
@@ -17510,27 +17511,28 @@ function OrgTournamentSelect({
       setAddStep("name");
     }
   };
-  const handleDelete = async slug => {
+  const handleDelete = async (slug, masterKeyOverride) => {
     setDeleting(true);
     const token = sessionStorage.getItem("ncblast-auth-token");
     const username = sessionStorage.getItem("ncblast-auth-user") || "";
     try {
+      const headers = { "Content-Type": "application/json" };
+      if (masterKeyOverride) {
+        headers["X-Master-Key"] = masterKeyOverride;
+      } else {
+        headers["X-Auth-Token"] = token;
+      }
       const res = await fetch(`${OVERLAY_WORKER}/delete`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Auth-Token": token
-        },
-        body: JSON.stringify({
-          slug,
-          username
-        }),
+        headers,
+        body: JSON.stringify({ slug, username }),
         signal: AbortSignal.timeout(10000)
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Delete failed");
       setCachedList(prev => prev.filter(t => t.slug !== slug));
       setDeleteConfirm(null);
+      setDeleteOverrideMasterKey("");
     } catch (e) {
       alert("Delete failed: " + e.message);
     } finally {
@@ -18127,51 +18129,90 @@ function OrgTournamentSelect({
       boxShadow: "0 24px 64px rgba(0,0,0,0.4)",
       border: "2px solid #EF4444"
     }
-  }, /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 16,
-      fontWeight: 900,
-      color: "var(--text-primary)",
-      marginBottom: 8
-    }
-  }, "Delete Tournament?"), /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 13,
-      color: "var(--text-muted)",
-      marginBottom: 20,
-      lineHeight: 1.5
-    }
-  }, "This removes ", /*#__PURE__*/React.createElement("strong", null, cachedList.find(t => t.slug === deleteConfirm)?.name || deleteConfirm), " from the NC BLAST cache. Active judges will be notified."), /*#__PURE__*/React.createElement("button", {
-    onClick: () => handleDelete(deleteConfirm),
-    disabled: deleting,
-    style: {
-      width: "100%",
-      padding: "13px 0",
-      borderRadius: 11,
-      border: "none",
-      background: "#EF4444",
-      color: "#fff",
-      fontSize: 14,
-      fontWeight: 800,
-      fontFamily: "'Outfit',sans-serif",
-      cursor: deleting ? "not-allowed" : "pointer",
-      marginBottom: 10
-    }
-  }, deleting ? "Deleting…" : "Yes, Delete"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setDeleteConfirm(null),
-    style: {
-      width: "100%",
-      padding: "10px 0",
-      borderRadius: 10,
-      border: "2px solid var(--border)",
-      background: "none",
-      color: "var(--text-muted)",
-      fontSize: 13,
-      fontWeight: 700,
-      fontFamily: "'Outfit',sans-serif",
-      cursor: "pointer"
-    }
-  }, "Cancel"))), whitelistPanel && /*#__PURE__*/React.createElement("div", {
+  }, (() => {
+    const t = cachedList.find(x => x.slug === deleteConfirm);
+    const tourneyOwner = (t?.orgUsername || "").trim().toLowerCase();
+    const currentUser = (orgUsername || "").trim().toLowerCase();
+    const isOwner = !tourneyOwner || currentUser === tourneyOwner;
+    const canDelete = isOwner ? true : deleteOverrideMasterKey.trim().length > 0;
+    return /*#__PURE__*/React.createElement("div", null,
+      /*#__PURE__*/React.createElement("p", {
+        style: { fontSize: 16, fontWeight: 900, color: "var(--text-primary)", marginBottom: 6 }
+      }, "Delete Tournament?"),
+      /*#__PURE__*/React.createElement("p", {
+        style: { fontSize: 13, color: "var(--text-muted)", marginBottom: isOwner ? 20 : 14, lineHeight: 1.5 }
+      }, "This removes ", /*#__PURE__*/React.createElement("strong", null, t?.name || deleteConfirm), " from the NC BLAST cache. Active judges will be notified."),
+      !isOwner && /*#__PURE__*/React.createElement("div", {
+        style: {
+          background: "rgba(239,68,68,0.07)",
+          border: "1px solid rgba(239,68,68,0.25)",
+          borderRadius: 10,
+          padding: "10px 12px",
+          marginBottom: 14
+        }
+      },
+        /*#__PURE__*/React.createElement("p", {
+          style: { fontSize: 11, fontWeight: 800, color: "#EF4444", margin: "0 0 4px", textTransform: "uppercase", letterSpacing: 0.6 }
+        }, "\u26A0\uFE0F Not your event"),
+        /*#__PURE__*/React.createElement("p", {
+          style: { fontSize: 11, color: "var(--text-muted)", margin: "0 0 10px", lineHeight: 1.4 }
+        }, "Owned by ", /*#__PURE__*/React.createElement("strong", null, t?.orgUsername || "unknown"), ". Enter the master key to override."),
+        /*#__PURE__*/React.createElement("input", {
+          type: "password",
+          placeholder: "Master key\u2026",
+          value: deleteOverrideMasterKey,
+          onChange: e => setDeleteOverrideMasterKey(e.target.value),
+          onKeyDown: e => e.key === "Enter" && canDelete && !deleting && handleDelete(deleteConfirm, deleteOverrideMasterKey.trim()),
+          autoFocus: true,
+          style: {
+            width: "100%",
+            boxSizing: "border-box",
+            padding: "9px 11px",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+            background: "var(--surface2)",
+            color: "var(--text-primary)",
+            fontSize: 13,
+            fontFamily: "'Outfit',sans-serif",
+            outline: "none"
+          }
+        })
+      ),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => handleDelete(deleteConfirm, isOwner ? null : deleteOverrideMasterKey.trim()),
+        disabled: deleting || !canDelete,
+        style: {
+          width: "100%",
+          padding: "13px 0",
+          borderRadius: 11,
+          border: "none",
+          background: canDelete ? "#EF4444" : "var(--surface3)",
+          color: canDelete ? "#fff" : "var(--text-faint)",
+          fontSize: 14,
+          fontWeight: 800,
+          fontFamily: "'Outfit',sans-serif",
+          cursor: deleting || !canDelete ? "not-allowed" : "pointer",
+          marginBottom: 10,
+          transition: "background 0.15s"
+        }
+      }, deleting ? "Deleting\u2026" : "Yes, Delete"),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => { setDeleteConfirm(null); setDeleteOverrideMasterKey(""); },
+        style: {
+          width: "100%",
+          padding: "10px 0",
+          borderRadius: 10,
+          border: "2px solid var(--border)",
+          background: "none",
+          color: "var(--text-muted)",
+          fontSize: 13,
+          fontWeight: 700,
+          fontFamily: "'Outfit',sans-serif",
+          cursor: "pointer"
+        }
+      }, "Cancel")
+    );
+  })())), whitelistPanel && /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
       inset: 0,
