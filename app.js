@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-18 | station-tab: station picker fallback when auto-detect fails; Change button to switch stations; cleaner state shape
+// NC BLAST app.js | last updated: 2026-07-18 | station-queue-sync: Sync to Judges button in org view with success/error feedback; saveStationQueues returns ok/fail; master-key fallback auth
 const {
   useState,
   useEffect,
@@ -13889,6 +13889,7 @@ function OrgApp({
   const [queueDragItem, setQueueDragItem] = useState(null); // { matchId, fromStation }
   const [queueDragOver, setQueueDragOver] = useState(null); // { station, afterIdx }
   const [queuesGenerated, setQueuesGenerated] = useState(false); // true once algo has run
+  const [queueSyncMsg, setQueueSyncMsg] = useState(null); // null | "saving" | "saved" | "error"
   const [lockedMatchIds, setLockedMatchIds] = useState(new Set()); // match IDs locked in place
   const [judgesFirstMode, setJudgesFirstMode] = useState(true); // true=JvP wave1, false=JvP last
   const [moveMenuOpen, setMoveMenuOpen] = useState(null); // matchId currently showing move picker, or null
@@ -14183,21 +14184,34 @@ function OrgApp({
   // Fire-and-forget: persist the current ordered station queues to KV so the
   // judge view's Station Matches tab can read the same ordering the org sees.
   const saveStationQueues = async queues => {
-    if (!slug || !queues) return;
+    if (!slug || !queues) return false;
     const token = sessionStorage.getItem("ncblast-auth-token") || "";
     const username = sessionStorage.getItem("ncblast-auth-user") || "";
-    if (!token && !username) return; // not an org, skip silently
+    const masterKey = sessionStorage.getItem("ncblast-master-key") || localStorage.getItem("ncblast-master-key") || "";
+    if (!token && !username && !masterKey) return false;
     try {
-      await fetch(`${OVERLAY_WORKER}/station-queues`, {
+      const res = await fetch(`${OVERLAY_WORKER}/station-queues`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Auth-Token": token
+          "X-Auth-Token": token,
+          ...(masterKey ? { "X-Master-Key": masterKey } : {})
         },
         body: JSON.stringify({ slug, queues, username }),
         signal: AbortSignal.timeout(8000)
       });
-    } catch (_) {}
+      const d = await res.json().catch(() => ({}));
+      return res.ok && d.ok;
+    } catch (_) { return false; }
+  };
+
+  // Explicit sync: saves current queue to KV and shows visible success/error feedback
+  const syncQueueToJudges = async () => {
+    if (!queuesGenerated || Object.keys(stationQueues).length === 0) return;
+    setQueueSyncMsg("saving");
+    const ok = await saveStationQueues(stationQueues);
+    setQueueSyncMsg(ok ? "saved" : "error");
+    if (ok) setTimeout(() => setQueueSyncMsg(null), 3000);
   };
 
   // ── Judge name map fetch / save ──────────────────────────────────────
@@ -17046,7 +17060,12 @@ function OrgApp({
         setStationQueues(q);
         setQueuesGenerated(true);
         setMoveMenuOpen(null);
-        saveStationQueues(q); // persist order so judge view can read it
+        // Save to KV with visible feedback
+        setQueueSyncMsg("saving");
+        saveStationQueues(q).then(ok => {
+          setQueueSyncMsg(ok ? "saved" : "error");
+          if (ok) setTimeout(() => setQueueSyncMsg(null), 3000);
+        });
       },
       style: {
         padding: '5px 13px',
@@ -17059,7 +17078,28 @@ function OrgApp({
         fontFamily: "'Outfit',sans-serif",
         cursor: 'pointer'
       }
-    }, queuesGenerated ? '↻ Regenerate' : '⚡ Generate Queues'))), !queuesGenerated && /*#__PURE__*/React.createElement("div", {
+    }, queuesGenerated ? '↻ Regenerate' : '⚡ Generate Queues')),
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+      queueSyncMsg === "saving" && /*#__PURE__*/React.createElement("span", {
+        style: { fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }
+      }, "Syncing\u2026"),
+      queueSyncMsg === "saved" && /*#__PURE__*/React.createElement("span", {
+        style: { fontSize: 10, fontWeight: 700, color: "#22C55E" }
+      }, "\u2713 Synced to judges"),
+      queueSyncMsg === "error" && /*#__PURE__*/React.createElement("span", {
+        style: { fontSize: 10, fontWeight: 700, color: "#F87171" }
+      }, "\u26A0 Sync failed \u2014 check org login"),
+      queuesGenerated && /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        disabled: queueSyncMsg === "saving",
+        onClick: syncQueueToJudges,
+        style: {
+          padding: '5px 11px', borderRadius: 8, border: '1.5px solid #6EE7B7',
+          background: '#064E3B', color: '#6EE7B7', fontSize: 11, fontWeight: 800,
+          fontFamily: "'Outfit',sans-serif", cursor: 'pointer', opacity: queueSyncMsg === "saving" ? 0.5 : 1
+        }
+      }, "\u{1F4E4} Sync to Judges")
+    )), !queuesGenerated && /*#__PURE__*/React.createElement("div", {
       style: {
         padding: '20px',
         borderRadius: 12,
