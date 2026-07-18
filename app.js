@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-18 | station-matches-tab: judge pick screen shows Station Matches tab with org queue order; tab bar now visible in all modes (removed !config.tm gate)
+// NC BLAST app.js | last updated: 2026-07-18 | station-matches: org loads saved queues from KV on startup; judge fallback-infers JvP matches when no queue saved yet; inferred-queue notice banner
 const {
   useState,
   useEffect,
@@ -6224,28 +6224,74 @@ function MatchScreen({
 
   // Fetch the judge's station assignment + the org-saved queue order, then
   // build the ordered match list for the Station Matches tab.
+  //
+  // Identity strategy mirrors the org view's "occupied" detection:
+  //   stadiumAssign keys  = Challonge usernames
+  //   judgeNameMap        = { username → bracket display name }  (global KV, cached in localStorage)
+  //
+  // A judge's sessionStorage["ncblast-auth-user"] may hold EITHER their Challonge
+  // username (OAuth login) OR the name they typed manually (which could be their
+  // bracket display name). We try both directions so the lookup is resilient:
+  //   Pass 1 — direct key match:          assign[myRaw] → letter
+  //   Pass 2 — myRaw is a display name:   find username where nameMap[u] === myRaw
+  //   Pass 3 — myRaw is a username with
+  //             a mapped display name:     find key where nameMap[key] === nameMap[myRaw]
   const fetchStationMatches = async () => {
     if (!challongeSlug) return;
     setStationMatchesData("loading");
     try {
-      const myUsername = (sessionStorage.getItem("ncblast-auth-user") || "").toLowerCase();
-      // 1. Load stadium assignment to find which station this judge is at
+      const myRaw = (sessionStorage.getItem("ncblast-auth-user") || "").toLowerCase().trim();
+
+      // Pull name map from localStorage (populated at app start via /judge-namemap)
+      let nameMap = {};
+      try {
+        const cached = localStorage.getItem("ncblast-judge-namemap");
+        if (cached) nameMap = JSON.parse(cached);
+      } catch (_) {}
+      // Normalise all keys to lowercase for reliable comparison
+      const nm = {};
+      Object.entries(nameMap).forEach(([k, v]) => { nm[k.toLowerCase()] = (v || "").toLowerCase(); });
+
+      // Load stadium assignment to find which station this judge is at
       const assignRes = await fetch(
         `${OVERLAY_WORKER}/stadium-assign?slug=${encodeURIComponent(challongeSlug)}`,
         { signal: AbortSignal.timeout(8000) }
       );
       const assignData = assignRes.ok ? await assignRes.json() : {};
       const assign = assignData?.data?.assign || {};
-      // Look up this judge's station letter (case-insensitive key match)
+
+      // Bidirectional lookup — same three-pass approach the org uses to match
+      // bracket display names back to Challonge usernames.
       const myLetter = (() => {
-        const key = Object.keys(assign).find(k => k.toLowerCase() === myUsername);
-        return key ? assign[key] : null;
+        // Pass 1: direct username match (OAuth login stores exact Challonge username)
+        for (const [k, letter] of Object.entries(assign)) {
+          if (k.toLowerCase() === myRaw) return letter;
+        }
+        // Pass 2: sessionStorage holds a display name (manual login).
+        // Find the whitelisted username whose mapped bracket name equals myRaw.
+        for (const [k, letter] of Object.entries(assign)) {
+          const mapped = nm[k.toLowerCase()] || "";
+          if (mapped && mapped === myRaw) return letter;
+        }
+        // Pass 3: sessionStorage holds a username that has a mapped display name;
+        // see if any assign key shares that same display name.
+        const myDisplayName = nm[myRaw] || "";
+        if (myDisplayName) {
+          for (const [k, letter] of Object.entries(assign)) {
+            if (k.toLowerCase() === myDisplayName) return letter;
+            const mapped = nm[k.toLowerCase()] || "";
+            if (mapped && mapped === myDisplayName) return letter;
+          }
+        }
+        return null;
       })();
+
       if (!myLetter) {
         setStationMatchesData("no-assign");
         return;
       }
-      // 2. Load the org-persisted queue order for this station
+
+      // Load the org-persisted queue order for this station
       const queueRes = await fetch(
         `${OVERLAY_WORKER}/station-queues?slug=${encodeURIComponent(challongeSlug)}`,
         { signal: AbortSignal.timeout(8000) }
@@ -6253,30 +6299,60 @@ function MatchScreen({
       const queueData = queueRes.ok ? await queueRes.json() : {};
       const queues = queueData?.data || {};
       const orderedIds = (queues[myLetter] || []).map(String);
-      // 3. Load pairings so we can look up player names by match ID
+
+      // Load pairings so we can look up player names by match ID
       const pairRes = await fetch(
         `${OVERLAY_WORKER}/pairings?slug=${encodeURIComponent(challongeSlug)}`,
         { signal: AbortSignal.timeout(8000) }
       );
       const pairData = pairRes.ok ? await pairRes.json() : {};
       const pairings = pairData?.pairings || [];
-      // Build a map from match ID → match object (open matches only)
+
+      // Build a map from match ID → open match object
       const matchById = {};
       pairings.forEach(m => {
         if (m.state !== "complete") matchById[String(m.id)] = m;
       });
-      // 4. Produce ordered list: queue order first (preserving org sort),
-      //    then any open matches in this station's assignment not yet in the queue.
+
       const seen = new Set();
       const queuedMatches = [];
-      orderedIds.forEach(id => {
-        const m = matchById[id];
-        if (m && !seen.has(id)) {
-          seen.add(id);
-          queuedMatches.push({ id, p1: m.player1_name || `ID:${m.player1_id}`, p2: m.player2_name || `ID:${m.player2_id}`, challongeMatch: m });
-        }
-      });
-      setStationMatchesData({ letter: myLetter, queuedMatches });
+
+      if (orderedIds.length > 0) {
+        // Saved queue exists — use the org's ordering exactly.
+        orderedIds.forEach(id => {
+          const m = matchById[id];
+          if (m && !seen.has(id)) {
+            seen.add(id);
+            queuedMatches.push({ id, p1: m.player1_name || `ID:${m.player1_id}`, p2: m.player2_name || `ID:${m.player2_id}`, challongeMatch: m });
+          }
+        });
+      } else {
+        // No saved queue yet (org hasn't clicked Generate Queues since deployment,
+        // or the queue hasn't been persisted). Fall back to inferring station
+        // matches from pairings: find open matches where either player is a judge
+        // assigned to THIS station, using the name map as the identity bridge.
+        // (Same logic the org uses for "occupied" detection.)
+        const judgesAtStation = Object.entries(assign)
+          .filter(([, letter]) => letter === myLetter)
+          .map(([k]) => {
+            const bracketName = nm[k.toLowerCase()] || k.toLowerCase();
+            return bracketName;
+          });
+        pairings.forEach(m => {
+          if (m.state === "complete") return;
+          const p1l = (m.player1_name || "").toLowerCase();
+          const p2l = (m.player2_name || "").toLowerCase();
+          const id = String(m.id);
+          const p1here = judgesAtStation.some(jn => jn === p1l);
+          const p2here = judgesAtStation.some(jn => jn === p2l);
+          if ((p1here || p2here) && !seen.has(id)) {
+            seen.add(id);
+            queuedMatches.push({ id, p1: m.player1_name || `ID:${m.player1_id}`, p2: m.player2_name || `ID:${m.player2_id}`, challongeMatch: m, inferred: true });
+          }
+        });
+      }
+
+      setStationMatchesData({ letter: myLetter, queuedMatches, inferred: orderedIds.length === 0 });
     } catch (_) {
       setStationMatchesData(null);
     }
@@ -10120,15 +10196,23 @@ function MatchScreen({
 
           isNoAssign && /*#__PURE__*/React.createElement("p", {
             style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
-          }, "You don\u2019t have a stadium assignment for this event. Ask your organizer to assign you to a stadium in the org view."),
+          }, "You don\u2019t have a stadium assignment for this event. In the org view, make sure you\u2019re on the judge whitelist, are dragged into a stadium slot, and that the org has clicked \u201cSave\u201d in the Stadium Assignment section."),
 
           (isNull && !isLoading) && /*#__PURE__*/React.createElement("p", {
             style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
           }, "Tap Refresh to load your station\u2019s match queue."),
 
-          hasData && stationMatchesData.queuedMatches.length === 0 && /*#__PURE__*/React.createElement("p", {
+          hasData && stationMatchesData.inferred && stationMatchesData.queuedMatches.length > 0 && /*#__PURE__*/React.createElement("div", {
+            style: { background: "#1e3a5f", border: "1.5px solid #2563EB", borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 11, color: "#93C5FD", lineHeight: 1.5 }
+          }, "\u26A0\uFE0F Showing inferred matches only \u2014 your matches where you appear as a player. The org hasn\u2019t generated a full queue yet. Once they click \u201cGenerate Queues\u201d in the org view, tap Refresh to see the complete ordered queue."),
+
+          hasData && stationMatchesData.inferred && stationMatchesData.queuedMatches.length === 0 && /*#__PURE__*/React.createElement("p", {
             style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
-          }, "No open matches in your station\u2019s queue. The organizer may not have generated queues yet, or all matches are complete."),
+          }, "No matches found for Station ", stationMatchesData.letter, ". The organizer needs to click \u201cGenerate Queues\u201d in the org view, then you can Refresh here."),
+
+          hasData && !stationMatchesData.inferred && stationMatchesData.queuedMatches.length === 0 && /*#__PURE__*/React.createElement("p", {
+            style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
+          }, "No open matches queued for Station ", stationMatchesData.letter, ". The organizer may need to click \u201cGenerate Queues\u201d in the org view, or all matches at this station may be complete."),
 
           hasData && stationMatchesData.queuedMatches.length > 0 && /*#__PURE__*/React.createElement("div", null,
             stationMatchesData.queuedMatches.map((m, mi) => {
@@ -14019,6 +14103,19 @@ function OrgApp({
       }
     } catch (_) {}
   };
+
+  // Load previously saved station queues from KV so the org view restores the last
+  // generated queue order without needing to click Regenerate every session.
+  const loadStationQueues = async () => {
+    if (!slug) return;
+    try {
+      const data = await workerGet(`/station-queues?slug=${encodeURIComponent(slug)}`);
+      if (data.ok && data.data && typeof data.data === "object" && Object.keys(data.data).length > 0) {
+        setStationQueues(data.data);
+        setQueuesGenerated(true);
+      }
+    } catch (_) {}
+  };
   const saveStadiumAssign = async () => {
     const token = sessionStorage.getItem("ncblast-auth-token") || "";
     const username = sessionStorage.getItem("ncblast-auth-user") || "";
@@ -14252,6 +14349,7 @@ function OrgApp({
     loadNameMap();
     loadParticipants();
     loadStadiumAssign();
+    loadStationQueues();
 
     // Prune completed matches out of station queues.
     // Called whenever fresh pairings arrive, whether from the manual button or the poll.
