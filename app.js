@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-18 | station-matches: org loads saved queues from KV on startup; judge fallback-infers JvP matches when no queue saved yet; inferred-queue notice banner
+// NC BLAST app.js | last updated: 2026-07-18 | station-tab: station picker fallback when auto-detect fails; Change button to switch stations; cleaner state shape
 const {
   useState,
   useEffect,
@@ -6222,21 +6222,10 @@ function MatchScreen({
     }
   };
 
-  // Fetch the judge's station assignment + the org-saved queue order, then
-  // build the ordered match list for the Station Matches tab.
-  //
-  // Identity strategy mirrors the org view's "occupied" detection:
-  //   stadiumAssign keys  = Challonge usernames
-  //   judgeNameMap        = { username → bracket display name }  (global KV, cached in localStorage)
-  //
-  // A judge's sessionStorage["ncblast-auth-user"] may hold EITHER their Challonge
-  // username (OAuth login) OR the name they typed manually (which could be their
-  // bracket display name). We try both directions so the lookup is resilient:
-  //   Pass 1 — direct key match:          assign[myRaw] → letter
-  //   Pass 2 — myRaw is a display name:   find username where nameMap[u] === myRaw
-  //   Pass 3 — myRaw is a username with
-  //             a mapped display name:     find key where nameMap[key] === nameMap[myRaw]
-  const fetchStationMatches = async () => {
+  // Fetch station matches for the Station Matches tab.
+  // overrideLetter: if set, skip identity detection and load this station directly
+  // (used when the judge manually picks a station from the picker).
+  const fetchStationMatches = async (overrideLetter = null) => {
     if (!challongeSlug) return;
     setStationMatchesData("loading");
     try {
@@ -6259,35 +6248,39 @@ function MatchScreen({
       );
       const assignData = assignRes.ok ? await assignRes.json() : {};
       const assign = assignData?.data?.assign || {};
+      const stationCount = assignData?.data?.count || 0;
 
-      // Bidirectional lookup — same three-pass approach the org uses to match
-      // bracket display names back to Challonge usernames.
-      const myLetter = (() => {
+      // Determine station letter: use override if provided (judge picked manually),
+      // otherwise auto-detect via three-pass bidirectional lookup.
+      let myLetter = overrideLetter || null;
+      if (!myLetter) {
         // Pass 1: direct username match (OAuth login stores exact Challonge username)
         for (const [k, letter] of Object.entries(assign)) {
-          if (k.toLowerCase() === myRaw) return letter;
+          if (k.toLowerCase() === myRaw) { myLetter = letter; break; }
         }
-        // Pass 2: sessionStorage holds a display name (manual login).
-        // Find the whitelisted username whose mapped bracket name equals myRaw.
+      }
+      if (!myLetter) {
+        // Pass 2: sessionStorage holds a display name typed manually.
         for (const [k, letter] of Object.entries(assign)) {
           const mapped = nm[k.toLowerCase()] || "";
-          if (mapped && mapped === myRaw) return letter;
+          if (mapped && mapped === myRaw) { myLetter = letter; break; }
         }
-        // Pass 3: sessionStorage holds a username that has a mapped display name;
-        // see if any assign key shares that same display name.
+      }
+      if (!myLetter) {
+        // Pass 3: resolve myRaw through name map, check assign keys.
         const myDisplayName = nm[myRaw] || "";
         if (myDisplayName) {
           for (const [k, letter] of Object.entries(assign)) {
-            if (k.toLowerCase() === myDisplayName) return letter;
+            if (k.toLowerCase() === myDisplayName) { myLetter = letter; break; }
             const mapped = nm[k.toLowerCase()] || "";
-            if (mapped && mapped === myDisplayName) return letter;
+            if (mapped && mapped === myDisplayName) { myLetter = letter; break; }
           }
         }
-        return null;
-      })();
+      }
 
       if (!myLetter) {
-        setStationMatchesData("no-assign");
+        // Could not auto-detect — show the station picker instead of a dead-end error.
+        setStationMatchesData({ noAssign: true, stationCount });
         return;
       }
 
@@ -6352,7 +6345,7 @@ function MatchScreen({
         });
       }
 
-      setStationMatchesData({ letter: myLetter, queuedMatches, inferred: orderedIds.length === 0 });
+      setStationMatchesData({ letter: myLetter, queuedMatches, inferred: orderedIds.length === 0, stationCount, manual: !!overrideLetter });
     } catch (_) {
       setStationMatchesData(null);
     }
@@ -10169,51 +10162,91 @@ function MatchScreen({
       // ── Station Matches tab ─────────────────────────────────────────────
       // Shows the matches queued for this judge's assigned stadium, in the
       // exact top-to-bottom order set by the org, with call guidance text.
-      const isLoading   = stationMatchesData === "loading";
-      const isNoAssign  = stationMatchesData === "no-assign";
-      const isNull      = stationMatchesData === null;
-      const hasData     = stationMatchesData && typeof stationMatchesData === "object";
+      const isLoading  = stationMatchesData === "loading";
+      const isNull     = stationMatchesData === null;
+      const isNoAssign = stationMatchesData?.noAssign === true;
+      const hasData    = stationMatchesData && typeof stationMatchesData === "object" && !stationMatchesData.noAssign;
+      // Station letters available for the manual picker
+      const SLETTERS = ["A","B","C","D","E","F","G","H"];
+      const pickerCount = stationMatchesData?.stationCount || 0;
+
       return /*#__PURE__*/React.createElement("div", null,
         /*#__PURE__*/React.createElement("div", {
           style: { ...S.card, marginBottom: 8 }
         },
+          // ── Header row: station label + action buttons ────────────────
           /*#__PURE__*/React.createElement("div", {
             style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }
           },
-            /*#__PURE__*/React.createElement("p", {
-              style: { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: 1, textTransform: "uppercase", margin: 0 }
-            }, hasData ? `Station ${stationMatchesData.letter} Matches` : "Station Matches"),
+            /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+              /*#__PURE__*/React.createElement("p", {
+                style: { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: 1, textTransform: "uppercase", margin: 0 }
+              }, hasData ? `Station ${stationMatchesData.letter} Matches` : "Station Matches"),
+              // "change station" link — shown when a station is loaded (auto or manual)
+              hasData && /*#__PURE__*/React.createElement("button", {
+                type: "button",
+                onClick: () => setStationMatchesData({ noAssign: true, stationCount: stationMatchesData.stationCount }),
+                style: { fontSize: 10, fontWeight: 700, color: "var(--text-muted)", background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: "2px 8px", cursor: "pointer", fontFamily: "'Outfit',sans-serif" }
+              }, "\u21C4 Change")
+            ),
             /*#__PURE__*/React.createElement("button", {
               type: "button",
-              onClick: fetchStationMatches,
+              onClick: () => fetchStationMatches(hasData ? stationMatchesData.letter : null),
               style: { fontSize: 12, fontWeight: 700, color: "#1D4ED8", background: "#1D4ED820", border: "2px solid #1D4ED840", borderRadius: 10, padding: "7px 14px", cursor: "pointer", fontFamily: "'Outfit',sans-serif", display: "flex", alignItems: "center", gap: 5 }
             }, "\u21BB Refresh")
           ),
 
+          // ── Loading ───────────────────────────────────────────────────
           isLoading && /*#__PURE__*/React.createElement("p", {
             style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
           }, "\u23F3 Loading station matches\u2026"),
 
-          isNoAssign && /*#__PURE__*/React.createElement("p", {
-            style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
-          }, "You don\u2019t have a stadium assignment for this event. In the org view, make sure you\u2019re on the judge whitelist, are dragged into a stadium slot, and that the org has clicked \u201cSave\u201d in the Stadium Assignment section."),
-
+          // ── Initial null state ────────────────────────────────────────
           (isNull && !isLoading) && /*#__PURE__*/React.createElement("p", {
             style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
           }, "Tap Refresh to load your station\u2019s match queue."),
 
+          // ── Station picker (auto-detect failed OR judge tapped "Change") ──
+          isNoAssign && /*#__PURE__*/React.createElement("div", null,
+            pickerCount === 0 && /*#__PURE__*/React.createElement("p", {
+              style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
+            }, "No stadiums are set up for this event yet. Ask the organizer to configure Stadium Assignment in the org view."),
+            pickerCount > 0 && /*#__PURE__*/React.createElement("div", null,
+              /*#__PURE__*/React.createElement("p", {
+                style: { fontSize: 12, color: "var(--text-secondary)", marginBottom: 10, lineHeight: 1.5 }
+              }, "Couldn\u2019t detect your station automatically. Pick your station:"),
+              /*#__PURE__*/React.createElement("div", {
+                style: { display: "flex", flexWrap: "wrap", gap: 8 }
+              }, SLETTERS.slice(0, pickerCount).map(letter =>
+                /*#__PURE__*/React.createElement("button", {
+                  key: letter,
+                  type: "button",
+                  onClick: () => fetchStationMatches(letter),
+                  style: {
+                    width: 52, height: 52, borderRadius: 12,
+                    border: "2px solid var(--border)",
+                    background: "var(--surface2)",
+                    color: "var(--text-primary)",
+                    fontSize: 20, fontWeight: 800,
+                    fontFamily: "'Outfit',sans-serif",
+                    cursor: "pointer"
+                  }
+                }, letter)
+              ))
+            )
+          ),
+
+          // ── Inferred queue notice ──────────────────────────────────────
           hasData && stationMatchesData.inferred && stationMatchesData.queuedMatches.length > 0 && /*#__PURE__*/React.createElement("div", {
             style: { background: "#1e3a5f", border: "1.5px solid #2563EB", borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 11, color: "#93C5FD", lineHeight: 1.5 }
-          }, "\u26A0\uFE0F Showing inferred matches only \u2014 your matches where you appear as a player. The org hasn\u2019t generated a full queue yet. Once they click \u201cGenerate Queues\u201d in the org view, tap Refresh to see the complete ordered queue."),
+          }, "\u26A0\uFE0F Partial queue \u2014 showing your judge matches only. Once the org clicks \u201cGenerate Queues\u201d, tap Refresh for the full ordered list."),
 
-          hasData && stationMatchesData.inferred && stationMatchesData.queuedMatches.length === 0 && /*#__PURE__*/React.createElement("p", {
+          // ── Empty queue ────────────────────────────────────────────────
+          hasData && stationMatchesData.queuedMatches.length === 0 && /*#__PURE__*/React.createElement("p", {
             style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
-          }, "No matches found for Station ", stationMatchesData.letter, ". The organizer needs to click \u201cGenerate Queues\u201d in the org view, then you can Refresh here."),
+          }, "No open matches queued for Station ", stationMatchesData.letter, stationMatchesData.inferred ? ". Ask the org to click \u201cGenerate Queues\u201d, then Refresh." : ". All matches may be complete, or the org may need to regenerate queues."),
 
-          hasData && !stationMatchesData.inferred && stationMatchesData.queuedMatches.length === 0 && /*#__PURE__*/React.createElement("p", {
-            style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
-          }, "No open matches queued for Station ", stationMatchesData.letter, ". The organizer may need to click \u201cGenerate Queues\u201d in the org view, or all matches at this station may be complete."),
-
+          // ── Match list ────────────────────────────────────────────────
           hasData && stationMatchesData.queuedMatches.length > 0 && /*#__PURE__*/React.createElement("div", null,
             stationMatchesData.queuedMatches.map((m, mi) => {
               const isSelected = challongeMatchId === m.id;
