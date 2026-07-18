@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-18 | combo-desync-fix: next combo indices pushed immediately on score; shuffle-order confirm also pushes combo=0
+// NC BLAST app.js | last updated: 2026-07-18 | station-matches-tab: judge pick screen shows Station Matches tab with org queue order; org saves queues to KV on generate/reorder/move
 const {
   useState,
   useEffect,
@@ -5650,8 +5650,10 @@ function MatchScreen({
   const [cxGuide, setCxGuide] = useState(null); // null | "blade" | "over_blade" | "assist" — reference image overlay
   const [deckReview, setDeckReview] = useState(false); // true = show review screen, false = in picker flow
   const [lerStrikes, setLerStrikes] = useState(_resume ? _resume.lerStrikes : [0, 0]); // launch error strike counter per player [p1,p2]
-  const [pickTab, setPickTab] = useState(challongeSlug || config.tm ? "active" : "roster"); // "roster" | "active"
+  const [pickTab, setPickTab] = useState(challongeSlug || config.tm ? "active" : "roster"); // "roster" | "active" | "station"
   const [activeMatches, setActiveMatches] = useState(null); // null | "loading" | []
+  // Station Matches tab: loaded on first open; { letter, queuedMatches: [{id,p1,p2},...] } | null | "loading" | "no-assign"
+  const [stationMatchesData, setStationMatchesData] = useState(null);
   const [challongeMatchId, setChallongeMatchId] = useState(_resume ? _resume.challongeMatchId : null);
   const [challongeP1ParticipantId, setChallongeP1ParticipantId] = useState(_resume ? _resume.challongeP1ParticipantId : null);
   const [challongeP2ParticipantId, setChallongeP2ParticipantId] = useState(_resume ? _resume.challongeP2ParticipantId : null);
@@ -6217,6 +6219,66 @@ function MatchScreen({
       setActiveMatches(Array.isArray(data.matches) ? data.matches : []);
     } catch (err) {
       setActiveMatches([]);
+    }
+  };
+
+  // Fetch the judge's station assignment + the org-saved queue order, then
+  // build the ordered match list for the Station Matches tab.
+  const fetchStationMatches = async () => {
+    if (!challongeSlug) return;
+    setStationMatchesData("loading");
+    try {
+      const myUsername = (sessionStorage.getItem("ncblast-auth-user") || "").toLowerCase();
+      // 1. Load stadium assignment to find which station this judge is at
+      const assignRes = await fetch(
+        `${OVERLAY_WORKER}/stadium-assign?slug=${encodeURIComponent(challongeSlug)}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      const assignData = assignRes.ok ? await assignRes.json() : {};
+      const assign = assignData?.data?.assign || {};
+      // Look up this judge's station letter (case-insensitive key match)
+      const myLetter = (() => {
+        const key = Object.keys(assign).find(k => k.toLowerCase() === myUsername);
+        return key ? assign[key] : null;
+      })();
+      if (!myLetter) {
+        setStationMatchesData("no-assign");
+        return;
+      }
+      // 2. Load the org-persisted queue order for this station
+      const queueRes = await fetch(
+        `${OVERLAY_WORKER}/station-queues?slug=${encodeURIComponent(challongeSlug)}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      const queueData = queueRes.ok ? await queueRes.json() : {};
+      const queues = queueData?.data || {};
+      const orderedIds = (queues[myLetter] || []).map(String);
+      // 3. Load pairings so we can look up player names by match ID
+      const pairRes = await fetch(
+        `${OVERLAY_WORKER}/pairings?slug=${encodeURIComponent(challongeSlug)}`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      const pairData = pairRes.ok ? await pairRes.json() : {};
+      const pairings = pairData?.pairings || [];
+      // Build a map from match ID → match object (open matches only)
+      const matchById = {};
+      pairings.forEach(m => {
+        if (m.state !== "complete") matchById[String(m.id)] = m;
+      });
+      // 4. Produce ordered list: queue order first (preserving org sort),
+      //    then any open matches in this station's assignment not yet in the queue.
+      const seen = new Set();
+      const queuedMatches = [];
+      orderedIds.forEach(id => {
+        const m = matchById[id];
+        if (m && !seen.has(id)) {
+          seen.add(id);
+          queuedMatches.push({ id, p1: m.player1_name || `ID:${m.player1_id}`, p2: m.player2_name || `ID:${m.player2_id}`, challongeMatch: m });
+        }
+      });
+      setStationMatchesData({ letter: myLetter, queuedMatches });
+    } catch (_) {
+      setStationMatchesData(null);
     }
   };
   const pushOverlay = (extraState = {}) => {
@@ -9715,12 +9777,13 @@ function MatchScreen({
         overflow: "hidden",
         border: "2px solid var(--border)"
       }
-    }, [["roster", "👥 Roster"], ["active", "⚡ Active Matches"]].map(([tab, label]) => /*#__PURE__*/React.createElement("button", {
+    }, [["roster", "👥 Roster"], ["active", "⚡ Active Matches"], ["station", "🏟️ Station"]].map(([tab, label]) => /*#__PURE__*/React.createElement("button", {
       key: tab,
       type: "button",
       onClick: () => {
         setPickTab(tab);
         if (tab === "active") fetchActiveMatches();
+        if (tab === "station") fetchStationMatches();
       },
       style: {
         flex: 1,
@@ -10026,6 +10089,128 @@ function MatchScreen({
           setPhase("deck");
         }
       }, deckLoadingCombos ? "Loading\u2026" : "Build Decks \u2192")));
+    })(), pickTab === "station" && (() => {
+      // ── Station Matches tab ─────────────────────────────────────────────
+      // Shows the matches queued for this judge's assigned stadium, in the
+      // exact top-to-bottom order set by the org, with call guidance text.
+      const isLoading   = stationMatchesData === "loading";
+      const isNoAssign  = stationMatchesData === "no-assign";
+      const isNull      = stationMatchesData === null;
+      const hasData     = stationMatchesData && typeof stationMatchesData === "object";
+      return /*#__PURE__*/React.createElement("div", null,
+        /*#__PURE__*/React.createElement("div", {
+          style: { ...S.card, marginBottom: 8 }
+        },
+          /*#__PURE__*/React.createElement("div", {
+            style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }
+          },
+            /*#__PURE__*/React.createElement("p", {
+              style: { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: 1, textTransform: "uppercase", margin: 0 }
+            }, hasData ? `Station ${stationMatchesData.letter} Matches` : "Station Matches"),
+            /*#__PURE__*/React.createElement("button", {
+              type: "button",
+              onClick: fetchStationMatches,
+              style: { fontSize: 12, fontWeight: 700, color: "#1D4ED8", background: "#1D4ED820", border: "2px solid #1D4ED840", borderRadius: 10, padding: "7px 14px", cursor: "pointer", fontFamily: "'Outfit',sans-serif", display: "flex", alignItems: "center", gap: 5 }
+            }, "\u21BB Refresh")
+          ),
+
+          isLoading && /*#__PURE__*/React.createElement("p", {
+            style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
+          }, "\u23F3 Loading station matches\u2026"),
+
+          isNoAssign && /*#__PURE__*/React.createElement("p", {
+            style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
+          }, "You don\u2019t have a stadium assignment for this event. Ask your organizer to assign you to a stadium in the org view."),
+
+          (isNull && !isLoading) && /*#__PURE__*/React.createElement("p", {
+            style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
+          }, "Tap Refresh to load your station\u2019s match queue."),
+
+          hasData && stationMatchesData.queuedMatches.length === 0 && /*#__PURE__*/React.createElement("p", {
+            style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
+          }, "No open matches in your station\u2019s queue. The organizer may not have generated queues yet, or all matches are complete."),
+
+          hasData && stationMatchesData.queuedMatches.length > 0 && /*#__PURE__*/React.createElement("div", null,
+            stationMatchesData.queuedMatches.map((m, mi) => {
+              const isSelected = challongeMatchId === m.id;
+              return /*#__PURE__*/React.createElement("div", {
+                key: m.id,
+                style: { marginBottom: mi < stationMatchesData.queuedMatches.length - 1 ? 8 : 0 }
+              },
+                mi === 0 && /*#__PURE__*/React.createElement("div", {
+                  style: { display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }
+                },
+                  /*#__PURE__*/React.createElement("span", {
+                    style: { fontSize: 9, fontWeight: 800, color: "#15803D", background: "#D1FAE5", border: "1.5px solid #6EE7B7", borderRadius: 6, padding: "2px 7px", letterSpacing: 0.5, textTransform: "uppercase" }
+                  }, "\u25B6 Call Next"),
+                  /*#__PURE__*/React.createElement("span", {
+                    style: { fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }
+                  }, "top of queue")
+                ),
+                /*#__PURE__*/React.createElement("button", {
+                  type: "button",
+                  onClick: () => selectActivePairing(m.challongeMatch),
+                  style: {
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    width: "100%", padding: "12px 14px", borderRadius: 10,
+                    border: `2px solid ${isSelected ? "#1D4ED8" : "var(--border)"}`,
+                    background: isSelected ? "#1D4ED820" : "var(--surface2)",
+                    cursor: "pointer", fontFamily: "'Outfit',sans-serif", textAlign: "left"
+                  }
+                },
+                  /*#__PURE__*/React.createElement("div", null,
+                    /*#__PURE__*/React.createElement("span", {
+                      style: { fontSize: 11, fontWeight: 800, color: "var(--text-muted)", display: "block", marginBottom: 2 }
+                    }, `#${mi + 1}`),
+                    /*#__PURE__*/React.createElement("span", {
+                      style: { fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }
+                    }, m.p1),
+                    /*#__PURE__*/React.createElement("span", {
+                      style: { fontSize: 12, color: "var(--text-muted)", margin: "0 6px" }
+                    }, "vs"),
+                    /*#__PURE__*/React.createElement("span", {
+                      style: { fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }
+                    }, m.p2)
+                  ),
+                  isSelected && /*#__PURE__*/React.createElement("span", {
+                    style: { fontSize: 12, fontWeight: 800, color: "#1D4ED8", flexShrink: 0 }
+                  }, "\u2714 Selected")
+                )
+              );
+            })
+          )
+        ),
+
+        hasData && stationMatchesData.queuedMatches.length > 0 && /*#__PURE__*/React.createElement("div", {
+          style: {
+            background: "#FEF3C7", border: "1.5px solid #FCD34D", borderRadius: 10,
+            padding: "10px 14px", marginBottom: 8,
+            display: "flex", gap: 10, alignItems: "flex-start"
+          }
+        },
+          /*#__PURE__*/React.createElement("span", { style: { fontSize: 16, flexShrink: 0, lineHeight: 1.4 } }, "\uD83D\uDCCB"),
+          /*#__PURE__*/React.createElement("p", {
+            style: { fontSize: 12, fontWeight: 600, color: "#92400E", margin: 0, lineHeight: 1.5 }
+          }, "If you are calling your own matches to your stadium, call from the top of the list, going one match down if the top match is unable to be played currently (unless your organizer specified a different order).")
+        ),
+
+        hasData && stationMatchesData.queuedMatches.length > 0 && challongeMatchId && p1 && p2 && /*#__PURE__*/React.createElement("button", {
+          type: "button",
+          onClick: async () => {
+            setDeckLoadingCombos(true);
+            try { await refreshCombos(); } catch (_) {}
+            setDeckLoadingCombos(false);
+            setUsed1([]);
+            setUsed2([]);
+            setLerStrikes([0, 0]);
+            setSetScores([]);
+            setDeckReview(true);
+            setPhase("deck");
+          },
+          disabled: deckLoadingCombos,
+          style: { ...S.pri, opacity: deckLoadingCombos ? 0.4 : 1 }
+        }, deckLoadingCombos ? "Loading\u2026" : "Build Decks \u2192")
+      );
     })(), pickTab === "roster" && /*#__PURE__*/React.createElement("button", {
       style: {
         ...S.pri,
@@ -13865,6 +14050,26 @@ function OrgApp({
     }
   };
 
+  // Fire-and-forget: persist the current ordered station queues to KV so the
+  // judge view's Station Matches tab can read the same ordering the org sees.
+  const saveStationQueues = async queues => {
+    if (!slug || !queues) return;
+    const token = sessionStorage.getItem("ncblast-auth-token") || "";
+    const username = sessionStorage.getItem("ncblast-auth-user") || "";
+    if (!token && !username) return; // not an org, skip silently
+    try {
+      await fetch(`${OVERLAY_WORKER}/station-queues`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Auth-Token": token
+        },
+        body: JSON.stringify({ slug, queues, username }),
+        signal: AbortSignal.timeout(8000)
+      });
+    } catch (_) {}
+  };
+
   // ── Judge name map fetch / save ──────────────────────────────────────
   const loadNameMap = async () => {
     setNameMapLoading(true);
@@ -16579,6 +16784,15 @@ function OrgApp({
         next[toStation] = dest;
         return next;
       });
+      // Persist new order to KV so the judge view's Station Matches tab stays in
+      // sync. Rebuild the updated queues from the latest stationQueues snapshot.
+      const updatedQ = {};
+      STADIUM_LETTERS.forEach(l => { updatedQ[l] = [...(stationQueues[l] || [])]; });
+      updatedQ[fromStation] = updatedQ[fromStation].filter(id => id !== matchId);
+      const dest2 = [...(updatedQ[toStation] || [])];
+      dest2.splice(Math.min(afterIdx, dest2.length), 0, matchId);
+      updatedQ[toStation] = dest2;
+      saveStationQueues(updatedQ);
       setQueueDragItem(null);
       setQueueDragOver(null);
     };
@@ -16701,6 +16915,7 @@ function OrgApp({
         setStationQueues(q);
         setQueuesGenerated(true);
         setMoveMenuOpen(null);
+        saveStationQueues(q); // persist order so judge view can read it
       },
       style: {
         padding: '5px 13px',
@@ -16985,15 +17200,12 @@ function OrgApp({
           return /*#__PURE__*/React.createElement("button", {
             key: dest,
             onClick: () => {
-              setStationQueues(prev => {
-                const next = {};
-                STADIUM_LETTERS.forEach(l => {
-                  next[l] = [...(prev[l] || [])];
-                });
-                next[letter] = next[letter].filter(x => x !== id);
-                next[dest] = [...next[dest], id];
-                return next;
-              });
+              const updatedQ = {};
+              STADIUM_LETTERS.forEach(l => { updatedQ[l] = [...(stationQueues[l] || [])]; });
+              updatedQ[letter] = updatedQ[letter].filter(x => x !== id);
+              updatedQ[dest] = [...updatedQ[dest], id];
+              setStationQueues(updatedQ);
+              saveStationQueues(updatedQ);
               setMoveMenuOpen(null);
             },
             style: {
