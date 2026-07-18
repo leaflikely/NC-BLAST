@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-18 | station-matches-tab: judge pick screen shows Station Matches tab with org queue order; org saves queues to KV on generate/reorder/move
+// NC BLAST app.js | last updated: 2026-07-18 | station-matches-tab: judge pick screen shows Station Matches tab with org queue order; tab bar now visible in all modes (removed !config.tm gate)
 const {
   useState,
   useEffect,
@@ -9768,7 +9768,7 @@ function MatchScreen({
           cursor: "pointer"
         }
       }, "\u2713 Accept Match"))));
-    })(), hasChallonge && !config.tm && /*#__PURE__*/React.createElement("div", {
+    })(), hasChallonge && /*#__PURE__*/React.createElement("div", {
       style: {
         display: "flex",
         gap: 0,
