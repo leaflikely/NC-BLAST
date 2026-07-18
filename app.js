@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-15 | build-decks-await-combo-fetch; org-view-combos-tab with full participant list; delete-unowned-event-with-master-key
+// NC BLAST app.js | last updated: 2026-07-18 | combo-desync-fix: next combo indices pushed immediately on score; shuffle-order confirm also pushes combo=0
 const {
   useState,
   useEffect,
@@ -5961,18 +5961,18 @@ function MatchScreen({
     sSave(KEYS.matchLog, newLog);
     setFuture([]);
     setPts(np);
-    // Push to stream overlay (fire and forget)
-    pushOverlay({
-      lastFinish: {
-        type: fin.id,
-        scorerIdx: scoringPi
-      },
-      pts: np
-    });
     const setWon = config.pts > 0 && np[scoringPi] >= config.pts;
 
     // LER — 1-strike system: first LER adds a strike, second converts to a point
+    // Combos do NOT advance on LER — push overlay now with unchanged r1/r2
     if (fin.id === "LER") {
+      pushOverlay({
+        lastFinish: {
+          type: fin.id,
+          scorerIdx: scoringPi
+        },
+        pts: np
+      });
       if (setWon) {
         const ns = [sets[0], sets[1]];
         ns[scoringPi] += 1;
@@ -6019,6 +6019,19 @@ function MatchScreen({
     const nxR2 = [0, 1, 2].find(i => !nu2.includes(i));
     setR1(nxR1 !== undefined ? nxR1 : null);
     setR2(nxR2 !== undefined ? nxR2 : null);
+    // Push overlay NOW — after computing nxR1/nxR2 — so the overlay immediately
+    // shows the NEXT battle's combos. Pass p1ComboIdx/p2ComboIdx to bypass the
+    // stale r1/r2 still held in React state (setState is async).
+    // If the set is won, combos reset on the upcoming shuffle screen → send null.
+    pushOverlay({
+      lastFinish: {
+        type: fin.id,
+        scorerIdx: scoringPi
+      },
+      pts: np,
+      p1ComboIdx: setWon ? null : (nxR1 !== undefined ? nxR1 : null),
+      p2ComboIdx: setWon ? null : (nxR2 !== undefined ? nxR2 : null)
+    });
     if (setWon) {
       const ns = [sets[0], sets[1]];
       ns[scoringPi] += 1;
@@ -10288,8 +10301,12 @@ function MatchScreen({
       showTimer: !!shuffleTimer,
       onConfirm: () => {
         if (shuffleTimer) {
+          // Pass combo index 0 — deck order may have changed on this screen,
+          // but the first bey to play is always slot 0 after a shuffle.
           pushOverlay({
-            shuffling: false
+            shuffling: false,
+            p1ComboIdx: 0,
+            p2ComboIdx: 0
           });
           if (shuffleTimer === "active") {
             setUsed1([]);
