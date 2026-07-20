@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-18 | station-queue-sync: Sync to Judges button in org view with success/error feedback; saveStationQueues returns ok/fail; master-key fallback auth
+// NC BLAST app.js | last updated: 2026-07-20 | ranked-mode: removed match format controls from judge view; org creates events as RANKED or UNRANKED; config hardcoded to 4pts best-of-3
 const {
   useState,
   useEffect,
@@ -3351,7 +3351,7 @@ function FormatScreen({
   }, {
     icon: "🎯",
     title: "Match Modes",
-    body: "Casual mode lets you score freely with no data sent anywhere — great for practice or unofficial matches. Ranked mode requires a tournament name and sends completed match data to the NC BLAST Google Sheets for stat tracking. Choose your point limit (4, 5, 7, or custom) and number of sets before starting."
+    body: "Ranked mode is always on — every match is tracked and submitted to the NC BLAST Google Sheets. Connect to a tournament event from the event picker on the main screen. The match format is fixed at first to 4 points in a Best-of-3 set."
   }, {
     icon: "👥",
     title: "Adding Players",
@@ -3371,7 +3371,7 @@ function FormatScreen({
   }, {
     icon: "📤",
     title: "Exporting Results",
-    body: "After a match ends, tap Send to Sheets to submit the results to the NC BLAST stat tracker (Ranked mode only). You can also download a CSV of the match at any time. The CSV includes every battle with full combo data, sides, finish types, scores, and timestamps."
+    body: "After a match ends, tap Send to Sheets to submit the results to the NC BLAST stat tracker. You can also download a CSV of the match at any time. The CSV includes every battle with full combo data, sides, finish types, scores, and timestamps."
   }, {
     icon: "🌙",
     title: "Dark Mode",
@@ -3555,77 +3555,7 @@ function FormatScreen({
     }
   }, hasLib ? "Tap to manage" : "Import your Beyblade X parts first"))), /*#__PURE__*/React.createElement("div", {
     style: S.card
-  }, /*#__PURE__*/React.createElement("h2", {
-    style: S.label
-  }, "Match Type"), /*#__PURE__*/React.createElement("div", {
-    style: S.row
-  }, [[4, "4 Pts."], [5, "5 Pts."], [7, "7 Pts."], [0, "No Limit"]].map(([v, l]) => /*#__PURE__*/React.createElement("button", {
-    key: v,
-    style: {
-      ...S.chip,
-      ...(config.pts === v ? S.chipOn : {})
-    },
-    onClick: () => setConfig({
-      ...config,
-      pts: v
-    })
-  }, l))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      ...S.row,
-      marginTop: 8
-    }
-  }, /*#__PURE__*/React.createElement("button", {
-    style: {
-      ...S.chip,
-      ...(config.pts > 7 ? S.chipOn : {})
-    },
-    onClick: () => {
-      const n = prompt("Custom point limit:");
-      if (n && !isNaN(+n) && +n > 0) setConfig({
-        ...config,
-        pts: +n
-      });
-    }
-  }, config.pts > 7 ? config.pts + " Pts." : "Custom")), /*#__PURE__*/React.createElement("h2", {
-    style: {
-      ...S.label,
-      marginTop: 20
-    }
-  }, "Sets"), /*#__PURE__*/React.createElement("div", {
-    style: S.row
-  }, [1, 3, 5].map(v => /*#__PURE__*/React.createElement("button", {
-    key: v,
-    style: {
-      ...S.chip,
-      ...S.chipW,
-      ...(config.bo === v ? S.chipBl : {})
-    },
-    onClick: () => setConfig({
-      ...config,
-      bo: v
-    })
-  }, v === 1 ? "Best-of-1" : `Best-of-${v}`))), /*#__PURE__*/React.createElement("h2", {
-    style: {
-      ...S.label,
-      marginTop: 20
-    }
-  }, "Tournament Mode"), /*#__PURE__*/React.createElement("div", {
-    style: S.row
-  }, [false, true].map(v => /*#__PURE__*/React.createElement("button", {
-    key: String(v),
-    style: {
-      ...S.chip,
-      ...(config.tm === v ? v ? {
-        background: "#7C3AED",
-        borderColor: "#7C3AED",
-        color: "#fff"
-      } : S.chipOn : {})
-    },
-    onClick: () => setConfig({
-      ...config,
-      tm: v
-    })
-  }, v ? "On" : "Off"))), config.tm && /*#__PURE__*/React.createElement(CachedEventPicker, {
+  }, /*#__PURE__*/React.createElement(CachedEventPicker, {
     config: config,
     setConfig: setConfig,
     challongeSlug: challongeSlug,
@@ -3671,9 +3601,9 @@ function FormatScreen({
   }))), /*#__PURE__*/React.createElement("button", {
     style: {
       ...S.pri,
-      opacity: hasLib && (!config.tm || config.tournamentName?.trim()) ? 1 : 0.4
+      opacity: hasLib && config.tournamentName?.trim() ? 1 : 0.4
     },
-    disabled: !hasLib || config.tm && !config.tournamentName?.trim(),
+    disabled: !hasLib || !config.tournamentName?.trim(),
     onClick: onNext
   }, "Next: Players \u2192"), !hasLib && /*#__PURE__*/React.createElement("p", {
     style: S.hint
@@ -9272,7 +9202,7 @@ function MatchScreen({
         color: "var(--text-primary)"
       };
     };
-    const canProceed = p1 && p2 && (!config.tm || judge.trim());
+    const canProceed = p1 && p2 && judge.trim();
     const hasChallonge = !!challongeSlug;
 
     // Mark a match as in progress on Challonge using the judge's OAuth token.
@@ -17818,7 +17748,8 @@ function OrgTournamentSelect({
   const [loadingLink, setLoadingLink] = useState(false);
   const [linkError, setLinkError] = useState(null);
   const [displayName, setDisplayName] = useState("");
-  const [addStep, setAddStep] = useState(null); // null | "name" | "adding"
+  const [addStep, setAddStep] = useState(null); // null | "name" | "ranked" | "adding"
+  const [pendingRanked, setPendingRanked] = useState(true); // true = RANKED, false = UNRANKED
   const [pendingSlug, setPendingSlug] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // slug | null
   const [deleting, setDeleting] = useState(false);
@@ -17875,24 +17806,26 @@ function OrgTournamentSelect({
     setDisplayName("");
     setAddStep("name");
   };
-  const handleAddTournament = async () => {
+  const handleConfirmName = () => {
     const name = displayName.trim();
-    if (!name) {
-      setLinkError("Enter a display name.");
-      return;
-    }
+    if (!name) { setLinkError("Enter a display name."); return; }
+    setLinkError(null);
+    setAddStep("ranked");
+  };
+  const handleAddTournament = async (ranked) => {
+    const name = displayName.trim();
+    if (!name) { setLinkError("Enter a display name."); return; }
     setAddStep("adding");
     setLinkError(null);
     const token = sessionStorage.getItem("ncblast-auth-token");
     try {
       const res = await fetch(`${OVERLAY_WORKER}/org/tournament/add`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           slug: pendingSlug,
           name,
+          ranked: ranked,
           orgToken: token,
           username: sessionStorage.getItem("ncblast-auth-user")
         }),
@@ -17908,7 +17841,7 @@ function OrgTournamentSelect({
       onSelect(pendingSlug, name);
     } catch (e) {
       setLinkError("Couldn't add tournament: " + e.message);
-      setAddStep("name");
+      setAddStep("ranked");
     }
   };
   const handleDelete = async (slug, masterKeyOverride) => {
@@ -18442,7 +18375,7 @@ function OrgTournamentSelect({
       autoFocus: true,
       value: displayName,
       onChange: e => setDisplayName(e.target.value),
-      onKeyDown: e => e.key === "Enter" && handleAddTournament(),
+      onKeyDown: e => e.key === "Enter" && handleConfirmName(),
       placeholder: "e.g. NorCal Spring Open 2025",
       style: {
         width: "100%",
@@ -18458,28 +18391,24 @@ function OrgTournamentSelect({
         boxSizing: "border-box"
       }
     }), linkError && /*#__PURE__*/React.createElement("p", {
-      style: {
-        fontSize: 11,
-        color: "#EF4444",
-        marginBottom: 8
-      }
+      style: { fontSize: 11, color: "#EF4444", marginBottom: 8 }
     }, linkError), /*#__PURE__*/React.createElement("button", {
-      onClick: handleAddTournament,
-      disabled: !displayName.trim() || addStep === "adding",
+      onClick: handleConfirmName,
+      disabled: !displayName.trim(),
       style: {
         width: "100%",
         padding: "13px 0",
         borderRadius: 11,
         border: "none",
-        background: displayName.trim() && addStep !== "adding" ? "#EA580C" : "var(--surface3)",
-        color: displayName.trim() && addStep !== "adding" ? "#fff" : "var(--text-faint)",
+        background: displayName.trim() ? "#EA580C" : "var(--surface3)",
+        color: displayName.trim() ? "#fff" : "var(--text-faint)",
         fontSize: 14,
         fontWeight: 800,
         fontFamily: "'Outfit',sans-serif",
-        cursor: displayName.trim() && addStep !== "adding" ? "pointer" : "not-allowed",
+        cursor: displayName.trim() ? "pointer" : "not-allowed",
         marginBottom: 10
       }
-    }, addStep === "adding" ? "Adding…" : "Add to NC BLAST →"), /*#__PURE__*/React.createElement("button", {
+    }, "Next →"), /*#__PURE__*/React.createElement("button", {
       onClick: () => {
         setAddStep(null);
         setLinkError(null);
@@ -18497,6 +18426,63 @@ function OrgTournamentSelect({
         cursor: "pointer"
       }
     }, "Cancel")));
+  }
+
+
+  // ── "Ranked or Unranked" screen ──────────────────────────────────
+  if (addStep === "ranked" || addStep === "adding") {
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        minHeight: "100vh", display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        background: "var(--bg)", padding: "32px 24px",
+        fontFamily: "'Outfit',sans-serif"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: { width: "100%", maxWidth: 340 }
+    }, /*#__PURE__*/React.createElement("h2", {
+      style: { fontSize: 20, fontWeight: 900, color: "var(--text-primary)", margin: "0 0 6px" }
+    }, "Ranked or Unranked?"), /*#__PURE__*/React.createElement("p", {
+      style: { fontSize: 13, color: "var(--text-muted)", marginBottom: 24, lineHeight: 1.5 }
+    }, "Ranked events submit match results to Google Sheets for stat tracking. Unranked events are for casual play or scrimmages — no data is logged."),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => handleAddTournament(true),
+      disabled: addStep === "adding",
+      style: {
+        width: "100%", padding: "18px 0", borderRadius: 12, border: "none",
+        background: addStep === "adding" ? "var(--surface3)" : "#7C3AED",
+        color: addStep === "adding" ? "var(--text-faint)" : "#fff",
+        fontSize: 16, fontWeight: 900, fontFamily: "'Outfit',sans-serif",
+        cursor: addStep === "adding" ? "not-allowed" : "pointer",
+        marginBottom: 12, letterSpacing: "0.03em"
+      }
+    }, addStep === "adding" ? "Adding…" : "🏆 Ranked"),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => handleAddTournament(false),
+      disabled: addStep === "adding",
+      style: {
+        width: "100%", padding: "18px 0", borderRadius: 12,
+        border: "2px solid var(--border2)", background: "none",
+        color: addStep === "adding" ? "var(--text-faint)" : "var(--text-primary)",
+        fontSize: 16, fontWeight: 900, fontFamily: "'Outfit',sans-serif",
+        cursor: addStep === "adding" ? "not-allowed" : "pointer",
+        marginBottom: 20, letterSpacing: "0.03em"
+      }
+    }, "🏖️ Unranked"),
+    linkError && /*#__PURE__*/React.createElement("p", {
+      style: { fontSize: 11, color: "#EF4444", marginBottom: 8 }
+    }, linkError),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => { setAddStep("name"); setLinkError(null); },
+      disabled: addStep === "adding",
+      style: {
+        width: "100%", padding: "10px 0", borderRadius: 10,
+        border: "2px solid var(--border)", background: "none",
+        color: "var(--text-muted)", fontSize: 13, fontWeight: 700,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: addStep === "adding" ? "not-allowed" : "pointer"
+      }
+    }, "← Back")));
   }
 
   // ── Main select screen ────────────────────────────────────────────
@@ -19781,9 +19767,9 @@ function BeyJudgeApp() {
   // All judge-side state declared unconditionally (React rules require this)
   const [screen, setScreen] = useState("format");
   const [config, setConfig] = useState({
-    pts: 4,
-    bo: 3,
-    tm: true,
+    pts: 4,   // always 4 pts — set by org ruleset
+    bo: 3,    // always best-of-3 — set by org ruleset
+    tm: true, // always ranked mode — org controls this at event creation
     tournamentName: ""
   });
   const [parts, setParts] = useState({
