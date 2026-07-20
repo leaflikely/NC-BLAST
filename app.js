@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-20 | unranked-match-flow: fix prop threading for eventRanked flag; ranked/unranked badge on event list; set-by-set winner picker replaces deck+scoring for unranked
+// NC BLAST app.js | last updated: 2026-07-20 | unranked-over-screen: hide battles/shuffles/judge row, match history, and download CSV for unranked matches
 const {
   useState,
   useEffect,
@@ -11259,7 +11259,7 @@ function MatchScreen({
           color: !p1w ? "#DC2626" : "var(--text-faint)"
         }
       }, ss.p2)));
-    }))), /*#__PURE__*/React.createElement("div", {
+    }))), eventRanked && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       style: {
         display: "flex",
         gap: 8,
@@ -11447,7 +11447,7 @@ function MatchScreen({
           textAlign: "right"
         }
       }, e.p2Combo.blade || "?", e.p2Combo.ratchet ? ` ${e.p2Combo.ratchet}` : "", e.p2Combo.bit ? ` · ${e.p2Combo.bit}` : "")));
-    })), config.tm && eventRanked && !submitted && /*#__PURE__*/React.createElement("div", {
+    }))), config.tm && eventRanked && !submitted && /*#__PURE__*/React.createElement("div", {
       style: {
         ...S.card,
         border: "2px solid #7C3AED30",
@@ -11847,7 +11847,7 @@ function MatchScreen({
         setSheetsStatus(null);
         resetAndRestoreJudge();
       }
-    }, "New Match")), /*#__PURE__*/React.createElement("button", {
+    }, "New Match")), eventRanked && /*#__PURE__*/React.createElement("button", {
       style: {
         ...S.sec,
         width: "100%",
