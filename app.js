@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-20 | ranked-mode: removed match format controls from judge view; org creates events as RANKED or UNRANKED; config hardcoded to 4pts best-of-3
+// NC BLAST app.js | last updated: 2026-07-20 | unranked-match-flow: set-by-set winner picker for unranked events; skips deck build, skips Sheets, submits to Challonge only
 const {
   useState,
   useEffect,
@@ -2184,6 +2184,7 @@ function CachedEventPicker({
   const handleSelect = t => {
     setSelectedSlug(t.slug);
     setSelectedName(t.name || t.slug);
+    setEventRanked(t.ranked !== false); // false only when org explicitly marked UNRANKED
     setAuthError(null);
     setDeviceMode(null);
     resetDuoState();
@@ -5480,6 +5481,152 @@ function MisreportScreen({
     }
   }, "Clear")))));
 }
+
+// ── UnrankedFlow ─────────────────────────────────────────────────────────────
+// Manages the set-by-set winner-picking flow for unranked matches.
+// Props:
+//   p1, p2        — player names
+//   dark          — dark mode flag
+//   onMatchComplete(winnerName, setResults) — called when a player wins 2 sets
+//   onBack        — called when judge taps Back (returns to player pick)
+function UnrankedFlow({ p1, p2, dark, onMatchComplete, onBack }) {
+  // completedSets: [{ winner, loserScore }, ...]
+  const [completedSets, setCompletedSets] = useState([]);
+  // step: "winner" | "loser_score"
+  const [step, setStep] = useState("winner");
+  // pendingWinner: name of the set winner while we wait for loser score
+  const [pendingWinner, setPendingWinner] = useState(null);
+
+  const curSetNum = completedSets.length + 1;
+  const p1Sets = completedSets.filter(s => s.winner === p1).length;
+  const p2Sets = completedSets.filter(s => s.winner === p2).length;
+
+  const handleWinner = (name) => {
+    setPendingWinner(name);
+    setStep("loser_score");
+  };
+
+  const handleLoserScore = (score) => {
+    const newSet = { winner: pendingWinner, loserScore: score };
+    const newCompleted = [...completedSets, newSet];
+    setCompletedSets(newCompleted);
+    setPendingWinner(null);
+    setStep("winner");
+
+    // Check if match is over (2 sets won)
+    const p1Total = newCompleted.filter(s => s.winner === p1).length;
+    const p2Total = newCompleted.filter(s => s.winner === p2).length;
+    if (p1Total >= 2 || p2Total >= 2) {
+      const matchWinner = p1Total >= 2 ? p1 : p2;
+      onMatchComplete(matchWinner, newCompleted);
+    }
+  };
+
+  const loserName = pendingWinner === p1 ? p2 : p1;
+
+  // Shared style helpers
+  const nameBtn = (name, color, onClick) => /*#__PURE__*/React.createElement("button", {
+    onClick: onClick,
+    style: {
+      flex: 1,
+      padding: "28px 12px",
+      borderRadius: 16,
+      border: "none",
+      background: color,
+      color: "#fff",
+      fontSize: name && name.length > 12 ? 20 : 28,
+      fontWeight: 900,
+      fontFamily: "'Outfit',sans-serif",
+      cursor: "pointer",
+      lineHeight: 1.1,
+      wordBreak: "break-word"
+    }
+  }, name);
+
+  const scoreBtn = (score, onClick) => /*#__PURE__*/React.createElement("button", {
+    onClick: onClick,
+    style: {
+      flex: 1,
+      padding: "22px 8px",
+      borderRadius: 14,
+      border: "2px solid var(--border)",
+      background: "var(--surface2)",
+      color: "var(--text-primary)",
+      fontSize: 32,
+      fontWeight: 900,
+      fontFamily: "'Outfit',sans-serif",
+      cursor: "pointer"
+    }
+  }, score);
+
+  // Set history summary shown from set 2 onward
+  const setHistory = completedSets.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--surface2)",
+      borderRadius: 12,
+      padding: "12px 16px",
+      marginBottom: 16
+    }
+  },
+    /*#__PURE__*/React.createElement("p", {
+      style: { fontSize: 10, fontWeight: 700, letterSpacing: 2, color: "var(--text-muted)", textTransform: "uppercase", margin: "0 0 8px" }
+    }, "Set Scores"),
+    completedSets.map((s, i) => {
+      const p1Won = s.winner === p1;
+      const p1Score = p1Won ? 4 : s.loserScore;
+      const p2Score = p1Won ? s.loserScore : 4;
+      return /*#__PURE__*/React.createElement("div", {
+        key: i,
+        style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: i < completedSets.length - 1 ? 4 : 0 }
+      },
+        /*#__PURE__*/React.createElement("p", { style: { fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", margin: 0 } }, "Set " + (i + 1)),
+        /*#__PURE__*/React.createElement("p", { style: { fontSize: 13, fontWeight: 800, color: "var(--text-primary)", margin: 0, fontFamily: "'Outfit',sans-serif" } },
+          p1 + " " + p1Score + " – " + p2Score + " " + p2
+        )
+      );
+    }),
+    /*#__PURE__*/React.createElement("div", {
+      style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)" }
+    },
+      /*#__PURE__*/React.createElement("p", { style: { fontSize: 11, fontWeight: 700, color: "#2563EB", margin: 0 } }, p1 + ": " + p1Sets + " set" + (p1Sets !== 1 ? "s" : "")),
+      /*#__PURE__*/React.createElement("p", { style: { fontSize: 11, fontWeight: 700, color: "#DC2626", margin: 0 } }, p2 + ": " + p2Sets + " set" + (p2Sets !== 1 ? "s" : ""))
+    )
+  );
+
+  return /*#__PURE__*/React.createElement("div", {
+    style: { ...S.page, paddingBottom: 40 }
+  },
+    /*#__PURE__*/React.createElement("button", { style: S.back, onClick: onBack }, IC.back, " Back"),
+    /*#__PURE__*/React.createElement("h1", { style: { ...S.title, marginBottom: 4 } }, "Set " + curSetNum),
+    /*#__PURE__*/React.createElement("p", { style: { ...S.sub, marginBottom: 16 } },
+      step === "winner" ? "Who won Set " + curSetNum + "?" : pendingWinner + " wins Set " + curSetNum + ". What was " + loserName + "'s score?"
+    ),
+
+    setHistory,
+
+    step === "winner" && /*#__PURE__*/React.createElement("div", {
+      style: { display: "flex", gap: 12 }
+    },
+      nameBtn(p1, "#2563EB", () => handleWinner(p1)),
+      nameBtn(p2, "#DC2626", () => handleWinner(p2))
+    ),
+
+    step === "loser_score" && /*#__PURE__*/React.createElement(React.Fragment, null,
+      /*#__PURE__*/React.createElement("p", {
+        style: { fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8 }
+      }, loserName + "'s score (losing player):"),
+      /*#__PURE__*/React.createElement("div", {
+        style: { display: "flex", gap: 10 }
+      },
+        scoreBtn(0, () => handleLoserScore(0)),
+        scoreBtn(1, () => handleLoserScore(1)),
+        scoreBtn(2, () => handleLoserScore(2)),
+        scoreBtn(3, () => handleLoserScore(3))
+      )
+    )
+  );
+}
+
 function MatchScreen({
   config,
   parts,
@@ -5497,7 +5644,8 @@ function MatchScreen({
   dark,
   toggleDark,
   challongeSlug,
-  challongeParticipants
+  challongeParticipants,
+  eventRanked = true
 }) {
   // Resume snapshot — if a match was mid-flight (past the initial player pick) when the
   // page refreshed, restore it. Computed once on mount; sessionStorage clears itself when
@@ -10071,9 +10219,6 @@ function MatchScreen({
         },
         disabled: !activeCanProceed || deckLoadingCombos,
         onClick: async () => {
-          setDeckLoadingCombos(true);
-          try { await refreshCombos(); } catch (_) {}
-          setDeckLoadingCombos(false);
           setMatchStartIdx(log.length);
           setFuture([]);
           setCurSet(1);
@@ -10084,10 +10229,17 @@ function MatchScreen({
           setUsed2([]);
           setLerStrikes([0, 0]);
           setSetScores([]);
-          setDeckReview(true);
-          setPhase("deck");
+          if (!eventRanked) {
+            setPhase("unranked");
+          } else {
+            setDeckLoadingCombos(true);
+            try { await refreshCombos(); } catch (_) {}
+            setDeckLoadingCombos(false);
+            setDeckReview(true);
+            setPhase("deck");
+          }
         }
-      }, deckLoadingCombos ? "Loading\u2026" : "Build Decks \u2192")));
+      }, deckLoadingCombos ? "Loading\u2026" : eventRanked ? "Build Decks \u2192" : "Start Match \u2192")));
     })(), pickTab === "station" && (() => {
       // ── Station Matches tab ─────────────────────────────────────────────
       // Shows the matches queued for this judge's assigned stadium, in the
@@ -10244,19 +10396,29 @@ function MatchScreen({
         hasData && stationMatchesData.queuedMatches.length > 0 && challongeMatchId && p1 && p2 && /*#__PURE__*/React.createElement("button", {
           type: "button",
           onClick: async () => {
-            setDeckLoadingCombos(true);
-            try { await refreshCombos(); } catch (_) {}
-            setDeckLoadingCombos(false);
             setUsed1([]);
             setUsed2([]);
             setLerStrikes([0, 0]);
             setSetScores([]);
-            setDeckReview(true);
-            setPhase("deck");
+            if (!eventRanked) {
+              setMatchStartIdx(log.length);
+              setFuture([]);
+              setCurSet(1);
+              setShuf(1);
+              setPts([0, 0]);
+              setSets([0, 0]);
+              setPhase("unranked");
+            } else {
+              setDeckLoadingCombos(true);
+              try { await refreshCombos(); } catch (_) {}
+              setDeckLoadingCombos(false);
+              setDeckReview(true);
+              setPhase("deck");
+            }
           },
           disabled: deckLoadingCombos,
           style: { ...S.pri, opacity: deckLoadingCombos ? 0.4 : 1 }
-        }, deckLoadingCombos ? "Loading\u2026" : "Build Decks \u2192")
+        }, deckLoadingCombos ? "Loading\u2026" : eventRanked ? "Build Decks \u2192" : "Start Match \u2192")
       );
     })(), pickTab === "roster" && /*#__PURE__*/React.createElement("button", {
       style: {
@@ -10265,9 +10427,6 @@ function MatchScreen({
       },
       disabled: !canProceed || deckLoadingCombos,
       onClick: async () => {
-        setDeckLoadingCombos(true);
-        try { await refreshCombos(); } catch (_) {}
-        setDeckLoadingCombos(false);
         setMatchStartIdx(log.length);
         setFuture([]);
         setCurSet(1);
@@ -10278,16 +10437,45 @@ function MatchScreen({
         setUsed2([]);
         setLerStrikes([0, 0]);
         setSetScores([]);
-        setDeckReview(true);
-        setPhase("deck");
+        if (!eventRanked) {
+          setPhase("unranked");
+        } else {
+          setDeckLoadingCombos(true);
+          try { await refreshCombos(); } catch (_) {}
+          setDeckLoadingCombos(false);
+          setDeckReview(true);
+          setPhase("deck");
+        }
       }
-    }, deckLoadingCombos ? "Loading\u2026" : "Build Decks \u2192"), pickTab === "roster" && config.tm && playersSelected && !judge.trim() && /*#__PURE__*/React.createElement("p", {
+    }, deckLoadingCombos ? "Loading\u2026" : eventRanked ? "Build Decks \u2192" : "Start Match \u2192"), pickTab === "roster" && config.tm && playersSelected && !judge.trim() && /*#__PURE__*/React.createElement("p", {
       style: {
         ...S.hint,
         color: "#D97706"
       }
     }, "Select the judge on duty to continue"));
   }
+
+  // ── UNRANKED MATCH PHASE ─────────────────────────────────────────────────
+  if (phase === "unranked") {
+    return /*#__PURE__*/React.createElement(UnrankedFlow, {
+      p1: p1,
+      p2: p2,
+      dark: dark,
+      onMatchComplete: (winnerName, setResults) => {
+        const p1Sets = setResults.filter(r => r.winner === p1).length;
+        const p2Sets = setResults.filter(r => r.winner === p2).length;
+        setSets([p1Sets, p2Sets]);
+        const builtSetScores = setResults.map(r => {
+          const p1Won = r.winner === p1;
+          return { p1: p1Won ? 4 : r.loserScore, p2: p1Won ? r.loserScore : 4 };
+        });
+        setSetScores(builtSetScores);
+        setPhase("over");
+      },
+      onBack: () => setPhase("pick")
+    });
+  }
+
   if (phase === "deck") {
     // (Auto-start removed: deck review screen now shows first, players tap "Record Deck" per player)
 
@@ -11242,7 +11430,7 @@ function MatchScreen({
           textAlign: "right"
         }
       }, e.p2Combo.blade || "?", e.p2Combo.ratchet ? ` ${e.p2Combo.ratchet}` : "", e.p2Combo.bit ? ` · ${e.p2Combo.bit}` : "")));
-    })), config.tm && !submitted && /*#__PURE__*/React.createElement("div", {
+    })), config.tm && eventRanked && !submitted && /*#__PURE__*/React.createElement("div", {
       style: {
         ...S.card,
         border: "2px solid #7C3AED30",
@@ -11546,13 +11734,63 @@ function MatchScreen({
           marginTop: 4
         }
       }, challongeSubmitStatus === "loading" ? "Submitting…" : "Submit")));
-    })(), submitted && /*#__PURE__*/React.createElement("button", {
+    })(), config.tm && eventRanked && submitted && /*#__PURE__*/React.createElement("button", {
       style: S.pri,
       onClick: () => {
         setSheetsStatus(null);
         resetAndRestoreJudge();
       }
-    }, "New Match"), !config.tm && /*#__PURE__*/React.createElement(React.Fragment, null, challongeSlug && challongeMatchId && (() => {
+    }, "New Match"), config.tm && !eventRanked && (() => {
+      // ── Unranked over screen: simple Challonge submit + New Match ──
+      const winnerIsP1 = sets[0] >= need;
+      const winnerId = winnerIsP1 ? challongeP1ParticipantId : challongeP2ParticipantId;
+      return /*#__PURE__*/React.createElement(React.Fragment, null,
+        challongeSlug && challongeMatchId && (challongeSubmitStatus === "ok"
+          ? /*#__PURE__*/React.createElement("div", {
+              style: {
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: "#15803D15",
+                border: "1px solid #15803D40",
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#15803D",
+                textAlign: "center",
+                marginBottom: 10
+              }
+            }, "\u2713 Submitted to Challonge")
+          : /*#__PURE__*/React.createElement("button", {
+              type: "button",
+              disabled: challongeSubmitStatus === "loading",
+              onClick: () => submitChallongeScore(challongeMatchId, sets[0], sets[1], winnerId),
+              style: {
+                display: "block",
+                width: "100%",
+                padding: "14px 0",
+                borderRadius: 12,
+                border: "none",
+                background: challongeSubmitStatus === "loading" ? "#CBD5E1" : "#EA580C",
+                color: "#fff",
+                fontSize: 15,
+                fontWeight: 800,
+                fontFamily: "'Outfit',sans-serif",
+                cursor: challongeSubmitStatus === "loading" ? "not-allowed" : "pointer",
+                marginBottom: 10
+              }
+            }, challongeSubmitStatus === "loading" ? "Submitting\u2026" : challongeSubmitStatus && challongeSubmitStatus !== "loading" ? "\u2715 Failed \u2014 Retry" : ("Submit to Challonge" + (winnerId ? "" : " \u26A0\uFE0F")))
+        ),
+        challongeSubmitStatus && challongeSubmitStatus !== "ok" && challongeSubmitStatus !== "loading" && /*#__PURE__*/React.createElement("p", {
+          style: { fontSize: 11, color: "#DC2626", fontWeight: 600, textAlign: "center", marginBottom: 8 }
+        }, challongeSubmitStatus),
+        /*#__PURE__*/React.createElement("button", {
+          style: S.pri,
+          onClick: () => {
+            setSheetsStatus(null);
+            resetAndRestoreJudge();
+          }
+        }, "New Match")
+      );
+    })(), !config.tm && /*#__PURE__*/React.createElement(React.Fragment, null, challongeSlug && challongeMatchId && (() => {
       const winnerIsP1 = sets[0] >= need;
       const winnerId = winnerIsP1 ? challongeP1ParticipantId : challongeP2ParticipantId;
       return challongeSubmitStatus === "ok" ? /*#__PURE__*/React.createElement("div", {
@@ -19766,6 +20004,7 @@ function BeyJudgeApp() {
 
   // All judge-side state declared unconditionally (React rules require this)
   const [screen, setScreen] = useState("format");
+  const [eventRanked, setEventRanked] = useState(true); // false when org created event as UNRANKED
   const [config, setConfig] = useState({
     pts: 4,   // always 4 pts — set by org ruleset
     bo: 3,    // always best-of-3 — set by org ruleset
@@ -20082,7 +20321,8 @@ function BeyJudgeApp() {
     dark: dark,
     toggleDark: toggleDark,
     challongeSlug: challongeSlug,
-    challongeParticipants: challongeParticipants
+    challongeParticipants: challongeParticipants,
+    eventRanked: eventRanked
   }));
 }
 if (!window.__NCBLAST_OAUTH_CALLBACK__) {
