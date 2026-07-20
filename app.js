@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-20 | unranked-match-flow: set-by-set winner picker for unranked events; skips deck build, skips Sheets, submits to Challonge only
+// NC BLAST app.js | last updated: 2026-07-20 | unranked-match-flow: fix prop threading for eventRanked flag; ranked/unranked badge on event list; set-by-set winner picker replaces deck+scoring for unranked
 const {
   useState,
   useEffect,
@@ -1998,7 +1998,8 @@ function CachedEventPicker({
   setConfig,
   challongeSlug,
   onChallongeImport,
-  onJudgeVerified
+  onJudgeVerified,
+  onRankedChange
 }) {
   const [cachedList, setCachedList] = useState(null);
   const [selectedSlug, setSelectedSlug] = useState(null);
@@ -2184,7 +2185,7 @@ function CachedEventPicker({
   const handleSelect = t => {
     setSelectedSlug(t.slug);
     setSelectedName(t.name || t.slug);
-    setEventRanked(t.ranked !== false); // false only when org explicitly marked UNRANKED
+    if (onRankedChange) onRankedChange(t.ranked !== false); // false only when org explicitly marked UNRANKED
     setAuthError(null);
     setDeviceMode(null);
     resetDuoState();
@@ -3314,7 +3315,21 @@ function CachedEventPicker({
       color: "var(--text-faint)",
       margin: "2px 0 0"
     }
-  }, t.slug, t.loginMode === "solo" && " · 📱 Solo mode", t.loginMode === "duo" && " · 💊 Duo mode", !t.loginMode && " · 🔗 Challonge login required"))), !config.tournamentName?.trim() && /*#__PURE__*/React.createElement("p", {
+  }, t.slug, t.loginMode === "solo" && " · 📱 Solo mode", t.loginMode === "duo" && " · 💊 Duo mode", !t.loginMode && " · 🔗 Challonge login required"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        display: "inline-block",
+        marginLeft: 6,
+        padding: "1px 6px",
+        borderRadius: 5,
+        fontSize: 9,
+        fontWeight: 800,
+        letterSpacing: 0.5,
+        textTransform: "uppercase",
+        background: t.ranked !== false ? "#2563EB22" : "#64748B18",
+        color: t.ranked !== false ? "#2563EB" : "#64748B",
+        verticalAlign: "middle"
+      }
+    }, t.ranked !== false ? "Ranked" : "Unranked"))), !config.tournamentName?.trim() && /*#__PURE__*/React.createElement("p", {
     style: {
       ...S.hint,
       color: "#7C3AED",
@@ -3336,7 +3351,8 @@ function FormatScreen({
   onSwitchRole,
   challongeSlug,
   onChallongeImport,
-  onJudgeVerified
+  onJudgeVerified,
+  onRankedChange
 }) {
   const [showGuide, setShowGuide] = useState(false);
   const total = parts.blades.length + parts.ratchets.length + parts.bits.length;
@@ -3561,7 +3577,8 @@ function FormatScreen({
     setConfig: setConfig,
     challongeSlug: challongeSlug,
     onChallongeImport: onChallongeImport,
-    onJudgeVerified: onJudgeVerified
+    onJudgeVerified: onJudgeVerified,
+    onRankedChange: onRankedChange
   })), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -20303,7 +20320,8 @@ function BeyJudgeApp() {
           localStorage.setItem(KEYS.lastJudge, payload || "");
         } catch {}
       }
-    }
+    },
+    onRankedChange: ranked => setEventRanked(ranked)
   }), screen === "match" && /*#__PURE__*/React.createElement(MatchScreen, {
     config: config,
     parts: parts,
