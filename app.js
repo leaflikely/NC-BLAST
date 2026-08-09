@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-07-20 | unranked-over-screen: hide battles/shuffles/judge row, match history, and download CSV for unranked matches
+// NC BLAST app.js | last updated: 2026-08-09 | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history
 const {
   useState,
   useEffect,
@@ -210,6 +210,60 @@ function useChallongeAuthPopup() {
 }
 function normalizePlayerKey(name) {
   return (name || "").trim().toLowerCase();
+}
+
+// ── Deterministic match-name resolution ──────────────────────────────────────
+// The participant map (pmap) has two kinds of entries:
+//   "Player Name"   → participant id
+//   "__gid__12345"  → participant id   (group-stage alias ids used by Swiss matches)
+// buildIdToName flips it into id → name in two passes, so group-stage ids
+// borrow the display name of the participant they belong to. (The old one-pass
+// flip let __gid__ entries overwrite real names — that bug is why Swiss
+// lookups silently failed.)
+function buildIdToName(pmap) {
+  const idToName = {};
+  const gidToPart = {};
+  Object.entries(pmap || {}).forEach(([k, v]) => {
+    if (typeof k === "string" && k.startsWith("__gid__")) gidToPart[k.slice(7)] = String(v);
+    else if (k) idToName[String(v)] = k;
+  });
+  Object.entries(gidToPart).forEach(([gid, pid]) => {
+    if (idToName[pid]) idToName[gid] = idToName[pid];
+  });
+  return idToName;
+}
+
+// Resolve one side of a match to a display name. Returns null when unresolvable.
+// Callers may show "ID:<number>" as a *label*, but an unresolved name must never
+// become a combo-registry key — that's the cross-round mismatch bug.
+function resolveMatchName(rawName, playerId, idToName) {
+  if (rawName) return rawName;
+  return idToName && idToName[String(playerId)] || null;
+}
+
+// True when a name is the display-only "ID:12345" fallback — never save under these.
+function isIdFallbackName(name) {
+  return /^ID:\d+$/i.test((name || "").trim());
+}
+
+// Build a participant map (name → id, plus __gid__ aliases) from a raw
+// Challonge participants array. Shared by the import flow and the
+// self-heal refetch in the judge view.
+function buildPmapFromParticipants(participants) {
+  const pmap = {};
+  (participants || []).forEach(p => {
+    const part = p.participant || p;
+    const n = (part.display_name || part.username || part.name || "").trim();
+    if (n && part.id) {
+      pmap[n] = part.id;
+      if (Array.isArray(part.group_player_ids)) {
+        part.group_player_ids.forEach(gid => {
+          if (gid) pmap[`__gid__${gid}`] = part.id;
+        });
+      }
+    }
+  });
+  return pmap;
 }
 
 // Push one player's combos into the tournament-scoped registry.
@@ -5662,6 +5716,7 @@ function MatchScreen({
   toggleDark,
   challongeSlug,
   challongeParticipants,
+  onParticipantsRefresh,
   eventRanked = true
 }) {
   // Resume snapshot — if a match was mid-flight (past the initial player pick) when the
@@ -6279,7 +6334,9 @@ function MatchScreen({
     const curP1 = p1Ref.current;
     const curP2 = p2Ref.current;
     [[curP1, deck1], [curP2, deck2]].forEach(([name, deck]) => {
-      if (!name) return;
+      // Never save under a display-only "ID:x" fallback — that key can never be
+      // found again once the real name resolves, so it would poison the registry.
+      if (!name || isIdFallbackName(name)) return;
       const readyCombos = deck.filter(comboReady).map(c => ({
         ...normalizeCombo(c),
         updatedAt: Date.now()
@@ -6404,6 +6461,9 @@ function MatchScreen({
 
       const seen = new Set();
       const queuedMatches = [];
+      // gid-aware id → name lookup for any pairing that arrives with blank names
+      const idToNameSQ = buildIdToName(challongeParticipants || {});
+      const sqName = (raw, pid) => resolveMatchName(raw, pid, idToNameSQ) || `ID:${pid}`;
 
       if (orderedIds.length > 0) {
         // Saved queue exists — use the org's ordering exactly.
@@ -6411,7 +6471,7 @@ function MatchScreen({
           const m = matchById[id];
           if (m && !seen.has(id)) {
             seen.add(id);
-            queuedMatches.push({ id, p1: m.player1_name || `ID:${m.player1_id}`, p2: m.player2_name || `ID:${m.player2_id}`, challongeMatch: m });
+            queuedMatches.push({ id, p1: sqName(m.player1_name, m.player1_id), p2: sqName(m.player2_name, m.player2_id), challongeMatch: m });
           }
         });
       } else {
@@ -6435,7 +6495,7 @@ function MatchScreen({
           const p2here = judgesAtStation.some(jn => jn === p2l);
           if ((p1here || p2here) && !seen.has(id)) {
             seen.add(id);
-            queuedMatches.push({ id, p1: m.player1_name || `ID:${m.player1_id}`, p2: m.player2_name || `ID:${m.player2_id}`, challongeMatch: m, inferred: true });
+            queuedMatches.push({ id, p1: sqName(m.player1_name, m.player1_id), p2: sqName(m.player2_name, m.player2_id), challongeMatch: m, inferred: true });
           }
         });
       }
@@ -6629,7 +6689,11 @@ function MatchScreen({
     setChallongeSubmitStatus(null);
     setUnderwayStatus(null);
     setPendingFinish(null);
-    setMatchStartIdx(sGet(KEYS.matchLog, []).length);
+    // Use in-memory log.length (not sGet(KEYS.matchLog)) — localStorage can be
+    // momentarily stale or hold leftover data from a previous match/event on this
+    // device, which would set matchStartIdx too low and pull old battles into the
+    // next Sheets submission. log.length is the source of truth already in scope.
+    setMatchStartIdx(log.length);
     setOverlaySlot(0);
     setSwapped(false);
     setShuffleTimer(null);
@@ -9408,17 +9472,39 @@ function MatchScreen({
 
     // Select a pairing from an active Challonge match
     const selectActivePairing = match => {
-      const idMap = challongeParticipants || {};
-      const reverseMap = {};
-      Object.entries(idMap).forEach(([name, id]) => {
-        reverseMap[String(id)] = name;
-      });
-      const name1 = match.player1_name || reverseMap[String(match.player1_id)] || `ID:${match.player1_id}`;
-      const name2 = match.player2_name || reverseMap[String(match.player2_id)] || `ID:${match.player2_id}`;
-      setP1(tn(name1));
-      p1Ref.current = tn(name1);
-      setP2(tn(name2));
-      p2Ref.current = tn(name2);
+      // Deterministic resolution: match name → gid-aware participant map → self-heal.
+      // "ID:x" is display-only; combo saves under it are blocked in pushDeckToRegistry.
+      const idToName = buildIdToName(challongeParticipants || {});
+      const name1 = resolveMatchName(match.player1_name, match.player1_id, idToName);
+      const name2 = resolveMatchName(match.player2_name, match.player2_id, idToName);
+      const applyNames = (n1, n2) => {
+        setP1(tn(n1));
+        p1Ref.current = tn(n1);
+        setP2(tn(n2));
+        p2Ref.current = tn(n2);
+      };
+      applyNames(name1 || `ID:${match.player1_id}`, name2 || `ID:${match.player2_id}`);
+      if (!name1 || !name2) {
+        // Self-heal: the local participant map can't resolve this match (usually a
+        // Swiss event imported before the stage started, so the group-stage alias
+        // ids didn't exist yet). Refetch the participant list fresh, update the
+        // stored map, and swap in the real names.
+        (async () => {
+          try {
+            const res = await fetch(`${OVERLAY_WORKER}/?slug=${encodeURIComponent(challongeSlug)}&bypass_cache=1`, {
+              signal: AbortSignal.timeout(8000)
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            const freshPmap = buildPmapFromParticipants(data.participants || []);
+            if (onParticipantsRefresh) onParticipantsRefresh(freshPmap);
+            const freshMap = buildIdToName(freshPmap);
+            const f1 = resolveMatchName(match.player1_name, match.player1_id, freshMap);
+            const f2 = resolveMatchName(match.player2_name, match.player2_id, freshMap);
+            if (f1 && f2) applyNames(f1, f2);
+          } catch (_) {}
+        })();
+      }
       setChallongeMatchId(match.id);
       // For group stage tournaments, winner_id must be player1_id/player2_id (the group player IDs),
       // NOT the real participant.id — Challonge validates winner_id against the match's player IDs directly.
@@ -19797,6 +19883,648 @@ function NamePicker({
   }, "No results.")));
 }
 
+/* ─── EZQ — lightweight standalone queue tool ────────────────────
+   For TOs who are NOT running BLAST scoring at an event, but still
+   want the station queue organizer. Everything here is local to this
+   browser session — no login, no master code, no writes to the
+   whitelist/stadium-assign KV data the real Organizer view uses.
+   "In progress" comes straight from Challonge's own underway_at field
+   (set when a judge clicks "Mark as underway" in Challonge itself). */
+
+const EZQ_STADIUM_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+const EZQ_STADIUM_COLORS = {
+  A: { bg: "#0D9488", faint: "#99F6E4" },
+  B: { bg: "#7C3AED", faint: "#DDD6FE" },
+  C: { bg: "#D97706", faint: "#FDE68A" },
+  D: { bg: "#DC2626", faint: "#FECACA" },
+  E: { bg: "#2563EB", faint: "#BFDBFE" },
+  F: { bg: "#DB2777", faint: "#FBCFE8" },
+  G: { bg: "#65A30D", faint: "#D9F99D" },
+  H: { bg: "#0891B2", faint: "#A5F3FC" }
+};
+
+// Parse a pasted Challonge URL (or bare slug) into a Challonge slug.
+// Mirrors OrgApp's parseSlug — kept as its own local copy so EZQ never
+// depends on OrgApp internals.
+function ezqParseSlug(raw) {
+  let slug = (raw || "").trim();
+  try {
+    const u = new URL(slug.startsWith("http") ? slug : "https://" + slug);
+    const cleanPath = u.pathname.replace(/\/(participants|standings|teams|matches).*$/i, "");
+    const parts = cleanPath.replace(/^\/|\/$/g, "").split("/").filter(Boolean);
+    const subdomain = u.hostname.split(".")[0];
+    const isCommunity = subdomain !== "challonge" && subdomain !== "www";
+    const pathSlug = parts[parts.length - 1] || parts[0];
+    slug = isCommunity ? `${subdomain}-${pathSlug}` : pathSlug;
+  } catch (_) {}
+  return slug;
+}
+
+function EZQApp({ onSwitchRole }) {
+  const [slug, setSlug] = React.useState(null);
+  const [linkInput, setLinkInput] = React.useState("");
+  const [loadingLink, setLoadingLink] = React.useState(false);
+  const [linkError, setLinkError] = React.useState(null);
+
+  // Player roster for this event, loaded once after import.
+  const [participants, setParticipants] = React.useState([]); // [{name}]
+
+  // Local-only judge/floater designation — session state, never sent to the Worker.
+  // "judge" | "floater" | undefined (regular player)
+  const [roleMap, setRoleMap] = React.useState({});
+
+  // Station setup — same A/B/C pattern as Org view, but stored locally only.
+  const [stadiumCount, setStadiumCount] = React.useState(null);
+  const [stadiumAssign, setStadiumAssign] = React.useState({}); // { playerName: "A" }
+  const [setupStep, setSetupStep] = React.useState("roles"); // "roles" | "stations" | "queue"
+
+  // Live pairings, polled from Challonge via the Worker's public /pairings route.
+  const [pairings, setPairings] = React.useState(null);
+  const [pairingsError, setPairingsError] = React.useState(null);
+  const [loadingPairings, setLoadingPairings] = React.useState(false);
+
+  // Queue state — local only, same shape as Org view's stationQueues.
+  const [stationQueues, setStationQueues] = React.useState({});
+  const [queuesGenerated, setQueuesGenerated] = React.useState(false);
+  const [judgesFirstMode, setJudgesFirstMode] = React.useState(true);
+  const [lockedMatchIds, setLockedMatchIds] = React.useState(new Set());
+  const [queueDragItem, setQueueDragItem] = React.useState(null);
+  const [queueDragOver, setQueueDragOver] = React.useState(null);
+
+  const STADIUM_LETTERS = EZQ_STADIUM_LABELS.slice(0, stadiumCount || 0);
+
+  /* ── Step 1: import from Challonge link ─────────────────────── */
+  const handleLinkSubmit = async () => {
+    setLinkError(null);
+    const s = ezqParseSlug(linkInput);
+    if (!s) {
+      setLinkError("Enter a valid Challonge link.");
+      return;
+    }
+    setLoadingLink(true);
+    try {
+      const data = await workerGet(`/?slug=${encodeURIComponent(s)}`);
+      const extractP = p => p.participant || p;
+      const names = (data.participants || [])
+        .map(p => (extractP(p).display_name || extractP(p).username || extractP(p).name || "").trim())
+        .filter(Boolean);
+      if (names.length === 0) {
+        setLinkError("No players found for that link. Double check the URL.");
+        setLoadingLink(false);
+        return;
+      }
+      setParticipants(names.map(name => ({ name })));
+      setSlug(s);
+      setLoadingLink(false);
+    } catch (e) {
+      setLinkError("Couldn't load that tournament: " + e.message);
+      setLoadingLink(false);
+    }
+  };
+
+  /* ── Step 2: poll pairings once we have a slug ──────────────── */
+  const loadPairings = React.useCallback(async (bypassCache) => {
+    if (!slug) return;
+    setLoadingPairings(true);
+    setPairingsError(null);
+    try {
+      const data = await workerGet(`/pairings?slug=${encodeURIComponent(slug)}${bypassCache ? "&bypass_cache=1" : ""}`);
+      setPairings(data.pairings || []);
+    } catch (e) {
+      setPairingsError(e.message);
+    } finally {
+      setLoadingPairings(false);
+    }
+  }, [slug]);
+
+  React.useEffect(() => {
+    if (!slug || setupStep !== "queue") return;
+    loadPairings(true);
+    const t = setInterval(() => loadPairings(false), 15000);
+    return () => clearInterval(t);
+  }, [slug, setupStep, loadPairings]);
+
+  /* ── Derived: current round matches ─────────────────────────── */
+  const openMatches = (pairings || []).filter(m => m.state !== "complete");
+  const openRoundNums = openMatches.map(m => m.round).filter(r => r != null && r !== 0 && isFinite(Number(r))).map(Number);
+  const currentRound = openRoundNums.length > 0 ? Math.min(...openRoundNums) : null;
+  let roundMatches = currentRound !== null ? (pairings || []).filter(m => String(m.round) === String(currentRound)) : (pairings || []);
+  if (roundMatches.length === 0 && openMatches.length > 0) roundMatches = openMatches;
+
+  // "In progress" comes straight from Challonge's own underway_at timestamp —
+  // set when a judge clicks "Mark as underway" in Challonge, not from BLAST scoring.
+  const isUnderway = m => !!m.underway_at;
+  const waitingIds = new Set(roundMatches.filter(m => !isUnderway(m) && m.state !== "complete").map(m => m.id));
+  const matchById = {};
+  roundMatches.forEach(m => { matchById[m.id] = m; });
+
+  const isJudgeName = name => roleMap[name] === "judge" || roleMap[name] === "floater";
+  const isFloaterName = name => roleMap[name] === "floater";
+  const judgesAt = letter => Object.keys(roleMap).filter(n => roleMap[n] === "judge" && stadiumAssign[n] === letter);
+  const floaterNames = Object.keys(roleMap).filter(n => roleMap[n] === "floater");
+  const playersLive = new Set(
+    roundMatches.filter(isUnderway).flatMap(m => [m.player1_name, m.player2_name]).filter(Boolean).map(n => n.toLowerCase())
+  );
+  const isLive = name => name && playersLive.has(name.toLowerCase());
+  const freeAt = letter => judgesAt(letter).filter(n => !isLive(n)).length;
+  const floatersFree = floaterNames.filter(n => !isLive(n)).length;
+
+  const classifyForPriority = m => {
+    const p1j = isJudgeName(m.player1_name);
+    const p2j = isJudgeName(m.player2_name);
+    if (!p1j && !p2j) return "PvP";
+    if (p1j && p2j) {
+      const p1f = isFloaterName(m.player1_name);
+      const p2f = isFloaterName(m.player2_name);
+      if (p1f && p2f) return "PvP";
+      return "JvJ";
+    }
+    return "JvP";
+  };
+  const classifyM = m => {
+    const p1j = isJudgeName(m.player1_name);
+    const p2j = isJudgeName(m.player2_name);
+    if (p1j && p2j) return "JvJ";
+    if (p1j || p2j) return "JvP";
+    return "PvP";
+  };
+
+  /* ── Queue generator — same algorithm as Org view, ported to local state ── */
+  const generateQueues = () => {
+    const queues = {};
+    STADIUM_LETTERS.forEach(l => {
+      queues[l] = (stationQueues[l] || []).filter(id => lockedMatchIds.has(id));
+    });
+    const lockedSet = new Set(STADIUM_LETTERS.flatMap(l => queues[l]));
+    const pending = roundMatches.filter(m => {
+      if (m.state === "complete") return false;
+      if (isUnderway(m)) return false;
+      if (lockedSet.has(m.id)) return false;
+      return true;
+    });
+
+    const jvjMatches = pending.filter(m => classifyForPriority(m) === "JvJ");
+    const jvpMatches = pending.filter(m => classifyForPriority(m) === "JvP");
+    const pvpMatches = pending.filter(m => classifyForPriority(m) === "PvP");
+
+    const pushToShortest = matchId => {
+      const shortest = STADIUM_LETTERS.reduce((best, l) => queues[l].length < queues[best].length ? l : best, STADIUM_LETTERS[0]);
+      queues[shortest].push(matchId);
+    };
+
+    const placeStationJvP = () => {
+      STADIUM_LETTERS.forEach(letter => {
+        const judges = judgesAt(letter);
+        const stationJvP = jvpMatches.filter(m => {
+          return judges.includes(m.player1_name) || judges.includes(m.player2_name);
+        });
+        stationJvP.sort((a, b) => {
+          const juA = judges.includes(a.player1_name) ? a.player1_name : a.player2_name;
+          const juB = judges.includes(b.player1_name) ? b.player1_name : b.player2_name;
+          return (juA || "").localeCompare(juB || "");
+        });
+        stationJvP.forEach(m => queues[letter].push(m.id));
+      });
+    };
+
+    if (judgesFirstMode) {
+      placeStationJvP();
+      const assignedJvP = new Set(STADIUM_LETTERS.flatMap(l => queues[l]));
+      jvpMatches.filter(m => !assignedJvP.has(m.id)).forEach(m => pushToShortest(m.id));
+      pvpMatches.forEach(m => pushToShortest(m.id));
+    } else {
+      pvpMatches.forEach(m => pushToShortest(m.id));
+      placeStationJvP();
+      const assignedJvP2 = new Set(STADIUM_LETTERS.flatMap(l => queues[l]));
+      jvpMatches.filter(m => !assignedJvP2.has(m.id)).forEach(m => pushToShortest(m.id));
+    }
+
+    jvjMatches.forEach(m => pushToShortest(m.id));
+    return queues;
+  };
+
+  // Prune completed/underway matches out of the saved queue automatically as
+  // Challonge state changes, so the "up next" list stays current without a
+  // manual regenerate.
+  React.useEffect(() => {
+    if (!queuesGenerated || !pairings) return;
+    setStationQueues(prev => {
+      let changed = false;
+      const next = {};
+      STADIUM_LETTERS.forEach(l => {
+        const filtered = (prev[l] || []).filter(id => waitingIds.has(id));
+        if (filtered.length !== (prev[l] || []).length) changed = true;
+        next[l] = filtered;
+      });
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairings]);
+
+  const coverageFor = (m, stationLetter) => {
+    if (!m) return { ok: true, flags: [] };
+    const type = classifyM(m);
+    const flags = [];
+    if (isLive(m.player1_name) || isLive(m.player2_name)) {
+      return { ok: false, flags: ["Player already in a live match"] };
+    }
+    if (type === "PvP") return { ok: true, flags };
+    if (type === "JvP") {
+      const judgePlayer = isJudgeName(m.player1_name) ? m.player1_name : m.player2_name;
+      const homeSt = judgePlayer ? stadiumAssign[judgePlayer] : null;
+      const remainAfter = homeSt ? freeAt(homeSt) - 1 : 0;
+      if (homeSt && remainAfter >= 1) return { ok: true, flags };
+      if (floatersFree > 0) {
+        flags.push(`Floater covers Stadium ${homeSt || "?"}`);
+        return { ok: true, flags };
+      }
+      const donor = STADIUM_LETTERS.find(l => l !== homeSt && freeAt(l) >= 2);
+      if (donor) {
+        flags.push(`Handoff from Stadium ${donor}`);
+        return { ok: true, flags };
+      }
+      return { ok: false, flags: [`Stadium ${homeSt || "?"} would be stranded`] };
+    }
+    if (type === "JvJ") {
+      const st1 = stadiumAssign[m.player1_name] || null;
+      const st2 = stadiumAssign[m.player2_name] || null;
+      if (st1 && st1 === st2) {
+        if (floatersFree > 0) {
+          flags.push("Same-station JvJ — floater needed");
+          return { ok: true, flags };
+        }
+        const donor = STADIUM_LETTERS.find(l => l !== st1 && freeAt(l) >= 2);
+        if (donor) {
+          flags.push(`Same-station JvJ — handoff from Stadium ${donor}`);
+          return { ok: true, flags };
+        }
+        return { ok: false, flags: ["Same-station JvJ — no coverage available"] };
+      }
+      const st1ok = !st1 || freeAt(st1) >= 2;
+      const st2ok = !st2 || freeAt(st2) >= 2;
+      if (st1ok && st2ok) return { ok: true, flags };
+      const problems = [];
+      if (!st1ok) problems.push(`Stadium ${st1} stranded`);
+      if (!st2ok) problems.push(`Stadium ${st2} stranded`);
+      return { ok: false, flags: problems };
+    }
+    return { ok: true, flags };
+  };
+
+  /* ── Drag-to-reorder handlers (mirrors Org view's queue UI) ─── */
+  const onQueueDragStart = (e, matchId, fromStation) => {
+    e.dataTransfer.setData("text/plain", matchId);
+    setQueueDragItem({ matchId, fromStation });
+  };
+  const onQueueDragOver = (e, station, afterIdx) => {
+    e.preventDefault();
+    setQueueDragOver({ station, afterIdx });
+  };
+  const onQueueDrop = (e, toStation, afterIdx) => {
+    e.preventDefault();
+    if (!queueDragItem) return;
+    const { matchId, fromStation } = queueDragItem;
+    setStationQueues(prev => {
+      const next = {};
+      STADIUM_LETTERS.forEach(l => { next[l] = [...(prev[l] || [])]; });
+      next[fromStation] = next[fromStation].filter(id => id !== matchId);
+      const dest = [...(next[toStation] || [])];
+      const insertAt = Math.min(afterIdx + 1, dest.length);
+      dest.splice(insertAt, 0, matchId);
+      next[toStation] = dest;
+      return next;
+    });
+    setLockedMatchIds(prev => new Set(prev).add(matchId));
+    setQueueDragItem(null);
+    setQueueDragOver(null);
+  };
+  const onQueueDragEnd = () => {
+    setQueueDragItem(null);
+    setQueueDragOver(null);
+  };
+
+  const wrap = (...children) => React.createElement("div", {
+    style: { minHeight: "100vh", background: "var(--bg)", fontFamily: "'Outfit',sans-serif", padding: "20px 16px 40px" }
+  }, ...children);
+
+  const backBar = React.createElement("div", {
+    style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }
+  },
+    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+      React.createElement("span", { style: { fontSize: 20 } }, "🎯"),
+      React.createElement("span", { style: { fontSize: 16, fontWeight: 900, color: "var(--text-primary)" } }, "EZQ"),
+      React.createElement("span", { style: { fontSize: 10, color: "var(--text-faint)", fontWeight: 600 } }, "Easy Queue")
+    ),
+    React.createElement("button", {
+      onClick: onSwitchRole,
+      style: {
+        padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)",
+        background: "none", color: "var(--text-faint)", fontSize: 11, fontWeight: 700,
+        fontFamily: "'Outfit',sans-serif", cursor: "pointer"
+      }
+    }, "← Main Menu")
+  );
+
+  /* ── Screen: paste Challonge link ────────────────────────────── */
+  if (!slug) {
+    return wrap(backBar,
+      React.createElement("div", { style: { maxWidth: 420, margin: "40px auto 0" } },
+        React.createElement("p", { style: { fontSize: 22, fontWeight: 900, color: "var(--text-primary)", marginBottom: 6, textAlign: "center" } }, "Set up EZQ"),
+        React.createElement("p", { style: { fontSize: 12, color: "var(--text-muted)", marginBottom: 20, textAlign: "center" } },
+          "Paste your Challonge tournament link to load the player list. No login needed — this stays on this device."),
+        React.createElement("input", {
+          type: "text",
+          value: linkInput,
+          onChange: e => setLinkInput(e.target.value),
+          onKeyDown: e => { if (e.key === "Enter") handleLinkSubmit(); },
+          placeholder: "https://challonge.com/ncbl-yourevent",
+          style: {
+            width: "100%", boxSizing: "border-box", padding: "14px 14px", borderRadius: 12,
+            border: "2px solid var(--border2)", background: "var(--surface)", color: "var(--text-primary)",
+            fontSize: 14, fontFamily: "'Outfit',sans-serif", marginBottom: 10
+          }
+        }),
+        linkError && React.createElement("p", { style: { fontSize: 12, color: "#F87171", marginBottom: 10 } }, linkError),
+        React.createElement("button", {
+          onClick: handleLinkSubmit,
+          disabled: loadingLink || !linkInput.trim(),
+          style: {
+            width: "100%", padding: "14px 0", borderRadius: 12, border: "none",
+            background: "linear-gradient(135deg,#EA580C,#DC2626)", color: "#fff",
+            fontSize: 15, fontWeight: 900, fontFamily: "'Outfit',sans-serif",
+            cursor: loadingLink || !linkInput.trim() ? "not-allowed" : "pointer",
+            opacity: loadingLink || !linkInput.trim() ? 0.6 : 1
+          }
+        }, loadingLink ? "Loading…" : "Load Tournament")
+      )
+    );
+  }
+
+  /* ── Screen: pick judges / floaters ──────────────────────────── */
+  if (setupStep === "roles") {
+    return wrap(backBar,
+      React.createElement("div", { style: { maxWidth: 520, margin: "0 auto" } },
+        React.createElement("p", { style: { fontSize: 16, fontWeight: 900, color: "var(--text-primary)", marginBottom: 4 } }, "Who's judging?"),
+        React.createElement("p", { style: { fontSize: 12, color: "var(--text-muted)", marginBottom: 16 } },
+          "Tap a player to mark them as a Judge (assigned to a station) or a Floater (covers any station). Everyone else is a regular player."),
+        React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 } },
+          participants.map(p => {
+            const r = roleMap[p.name];
+            return React.createElement("div", {
+              key: p.name,
+              style: {
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "10px 12px", borderRadius: 10,
+                border: `1.5px solid ${r ? (r === "judge" ? "#3B82F6" : "#F59E0B") : "var(--border2)"}`,
+                background: r ? (r === "judge" ? "#1E3A5F" : "#3F2D0A") : "var(--surface)"
+              }
+            },
+              React.createElement("span", { style: { fontSize: 13, fontWeight: 700, color: "var(--text-primary)" } }, p.name),
+              React.createElement("div", { style: { display: "flex", gap: 6 } },
+                React.createElement("button", {
+                  onClick: () => setRoleMap(prev => {
+                    const next = { ...prev };
+                    if (next[p.name] === "judge") delete next[p.name]; else next[p.name] = "judge";
+                    return next;
+                  }),
+                  style: {
+                    padding: "5px 10px", borderRadius: 8, fontSize: 10, fontWeight: 800,
+                    border: `1px solid ${r === "judge" ? "#3B82F6" : "var(--border)"}`,
+                    background: r === "judge" ? "#3B82F6" : "none",
+                    color: r === "judge" ? "#fff" : "var(--text-faint)",
+                    fontFamily: "'Outfit',sans-serif", cursor: "pointer"
+                  }
+                }, "⚖️ Judge"),
+                React.createElement("button", {
+                  onClick: () => setRoleMap(prev => {
+                    const next = { ...prev };
+                    if (next[p.name] === "floater") delete next[p.name]; else next[p.name] = "floater";
+                    return next;
+                  }),
+                  style: {
+                    padding: "5px 10px", borderRadius: 8, fontSize: 10, fontWeight: 800,
+                    border: `1px solid ${r === "floater" ? "#F59E0B" : "var(--border)"}`,
+                    background: r === "floater" ? "#F59E0B" : "none",
+                    color: r === "floater" ? "#fff" : "var(--text-faint)",
+                    fontFamily: "'Outfit',sans-serif", cursor: "pointer"
+                  }
+                }, "🔄 Floater")
+              )
+            );
+          })
+        ),
+        React.createElement("button", {
+          onClick: () => setSetupStep("stations"),
+          disabled: Object.keys(roleMap).length === 0,
+          style: {
+            width: "100%", padding: "14px 0", borderRadius: 12, border: "none",
+            background: Object.keys(roleMap).length === 0 ? "var(--border2)" : "linear-gradient(135deg,#EA580C,#DC2626)",
+            color: "#fff", fontSize: 15, fontWeight: 900, fontFamily: "'Outfit',sans-serif",
+            cursor: Object.keys(roleMap).length === 0 ? "not-allowed" : "pointer"
+          }
+        }, "Next: Set Up Stations →")
+      )
+    );
+  }
+
+  /* ── Screen: station count + assign judges to stations ───────── */
+  if (setupStep === "stations") {
+    const judgeAndFloaterNames = Object.keys(roleMap).filter(n => roleMap[n]);
+    return wrap(backBar,
+      React.createElement("div", { style: { maxWidth: 520, margin: "0 auto" } },
+        !stadiumCount && React.createElement("div", null,
+          React.createElement("p", { style: { fontSize: 16, fontWeight: 900, color: "var(--text-primary)", marginBottom: 4 } }, "How many stations?"),
+          React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 } },
+            [1, 2, 3, 4, 5, 6, 7, 8].map(n => React.createElement("button", {
+              key: n,
+              onClick: () => setStadiumCount(n),
+              style: {
+                width: 42, height: 42, borderRadius: 10, border: "2px solid var(--border2)",
+                background: "var(--surface)", color: "var(--text-primary)", fontSize: 16,
+                fontWeight: 800, fontFamily: "'Outfit',sans-serif", cursor: "pointer"
+              }
+            }, n))
+          )
+        ),
+        stadiumCount && React.createElement("div", null,
+          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } },
+            React.createElement("p", { style: { fontSize: 16, fontWeight: 900, color: "var(--text-primary)" } }, "Assign judges to stations"),
+            React.createElement("button", {
+              onClick: () => { setStadiumCount(null); setStadiumAssign({}); },
+              style: { fontSize: 10, fontWeight: 700, color: "var(--text-faint)", background: "none", border: "1px solid var(--border)", borderRadius: 8, padding: "4px 9px", cursor: "pointer" }
+            }, "Reset")
+          ),
+          React.createElement("p", { style: { fontSize: 12, color: "var(--text-muted)", marginBottom: 14 } },
+            "Floaters don't need a station — they cover whichever one needs help."),
+          React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 } },
+            judgeAndFloaterNames.map(name => {
+              const isFloater = roleMap[name] === "floater";
+              return React.createElement("div", {
+                key: name,
+                style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderRadius: 10, border: "1.5px solid var(--border2)", background: "var(--surface)" }
+              },
+                React.createElement("span", { style: { fontSize: 13, fontWeight: 700, color: "var(--text-primary)" } },
+                  name, isFloater ? " (floater)" : ""),
+                !isFloater && React.createElement("div", { style: { display: "flex", gap: 4 } },
+                  STADIUM_LETTERS.map(letter => {
+                    const sc = EZQ_STADIUM_COLORS[letter];
+                    const active = stadiumAssign[name] === letter;
+                    return React.createElement("button", {
+                      key: letter,
+                      onClick: () => setStadiumAssign(prev => {
+                        const next = { ...prev };
+                        if (active) delete next[name]; else next[name] = letter;
+                        return next;
+                      }),
+                      style: {
+                        width: 26, height: 26, borderRadius: 6, fontSize: 11, fontWeight: 800,
+                        border: `1.5px solid ${sc.bg}`, background: active ? sc.bg : "none",
+                        color: active ? "#fff" : sc.bg, fontFamily: "'Outfit',sans-serif", cursor: "pointer"
+                      }
+                    }, letter);
+                  })
+                )
+              );
+            })
+          ),
+          React.createElement("div", { style: { display: "flex", gap: 8 } },
+            React.createElement("button", {
+              onClick: () => setSetupStep("roles"),
+              style: { flex: 1, padding: "12px 0", borderRadius: 12, border: "2px solid var(--border2)", background: "var(--surface)", color: "var(--text-secondary)", fontSize: 13, fontWeight: 800, fontFamily: "'Outfit',sans-serif", cursor: "pointer" }
+            }, "← Back"),
+            React.createElement("button", {
+              onClick: () => setSetupStep("queue"),
+              style: { flex: 2, padding: "12px 0", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#EA580C,#DC2626)", color: "#fff", fontSize: 14, fontWeight: 900, fontFamily: "'Outfit',sans-serif", cursor: "pointer" }
+            }, "Start Queue →")
+          )
+        )
+      )
+    );
+  }
+
+  /* ── Screen: live queue ──────────────────────────────────────── */
+  const roundLabel = currentRound !== null ? (currentRound < 0 ? `Top Cut Round ${Math.abs(currentRound)}` : `Swiss Round ${currentRound}`) : (pairings && pairings.length > 0 ? "All Matches" : "No matches loaded");
+
+  return wrap(backBar,
+    React.createElement("div", { style: { maxWidth: 720, margin: "0 auto" } },
+      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 } },
+        React.createElement("div", null,
+          React.createElement("p", { style: { fontSize: 15, fontWeight: 900, color: "var(--text-primary)", margin: 0 } }, roundLabel),
+          React.createElement("p", { style: { fontSize: 11, color: "var(--text-faint)", margin: "2px 0 0" } },
+            loadingPairings ? "Refreshing from Challonge…" : "Auto-refreshes every 15s")
+        ),
+        React.createElement("div", { style: { display: "flex", gap: 6 } },
+          React.createElement("button", {
+            onClick: () => loadPairings(true),
+            style: { padding: "6px 11px", borderRadius: 8, border: "1px solid var(--border)", background: "none", color: "var(--text-faint)", fontSize: 11, fontWeight: 700, fontFamily: "'Outfit',sans-serif", cursor: "pointer" }
+          }, "↻ Refresh"),
+          React.createElement("button", {
+            onClick: () => setJudgesFirstMode(v => !v),
+            style: {
+              padding: "6px 11px", borderRadius: 8,
+              border: `1px solid ${judgesFirstMode ? "#3B82F6" : "var(--border)"}`,
+              background: judgesFirstMode ? "#1E3A5F" : "none",
+              color: judgesFirstMode ? "#93C5FD" : "var(--text-faint)",
+              fontSize: 11, fontWeight: 700, fontFamily: "'Outfit',sans-serif", cursor: "pointer"
+            }
+          }, judgesFirstMode ? "👨‍⚖️ First" : "👨‍⚖️ Last"),
+          queuesGenerated && React.createElement("button", {
+            onClick: () => { setQueuesGenerated(false); setStationQueues({}); setLockedMatchIds(new Set()); },
+            style: { padding: "6px 11px", borderRadius: 8, border: "1px solid var(--border)", background: "none", color: "var(--text-faint)", fontSize: 11, fontWeight: 700, fontFamily: "'Outfit',sans-serif", cursor: "pointer" }
+          }, "Reset"),
+          React.createElement("button", {
+            onClick: () => { const q = generateQueues(); setStationQueues(q); setQueuesGenerated(true); },
+            style: { padding: "6px 13px", borderRadius: 8, border: "none", background: "#3B82F6", color: "#fff", fontSize: 11, fontWeight: 800, fontFamily: "'Outfit',sans-serif", cursor: "pointer" }
+          }, queuesGenerated ? "↻ Regenerate" : "⚡ Generate Queues")
+        )
+      ),
+      pairingsError && React.createElement("p", { style: { fontSize: 12, color: "#F87171", marginBottom: 12 } }, "Couldn't load matches: " + pairingsError),
+      !queuesGenerated && React.createElement("div", {
+        style: { padding: 20, borderRadius: 12, border: "2px dashed var(--border)", textAlign: "center", color: "var(--text-muted)" }
+      },
+        React.createElement("p", { style: { fontSize: 24, margin: "0 0 6px" } }, "📋"),
+        React.createElement("p", { style: { fontSize: 13, fontWeight: 700, margin: "0 0 3px" } }, "No queues generated yet"),
+        React.createElement("p", { style: { fontSize: 11, color: "var(--text-faint)", margin: 0 } }, "Tap Generate Queues to build a suggested match order for each station.")
+      ),
+      queuesGenerated && React.createElement("div", {
+        style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 10, alignItems: "start" }
+      },
+        STADIUM_LETTERS.map(letter => {
+          const sc = EZQ_STADIUM_COLORS[letter];
+          const queueIds = stationQueues[letter] || [];
+          const visibleIds = queueIds.filter(id => waitingIds.has(id));
+          const stationJudges = judgesAt(letter);
+          return React.createElement("div", {
+            key: letter,
+            style: { borderRadius: 12, border: `2px solid ${sc.bg}40`, overflow: "hidden" }
+          },
+            React.createElement("div", {
+              style: { background: sc.bg + "18", borderBottom: `1px solid ${sc.bg}30`, padding: "9px 13px", display: "flex", justifyContent: "space-between", alignItems: "center" }
+            },
+              React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                React.createElement("span", { style: { fontSize: 12, fontWeight: 900, color: sc.bg, letterSpacing: 0.5 } }, "STADIUM ", letter),
+                React.createElement("div", { style: { display: "flex", gap: 4 } },
+                  stationJudges.map(n => React.createElement("span", {
+                    key: n,
+                    style: {
+                      fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
+                      background: isLive(n) ? "#450A0A" : sc.bg + "30",
+                      color: isLive(n) ? "#FCA5A5" : sc.bg,
+                      border: `1px solid ${isLive(n) ? "#DC2626" : sc.bg + "50"}`
+                    }
+                  }, n, isLive(n) ? " ▶" : "")),
+                  stationJudges.length === 0 && React.createElement("span", { style: { fontSize: 9, color: "var(--text-faint)", fontStyle: "italic" } }, "No judges assigned")
+                )
+              ),
+              React.createElement("span", { style: { fontSize: 10, color: sc.bg, fontWeight: 700 } }, visibleIds.length, " waiting")
+            ),
+            React.createElement("div", {
+              style: { padding: 8, display: "flex", flexDirection: "column", gap: 6, minHeight: 40 },
+              onDragOver: e => onQueueDragOver(e, letter, visibleIds.length - 1),
+              onDrop: e => onQueueDrop(e, letter, visibleIds.length - 1)
+            },
+              visibleIds.length === 0 && React.createElement("p", { style: { fontSize: 11, color: "var(--text-faint)", fontStyle: "italic", padding: "6px 4px", margin: 0 } }, "Queue empty"),
+              visibleIds.map((id, idx) => {
+                const m = matchById[id];
+                if (!m) return null;
+                const type = classifyM(m);
+                const cov = coverageFor(m, letter);
+                return React.createElement("div", {
+                  key: id,
+                  draggable: true,
+                  onDragStart: e => onQueueDragStart(e, id, letter),
+                  onDragOver: e => onQueueDragOver(e, letter, idx),
+                  onDrop: e => onQueueDrop(e, letter, idx),
+                  onDragEnd: onQueueDragEnd,
+                  style: {
+                    padding: "8px 10px", borderRadius: 8,
+                    border: `1px solid ${cov.ok ? "var(--border2)" : "#DC2626"}`,
+                    background: idx === 0 ? sc.bg + "12" : "var(--surface2)",
+                    cursor: "grab"
+                  }
+                },
+                  React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+                    React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "var(--text-primary)" } },
+                      m.player1_name || "TBD", " vs ", m.player2_name || "TBD"),
+                    React.createElement("span", {
+                      style: {
+                        fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 6,
+                        background: type === "JvJ" ? "#3F2D0A" : type === "JvP" ? "#1E3A5F" : "var(--border2)",
+                        color: type === "JvJ" ? "#FDE68A" : type === "JvP" ? "#93C5FD" : "var(--text-faint)"
+                      }
+                    }, type)
+                  ),
+                  cov.flags.length > 0 && React.createElement("p", { style: { fontSize: 9, color: cov.ok ? "#FDE68A" : "#FCA5A5", margin: "3px 0 0" } }, cov.flags.join(" · "))
+                );
+              })
+            )
+          );
+        })
+      )
+    )
+  );
+}
+
 /* ─── Tournament Loader ───────────────────────────────────────── */
 function RolePicker({
   onSelect,
@@ -19888,7 +20616,20 @@ function RolePicker({
       fontFamily: "'Outfit',sans-serif",
       cursor: "pointer"
     }
-  }, "\uD83D\uDCCB An Organizer"), onLogout && /*#__PURE__*/React.createElement("button", {
+  }, "\uD83D\uDCCB An Organizer"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onSelect("ezq"),
+    style: {
+      padding: "16px 0",
+      borderRadius: 16,
+      border: "2px solid #3B82F6",
+      background: "var(--surface)",
+      color: "#3B82F6",
+      fontSize: 15,
+      fontWeight: 900,
+      fontFamily: "'Outfit',sans-serif",
+      cursor: "pointer"
+    }
+  }, "\uD83C\uDFAF EZQ \u2014 Just the Queue"), onLogout && /*#__PURE__*/React.createElement("button", {
     onClick: onLogout,
     style: {
       padding: "12px 0",
@@ -20206,6 +20947,9 @@ function BeyJudgeApp() {
   if (role === "org") return /*#__PURE__*/React.createElement(OrgApp, {
     onSwitchRole: () => chooseRole(null)
   });
+  if (role === "ezq") return /*#__PURE__*/React.createElement(EZQApp, {
+    onSwitchRole: () => chooseRole(null)
+  });
   return /*#__PURE__*/React.createElement("div", {
     style: {
       background: "var(--bg)",
@@ -20340,6 +21084,13 @@ function BeyJudgeApp() {
     toggleDark: toggleDark,
     challongeSlug: challongeSlug,
     challongeParticipants: challongeParticipants,
+    onParticipantsRefresh: pmap => {
+      setChallongeParticipants(pmap);
+      sSave(KEYS.challongeMap, {
+        slug: challongeSlug,
+        participants: pmap
+      });
+    },
     eventRanked: eventRanked
   }));
 }
