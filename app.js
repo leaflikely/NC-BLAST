@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-08-09b | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history
+// NC BLAST app.js | last updated: 2026-08-09c | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history
 const {
   useState,
   useEffect,
@@ -20000,7 +20000,7 @@ function EZQApp({ onSwitchRole }) {
   React.useEffect(() => {
     if (!slug || setupStep !== "queue") return;
     loadPairings(true);
-    const t = setInterval(() => loadPairings(false), 15000);
+    const t = setInterval(() => loadPairings(false), 5000);
     return () => clearInterval(t);
   }, [slug, setupStep, loadPairings]);
 
@@ -20018,7 +20018,11 @@ function EZQApp({ onSwitchRole }) {
   const matchById = {};
   roundMatches.forEach(m => { matchById[m.id] = m; });
 
-  const isJudgeName = name => roleMap[name] === "judge" || roleMap[name] === "floater";
+  // NOTE: floaters are intentionally NOT judges here. A floater has no fixed
+  // station, so their matches are treated as ordinary PvP for queueing and
+  // coverage purposes — only an actual station-assigned judge triggers JvP/JvJ
+  // priority handling or stranded-station coverage checks.
+  const isJudgeName = name => roleMap[name] === "judge";
   const isFloaterName = name => roleMap[name] === "floater";
   const judgesAt = letter => Object.keys(roleMap).filter(n => roleMap[n] === "judge" && stadiumAssign[n] === letter);
   const floaterNames = Object.keys(roleMap).filter(n => roleMap[n] === "floater");
@@ -20032,18 +20036,24 @@ function EZQApp({ onSwitchRole }) {
   const classifyForPriority = m => {
     const p1j = isJudgeName(m.player1_name);
     const p2j = isJudgeName(m.player2_name);
-    if (!p1j && !p2j) return "PvP";
-    if (p1j && p2j) {
-      const p1f = isFloaterName(m.player1_name);
-      const p2f = isFloaterName(m.player2_name);
-      if (p1f && p2f) return "PvP";
-      return "JvJ";
-    }
-    return "JvP";
+    if (p1j && p2j) return "JvJ";
+    if (p1j || p2j) return "JvP";
+    return "PvP";
   };
-  const classifyM = m => {
+  const classifyM = classifyForPriority;
+
+  // Display-only badge — distinct from classifyM, which drives queue priority
+  // and coverage math. This exists purely so the queue card shows when a
+  // floater is involved (FvP / FvJ / FvF), without floaters ever being
+  // treated as judges for scheduling purposes.
+  const badgeForMatch = m => {
+    const p1f = isFloaterName(m.player1_name);
+    const p2f = isFloaterName(m.player2_name);
     const p1j = isJudgeName(m.player1_name);
     const p2j = isJudgeName(m.player2_name);
+    if (p1f && p2f) return "FvF";
+    if ((p1f && p2j) || (p2f && p1j)) return "FvJ";
+    if (p1f || p2f) return "FvP";
     if (p1j && p2j) return "JvJ";
     if (p1j || p2j) return "JvP";
     return "PvP";
@@ -20412,7 +20422,7 @@ function EZQApp({ onSwitchRole }) {
         React.createElement("div", null,
           React.createElement("p", { style: { fontSize: 15, fontWeight: 900, color: "var(--text-primary)", margin: 0 } }, roundLabel),
           React.createElement("p", { style: { fontSize: 11, color: "var(--text-faint)", margin: "2px 0 0" } },
-            loadingPairings ? "Refreshing from Challonge…" : "Auto-refreshes every 15s")
+            loadingPairings ? "Refreshing from Challonge…" : "Auto-refreshes every 5s")
         ),
         React.createElement("div", { style: { display: "flex", gap: 6 } },
           React.createElement("button", {
@@ -20490,7 +20500,7 @@ function EZQApp({ onSwitchRole }) {
               visibleIds.map((id, idx) => {
                 const m = matchById[id];
                 if (!m) return null;
-                const type = classifyM(m);
+                const badge = badgeForMatch(m);
                 const cov = coverageFor(m, letter);
                 return React.createElement("div", {
                   key: id,
@@ -20512,10 +20522,10 @@ function EZQApp({ onSwitchRole }) {
                     React.createElement("span", {
                       style: {
                         fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 6,
-                        background: type === "JvJ" ? "#3F2D0A" : type === "JvP" ? "#1E3A5F" : "var(--border2)",
-                        color: type === "JvJ" ? "#FDE68A" : type === "JvP" ? "#93C5FD" : "var(--text-faint)"
+                        background: badge === "JvJ" ? "#3F2D0A" : badge === "JvP" ? "#1E3A5F" : badge === "FvF" ? "#3F1D4A" : (badge === "FvJ" || badge === "FvP") ? "#0C3B3B" : "var(--border2)",
+                        color: badge === "JvJ" ? "#FDE68A" : badge === "JvP" ? "#93C5FD" : badge === "FvF" ? "#E9D5FF" : (badge === "FvJ" || badge === "FvP") ? "#5EEAD4" : "var(--text-faint)"
                       }
-                    }, type)
+                    }, badge)
                   ),
                   cov.flags.length > 0 && React.createElement("p", { style: { fontSize: 9, color: cov.ok ? "#FDE68A" : "#FCA5A5", margin: "3px 0 0" } }, cov.flags.join(" · "))
                 );
