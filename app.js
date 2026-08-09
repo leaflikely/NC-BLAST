@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-08-09 | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history
+// NC BLAST app.js | last updated: 2026-08-09b | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history
 const {
   useState,
   useEffect,
@@ -20182,6 +20182,7 @@ function EZQApp({ onSwitchRole }) {
   };
   const onQueueDrop = (e, toStation, afterIdx) => {
     e.preventDefault();
+    e.stopPropagation();
     if (!queueDragItem) return;
     const { matchId, fromStation } = queueDragItem;
     setStationQueues(prev => {
@@ -20479,11 +20480,13 @@ function EZQApp({ onSwitchRole }) {
               React.createElement("span", { style: { fontSize: 10, color: sc.bg, fontWeight: 700 } }, visibleIds.length, " waiting")
             ),
             React.createElement("div", {
-              style: { padding: 8, display: "flex", flexDirection: "column", gap: 6, minHeight: 40 },
-              onDragOver: e => onQueueDragOver(e, letter, visibleIds.length - 1),
-              onDrop: e => onQueueDrop(e, letter, visibleIds.length - 1)
+              style: { padding: 8, display: "flex", flexDirection: "column", gap: 6, minHeight: 40 }
             },
-              visibleIds.length === 0 && React.createElement("p", { style: { fontSize: 11, color: "var(--text-faint)", fontStyle: "italic", padding: "6px 4px", margin: 0 } }, "Queue empty"),
+              visibleIds.length === 0 && React.createElement("div", {
+                onDragOver: e => onQueueDragOver(e, letter, -1),
+                onDrop: e => { e.stopPropagation(); onQueueDrop(e, letter, -1); },
+                style: { padding: "6px 4px" }
+              }, React.createElement("p", { style: { fontSize: 11, color: "var(--text-faint)", fontStyle: "italic", margin: 0 } }, "Queue empty")),
               visibleIds.map((id, idx) => {
                 const m = matchById[id];
                 if (!m) return null;
@@ -20493,8 +20496,8 @@ function EZQApp({ onSwitchRole }) {
                   key: id,
                   draggable: true,
                   onDragStart: e => onQueueDragStart(e, id, letter),
-                  onDragOver: e => onQueueDragOver(e, letter, idx),
-                  onDrop: e => onQueueDrop(e, letter, idx),
+                  onDragOver: e => { e.stopPropagation(); onQueueDragOver(e, letter, idx); },
+                  onDrop: e => { e.stopPropagation(); onQueueDrop(e, letter, idx); },
                   onDragEnd: onQueueDragEnd,
                   style: {
                     padding: "8px 10px", borderRadius: 8,
@@ -20516,6 +20519,16 @@ function EZQApp({ onSwitchRole }) {
                   ),
                   cov.flags.length > 0 && React.createElement("p", { style: { fontSize: 9, color: cov.ok ? "#FDE68A" : "#FCA5A5", margin: "3px 0 0" } }, cov.flags.join(" · "))
                 );
+              }),
+              visibleIds.length > 0 && React.createElement("div", {
+                onDragOver: e => onQueueDragOver(e, letter, visibleIds.length - 1),
+                onDrop: e => { e.stopPropagation(); onQueueDrop(e, letter, visibleIds.length - 1); },
+                style: {
+                  height: queueDragOver?.station === letter && queueDragOver?.afterIdx === visibleIds.length - 1 ? 8 : 4,
+                  borderRadius: 3,
+                  background: queueDragOver?.station === letter && queueDragOver?.afterIdx === visibleIds.length - 1 ? sc.bg + "60" : "transparent",
+                  transition: "height 0.1s, background 0.1s"
+                }
               })
             )
           );
