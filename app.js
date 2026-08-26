@@ -7,6 +7,23 @@ const {
 } = React;
 
 /* ═══════════════════════════════════════
+   FEATURE FLAGS
+   Flags live in /flags.js (loaded before this file). Remove an id there and
+   the app falls back to the old code path. See that file for the registry.
+   Note: hooks cannot be called conditionally, so for flagged changes that
+   involve useMemo/useCallback/useEffect, call the hook unconditionally and
+   branch on the result instead. --espiiii
+═══════════════════════════════════════ */
+const FEATURE_FLAGS = (typeof window !== "undefined" && window.FEATURE_FLAGS) || new Set();
+function ff(id) {
+  try {
+    return FEATURE_FLAGS.has(id);
+  } catch {
+    return false; // missing/!malformed flags file — always fall back to old code
+  }
+}
+
+/* ═══════════════════════════════════════
    VIEWPORT SCALE
 ═══════════════════════════════════════ */
 function useScale() {
@@ -43,6 +60,11 @@ const KEYS = {
   players: "bx-roster-v2",
   combos: "bx-combos-v1",
   matchLog: "bx-matchlog-v1",
+  // Must live in localStorage next to matchLog. It used to be restored only
+  // from the sessionStorage resume snapshot, so closing the tab left it at 0
+  // while the log kept every past battle - every "this match" view then showed
+  // the whole device history. --espiiii
+  matchStart: "bx-matchstart-v1",
   challongeMap: "bx-challonge-map-v1",
   overlaySlot: "bx-overlay-slot-v1",
   lastJudge: "ncblast-last-judge-v1",
@@ -312,6 +334,15 @@ async function fetchCombosForTournament(slug) {
 function getCombosFromRegistry(registry, playerName) {
   if (!registry || !playerName) return [];
   return registry[normalizePlayerKey(playerName)] || [];
+}
+
+// Cap the stored battle log so it cannot grow forever across a whole season.
+// Pruning only ever happens at match start - dropping older entries mid-match
+// would shift matchStartIdx and silently re-scope the current match. --espiiii
+const MATCH_LOG_CAP = 600;
+function pruneMatchLog(entries) {
+  const arr = Array.isArray(entries) ? entries : [];
+  return arr.length > MATCH_LOG_CAP ? arr.slice(arr.length - MATCH_LOG_CAP) : arr;
 }
 
 function sGet(key, fb) {
@@ -5744,7 +5775,19 @@ function MatchScreen({
   const [shuf, setShuf] = useState(_resume ? _resume.shuf : 1);
   const [log, setLog] = useState(() => sGet(KEYS.matchLog, []));
   const [future, setFuture] = useState([]);
-  const [matchStartIdx, setMatchStartIdx] = useState(_resume ? _resume.matchStartIdx : 0);
+  const [matchStartIdx, setMatchStartIdx] = useState(() => {
+    // FLAG 1001 off: original behaviour — resume snapshot only, else 0.
+    if (!ff(1001)) return _resume ? _resume.matchStartIdx : 0;
+    // Prefer the resume snapshot, else fall back to the persisted value.
+    // Always clamp into the log so a stale index can never expose earlier
+    // matches (or point past the end). --espiiii
+    const logLen = sGet(KEYS.matchLog, []).length;
+    const raw = _resume && Number.isInteger(_resume.matchStartIdx)
+      ? _resume.matchStartIdx
+      : sGet(KEYS.matchStart, 0);
+    const n = Number.isInteger(raw) ? raw : 0;
+    return Math.max(0, Math.min(n, logLen));
+  });
   const [picker, setPicker] = useState(null);
   const [qcEditMenu, setQcEditMenu] = useState(null); // { qi, qc } — which quick combo is showing the part-edit menu
   const [pcEditMenu, setPcEditMenu] = useState(null); // { ci, combo } — which prev combo is showing the part-edit menu
@@ -5826,6 +5869,31 @@ function MatchScreen({
   // swapped: purely a display-order flip. When true, p2 is shown on the left (blue side) and p1 on right (red side).
   // sets[], pts[], setScores[] always use canonical index 0=p1 1=p2 regardless of swap.
   const [swapped, setSwapped] = useState(_resume ? _resume.swapped : false);
+
+  // Start a new match at the end of the log, pruning first if it has grown
+  // past the cap. This is the only place the log is pruned. --espiiii
+  const beginMatchLog = entries => {
+    const source = Array.isArray(entries) ? entries : [];
+    // FLAG 1001 off: no pruning, just set the boundary like before.
+    if (!ff(1001)) {
+      setMatchStartIdx(source.length);
+      return;
+    }
+    const pruned = pruneMatchLog(source);
+    if (pruned.length !== source.length) {
+      setLog(pruned);
+      sSave(KEYS.matchLog, pruned);
+    }
+    setMatchStartIdx(pruned.length);
+  };
+
+  // Persist the match boundary in localStorage, same lifetime as the log it
+  // indexes into. sessionStorage alone was not enough - see KEYS.matchStart.
+  // Hook runs unconditionally; the flag is checked inside. --espiiii
+  useEffect(() => {
+    if (!ff(1001)) return;
+    sSave(KEYS.matchStart, matchStartIdx);
+  }, [matchStartIdx]);
 
   // Keep a running snapshot of the in-progress match in sessionStorage, so an accidental
   // refresh drops the judge back into the same match instead of a blank picker. Only saves
@@ -6693,7 +6761,9 @@ function MatchScreen({
     // momentarily stale or hold leftover data from a previous match/event on this
     // device, which would set matchStartIdx too low and pull old battles into the
     // next Sheets submission. log.length is the source of truth already in scope.
-    setMatchStartIdx(log.length);
+    // beginMatchLog keeps that behaviour and prunes the log if it hit the cap.
+    // --espiiii
+    beginMatchLog(log);
     setOverlaySlot(0);
     setSwapped(false);
     setShuffleTimer(null);
@@ -6834,8 +6904,10 @@ function MatchScreen({
       sets: [...sets],
       curSet,
       shuf,
-      log: [...log],
-      matchStartIdx,
+      // FLAG 1001: send only the current match's battles. Off = whole device
+      // log, which leaked every past match to the receiving judge. --espiiii
+      log: ff(1001) ? log.slice(matchStartIdx) : [...log],
+      matchStartIdx: ff(1001) ? 0 : matchStartIdx,
       challongeMatchId,
       challongeP1ParticipantId,
       challongeP2ParticipantId,
@@ -7088,8 +7160,24 @@ function MatchScreen({
     setSets(preview.sets || [0, 0]);
     setCurSet(preview.curSet || 1);
     setShuf(preview.shuf || 1);
-    setLog(preview.log || []);
-    setMatchStartIdx(preview.matchStartIdx || 0);
+    // FLAG 1001: keep this judge's own history and append just the handed-off
+    // match. Slicing by the sender's matchStartIdx also protects us from
+    // tablets still on the old build, which sent their whole log.
+    // Off = original behaviour: replace our log with whatever arrived.
+    // --espiiii
+    if (!ff(1001)) {
+      setLog(preview.log || []);
+      setMatchStartIdx(preview.matchStartIdx || 0);
+    } else {
+      const raw = Array.isArray(preview.log) ? preview.log : [];
+      const from = Number.isInteger(preview.matchStartIdx) ? preview.matchStartIdx : 0;
+      const incoming = raw.slice(from);
+      const base = Array.isArray(log) ? log : [];
+      const merged = [...base, ...incoming];
+      setLog(merged);
+      setMatchStartIdx(base.length);
+      sSave(KEYS.matchLog, merged);
+    }
     setChallongeMatchId(preview.challongeMatchId || null);
     setChallongeP1ParticipantId(preview.challongeP1ParticipantId || null);
     setChallongeP2ParticipantId(preview.challongeP2ParticipantId || null);
@@ -10322,7 +10410,7 @@ function MatchScreen({
         },
         disabled: !activeCanProceed || deckLoadingCombos,
         onClick: async () => {
-          setMatchStartIdx(log.length);
+          beginMatchLog(log);
           setFuture([]);
           setCurSet(1);
           setShuf(1);
@@ -10504,7 +10592,7 @@ function MatchScreen({
             setLerStrikes([0, 0]);
             setSetScores([]);
             if (!eventRanked) {
-              setMatchStartIdx(log.length);
+              beginMatchLog(log);
               setFuture([]);
               setCurSet(1);
               setShuf(1);
@@ -10530,7 +10618,7 @@ function MatchScreen({
       },
       disabled: !canProceed || deckLoadingCombos,
       onClick: async () => {
-        setMatchStartIdx(log.length);
+        beginMatchLog(log);
         setFuture([]);
         setCurSet(1);
         setShuf(1);
@@ -13712,6 +13800,9 @@ function MatchScreen({
     onClick: () => {
       setLog([]);
       sSave(KEYS.matchLog, []);
+      // FLAG 1001: reset the boundary too, or it points past the now-empty
+      // log. --espiiii
+      if (ff(1001)) setMatchStartIdx(0);
       setHistoryConfirmClear(false);
       setHistoryOpen(false);
     },
