@@ -8,18 +8,86 @@ const {
 
 /* ═══════════════════════════════════════
    FEATURE FLAGS
-   Flags live in /flags.js (loaded before this file). Remove an id there and
-   the app falls back to the old code path. See that file for the registry.
+   Defaults live in /flags.js (loaded before this file). A judge can override
+   any flag on their own device from the home page — those overrides are read
+   once here at load, so saving + reloading applies them. localStorage is never
+   cached, unlike flags.js itself, so a reload always picks up the change.
+
+   Resolution order: device override -> flags.js default -> off.
+   Anything missing or malformed falls through to off, i.e. the old code path.
+
    Note: hooks cannot be called conditionally, so for flagged changes that
    involve useMemo/useCallback/useEffect, call the hook unconditionally and
    branch on the result instead. --espiiii
 ═══════════════════════════════════════ */
-const FEATURE_FLAGS = (typeof window !== "undefined" && window.FEATURE_FLAGS) || new Set();
-function ff(id) {
+const FLAG_OVERRIDE_KEY = "ncblast-flag-overrides-v1";
+const FLAG_DEFAULTS = (typeof window !== "undefined" && window.FEATURE_FLAGS) || new Set();
+const FLAG_INFO = (typeof window !== "undefined" && window.FEATURE_FLAG_INFO) || {};
+
+// { "1001": true|false } — only ids the judge has explicitly set appear here.
+function readFlagOverrides() {
   try {
-    return FEATURE_FLAGS.has(id);
+    const raw = localStorage.getItem(FLAG_OVERRIDE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out = {};
+    Object.keys(parsed).forEach(k => {
+      if (typeof parsed[k] === "boolean") out[String(k)] = parsed[k];
+    });
+    return out;
   } catch {
-    return false; // missing/!malformed flags file — always fall back to old code
+    return {}; // corrupt override — ignore it and use the shipped defaults
+  }
+}
+
+// Read once at load. Changing a flag requires a reload, which is what we want:
+// flipping mid-session would break React (hook order) and confuse judges.
+const FLAG_OVERRIDES = readFlagOverrides();
+
+function flagDefault(id) {
+  try {
+    return FLAG_DEFAULTS.has(id);
+  } catch {
+    return false;
+  }
+}
+
+function ff(id) {
+  const key = String(id);
+  if (Object.prototype.hasOwnProperty.call(FLAG_OVERRIDES, key)) {
+    return FLAG_OVERRIDES[key];
+  }
+  return flagDefault(id);
+}
+
+// All known flag ids — defaults plus anything described in FLAG_INFO.
+function allFlagIds() {
+  const ids = new Set();
+  try {
+    FLAG_DEFAULTS.forEach(id => ids.add(Number(id)));
+  } catch {}
+  Object.keys(FLAG_INFO).forEach(k => {
+    const n = Number(k);
+    if (!Number.isNaN(n)) ids.add(n);
+  });
+  return [...ids].sort((a, b) => a - b);
+}
+
+function saveFlagOverrides(map) {
+  try {
+    localStorage.setItem(FLAG_OVERRIDE_KEY, JSON.stringify(map || {}));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function clearFlagOverrides() {
+  try {
+    localStorage.removeItem(FLAG_OVERRIDE_KEY);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -20644,13 +20712,217 @@ function EZQApp({ onSwitchRole }) {
 }
 
 /* ─── Tournament Loader ───────────────────────────────────────── */
+/* ═══════════════════════════════════════
+   FEATURE FLAGS PANEL
+   Per-device flag toggles. Lets a judge turn off a change from their own
+   tablet if it misbehaves mid-event, without a code change or redeploy.
+   Saving writes to localStorage; a reload applies it. --espiiii
+═══════════════════════════════════════ */
+function FlagsPanel({ onBack }) {
+  const ids = allFlagIds();
+  // Working copy: current effective state per flag.
+  const [draft, setDraft] = useState(() => {
+    const d = {};
+    ids.forEach(id => {
+      d[String(id)] = ff(id);
+    });
+    return d;
+  });
+  const [saved, setSaved] = useState(false);
+
+  const dirty = ids.some(id => draft[String(id)] !== ff(id));
+
+  const card = {
+    background: "var(--surface)",
+    border: "1px solid var(--border)",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10
+  };
+
+  const save = () => {
+    // Only store ids that differ from the shipped default, so devices track
+    // future default changes unless the judge explicitly overrode them.
+    const overrides = {};
+    ids.forEach(id => {
+      const want = draft[String(id)];
+      if (want !== flagDefault(id)) overrides[String(id)] = want;
+    });
+    saveFlagOverrides(overrides);
+    setSaved(true);
+  };
+
+  const resetAll = () => {
+    clearFlagOverrides();
+    const d = {};
+    ids.forEach(id => {
+      d[String(id)] = flagDefault(id);
+    });
+    setDraft(d);
+    setSaved(true);
+  };
+
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: "100vh",
+      background: "var(--bg-solid)",
+      padding: "18px 16px 40px",
+      fontFamily: "'Outfit',sans-serif",
+      boxSizing: "border-box"
+    }
+  },
+    /*#__PURE__*/React.createElement("button", {
+      onClick: onBack,
+      style: {
+        background: "none",
+        border: "1px solid var(--border2)",
+        borderRadius: 9,
+        padding: "6px 12px",
+        fontSize: 12,
+        fontWeight: 700,
+        color: "var(--text-muted)",
+        fontFamily: "'Outfit',sans-serif",
+        cursor: "pointer",
+        marginBottom: 14
+      }
+    }, "← Back"),
+
+    /*#__PURE__*/React.createElement("h1", {
+      style: { fontSize: 20, fontWeight: 900, color: "var(--text-primary)", margin: "0 0 4px" }
+    }, "⚙️ Feature Flags"),
+    /*#__PURE__*/React.createElement("p", {
+      style: { fontSize: 12, color: "var(--text-muted)", margin: "0 0 16px", lineHeight: 1.5 }
+    }, "Turn a change off on this device only. If something breaks mid-event, uncheck it, save, then reload. Other tablets are unaffected."),
+
+    ids.length === 0 && /*#__PURE__*/React.createElement("p", {
+      style: { fontSize: 13, color: "var(--text-disabled)", fontStyle: "italic" }
+    }, "No feature flags defined."),
+
+    ids.map(id => {
+      const key = String(id);
+      const info = FLAG_INFO[key] || FLAG_INFO[id] || {};
+      const on = !!draft[key];
+      const isDefault = on === flagDefault(id);
+      return /*#__PURE__*/React.createElement("div", { key: key, style: card },
+        /*#__PURE__*/React.createElement("label", {
+          style: { display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }
+        },
+          /*#__PURE__*/React.createElement("input", {
+            type: "checkbox",
+            checked: on,
+            onChange: e => {
+              setSaved(false);
+              setDraft(prev => ({ ...prev, [key]: e.target.checked }));
+            },
+            style: { width: 20, height: 20, marginTop: 2, flexShrink: 0, cursor: "pointer" }
+          }),
+          /*#__PURE__*/React.createElement("div", { style: { flex: 1 } },
+            /*#__PURE__*/React.createElement("div", {
+              style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }
+            },
+              /*#__PURE__*/React.createElement("span", {
+                style: { fontSize: 14, fontWeight: 800, color: "var(--text-primary)" }
+              }, info.name || `Flag ${id}`),
+              /*#__PURE__*/React.createElement("span", {
+                style: { fontSize: 10, fontWeight: 700, color: "var(--text-faint)", letterSpacing: 0.5 }
+              }, "#" + id),
+              !isDefault && /*#__PURE__*/React.createElement("span", {
+                style: {
+                  fontSize: 9,
+                  fontWeight: 800,
+                  color: "#B45309",
+                  background: "#F59E0B22",
+                  border: "1px solid #F59E0B55",
+                  borderRadius: 5,
+                  padding: "1px 5px",
+                  letterSpacing: 0.4
+                }
+              }, "OVERRIDDEN")
+            ),
+            info.desc && /*#__PURE__*/React.createElement("p", {
+              style: { fontSize: 11, color: "var(--text-secondary)", margin: "5px 0 0", lineHeight: 1.5 }
+            }, info.desc),
+            !on && info.off && /*#__PURE__*/React.createElement("p", {
+              style: { fontSize: 11, color: "var(--text-faint)", margin: "5px 0 0", lineHeight: 1.5, fontStyle: "italic" }
+            }, info.off)
+          )
+        )
+      );
+    }),
+
+    saved && /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: "#22C55E18",
+        border: "1px solid #22C55E55",
+        borderRadius: 12,
+        padding: 12,
+        marginBottom: 10
+      }
+    },
+      /*#__PURE__*/React.createElement("p", {
+        style: { fontSize: 12, fontWeight: 700, color: "#15803D", margin: "0 0 8px" }
+      }, "Saved. Reload for it to take effect."),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => window.location.reload(),
+        style: {
+          padding: "10px 0",
+          width: "100%",
+          borderRadius: 10,
+          border: "none",
+          background: "#22C55E",
+          color: "#fff",
+          fontSize: 13,
+          fontWeight: 800,
+          fontFamily: "'Outfit',sans-serif",
+          cursor: "pointer"
+        }
+      }, "↻ Reload now")
+    ),
+
+    ids.length > 0 && /*#__PURE__*/React.createElement("button", {
+      onClick: save,
+      disabled: !dirty,
+      style: {
+        padding: "13px 0",
+        width: "100%",
+        borderRadius: 12,
+        border: "none",
+        background: dirty ? "linear-gradient(135deg,#EA580C,#DC2626)" : "var(--surface3)",
+        color: dirty ? "#fff" : "var(--text-disabled)",
+        fontSize: 14,
+        fontWeight: 900,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: dirty ? "pointer" : "not-allowed",
+        marginBottom: 8
+      }
+    }, dirty ? "Save changes" : "No changes"),
+
+    ids.length > 0 && /*#__PURE__*/React.createElement("button", {
+      onClick: resetAll,
+      style: {
+        padding: "10px 0",
+        width: "100%",
+        borderRadius: 10,
+        border: "1px solid var(--border2)",
+        background: "transparent",
+        color: "var(--text-muted)",
+        fontSize: 12,
+        fontWeight: 700,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: "pointer"
+      }
+    }, "Reset to app defaults")
+  );
+}
+
 function RolePicker({
   onSelect,
   judge,
   sharedJudges,
   onLogout,
   reading,
-  toggleReading
+  toggleReading,
+  onOpenFlags
 }) {
   const loggedIn = sharedJudges ? `${sharedJudges.judgeA} & ${sharedJudges.judgeB}` : judge || null;
   return /*#__PURE__*/React.createElement("div", {
@@ -20662,9 +20934,35 @@ function RolePicker({
       justifyContent: "center",
       background: "var(--bg)",
       padding: "32px 24px",
-      fontFamily: "'Outfit',sans-serif"
+      fontFamily: "'Outfit',sans-serif",
+      position: "relative"
     }
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("button", {
+    // Small utility entry, top-right. Deliberately low emphasis so it does not
+    // compete with the role buttons. --espiiii
+    onClick: onOpenFlags,
+    title: "Feature flags",
+    "aria-label": "Feature flags",
+    style: {
+      position: "absolute",
+      top: 12,
+      right: 12,
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      border: "1px solid var(--border2)",
+      background: "var(--surface)",
+      color: "var(--text-faint)",
+      fontSize: 15,
+      lineHeight: 1,
+      fontFamily: "'Outfit',sans-serif",
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 0
+    }
+  }, "⚙️"), /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
       marginBottom: 40
@@ -20877,6 +21175,9 @@ function BeyJudgeApp() {
       sessionStorage.setItem("ncblast-pending-role", r);
     } catch (_) {}
   };
+  // Feature flags panel. Not persisted — closing or reloading returns home.
+  // --espiiii
+  const [flagsOpen, setFlagsOpen] = useState(false);
 
   // All judge-side state declared unconditionally (React rules require this)
   const [screen, setScreen] = useState("format");
@@ -21040,8 +21341,14 @@ function BeyJudgeApp() {
   };
 
   // Branch on role in the render — no early returns before hooks
+  // Plain state, not a role — roles persist to sessionStorage, which would
+  // strand a judge on this panel after the reload. --espiiii
+  if (flagsOpen) return /*#__PURE__*/React.createElement(FlagsPanel, {
+    onBack: () => setFlagsOpen(false)
+  });
   if (!role) return /*#__PURE__*/React.createElement(RolePicker, {
     onSelect: chooseRole,
+    onOpenFlags: () => setFlagsOpen(true),
     judge: judge,
     sharedJudges: sharedJudges,
     reading: reading,
