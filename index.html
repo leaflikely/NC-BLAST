@@ -10257,6 +10257,9 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
 </script>
 
 
+<!-- Must load before app.js. defer scripts run in document order, so
+     window.FEATURE_FLAGS is set by the time app.js executes. --espiiii -->
+<script src="/flags.js" defer></script>
 <script src="/app.js" defer></script>
 </body>
 </html>

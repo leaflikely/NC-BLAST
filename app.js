@@ -7,6 +7,23 @@ const {
 } = React;
 
 /* ═══════════════════════════════════════
+   FEATURE FLAGS
+   Flags live in /flags.js (loaded before this file). Remove an id there and
+   the app falls back to the old code path. See that file for the registry.
+   Note: hooks cannot be called conditionally, so for flagged changes that
+   involve useMemo/useCallback/useEffect, call the hook unconditionally and
+   branch on the result instead. --espiiii
+═══════════════════════════════════════ */
+const FEATURE_FLAGS = (typeof window !== "undefined" && window.FEATURE_FLAGS) || new Set();
+function ff(id) {
+  try {
+    return FEATURE_FLAGS.has(id);
+  } catch {
+    return false; // missing/!malformed flags file — always fall back to old code
+  }
+}
+
+/* ═══════════════════════════════════════
    VIEWPORT SCALE
 ═══════════════════════════════════════ */
 function useScale() {
@@ -5759,6 +5776,8 @@ function MatchScreen({
   const [log, setLog] = useState(() => sGet(KEYS.matchLog, []));
   const [future, setFuture] = useState([]);
   const [matchStartIdx, setMatchStartIdx] = useState(() => {
+    // FLAG 1001 off: original behaviour — resume snapshot only, else 0.
+    if (!ff(1001)) return _resume ? _resume.matchStartIdx : 0;
     // Prefer the resume snapshot, else fall back to the persisted value.
     // Always clamp into the log so a stale index can never expose earlier
     // matches (or point past the end). --espiiii
@@ -5855,6 +5874,11 @@ function MatchScreen({
   // past the cap. This is the only place the log is pruned. --espiiii
   const beginMatchLog = entries => {
     const source = Array.isArray(entries) ? entries : [];
+    // FLAG 1001 off: no pruning, just set the boundary like before.
+    if (!ff(1001)) {
+      setMatchStartIdx(source.length);
+      return;
+    }
     const pruned = pruneMatchLog(source);
     if (pruned.length !== source.length) {
       setLog(pruned);
@@ -5865,8 +5889,9 @@ function MatchScreen({
 
   // Persist the match boundary in localStorage, same lifetime as the log it
   // indexes into. sessionStorage alone was not enough - see KEYS.matchStart.
-  // --espiiii
+  // Hook runs unconditionally; the flag is checked inside. --espiiii
   useEffect(() => {
+    if (!ff(1001)) return;
     sSave(KEYS.matchStart, matchStartIdx);
   }, [matchStartIdx]);
 
@@ -6879,10 +6904,10 @@ function MatchScreen({
       sets: [...sets],
       curSet,
       shuf,
-      // Only the current match's battles. Sending the whole device log leaked
-      // every past match on this tablet to the receiving judge. --espiiii
-      log: log.slice(matchStartIdx),
-      matchStartIdx: 0,
+      // FLAG 1001: send only the current match's battles. Off = whole device
+      // log, which leaked every past match to the receiving judge. --espiiii
+      log: ff(1001) ? log.slice(matchStartIdx) : [...log],
+      matchStartIdx: ff(1001) ? 0 : matchStartIdx,
       challongeMatchId,
       challongeP1ParticipantId,
       challongeP2ParticipantId,
@@ -7135,10 +7160,15 @@ function MatchScreen({
     setSets(preview.sets || [0, 0]);
     setCurSet(preview.curSet || 1);
     setShuf(preview.shuf || 1);
-    // Keep this judge's own history and append just the handed-off match.
-    // Slicing by the sender's matchStartIdx also protects us from tablets
-    // still on the old build, which sent their whole log. --espiiii
-    (() => {
+    // FLAG 1001: keep this judge's own history and append just the handed-off
+    // match. Slicing by the sender's matchStartIdx also protects us from
+    // tablets still on the old build, which sent their whole log.
+    // Off = original behaviour: replace our log with whatever arrived.
+    // --espiiii
+    if (!ff(1001)) {
+      setLog(preview.log || []);
+      setMatchStartIdx(preview.matchStartIdx || 0);
+    } else {
       const raw = Array.isArray(preview.log) ? preview.log : [];
       const from = Number.isInteger(preview.matchStartIdx) ? preview.matchStartIdx : 0;
       const incoming = raw.slice(from);
@@ -7147,7 +7177,7 @@ function MatchScreen({
       setLog(merged);
       setMatchStartIdx(base.length);
       sSave(KEYS.matchLog, merged);
-    })();
+    }
     setChallongeMatchId(preview.challongeMatchId || null);
     setChallongeP1ParticipantId(preview.challongeP1ParticipantId || null);
     setChallongeP2ParticipantId(preview.challongeP2ParticipantId || null);
@@ -13770,8 +13800,9 @@ function MatchScreen({
     onClick: () => {
       setLog([]);
       sSave(KEYS.matchLog, []);
-      // Reset the boundary too, or it points past the now-empty log. --espiiii
-      setMatchStartIdx(0);
+      // FLAG 1001: reset the boundary too, or it points past the now-empty
+      // log. --espiiii
+      if (ff(1001)) setMatchStartIdx(0);
       setHistoryConfirmClear(false);
       setHistoryOpen(false);
     },
