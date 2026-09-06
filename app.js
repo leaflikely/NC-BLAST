@@ -5949,6 +5949,25 @@ function MatchScreen({
     const n = Number.isInteger(raw) ? raw : 0;
     return Math.max(0, Math.min(n, logLen));
   });
+  // FLAG 1002: identity of the match currently being scored. Every log entry is
+  // stamped with it, so "this match" is a filter rather than a position in a
+  // shared array. Battles from other matches/tournaments simply never match.
+  // Legacy entries have no matchKey, so they drop out on their own — no
+  // migration needed and nothing is deleted. --espiiii
+  const [matchKey, setMatchKey] = useState(_resume ? _resume.matchKey || null : null);
+
+  // The current match's battles. Falls back to the index when 1002 is off, or
+  // when we have no key yet (e.g. resuming a session started on the old build).
+  const useKeyScoping = ff(1002) && !!matchKey;
+  const currentMatch = useKeyScoping
+    ? log.filter(e => e.matchKey === matchKey)
+    : log.slice(matchStartIdx);
+  // Everything that is NOT this match — used where the current match's entries
+  // are replaced wholesale (abandon, misreport edit).
+  const otherMatches = useKeyScoping
+    ? log.filter(e => e.matchKey !== matchKey)
+    : log.slice(0, matchStartIdx);
+  const hasCurrentBattles = currentMatch.length > 0;
   const [picker, setPicker] = useState(null);
   const [qcEditMenu, setQcEditMenu] = useState(null); // { qi, qc } — which quick combo is showing the part-edit menu
   const [pcEditMenu, setPcEditMenu] = useState(null); // { ci, combo } — which prev combo is showing the part-edit menu
@@ -6037,6 +6056,9 @@ function MatchScreen({
   // past the cap. This is the only place the log is pruned. --espiiii
   const beginMatchLog = entries => {
     const source = Array.isArray(entries) ? entries : [];
+    // FLAG 1002: mint a fresh identity for this match. Kept outside the 1001
+    // branch so key scoping works regardless of the older flag. --espiiii
+    setMatchKey(`${challongeSlug || "manual"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     // FLAG 1001 off: no pruning, just set the boundary like before.
     if (!ff(1001)) {
       setMatchStartIdx(source.length);
@@ -6070,12 +6092,12 @@ function MatchScreen({
       phase, p1, p2, d1, d2, r1, r2, used1, used2, pts, sets, curSet, shuf,
       manualJudge, setScores, sideAssign, currentSides, lerStrikes,
       challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId,
-      matchStartIdx, swapped
+      matchStartIdx, swapped, matchKey
     });
   }, [phase, p1, p2, d1, d2, r1, r2, used1, used2, pts, sets, curSet, shuf,
       manualJudge, setScores, sideAssign, currentSides, lerStrikes,
       challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId,
-      matchStartIdx, swapped]);
+      matchStartIdx, swapped, matchKey]);
   const [sideSwapConfirm, setSideSwapConfirm] = useState(false); // swap B/X sides modal
   const [swapStadium, setSwapStadium] = useState(true); // checkbox: swap B/X sides
   const [swapPosition, setSwapPosition] = useState(false); // checkbox: swap p1/p2 in app
@@ -6137,7 +6159,7 @@ function MatchScreen({
   //    so the overlay/organizer live view stops showing it as live.
   useEffect(() => {
     const handler = e => {
-      const battlesLogged = log.slice(matchStartIdx).filter(en => en.type !== "LER-STRIKE").length;
+      const battlesLogged = currentMatch.filter(en => en.type !== "LER-STRIKE").length;
       const matchActive = phase === "battle" && battlesLogged > 0;
 
       // Push an abandoned marker so the overlay/organizer live view knows to hide this match.
@@ -6298,9 +6320,13 @@ function MatchScreen({
     const cap = config.pts > 0 ? config.pts : Infinity;
     const np = [Math.min(raw[0], cap), Math.min(raw[1], cap)];
     const entry = {
+      // FLAG 1002: stamps which match (and event) this battle belongs to.
+      // Harmless when 1002 is off — nothing reads it. --espiiii
+      matchKey: matchKey,
+      slug: challongeSlug || "",
       set: curSet,
       shuffle: shuf,
-      slot: log.slice(matchStartIdx).filter(e => e.set === curSet).length + 1,
+      slot: currentMatch.filter(e => e.set === curSet).length + 1,
       scorer: scoringPi === 0 ? p1 : p2,
       scorerIdx: scoringPi,
       judge: judge,
@@ -6464,7 +6490,7 @@ function MatchScreen({
   const undo = () => {
     // Always allow undoing a LER-STRIKE, even across the matchStartIdx boundary
     const lastIsStrike = log.length > 0 && log[log.length - 1]?.type === "LER-STRIKE";
-    if (log.length <= matchStartIdx && !lastIsStrike) return;
+    if (!hasCurrentBattles && !lastIsStrike) return;
     const l = log[log.length - 1];
     const undoLog = log.slice(0, -1);
     setFuture([l, ...future]);
@@ -6760,7 +6786,7 @@ function MatchScreen({
       ...rest
     } = extraState;
     // Build combo history: completed battles from this match (no LER strikes)
-    const currentLog = log.slice(matchStartIdx).filter(e => e.type !== "LER-STRIKE" && e.type !== "LER");
+    const currentLog = currentMatch.filter(e => e.type !== "LER-STRIKE" && e.type !== "LER");
     const historyFull = currentLog.map(e => ({
       scorer: e.scorerIdx === 0 ? p1 || "" : p2 || "",
       scorerIdx: e.scorerIdx,
@@ -7070,8 +7096,11 @@ function MatchScreen({
       shuf,
       // FLAG 1001: send only the current match's battles. Off = whole device
       // log, which leaked every past match to the receiving judge. --espiiii
-      log: ff(1001) ? log.slice(matchStartIdx) : [...log],
+      log: ff(1001) ? currentMatch : [...log],
       matchStartIdx: ff(1001) ? 0 : matchStartIdx,
+      // FLAG 1002: the receiving judge keeps scoring the same match, so it has
+      // to carry the same identity or its battles would split in two. --espiiii
+      matchKey: matchKey,
       challongeMatchId,
       challongeP1ParticipantId,
       challongeP2ParticipantId,
@@ -7342,6 +7371,16 @@ function MatchScreen({
       setMatchStartIdx(base.length);
       sSave(KEYS.matchLog, merged);
     }
+    // FLAG 1002: adopt the incoming match's identity so we keep scoring the
+    // same match. Prefer the explicit field, else read it off the battles we
+    // just received. Set it either way — a stale key from our previous match
+    // would filter the incoming battles out entirely. Null means no key
+    // scoping, which falls back to the index. --espiiii
+    (() => {
+      const raw = Array.isArray(preview.log) ? preview.log : [];
+      const fromEntry = raw.length ? raw[raw.length - 1]?.matchKey : null;
+      setMatchKey(preview.matchKey || fromEntry || null);
+    })();
     setChallongeMatchId(preview.challongeMatchId || null);
     setChallongeP1ParticipantId(preview.challongeP1ParticipantId || null);
     setChallongeP2ParticipantId(preview.challongeP2ParticipantId || null);
@@ -7384,7 +7423,7 @@ function MatchScreen({
       return;
     }
     // Layer 5: in battle with battles logged — warn before abandoning
-    if (phase === "battle" && log.slice(matchStartIdx).length > 0) {
+    if (phase === "battle" && hasCurrentBattles) {
       setAbandonConfirm(true);
       return;
     }
@@ -7415,7 +7454,7 @@ function MatchScreen({
   };
   const abandonMatch = () => {
     // Void match: remove its battles from the log and return to pick
-    const trimmed = log.slice(0, matchStartIdx);
+    const trimmed = otherMatches;
     setLog(trimmed);
     sSave(KEYS.matchLog, trimmed);
     setAbandonConfirm(false);
@@ -7464,7 +7503,7 @@ function MatchScreen({
       style: {
         color: "#EF4444"
       }
-    }, log.slice(matchStartIdx).filter(e => e.type !== "LER-STRIKE").length, " battle", log.slice(matchStartIdx).filter(e => e.type !== "LER-STRIKE").length !== 1 ? "s" : ""), " in progress."), /*#__PURE__*/React.createElement("p", {
+    }, currentMatch.filter(e => e.type !== "LER-STRIKE").length, " battle", currentMatch.filter(e => e.type !== "LER-STRIKE").length !== 1 ? "s" : ""), " in progress."), /*#__PURE__*/React.createElement("p", {
       style: {
         fontSize: 12,
         color: "var(--text-faint)",
@@ -10889,7 +10928,7 @@ function MatchScreen({
       p2: p2,
       d1: d1,
       d2: d2,
-      entries: log.slice(matchStartIdx),
+      entries: currentMatch,
       config: config,
       need: need,
       onClose: () => setMisreportOpen(false),
@@ -10901,7 +10940,7 @@ function MatchScreen({
           } = r;
           return rest;
         });
-        const newLog = [...log.slice(0, matchStartIdx), ...cleanRows];
+        const newLog = [...otherMatches, ...cleanRows];
         setLog(newLog);
         sSave(KEYS.matchLog, newLog);
         setFuture([]); // edited history invalidates any pending redo stack
@@ -10974,7 +11013,7 @@ function MatchScreen({
       config: config,
       swapped: swapped,
       presetOrder: orderPreset,
-      canUndo: log.length > matchStartIdx || log[log.length - 1]?.type === "LER-STRIKE",
+      canUndo: hasCurrentBattles || log[log.length - 1]?.type === "LER-STRIKE",
       onUndo: undo
     });
   }
@@ -11470,7 +11509,7 @@ function MatchScreen({
       }
     }, [{
       label: "Battles",
-      val: log.slice(matchStartIdx).length
+      val: currentMatch.length
     }, {
       label: "Shuffles",
       val: shuf
@@ -11578,8 +11617,8 @@ function MatchScreen({
         color: "var(--text-primary)",
         marginBottom: 8
       }
-    }, "Match History"), log.slice(matchStartIdx).map((e, i) => {
-      const battles = log.slice(matchStartIdx);
+    }, "Match History"), currentMatch.map((e, i) => {
+      const battles = currentMatch;
       return /*#__PURE__*/React.createElement("div", {
         key: i,
         style: {
@@ -11914,7 +11953,7 @@ function MatchScreen({
             judgeok: true
           });
           if (submitSheetsCheck) {
-            onSendSheets(log.slice(matchStartIdx), {
+            onSendSheets(currentMatch, {
               p1,
               p2,
               sets,
@@ -11926,7 +11965,7 @@ function MatchScreen({
               challongeSlug
             });
           } else {
-            onDownloadCSV(log.slice(matchStartIdx), {
+            onDownloadCSV(currentMatch, {
               p1,
               p2,
               sets,
@@ -12056,7 +12095,7 @@ function MatchScreen({
         width: "100%",
         justifyContent: "center"
       },
-      onClick: () => onDownloadCSV(log.slice(matchStartIdx), {
+      onClick: () => onDownloadCSV(currentMatch, {
         p1,
         p2,
         sets,
@@ -12114,7 +12153,7 @@ function MatchScreen({
 
   // Battle screen (merged: combo pick + scoring in one view)
   const comboOf = (deck, idx) => deck[idx] || {};
-  const battlesInThisSet = log.slice(matchStartIdx).filter(e => e.set === curSet && e.type !== "LER-STRIKE" && e.type !== "LER").length + 1;
+  const battlesInThisSet = currentMatch.filter(e => e.set === curSet && e.type !== "LER-STRIKE" && e.type !== "LER").length + 1;
   const sc2 = S.page.maxWidth / 480;
   const bp = n => Math.round(n * sc2);
   const bf = n => Math.round(n * sc2);
@@ -12240,7 +12279,7 @@ function MatchScreen({
       minWidth: 0
     }
   }, (() => {
-    const canUndo = log.length > matchStartIdx || log[log.length - 1]?.type === "LER-STRIKE";
+    const canUndo = hasCurrentBattles || log[log.length - 1]?.type === "LER-STRIKE";
     const btnBase = {
       display: "flex",
       flexDirection: "column",
@@ -12956,9 +12995,12 @@ function MatchScreen({
         if (lerLocked) return;
         if (!hasStrike) {
           const strikeEntry = {
+            // FLAG 1002 — see the note on the main entry above. --espiiii
+            matchKey: matchKey,
+            slug: challongeSlug || "",
             set: curSet,
             shuffle: shuf,
-            slot: log.slice(matchStartIdx).filter(e => e.set === curSet).length + 1,
+            slot: currentMatch.filter(e => e.set === curSet).length + 1,
             scorer: side.ci === 0 ? p1 : p2,
             scorerIdx: side.ci,
             judge: judge,

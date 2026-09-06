@@ -26,6 +26,7 @@
  */
 window.FEATURE_FLAGS = new Set([
   1001,
+  1002,
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -34,5 +35,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Match log scoping",
     desc: "Keeps each match's battle log separate. Fixes the confirm screen showing battles from other matches, stops handoff copying a tablet's whole history, and caps the stored log.",
     off: "Old behaviour: handoff sends the entire device log, match boundary comes from the session only, log grows without limit."
+  },
+  1002: {
+    name: "Tag battles by match",
+    desc: "Stamps every battle with the match it belongs to, so screens filter by that instead of counting positions in one shared list. Battles from older matches and other tournaments can no longer appear, even on a device with a messy log.",
+    off: "Old behaviour: the current match is everything after a saved position number. If that number is wrong, older battles show up."
   }
 };
