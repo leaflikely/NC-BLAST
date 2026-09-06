@@ -3,7 +3,9 @@ const {
   useState,
   useEffect,
   useRef,
-  useCallback
+  useCallback,
+  useMemo,
+  memo
 } = React;
 
 /* ═══════════════════════════════════════
@@ -5797,6 +5799,97 @@ function UnrankedFlow({ p1, p2, dark, onMatchComplete, onBack }) {
   );
 }
 
+// Was defined inside the picker's render, so React saw a new component type
+// every render and remounted all ~140 part buttons. Hoisted + memoized.
+// --espiiii
+const PartButton = memo(function PartButton({
+  name,
+  isTop,
+  sel,
+  taken,
+  cat,
+  cc,
+  deck,
+  setDeck,
+  slot,
+  who,
+  d1,
+  d2,
+  picker,
+  advanceDeckPicker
+}) {
+  // Determine button accent color
+  const bladeColor = cat === "blade" && isTop ? BLADE_COLORS[name] : null;
+  const accent = bladeColor || (isTop ? cc : null);
+  // Non-top, non-selected: black text/border. Top 10: individual accent color.
+  const idleColor = "var(--text-primary)";
+  const idleBorder = accent ? `2px solid ${accent}` : "2px solid #CBD5E1";
+  const idleBg = accent ? accent + "18" : "var(--surface2)";
+  return /*#__PURE__*/React.createElement("button", {
+    disabled: taken,
+    onClick: () => {
+      if (taken) return;
+      const nd = [...deck];
+      // Hard rule: NO_RATCHET_BLADES (e.g. Bullet Griffon) cannot physically hold a ratchet.
+      // Hard rule: NO_BIT_RATCHETS (e.g. Turbo, Operate) have a built-in bit — no separate bit.
+      // Null out the dependent part in the same state update so stale values never persist.
+      const noRatchet = cat === "blade" && NO_RATCHET_BLADES.includes(name);
+      const noBit = cat === "ratchet" && NO_BIT_RATCHETS.includes(name);
+      nd[slot] = {
+        ...nd[slot],
+        [cat]: name,
+        ...(noRatchet ? {
+          ratchet: null
+        } : {}),
+        ...(noBit ? {
+          bit: null
+        } : {})
+      };
+      setDeck(nd);
+      // Build fresh deck refs to pass to advanceDeckPicker (state updates are async)
+      const freshD1 = who === 1 ? nd : d1;
+      const freshD2 = who === 2 ? nd : d2;
+      advanceDeckPicker(who, slot, cat, freshD1, freshD2, picker.returnToReview, name, picker.qcEdit);
+    },
+    style: {
+      padding: "8px 4px",
+      borderRadius: 9,
+      border: sel ? `2px solid ${accent || cc}` : taken ? "2px solid #E2E8F0" : idleBorder,
+      background: sel ? accent || cc : taken ? "var(--surface3)" : idleBg,
+      color: sel ? "#fff" : taken ? "#CBD5E1" : idleColor,
+      cursor: taken ? "not-allowed" : "pointer",
+      opacity: taken ? 0.45 : 1,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      textAlign: "center",
+      lineHeight: 1.1,
+      position: "relative",
+      width: "100%",
+      fontFamily: "'Outfit',sans-serif"
+    }
+  }, sel && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 9,
+      marginBottom: 1
+    }
+  }, IC.check), /*#__PURE__*/React.createElement(PartLabel, {
+    name: name,
+    size: splitPartName(name, cat !== "bit").length > 1 ? 12 : 13,
+    keepDash: cat !== "bit"
+  }), taken && /*#__PURE__*/React.createElement("span", {
+    style: {
+      position: "absolute",
+      bottom: 2,
+      fontSize: 7,
+      fontWeight: 700,
+      color: "var(--text-faint)",
+      letterSpacing: 0.3
+    }
+  }, "IN USE"));
+});
+
 function MatchScreen({
   config,
   parts,
@@ -5861,14 +5954,16 @@ function MatchScreen({
   const [pcEditMenu, setPcEditMenu] = useState(null); // { ci, combo } — which prev combo is showing the part-edit menu
   const [orderPreset, setOrderPreset] = useState(false); // true → ShuffleOrderScreen pre-fills from restored undo deck order
   const [pickerHistory, setPickerHistory] = useState([]); // stack of previous picker states for undo
-  const openPicker = val => {
+  // useCallback so the part-button grid can stay memoized across renders
+  // (identity only changes when `picker` does, not on every keystroke). --espiiii
+  const openPicker = useCallback(val => {
     setPickerHistory(h => picker ? [...h, picker] : h);
     setPicker(val);
     setPickerSearch("");
     setCrossoverOpen(false);
     setCxPicker(null);
     setQcEditMenu(null); // dismiss any open quick-combo edit menu
-  };
+  }, [picker]);
   const undoPicker = () => {
     if (!pickerHistory.length) return;
     const prev = pickerHistory[pickerHistory.length - 1];
@@ -6866,7 +6961,8 @@ function MatchScreen({
   // `who` = 1|2 (who we just finished a step for), `slot` = 0-2, `cat` = current category.
   // `updatedD1`/`updatedD2` are the deck arrays AFTER the current pick is applied
   // (state updates are async so we pass the fresh values directly).
-  const advanceDeckPicker = (who, slot, cat, updatedD1, updatedD2, returnToReview, name, qcEdit) => {
+  // Stable identity keeps the memoized part buttons from re-rendering. --espiiii
+  const advanceDeckPicker = useCallback((who, slot, cat, updatedD1, updatedD2, returnToReview, name, qcEdit) => {
     // returnToReview: go straight to deck review (review-mode edits, or review-mode qcEdit)
     if (returnToReview) {
       setPicker(null);
@@ -6948,7 +7044,7 @@ function MatchScreen({
       setPicker(null);
       setDeckReview(true);
     }
-  };
+  }, [openPicker]);
   const makeHandoffToken = () => {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
     let t = "";
@@ -8093,80 +8189,22 @@ function MatchScreen({
     const PartBtn = ({
       name,
       isTop
-    }) => {
-      const sel = current === name;
-      const taken = takenByOtherSlots.includes(name) && !sel;
-      // Determine button accent color
-      const bladeColor = cat === "blade" && isTop ? BLADE_COLORS[name] : null;
-      const accent = bladeColor || (isTop ? cc : null);
-      // Non-top, non-selected: black text/border. Top 10: individual accent color.
-      const idleColor = "var(--text-primary)";
-      const idleBorder = accent ? `2px solid ${accent}` : "2px solid #CBD5E1";
-      const idleBg = accent ? accent + "18" : "var(--surface2)";
-      return /*#__PURE__*/React.createElement("button", {
-        disabled: taken,
-        onClick: () => {
-          if (taken) return;
-          const nd = [...deck];
-          // Hard rule: NO_RATCHET_BLADES (e.g. Bullet Griffon) cannot physically hold a ratchet.
-          // Hard rule: NO_BIT_RATCHETS (e.g. Turbo, Operate) have a built-in bit — no separate bit.
-          // Null out the dependent part in the same state update so stale values never persist.
-          const noRatchet = cat === "blade" && NO_RATCHET_BLADES.includes(name);
-          const noBit = cat === "ratchet" && NO_BIT_RATCHETS.includes(name);
-          nd[slot] = {
-            ...nd[slot],
-            [cat]: name,
-            ...(noRatchet ? {
-              ratchet: null
-            } : {}),
-            ...(noBit ? {
-              bit: null
-            } : {})
-          };
-          setDeck(nd);
-          // Build fresh deck refs to pass to advanceDeckPicker (state updates are async)
-          const freshD1 = who === 1 ? nd : d1;
-          const freshD2 = who === 2 ? nd : d2;
-          advanceDeckPicker(who, slot, cat, freshD1, freshD2, picker.returnToReview, name, picker.qcEdit);
-        },
-        style: {
-          padding: "8px 4px",
-          borderRadius: 9,
-          border: sel ? `2px solid ${accent || cc}` : taken ? "2px solid #E2E8F0" : idleBorder,
-          background: sel ? accent || cc : taken ? "var(--surface3)" : idleBg,
-          color: sel ? "#fff" : taken ? "#CBD5E1" : idleColor,
-          cursor: taken ? "not-allowed" : "pointer",
-          opacity: taken ? 0.45 : 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          textAlign: "center",
-          lineHeight: 1.1,
-          position: "relative",
-          width: "100%",
-          fontFamily: "'Outfit',sans-serif"
-        }
-      }, sel && /*#__PURE__*/React.createElement("span", {
-        style: {
-          fontSize: 9,
-          marginBottom: 1
-        }
-      }, IC.check), /*#__PURE__*/React.createElement(PartLabel, {
-        name: name,
-        size: splitPartName(name, cat !== "bit").length > 1 ? 12 : 13,
-        keepDash: cat !== "bit"
-      }), taken && /*#__PURE__*/React.createElement("span", {
-        style: {
-          position: "absolute",
-          bottom: 2,
-          fontSize: 7,
-          fontWeight: 700,
-          color: "var(--text-faint)",
-          letterSpacing: 0.3
-        }
-      }, "IN USE"));
-    };
+    }) => /*#__PURE__*/React.createElement(PartButton, {
+      name: name,
+      isTop: isTop,
+      sel: current === name,
+      taken: takenByOtherSlots.includes(name) && current !== name,
+      cat: cat,
+      cc: cc,
+      deck: deck,
+      setDeck: setDeck,
+      slot: slot,
+      who: who,
+      d1: d1,
+      d2: d2,
+      picker: picker,
+      advanceDeckPicker: advanceDeckPicker
+    });
     const comboLabel = ["First", "Second", "Third"][slot];
     const playerName = who === 1 ? p1 : p2;
     const pColor = who === 1 ? "#2563EB" : "#DC2626";
@@ -8197,83 +8235,6 @@ function MatchScreen({
       const searchRows = searchItems ? toRows(searchItems) : null;
       // Total rows determines per-row height in the body
       const totalRows = searchItems ? searchRows.length : top10Rows.length + 1 /*search*/ + restRows.length;
-      const PartRow = ({
-        row,
-        isTopGroup
-      }) => /*#__PURE__*/React.createElement("div", {
-        style: {
-          flex: 1,
-          display: "flex",
-          gap: 4
-        }
-      }, row.map(name => {
-        const sel = current === name;
-        const taken = takenByOtherSlots.includes(name) && !sel;
-        const accent = isTopGroup ? cc : null;
-        return /*#__PURE__*/React.createElement("button", {
-          key: name,
-          disabled: taken,
-          onClick: () => {
-            if (taken) return;
-            const nd = [...deck];
-            nd[slot] = {
-              ...nd[slot],
-              [cat]: name
-            };
-            setDeck(nd);
-            const freshD1 = who === 1 ? nd : d1;
-            const freshD2 = who === 2 ? nd : d2;
-            advanceDeckPicker(who, slot, cat, freshD1, freshD2, picker.returnToReview, name, picker.qcEdit);
-          },
-          style: {
-            flex: 1,
-            minWidth: 0,
-            borderRadius: 9,
-            border: sel ? `2px solid ${cc}` : taken ? "2px solid var(--border)" : isTopGroup ? `2px solid ${cc}50` : "2px solid var(--border2)",
-            background: sel ? cc : taken ? "var(--surface2)" : isTopGroup ? cc + "14" : "var(--surface2)",
-            color: sel ? "#fff" : taken ? "var(--text-disabled)" : "var(--text-primary)",
-            cursor: taken ? "not-allowed" : "pointer",
-            opacity: taken ? 0.45 : 1,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            textAlign: "center",
-            lineHeight: 1.05,
-            position: "relative",
-            fontFamily: "'Outfit',sans-serif",
-            padding: "2px",
-            fontSize: "clamp(9px, 1.8vh, 15px)",
-            fontWeight: 800
-          }
-        }, sel && /*#__PURE__*/React.createElement("span", {
-          style: {
-            fontSize: "0.65em",
-            marginBottom: "0.1em"
-          }
-        }, IC.check), /*#__PURE__*/React.createElement(PartLabel, {
-          name: name,
-          size: null,
-          keepDash: cat !== "bit"
-        }), taken && /*#__PURE__*/React.createElement("span", {
-          style: {
-            position: "absolute",
-            bottom: 2,
-            fontSize: "0.55em",
-            fontWeight: 700,
-            color: "var(--text-faint)",
-            letterSpacing: 0.3
-          }
-        }, "IN USE"));
-      }), row.length < COLS && Array.from({
-        length: COLS - row.length
-      }).map((_, ei) => /*#__PURE__*/React.createElement("div", {
-        key: ei,
-        style: {
-          flex: 1
-        }
-      })));
-
       // Single stable layout: header fixed, search bar always visible,
       // grid below always scrollable. No branch switch on search so the
       // input never remounts and the keyboard never dismisses.
@@ -21120,12 +21081,16 @@ function RolePicker({
   }, "Your choice is saved on this device.", /*#__PURE__*/React.createElement("br", null), "You can switch anytime from inside the app."));
 }
 
+
 /* ═══════════════════════════════════════
    MAIN APP
 ═══════════════════════════════════════ */
 function BeyJudgeApp() {
   const sc = useScale();
-  S = makeS(sc);
+  // Only depends on viewport scale, so don't rebuild ~270 style objects every
+  // render. Stable identity also lets memoized children skip work. --espiiii
+  const memoS = useMemo(() => makeS(sc), [sc]);
+  S = memoS;
   const [dark, setDark] = useState(() => {
     try {
       return localStorage.getItem("ncblast-dark") === "1";
