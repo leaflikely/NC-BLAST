@@ -27,6 +27,7 @@
 window.FEATURE_FLAGS = new Set([
   1001,
   1002,
+  1003,
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -40,5 +41,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Tag battles by match",
     desc: "Stamps every battle with the match it belongs to, so screens filter by that instead of counting positions in one shared list. Battles from older matches and other tournaments can no longer appear, even on a device with a messy log.",
     off: "Old behaviour: the current match is everything after a saved position number. If that number is wrong, older battles show up."
+  },
+  1003: {
+    name: "Honest Sheets submit result",
+    desc: "Stops the false 'Sheets failed' message. The results were reaching the spreadsheet, but the reply could not be read, so the app reported failure. Also adds a timeout, blocks double-submits, and actually downloads the CSV if the send really fails.",
+    off: "Old behaviour: reports failure whenever the reply can't be read, even though the rows were saved. Re-submitting duplicates them."
   }
 };
