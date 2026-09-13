@@ -11928,15 +11928,15 @@ function MatchScreen({
           textAlign: "center",
           marginBottom: 6
         }
-      }, "\u2715 Challonge: ", challongeSubmitStatus), sheetsStatus === "success" && /*#__PURE__*/React.createElement("p", {
+      }, "\u2715 Challonge: ", challongeSubmitStatus), (sheetsStatus === "success" || sheetsStatus === "sent" || sheetsStatus === "sending") && /*#__PURE__*/React.createElement("p", {
         style: {
           fontSize: 11,
-          color: "#15803D",
+          color: sheetsStatus === "sending" ? "#B45309" : "#15803D",
           fontWeight: 600,
           textAlign: "center",
           marginBottom: 6
         }
-      }, "\u2713 Sheets submitted"), sheetsStatus === "error" && /*#__PURE__*/React.createElement("p", {
+      }, sheetsStatus === "sending" ? "\u2026 Sending to Sheets" : sheetsStatus === "sent" ? "\u2713 Sent to Sheets" : "\u2713 Sheets submitted"), sheetsStatus === "error" && /*#__PURE__*/React.createElement("p", {
         style: {
           fontSize: 11,
           color: "#DC2626",
@@ -11945,7 +11945,9 @@ function MatchScreen({
           marginBottom: 6
         }
       }, "\u2715 Sheets failed \u2014 CSV downloaded"), /*#__PURE__*/React.createElement("button", {
-        disabled: challongeSubmitStatus === "loading",
+        // FLAG 1003: block a second submit. The first one usually did save, so
+        // re-sending duplicates the rows in the spreadsheet. --espiiii
+        disabled: challongeSubmitStatus === "loading" || (ff(1003) && (sheetsStatus === "sending" || sheetsStatus === "sent" || sheetsStatus === "success")),
         onClick: () => {
           setJudgeSubmitModal(false);
           setConfirmState({
@@ -12124,7 +12126,7 @@ function MatchScreen({
         reset();
         onMainMenu();
       }
-    }, "\u2B05 Main Menu"), config.tm && sheetsStatus === "success" && /*#__PURE__*/React.createElement("div", {
+    }, "\u2B05 Main Menu"), config.tm && (sheetsStatus === "success" || sheetsStatus === "sent") && /*#__PURE__*/React.createElement("div", {
       style: {
         marginTop: 10,
         padding: "10px 14px",
@@ -12136,7 +12138,10 @@ function MatchScreen({
         color: "#15803D",
         textAlign: "center"
       }
-    }, "\u2713 Results submitted to Google Sheets"), config.tm && sheetsStatus === "error" && /*#__PURE__*/React.createElement("div", {
+      // FLAG 1003: "sent" means the request went through but the reply could not
+      // be read, which is normal for Apps Script. Do not call that a failure.
+      // --espiiii
+    }, sheetsStatus === "sent" ? "\u2713 Sent to Google Sheets \u2014 confirm the row landed before re-sending" : "\u2713 Results submitted to Google Sheets"), config.tm && sheetsStatus === "error" && /*#__PURE__*/React.createElement("div", {
       style: {
         marginTop: 10,
         padding: "10px 14px",
@@ -21331,19 +21336,54 @@ function BeyJudgeApp() {
     const pyr = nowPST.getFullYear();
     const submitTime = `${pmo}/${pdy}/${pyr} ${ph12}:${pmm}${pampm}`;
     const judgeLog = [[submitTime, meta.judge || "", meta.config?.tournamentName || "", meta.p1 || "", meta.p2 || "", (meta.sets || [0, 0])[0], (meta.sets || [0, 0])[1], meta.winner || "", meta.challongeMatchId || "", meta.challongeSlug || ""]];
+    const payload = JSON.stringify({
+      rows,
+      battleRows,
+      judgeLog
+    });
+    // FLAG 1003 off: original behaviour. Reports failure whenever the reply
+    // can't be parsed, even though the rows were already written.
+    if (!ff(1003)) {
+      try {
+        const resp = await fetch(SHEETS_URL, {
+          method: "POST",
+          body: payload
+        });
+        const result = await resp.json();
+        setSheetsStatus(result.status === "ok" ? "success" : "error");
+      } catch (err) {
+        setSheetsStatus("error");
+      }
+      return;
+    }
+    // FLAG 1003 on.
+    // Apps Script /exec answers with a 302 to script.googleusercontent.com, and
+    // that target does not reliably send CORS headers. fetch follows the
+    // redirect, the CORS check fails, and the promise rejects — AFTER the script
+    // has already written the rows. That is why judges saw "Sheets failed" with
+    // the results sitting in the spreadsheet.
+    //
+    // So stop pretending we can read the reply: mode "no-cors" makes the
+    // response deliberately opaque. Resolving means the request was delivered
+    // ("sent"); rejecting means it genuinely never went out ("error").
+    // Do NOT add a Content-Type header — that triggers a CORS preflight, which
+    // Apps Script does not answer, and submission breaks entirely. --espiiii
+    setSheetsStatus("sending");
     try {
-      const resp = await fetch(SHEETS_URL, {
+      await fetch(SHEETS_URL, {
         method: "POST",
-        body: JSON.stringify({
-          rows,
-          battleRows,
-          judgeLog
-        })
+        mode: "no-cors",
+        body: payload,
+        signal: AbortSignal.timeout(20000)
       });
-      const result = await resp.json();
-      setSheetsStatus(result.status === "ok" ? "success" : "error");
+      setSheetsStatus("sent");
     } catch (err) {
       setSheetsStatus("error");
+      // The old message claimed a CSV was downloaded but nothing was. Now it is
+      // true, so a real failure never loses the match. --espiiii
+      try {
+        handleDownloadCSV(roundLog, meta);
+      } catch (_) {}
     }
   };
 
