@@ -18,6 +18,12 @@
  *   Hooks cannot be called conditionally - call the hook unconditionally and
  *   branch on the result. See the boundary-persistence effect in app.js.
  *
+ * RELEASE POLICY - new flags ship OFF
+ *   Merge with the id commented out. Then turn it on deliberately, on one
+ *   device first (gear menu on the home page), and only add it to the set
+ *   below once it has been seen working. A merge should never change
+ *   behaviour on its own.
+ *
  * CLEANUP
  *   Flags are temporary. Once a change has survived a few tournaments, delete
  *   the flag AND the old code path, or the duplicate branches pile up.
@@ -27,7 +33,9 @@
 window.FEATURE_FLAGS = new Set([
   1001,
   1002,
-  1003,
+  // 1003 - off after it broke the Challonge submit button. The Sheets fix
+  // itself is fine; the button gating was the problem and is now removed.
+  // Turn on per-device from the gear menu to verify before enabling here.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
