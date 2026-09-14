@@ -11945,9 +11945,11 @@ function MatchScreen({
           marginBottom: 6
         }
       }, "\u2715 Sheets failed \u2014 CSV downloaded"), /*#__PURE__*/React.createElement("button", {
-        // FLAG 1003: block a second submit. The first one usually did save, so
-        // re-sending duplicates the rows in the spreadsheet. --espiiii
-        disabled: challongeSubmitStatus === "loading" || (ff(1003) && (sheetsStatus === "sending" || sheetsStatus === "sent" || sheetsStatus === "success")),
+        // Do NOT gate this button on sheetsStatus. It submits to Challonge AND
+        // Sheets in one click, so keying it off one service's state kills the
+        // other — that broke Challonge submits. Duplicate protection lives
+        // inside handleSendSheets instead. --espiiii
+        disabled: challongeSubmitStatus === "loading",
         onClick: () => {
           setJudgeSubmitModal(false);
           setConfirmState({
@@ -21210,6 +21212,11 @@ function BeyJudgeApp() {
   const [judge, setJudge] = useState(""); // Never pre-populate from storage — only set after a successful login in this session
   const [sharedJudges, setSharedJudges] = useState(null); // null | { judgeA:string, judgeB:string }
   const [sheetsStatus, setSheetsStatus] = useState(null);
+  // Remembers the last payload we successfully handed to Sheets. Used to skip a
+  // duplicate POST of the same match without disabling the submit button — that
+  // button also submits to Challonge, and gating it broke Challonge. A new match
+  // produces a different payload, so it is never blocked. --espiiii
+  const lastSheetsPayloadRef = useRef(null);
   const [challongeSlug, setChallongeSlug] = useState("");
   const [challongeParticipants, setChallongeParticipants] = useState({});
   const [judgeEventDeleted, setJudgeEventDeleted] = useState(false);
@@ -21368,6 +21375,12 @@ function BeyJudgeApp() {
     // ("sent"); rejecting means it genuinely never went out ("error").
     // Do NOT add a Content-Type header — that triggers a CORS preflight, which
     // Apps Script does not answer, and submission breaks entirely. --espiiii
+    // Skip an exact re-send of the same match. Guarded here rather than on the
+    // submit button, which also submits to Challonge. --espiiii
+    if (lastSheetsPayloadRef.current === payload) {
+      setSheetsStatus("sent");
+      return;
+    }
     setSheetsStatus("sending");
     try {
       await fetch(SHEETS_URL, {
@@ -21376,6 +21389,7 @@ function BeyJudgeApp() {
         body: payload,
         signal: AbortSignal.timeout(20000)
       });
+      lastSheetsPayloadRef.current = payload;
       setSheetsStatus("sent");
     } catch (err) {
       setSheetsStatus("error");
