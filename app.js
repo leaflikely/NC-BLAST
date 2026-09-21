@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-09-21b | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
+// NC BLAST app.js | last updated: 2026-09-21c | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
 const {
   useState,
   useEffect,
@@ -11987,6 +11987,8 @@ function MatchScreen({
       const p1FinalScore = sets[0];
       const p2FinalScore = sets[1];
       const hasChallonge = !!(challongeSlug && challongeMatchId);
+      const isWcbEvent = (challongeSlug || "").startsWith("wcb-");
+      const bracketLabel = isWcbEvent ? "WCB" : "Challonge";
       return /*#__PURE__*/React.createElement("div", {
         style: {
           position: "fixed",
@@ -12056,8 +12058,8 @@ function MatchScreen({
       }, {
         val: submitChallongeCheck,
         set: setSubmitChallongeCheck,
-        label: "Submit to Challonge",
-        desc: hasChallonge ? "Reports result to the active bracket match" : "No bracket match selected",
+        label: `Submit to ${bracketLabel}`,
+        desc: hasChallonge ? `Reports result to the active bracket match` : "No bracket match selected",
         disabled: !hasChallonge
       }].map((opt, oi) => /*#__PURE__*/React.createElement("button", {
         key: oi,
@@ -12125,7 +12127,7 @@ function MatchScreen({
           textAlign: "center",
           marginBottom: 6
         }
-      }, "\u2713 Challonge submitted"), challongeSubmitStatus && challongeSubmitStatus !== "ok" && challongeSubmitStatus !== "loading" && /*#__PURE__*/React.createElement("p", {
+      }, `\u2713 ${bracketLabel} submitted`), challongeSubmitStatus && challongeSubmitStatus !== "ok" && challongeSubmitStatus !== "loading" && /*#__PURE__*/React.createElement("p", {
         style: {
           fontSize: 11,
           color: "#DC2626",
@@ -12133,7 +12135,7 @@ function MatchScreen({
           textAlign: "center",
           marginBottom: 6
         }
-      }, "\u2715 Challonge: ", challongeSubmitStatus), (sheetsStatus === "success" || sheetsStatus === "sent" || sheetsStatus === "sending") && /*#__PURE__*/React.createElement("p", {
+      }, `\u2715 ${bracketLabel}: `, challongeSubmitStatus), (sheetsStatus === "success" || sheetsStatus === "sent" || sheetsStatus === "sending") && /*#__PURE__*/React.createElement("p", {
         style: {
           fontSize: 11,
           color: sheetsStatus === "sending" ? "#B45309" : "#15803D",
@@ -12209,9 +12211,10 @@ function MatchScreen({
         resetAndRestoreJudge();
       }
     }, "New Match"), config.tm && !eventRanked && (() => {
-      // ── Unranked over screen: simple Challonge submit + New Match ──
+      // ── Unranked over screen: simple bracket submit + New Match ──
       const winnerIsP1 = sets[0] >= need;
       const winnerId = winnerIsP1 ? challongeP1ParticipantId : challongeP2ParticipantId;
+      const bracketLabel = (challongeSlug || "").startsWith("wcb-") ? "WCB" : "Challonge";
       return /*#__PURE__*/React.createElement(React.Fragment, null,
         challongeSlug && challongeMatchId && (challongeSubmitStatus === "ok"
           ? /*#__PURE__*/React.createElement("div", {
@@ -12226,7 +12229,7 @@ function MatchScreen({
                 textAlign: "center",
                 marginBottom: 10
               }
-            }, "\u2713 Submitted to Challonge")
+            }, `\u2713 Submitted to ${bracketLabel}`)
           : /*#__PURE__*/React.createElement("button", {
               type: "button",
               disabled: challongeSubmitStatus === "loading",
@@ -12245,7 +12248,7 @@ function MatchScreen({
                 cursor: challongeSubmitStatus === "loading" ? "not-allowed" : "pointer",
                 marginBottom: 10
               }
-            }, challongeSubmitStatus === "loading" ? "Submitting\u2026" : challongeSubmitStatus && challongeSubmitStatus !== "loading" ? "\u2715 Failed \u2014 Retry" : ("Submit to Challonge" + (winnerId ? "" : " \u26A0\uFE0F")))
+            }, challongeSubmitStatus === "loading" ? "Submitting\u2026" : challongeSubmitStatus && challongeSubmitStatus !== "loading" ? "\u2715 Failed \u2014 Retry" : (`Submit to ${bracketLabel}` + (winnerId ? "" : " \u26A0\uFE0F")))
         ),
         challongeSubmitStatus && challongeSubmitStatus !== "ok" && challongeSubmitStatus !== "loading" && /*#__PURE__*/React.createElement("p", {
           style: { fontSize: 11, color: "#DC2626", fontWeight: 600, textAlign: "center", marginBottom: 8 }
@@ -12261,6 +12264,7 @@ function MatchScreen({
     })(), !config.tm && /*#__PURE__*/React.createElement(React.Fragment, null, challongeSlug && challongeMatchId && (() => {
       const winnerIsP1 = sets[0] >= need;
       const winnerId = winnerIsP1 ? challongeP1ParticipantId : challongeP2ParticipantId;
+      const bracketLabel = (challongeSlug || "").startsWith("wcb-") ? "WCB" : "Challonge";
       return challongeSubmitStatus === "ok" ? /*#__PURE__*/React.createElement("div", {
         style: {
           padding: "10px 14px",
@@ -12273,7 +12277,7 @@ function MatchScreen({
           textAlign: "center",
           marginBottom: 8
         }
-      }, "\u2713 Submitted to Challonge") : /*#__PURE__*/React.createElement("button", {
+      }, `\u2713 Submitted to ${bracketLabel}`) : /*#__PURE__*/React.createElement("button", {
         type: "button",
         disabled: challongeSubmitStatus === "loading",
         onClick: () => submitChallongeScore(challongeMatchId, sets[0], sets[1], winnerId),
@@ -12291,7 +12295,7 @@ function MatchScreen({
           cursor: challongeSubmitStatus === "loading" ? "not-allowed" : "pointer",
           marginBottom: 8
         }
-      }, challongeSubmitStatus === "loading" ? "Submitting…" : `Submit to Challonge${winnerId ? "" : " ⚠️"}`);
+      }, challongeSubmitStatus === "loading" ? "Submitting…" : `Submit to ${bracketLabel}${winnerId ? "" : " ⚠️"}`);
     })(), /*#__PURE__*/React.createElement("button", {
       style: S.pri,
       onClick: () => {
