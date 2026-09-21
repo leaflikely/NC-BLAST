@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-08-09d | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history
+// NC BLAST app.js | last updated: 2026-08-09d | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work.
 const {
   useState,
   useEffect,
@@ -18259,6 +18259,11 @@ function OrgTournamentSelect({
   const [linkError, setLinkError] = useState(null);
   const [displayName, setDisplayName] = useState("");
   const [addStep, setAddStep] = useState(null); // null | "name" | "ranked" | "adding"
+  // WCB (West Coast Bladers) event creation — Phase 1, org-only, flagged off by default (flag 1004)
+  const [wcbLinkInput, setWcbLinkInput] = useState("");
+  const [wcbLinkError, setWcbLinkError] = useState(null);
+  const [wcbStep, setWcbStep] = useState(null); // null | "confirm" | "adding"
+  const [wcbPendingId, setWcbPendingId] = useState(null);
   const [pendingRanked, setPendingRanked] = useState(true); // true = RANKED, false = UNRANKED
   const [pendingSlug, setPendingSlug] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // slug | null
@@ -18352,6 +18357,56 @@ function OrgTournamentSelect({
     } catch (e) {
       setLinkError("Couldn't add tournament: " + e.message);
       setAddStep("ranked");
+    }
+  };
+  // ── WCB (West Coast Bladers) event creation ─────────────────────
+  // Pulls the tournament ID out of a pasted WCB bracket link, e.g.
+  // https://westcoastbladers.com/brackets/view/PlgMioyeR2dwQMMM8CO2 → PlgMioyeR2dwQMMM8CO2
+  const parseWcbId = raw => {
+    let id = raw.trim();
+    try {
+      if (id.startsWith("http")) {
+        const u = new URL(id);
+        const parts = u.pathname.replace(/\/$/, "").split("/").filter(Boolean);
+        id = parts[parts.length - 1] || id;
+      }
+    } catch (_) {}
+    return id;
+  };
+  const handleWcbLinkSubmit = () => {
+    setWcbLinkError(null);
+    const id = parseWcbId(wcbLinkInput);
+    if (!id) { setWcbLinkError("Enter a valid WCB bracket link or ID."); return; }
+    setWcbPendingId(id);
+    setWcbStep("confirm");
+  };
+  const handleAddWcbTournament = async (ranked) => {
+    setWcbStep("adding");
+    setWcbLinkError(null);
+    const token = sessionStorage.getItem("ncblast-auth-token");
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/org/tournament/add-wcb`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tournamentId: wcbPendingId,
+          ranked,
+          orgToken: token,
+          username: sessionStorage.getItem("ncblast-auth-user")
+        }),
+        signal: AbortSignal.timeout(20000)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setWcbStep(null);
+      setWcbLinkInput("");
+      const addedId = wcbPendingId;
+      setWcbPendingId(null);
+      await refreshList();
+      onSelect(data.slug, data.wcbName || addedId);
+    } catch (e) {
+      setWcbLinkError("Couldn't add WCB event: " + e.message);
+      setWcbStep("confirm");
     }
   };
   const handleDelete = async (slug, masterKeyOverride) => {
@@ -19417,7 +19472,80 @@ function OrgTournamentSelect({
       color: "#EF4444",
       marginTop: 8
     }
-  }, linkError)), /*#__PURE__*/React.createElement("p", {
+  }, linkError)), ff(1004) && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--surface)",
+      borderRadius: 14,
+      padding: "14px",
+      marginBottom: 20,
+      border: "1px solid var(--border)"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 12, fontWeight: 800, color: "var(--text-primary)", marginBottom: 4 }
+  }, "Load from WCB link (test)"), /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }
+  }, "West Coast Bladers — read-only import, name and roster pulled automatically."),
+  wcbStep === "confirm" || wcbStep === "adding" ? /*#__PURE__*/React.createElement("div", null,
+    /*#__PURE__*/React.createElement("p", {
+      style: { fontSize: 12, color: "var(--text-primary)", marginBottom: 10, fontWeight: 700 }
+    }, "Ranked or Unranked?"),
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 8 } },
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => handleAddWcbTournament(true),
+        disabled: wcbStep === "adding",
+        style: {
+          flex: 1, padding: "10px 0", borderRadius: 10, border: "none",
+          background: wcbStep === "adding" ? "var(--surface3)" : "#7C3AED",
+          color: wcbStep === "adding" ? "var(--text-faint)" : "#fff",
+          fontSize: 13, fontWeight: 800, fontFamily: "'Outfit',sans-serif",
+          cursor: wcbStep === "adding" ? "not-allowed" : "pointer"
+        }
+      }, wcbStep === "adding" ? "Adding…" : "🏆 Ranked"),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => handleAddWcbTournament(false),
+        disabled: wcbStep === "adding",
+        style: {
+          flex: 1, padding: "10px 0", borderRadius: 10,
+          border: "2px solid var(--border2)", background: "none",
+          color: wcbStep === "adding" ? "var(--text-faint)" : "var(--text-primary)",
+          fontSize: 13, fontWeight: 800, fontFamily: "'Outfit',sans-serif",
+          cursor: wcbStep === "adding" ? "not-allowed" : "pointer"
+        }
+      }, "🏖️ Unranked")),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => { setWcbStep(null); setWcbPendingId(null); setWcbLinkError(null); },
+      disabled: wcbStep === "adding",
+      style: {
+        width: "100%", padding: "8px 0", borderRadius: 8,
+        border: "1px solid var(--border)", background: "none",
+        color: "var(--text-muted)", fontSize: 12, fontWeight: 700,
+        fontFamily: "'Outfit',sans-serif", cursor: wcbStep === "adding" ? "not-allowed" : "pointer"
+      }
+    }, "Cancel")
+  ) : /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 8 }
+  }, /*#__PURE__*/React.createElement("input", {
+    value: wcbLinkInput,
+    onChange: e => setWcbLinkInput(e.target.value),
+    onKeyDown: e => e.key === "Enter" && handleWcbLinkSubmit(),
+    placeholder: "westcoastbladers.com/brackets/view/...",
+    style: {
+      flex: 1, borderRadius: 10, border: "1px solid var(--border2)",
+      background: "var(--input-bg)", padding: "9px 12px", fontSize: 13,
+      fontFamily: "'Outfit',sans-serif", outline: "none", color: "var(--text-primary)"
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: handleWcbLinkSubmit,
+    disabled: !wcbLinkInput.trim(),
+    style: {
+      borderRadius: 10, border: "none", background: "#7C3AED", color: "#fff",
+      fontSize: 13, fontWeight: 800, fontFamily: "'Outfit',sans-serif",
+      padding: "0 16px", cursor: !wcbLinkInput.trim() ? "not-allowed" : "pointer",
+      opacity: !wcbLinkInput.trim() ? 0.6 : 1
+    }
+  }, "Go")), wcbLinkError && /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 11, color: "#EF4444", marginTop: 8 }
+  }, wcbLinkError)), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
       fontWeight: 800,
@@ -19534,7 +19662,12 @@ function OrgTournamentSelect({
       color: "var(--text-primary)",
       margin: 0
     }
-  }, t.name || t.slug), /*#__PURE__*/React.createElement("p", {
+  }, t.name || t.slug, t.backend === "wcb" && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 9, fontWeight: 800, color: "#7C3AED", background: "rgba(124,58,237,0.12)",
+      borderRadius: 6, padding: "2px 6px", marginLeft: 6, verticalAlign: "middle"
+    }
+  }, "WCB")), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 10,
       color: "var(--text-faint)",
