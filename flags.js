@@ -59,7 +59,7 @@ window.FEATURE_FLAG_INFO = {
   },
   1004: {
     name: "WCB event creation (Organizer)",
-    desc: "Adds a 'Load from WCB link' box in Organizer view, next to the Challonge one. Paste a West Coast Bladers bracket link and it registers the event in BLAST's shared list, pulling the name and roster from WCB automatically. Read-only on the WCB side — nothing is written back to WCB. Judges/players scoring matches from a WCB event is separate, later work.",
+    desc: "Adds a 'Load from WCB link' box in Organizer view, next to the Challonge one. Paste a West Coast Bladers bracket link and it registers the event in BLAST's shared list, pulling the name and roster from WCB automatically. Judges can select and score a WCB event's open matches the same way as a Challonge one — starting a match and submitting its result now write back to WCB itself, not just Challonge.",
     off: "Old behaviour: Organizer view only offers Challonge as an event source."
   }
 };
