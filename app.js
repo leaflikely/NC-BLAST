@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-08-09d | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work.
+// NC BLAST app.js | last updated: 2026-08-09d | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
 const {
   useState,
   useEffect,
@@ -6027,6 +6027,7 @@ function MatchScreen({
   const [lerStrikes, setLerStrikes] = useState(_resume ? _resume.lerStrikes : [0, 0]); // launch error strike counter per player [p1,p2]
   const [pickTab, setPickTab] = useState(challongeSlug || config.tm ? "active" : "roster"); // "roster" | "active" | "station"
   const [activeMatches, setActiveMatches] = useState(null); // null | "loading" | []
+  const [wcbOpenMatches, setWcbOpenMatches] = useState(null); // null | "loading" | [] — read-only WCB preview
   // Station Matches tab: loaded on first open; { letter, queuedMatches: [{id,p1,p2},...] } | null | "loading" | "no-assign"
   const [stationMatchesData, setStationMatchesData] = useState(null);
   const [challongeMatchId, setChallongeMatchId] = useState(_resume ? _resume.challongeMatchId : null);
@@ -6201,7 +6202,9 @@ function MatchScreen({
 
   // Auto-fetch active matches if we default to active tab
   useEffect(() => {
-    if (challongeSlug) fetchActiveMatches();
+    if (!challongeSlug) return;
+    if (challongeSlug.startsWith("wcb-")) fetchWcbOpenMatches();
+    else fetchActiveMatches();
   }, []);
 
   // On mount: if a handoff token was stashed from the URL (native camera scan),
@@ -6628,6 +6631,22 @@ function MatchScreen({
       setActiveMatches(Array.isArray(data.matches) ? data.matches : []);
     } catch (err) {
       setActiveMatches([]);
+    }
+  };
+
+  // Read-only preview of a WCB event's open matches — no scoring/selection wired up yet.
+  const fetchWcbOpenMatches = async () => {
+    if (!challongeSlug) return;
+    setWcbOpenMatches("loading");
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/wcb/open-matches?slug=${encodeURIComponent(challongeSlug)}`, {
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setWcbOpenMatches(Array.isArray(data.matches) ? data.matches : []);
+    } catch (err) {
+      setWcbOpenMatches([]);
     }
   };
 
@@ -10188,7 +10207,10 @@ function MatchScreen({
       type: "button",
       onClick: () => {
         setPickTab(tab);
-        if (tab === "active") fetchActiveMatches();
+        if (tab === "active") {
+          if ((challongeSlug || "").startsWith("wcb-")) fetchWcbOpenMatches();
+          else fetchActiveMatches();
+        }
         if (tab === "station") fetchStationMatches();
       },
       style: {
@@ -10238,7 +10260,54 @@ function MatchScreen({
           opacity: 0.85
         }
       }, tag));
-    }))), pickTab === "active" && (() => {
+    }))), pickTab === "active" && (challongeSlug || "").startsWith("wcb-") && (() => {
+      // Read-only preview of a WCB event's open matches. Deliberately not wired to
+      // selectActivePairing/markMatchUnderway — those write to Challonge and don't apply
+      // here; a WCB judge match-selection flow is separate work still to come.
+      return /*#__PURE__*/React.createElement("div", {
+        style: { ...S.card, marginBottom: 8 }
+      }, /*#__PURE__*/React.createElement("div", {
+        style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }
+      }, /*#__PURE__*/React.createElement("p", {
+        style: { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: 1, textTransform: "uppercase", margin: 0 }
+      }, "Open WCB Matches (preview)"), /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        onClick: fetchWcbOpenMatches,
+        style: {
+          fontSize: 12, fontWeight: 700, color: "#7C3AED", background: "#7C3AED20",
+          border: "2px solid #7C3AED40", borderRadius: 10, padding: "7px 14px",
+          cursor: "pointer", fontFamily: "'Outfit',sans-serif", display: "flex", alignItems: "center", gap: 5
+        }
+      }, "\u21BB Refresh")),
+      /*#__PURE__*/React.createElement("p", {
+        style: { fontSize: 11, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.4 }
+      }, "Viewing only \u2014 selecting a match to score isn't available for WCB events yet."),
+      wcbOpenMatches === "loading" && /*#__PURE__*/React.createElement("p", {
+        style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
+      }, "\u23F3 Loading open matches..."),
+      wcbOpenMatches === null && /*#__PURE__*/React.createElement("p", {
+        style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
+      }, "Tap Refresh to load open matches."),
+      Array.isArray(wcbOpenMatches) && wcbOpenMatches.length === 0 && /*#__PURE__*/React.createElement("p", {
+        style: { fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", textAlign: "center", padding: "12px 0" }
+      }, "No open matches found."),
+      Array.isArray(wcbOpenMatches) && wcbOpenMatches.map((match, mi) => {
+        const nameRow = /*#__PURE__*/React.createElement("div", {
+          style: { fontSize: 13, fontWeight: 800, color: "var(--text-primary)" }
+        }, match.player1_name || "?", " ", /*#__PURE__*/React.createElement("span", { style: { fontWeight: 400 } }, "vs"), " ", match.player2_name || "?");
+        const roundRow = /*#__PURE__*/React.createElement("div", {
+          style: { fontSize: 10, color: "var(--text-muted)", marginTop: 2 }
+        }, match.stage_label || `Round ${match.round}`);
+        return /*#__PURE__*/React.createElement("div", {
+          key: match.id || mi,
+          style: {
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "12px 14px", borderRadius: 10, border: "2px solid var(--border)",
+            background: "var(--surface2)", marginBottom: mi < wcbOpenMatches.length - 1 ? 8 : 0
+          }
+        }, nameRow, roundRow);
+      }));
+    })(), pickTab === "active" && !(challongeSlug || "").startsWith("wcb-") && (() => {
       // canProceed: match selected only (judge is handled by sharedJudgePicker per match)
       const activeCanProceed = challongeMatchId && p1 && p2;
       return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
