@@ -36,6 +36,8 @@ window.FEATURE_FLAGS = new Set([
   // 1003 - off after it broke the Challonge submit button. The Sheets fix
   // itself is fine; the button gating was the problem and is now removed.
   // Turn on per-device from the gear menu to verify before enabling here.
+  // 1004 - new, ships off. WCB event creation in Organizer view. Turn on
+  // per-device from the gear menu to test against a real WCB bracket first.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -54,5 +56,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Honest Sheets submit result",
     desc: "Stops the false 'Sheets failed' message. The results were reaching the spreadsheet, but the reply could not be read, so the app reported failure. Also adds a timeout, blocks double-submits, and actually downloads the CSV if the send really fails.",
     off: "Old behaviour: reports failure whenever the reply can't be read, even though the rows were saved. Re-submitting duplicates them."
+  },
+  1004: {
+    name: "WCB event creation (Organizer)",
+    desc: "Adds a 'Load from WCB link' box in Organizer view, next to the Challonge one. Paste a West Coast Bladers bracket link and it registers the event in BLAST's shared list, pulling the name and roster from WCB automatically. Read-only on the WCB side — nothing is written back to WCB. Judges/players scoring matches from a WCB event is separate, later work.",
+    off: "Old behaviour: Organizer view only offers Challonge as an event source."
   }
 };
