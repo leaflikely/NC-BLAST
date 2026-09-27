@@ -103,7 +103,7 @@ function clearFlagOverrides() {
 ═══════════════════════════════════════ */
 const BUGLOG_KEY = "ncblast-buglog-v1";
 const BUGREPORTS_KEY = "ncblast-bugreports-v1";
-const BUGLOG_MAX = 200;
+const BUGLOG_MAX = 400; // taps add a lot per match; ~150 bytes each
 const BUGLOG = [];
 let _bugLogSaveTimer = null;
 
@@ -192,6 +192,43 @@ if (ff(1005)) {
     };
   }
   window.addEventListener("pagehide", _bugLogSave);
+
+  // Tap trail. Records WHICH control was tapped and whether it was disabled,
+  // so "the button did nothing" shows up in a report. Uses pointerdown because
+  // browsers don't fire click on disabled buttons — the exact case we need.
+  // Capture + passive: it only reads, it can't block or change a tap.
+  // Never records what's typed: text inputs and textareas are skipped.
+  // --espiiii
+  let _lastTap = { label: "", t: 0 };
+  document.addEventListener("pointerdown", e => {
+    try {
+      const t = e.target && e.target.closest ? e.target.closest('button, a, [role="button"], input[type="checkbox"], input[type="radio"], select, label') : null;
+      if (!t) return;
+      const tag = t.tagName.toLowerCase();
+      // A label around a text box would include what's typed in it. Skip.
+      if (tag === "label" && t.querySelector('textarea, input:not([type="checkbox"]):not([type="radio"])')) return;
+      // A dropdown's text is every option run together — use its name only.
+      let text = tag === "select" ? "" : t.textContent;
+      // A checkbox has no text of its own — use the label it sits in.
+      if (tag === "input" && !text) {
+        const lab = t.closest("label");
+        text = lab ? lab.textContent : "";
+      }
+      let label = (t.getAttribute("aria-label") || t.getAttribute("title") || text || "").replace(/\s+/g, " ").trim();
+      if (!label && tag === "select") label = "dropdown";
+      if (!label) label = tag === "a" ? "link" : "icon button";
+      label = label.slice(0, 50);
+      const disabled = !!(t.disabled || t.getAttribute("aria-disabled") === "true");
+      let extra = "";
+      if (tag === "input") extra = t.checked ? " [was on]" : " [was off]";
+      const msg = `tapped "${label}"${disabled ? " (disabled)" : ""}${extra}`;
+      // one tap can fire twice on some devices; drop exact repeats within 300ms
+      const now = Date.now();
+      if (msg === _lastTap.label && now - _lastTap.t < 300) return;
+      _lastTap = { label: msg, t: now };
+      bugLog("tap", msg);
+    } catch {}
+  }, { capture: true, passive: true });
 }
 
 /* ═══════════════════════════════════════
@@ -6234,6 +6271,53 @@ function MatchScreen({
   const [deckLoadingCombos, setDeckLoadingCombos] = useState(false); // true while awaiting combo fetch before opening deck screen
   // shuffleTimer: null = hidden, "active" = counting down, "expired" = time ran out
   const [shuffleTimer, setShuffleTimer] = useState(null);
+  // FLAG 1005: screen trail, submit results and live state for bug reports.
+  // Placed after every state these read and before any early return, so hook
+  // order never changes. The flag is checked inside each one. --espiiii
+  useEffect(() => {
+    if (ff(1005)) bugLog("screen", "match phase: " + phase);
+  }, [phase]);
+  // Submit errors are caught and shown on screen, so they never reach the
+  // error recorder. And WCB/Challonge often answer HTTP 200 with the error in
+  // the body. Watching the status catches every outcome in one place,
+  // including the exact message the judge saw.
+  useEffect(() => {
+    if (ff(1005) && challongeSubmitStatus != null) bugLog("submit", "bracket submit: " + String(challongeSubmitStatus));
+  }, [challongeSubmitStatus]);
+  useEffect(() => {
+    if (ff(1005) && underwayStatus != null) bugLog("submit", "mark underway: " + String(underwayStatus));
+  }, [underwayStatus]);
+  // Snapshot of what's on screen, read when a report is filed. Only named
+  // fields — no tokens, nothing from storage.
+  useEffect(() => {
+    if (!ff(1005)) return;
+    try {
+      window.__ncbLiveMatch = {
+        at: new Date().toISOString(),
+        phase,
+        bracketSubmitStatus: challongeSubmitStatus ?? null,
+        underwayStatus: underwayStatus ?? null,
+        judgeSubmitModalOpen: !!judgeSubmitModal,
+        confirmState: confirmState ?? null,
+        misreportOpen: !!misreportOpen,
+        historyOpen: !!historyOpen,
+        abandonConfirmOpen: !!abandonConfirm,
+        sidePickerOpen: !!sidePicker,
+        picker: picker ? { who: picker.who, slot: picker.slot, cat: picker.cat } : null,
+        shuffleTimer: shuffleTimer ?? null,
+        pts, sets, curSet, shuf, r1, r2, lerStrikes, overlaySlot,
+        slug: challongeSlug || "",
+        challongeMatchId: challongeMatchId ?? null,
+        matchKey: matchKey ?? null,
+        config: config ? { bo: config.bo, pts: config.pts, tm: config.tm, tournamentName: config.tournamentName || "" } : null
+      };
+    } catch {}
+  });
+  useEffect(() => () => {
+    try {
+      delete window.__ncbLiveMatch;
+    } catch {}
+  }, []);
   // Section heights in px — null = auto/flex
   const [sectionH, setSectionH] = useState({
     score: null,
@@ -21649,6 +21733,31 @@ function BeyJudgeApp() {
   // button also submits to Challonge, and gating it broke Challonge. A new match
   // produces a different payload, so it is never blocked. --espiiii
   const lastSheetsPayloadRef = useRef(null);
+  // FLAG 1005: top-level trail + live state (which area, Sheets result). The
+  // flag is checked inside each hook so hook order never changes. --espiiii
+  useEffect(() => {
+    if (ff(1005)) bugLog("screen", "area: " + (role || "home") + (flagsOpen ? " (flags menu)" : ""));
+  }, [role, flagsOpen]);
+  useEffect(() => {
+    if (ff(1005)) bugLog("screen", "judge step: " + screen);
+  }, [screen]);
+  useEffect(() => {
+    if (ff(1005) && sheetsStatus != null) bugLog("submit", "sheets: " + String(sheetsStatus));
+  }, [sheetsStatus]);
+  useEffect(() => {
+    if (!ff(1005)) return;
+    try {
+      window.__ncbLiveApp = {
+        at: new Date().toISOString(),
+        area: role || "home",
+        flagsMenuOpen: !!flagsOpen,
+        judgeStep: screen,
+        eventRanked: !!eventRanked,
+        judge: judge || "",
+        sheetsStatus: sheetsStatus ?? null
+      };
+    } catch {}
+  });
   const [challongeSlug, setChallongeSlug] = useState("");
   const [challongeParticipants, setChallongeParticipants] = useState({});
   const [judgeEventDeleted, setJudgeEventDeleted] = useState(false);
@@ -22072,7 +22181,7 @@ function buildBugReport(description) {
     flags[id] = { on: ff(id), default: flagDefault(id) };
   });
   return {
-    reportVersion: 1,
+    reportVersion: 2, // 2 = adds live + tap/screen/submit trail
     id: _bugId(),
     createdAt: new Date().toISOString(),
     description: String(description || "").slice(0, 4000),
@@ -22093,6 +22202,12 @@ function buildBugReport(description) {
       })()
     },
     flags,
+    // What was on screen when the report was filed (FLAG 1005). Built by the
+    // app from named fields only, never copied from storage.
+    live: {
+      app: window.__ncbLiveApp || null,
+      match: window.__ncbLiveMatch || null
+    },
     state: {
       role: _bugRead(sessionStorage, "ncblast-pending-role"),
       resume,
