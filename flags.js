@@ -38,6 +38,8 @@ window.FEATURE_FLAGS = new Set([
   // Turn on per-device from the gear menu to verify before enabling here.
   // 1004 - new, ships off. WCB event creation in Organizer view. Turn on
   // per-device from the gear menu to test against a real WCB bracket first.
+  // 1005 - new, ships off. "?" bug report button on every screen. Turn on
+  // per-device from the gear menu, file a test report, check it shares.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -61,5 +63,10 @@ window.FEATURE_FLAG_INFO = {
     name: "WCB event creation (Organizer)",
     desc: "Adds a 'Load from WCB link' box in Organizer view, next to the Challonge one. Paste a West Coast Bladers bracket link and it registers the event in BLAST's shared list, pulling the name and roster from WCB automatically. Judges can select and score a WCB event's open matches the same way as a Challonge one — starting a match and submitting its result now write back to WCB itself, not just Challonge.",
     off: "Old behaviour: Organizer view only offers Challonge as an event source."
+  },
+  1005: {
+    name: "Report a problem button",
+    desc: "Adds a ? button on every screen. Judges describe what went wrong, get a bug number, and can send a report with this device's recent errors and match state to the organizers. Nothing is sent unless they choose to.",
+    off: "No ? button, and no error recording on this device."
   }
 };
