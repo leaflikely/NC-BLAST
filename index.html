@@ -10259,7 +10259,11 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
 
 <!-- Must load before app.js. defer scripts run in document order, so
      window.FEATURE_FLAGS is set by the time app.js executes. --espiiii -->
-<script src="/flags.js" defer></script>
-<script src="/app.js" defer></script>
+<!-- RELEASE VERSION: bump ?v= on BOTH lines whenever app.js or flags.js
+     changes (date + letter is fine, e.g. 20260926b). A new value makes every
+     browser fetch the new files instead of a cached copy. _headers in the
+     repo root also forces a freshness check, so this is a backup. --espiiii -->
+<script src="/flags.js?v=20260926a" defer></script>
+<script src="/app.js?v=20260926a" defer></script>
 </body>
 </html>

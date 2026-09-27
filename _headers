@@ -1,0 +1,25 @@
+# Cloudflare Pages response headers.
+#
+# no-cache does NOT mean "never cache". It means "check with the server before
+# using a cached copy". If the file hasn't changed, the server answers 304 Not
+# Modified and nothing is re-downloaded. If it has changed, the new one comes
+# down. So every deploy reaches devices on their next load, for almost no cost.
+#
+# Before this, browsers could keep running an old app.js / flags.js after a
+# merge, which made fixes and new flags look like they never shipped.
+# --espiiii
+
+/
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache
+
+/overlay.html
+  Cache-Control: no-cache
+
+/app.js
+  Cache-Control: no-cache
+
+/flags.js
+  Cache-Control: no-cache
