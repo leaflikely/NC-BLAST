@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-09-21d | wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
+// NC BLAST app.js | last updated: 2026-09-29 | set1-pick-priority-tag: the player with pick priority in set 1 gets "~P~" appended to their name in the P1/P2 columns of the Sheets Battle + summary rows and the CSV backup (name-based, survives resume; no Apps Script change). Previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
 const {
   useState,
   useEffect,
@@ -91,144 +91,6 @@ function clearFlagOverrides() {
   } catch {
     return false;
   }
-}
-
-/* ═══════════════════════════════════════
-   BUG REPORTS — FLAG 1005 (recording)
-   Nothing here runs unless 1005 is on. Keeps a small rolling list of errors,
-   failed network calls and a few app events, saved to localStorage so it
-   survives the reload a judge does after something breaks.
-   Nothing is ever sent anywhere — the judge chooses to share a report.
-   --espiiii
-═══════════════════════════════════════ */
-const BUGLOG_KEY = "ncblast-buglog-v1";
-const BUGREPORTS_KEY = "ncblast-bugreports-v1";
-const BUGLOG_MAX = 400; // taps add a lot per match; ~150 bytes each
-const BUGLOG = [];
-let _bugLogSaveTimer = null;
-
-function _bugLogSave() {
-  try {
-    localStorage.setItem(BUGLOG_KEY, JSON.stringify(BUGLOG));
-  } catch {}
-}
-
-function bugLog(kind, msg, extra) {
-  if (!ff(1005)) return;
-  try {
-    const entry = { t: new Date().toISOString(), k: kind, m: String(msg == null ? "" : msg).slice(0, 500) };
-    if (extra) entry.x = extra;
-    BUGLOG.push(entry);
-    if (BUGLOG.length > BUGLOG_MAX) BUGLOG.splice(0, BUGLOG.length - BUGLOG_MAX);
-    // Batch writes so an error loop can't hammer localStorage.
-    if (!_bugLogSaveTimer) {
-      _bugLogSaveTimer = setTimeout(() => {
-        _bugLogSaveTimer = null;
-        _bugLogSave();
-      }, 1000);
-    }
-  } catch {}
-}
-
-function _bugStr(a) {
-  try {
-    if (a instanceof Error) {
-      return a.name + ": " + a.message + (a.stack ? "\n" + a.stack.split("\n").slice(0, 4).join("\n") : "");
-    }
-    if (typeof a === "string") return a;
-    return JSON.stringify(a);
-  } catch {
-    return String(a);
-  }
-}
-
-// Origin + path only. Query strings can carry tokens (handoff, auth) and must
-// never end up in a shared report.
-function _bugSafeUrl(u) {
-  try {
-    const raw = typeof u === "string" ? u : (u && u.url) || "";
-    const url = new URL(raw, location.href);
-    return url.origin + url.pathname;
-  } catch {
-    return "?";
-  }
-}
-
-if (ff(1005)) {
-  try {
-    const prev = JSON.parse(localStorage.getItem(BUGLOG_KEY) || "[]");
-    if (Array.isArray(prev)) BUGLOG.push(...prev.slice(-BUGLOG_MAX));
-  } catch {}
-  bugLog("app", "loaded", { path: location.pathname });
-  window.addEventListener("error", e => {
-    bugLog("error", e.message || "error", { src: e.filename ? _bugSafeUrl(e.filename) : "", line: e.lineno, col: e.colno });
-  });
-  window.addEventListener("unhandledrejection", e => bugLog("rejection", _bugStr(e.reason)));
-  ["error", "warn"].forEach(level => {
-    const orig = console[level];
-    if (typeof orig !== "function") return;
-    console[level] = function (...args) {
-      try {
-        bugLog("console." + level, args.map(_bugStr).join(" "));
-      } catch {}
-      return orig.apply(this, args);
-    };
-  });
-  // Record failed requests only. Successful ones (overlay polling etc.) would
-  // flood the buffer. Opaque no-cors replies have status 0 and are skipped.
-  if (typeof window.fetch === "function") {
-    const origFetch = window.fetch.bind(window);
-    window.fetch = function (input, init) {
-      const started = Date.now();
-      const method = (init && init.method) || (input && input.method) || "GET";
-      const where = _bugSafeUrl(input);
-      return origFetch(input, init).then(res => {
-        if (res && res.status >= 400) bugLog("net", method + " " + where + " -> " + res.status, { ms: Date.now() - started });
-        return res;
-      }, err => {
-        bugLog("net", method + " " + where + " failed: " + (err && err.name ? err.name : "error"), { ms: Date.now() - started });
-        throw err;
-      });
-    };
-  }
-  window.addEventListener("pagehide", _bugLogSave);
-
-  // Tap trail. Records WHICH control was tapped and whether it was disabled,
-  // so "the button did nothing" shows up in a report. Uses pointerdown because
-  // browsers don't fire click on disabled buttons — the exact case we need.
-  // Capture + passive: it only reads, it can't block or change a tap.
-  // Never records what's typed: text inputs and textareas are skipped.
-  // --espiiii
-  let _lastTap = { label: "", t: 0 };
-  document.addEventListener("pointerdown", e => {
-    try {
-      const t = e.target && e.target.closest ? e.target.closest('button, a, [role="button"], input[type="checkbox"], input[type="radio"], select, label') : null;
-      if (!t) return;
-      const tag = t.tagName.toLowerCase();
-      // A label around a text box would include what's typed in it. Skip.
-      if (tag === "label" && t.querySelector('textarea, input:not([type="checkbox"]):not([type="radio"])')) return;
-      // A dropdown's text is every option run together — use its name only.
-      let text = tag === "select" ? "" : t.textContent;
-      // A checkbox has no text of its own — use the label it sits in.
-      if (tag === "input" && !text) {
-        const lab = t.closest("label");
-        text = lab ? lab.textContent : "";
-      }
-      let label = (t.getAttribute("aria-label") || t.getAttribute("title") || text || "").replace(/\s+/g, " ").trim();
-      if (!label && tag === "select") label = "dropdown";
-      if (!label) label = tag === "a" ? "link" : "icon button";
-      label = label.slice(0, 50);
-      const disabled = !!(t.disabled || t.getAttribute("aria-disabled") === "true");
-      let extra = "";
-      if (tag === "input") extra = t.checked ? " [was on]" : " [was off]";
-      const msg = `tapped "${label}"${disabled ? " (disabled)" : ""}${extra}`;
-      // one tap can fire twice on some devices; drop exact repeats within 300ms
-      const now = Date.now();
-      if (msg === _lastTap.label && now - _lastTap.t < 300) return;
-      _lastTap = { label: msg, t: now };
-      bugLog("tap", msg);
-    } catch {}
-  }, { capture: true, passive: true });
 }
 
 /* ═══════════════════════════════════════
@@ -6152,6 +6014,10 @@ function MatchScreen({
   const [manualJudge, setManualJudge] = useState(_resume ? _resume.manualJudge : false);
   const [setScores, setSetScores] = useState(_resume ? _resume.setScores : []);
   const [sideAssign, setSideAssign] = useState(_resume ? _resume.sideAssign : null);
+  // Name of the player who had pick priority in SET 1 of this match. Stored by name (not
+  // P1/P2 position) so a side/position swap can't flip it. Sent to Sheets as a "~P~" tag
+  // on that player's name. null = unknown (e.g. match resumed from before this existed).
+  const [set1PriorityName, setSet1PriorityName] = useState(_resume ? _resume.set1PriorityName || null : null);
   const [sidePicker, setSidePicker] = useState(null);
   const [currentSides, setCurrentSides] = useState(_resume ? _resume.currentSides : {
     p1Side: "",
@@ -6231,12 +6097,12 @@ function MatchScreen({
       phase, p1, p2, d1, d2, r1, r2, used1, used2, pts, sets, curSet, shuf,
       manualJudge, setScores, sideAssign, currentSides, lerStrikes,
       challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId,
-      matchStartIdx, swapped, matchKey
+      matchStartIdx, swapped, matchKey, set1PriorityName
     });
   }, [phase, p1, p2, d1, d2, r1, r2, used1, used2, pts, sets, curSet, shuf,
       manualJudge, setScores, sideAssign, currentSides, lerStrikes,
       challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId,
-      matchStartIdx, swapped, matchKey]);
+      matchStartIdx, swapped, matchKey, set1PriorityName]);
   const [sideSwapConfirm, setSideSwapConfirm] = useState(false); // swap B/X sides modal
   const [swapStadium, setSwapStadium] = useState(true); // checkbox: swap B/X sides
   const [swapPosition, setSwapPosition] = useState(false); // checkbox: swap p1/p2 in app
@@ -6271,53 +6137,6 @@ function MatchScreen({
   const [deckLoadingCombos, setDeckLoadingCombos] = useState(false); // true while awaiting combo fetch before opening deck screen
   // shuffleTimer: null = hidden, "active" = counting down, "expired" = time ran out
   const [shuffleTimer, setShuffleTimer] = useState(null);
-  // FLAG 1005: screen trail, submit results and live state for bug reports.
-  // Placed after every state these read and before any early return, so hook
-  // order never changes. The flag is checked inside each one. --espiiii
-  useEffect(() => {
-    if (ff(1005)) bugLog("screen", "match phase: " + phase);
-  }, [phase]);
-  // Submit errors are caught and shown on screen, so they never reach the
-  // error recorder. And WCB/Challonge often answer HTTP 200 with the error in
-  // the body. Watching the status catches every outcome in one place,
-  // including the exact message the judge saw.
-  useEffect(() => {
-    if (ff(1005) && challongeSubmitStatus != null) bugLog("submit", "bracket submit: " + String(challongeSubmitStatus));
-  }, [challongeSubmitStatus]);
-  useEffect(() => {
-    if (ff(1005) && underwayStatus != null) bugLog("submit", "mark underway: " + String(underwayStatus));
-  }, [underwayStatus]);
-  // Snapshot of what's on screen, read when a report is filed. Only named
-  // fields — no tokens, nothing from storage.
-  useEffect(() => {
-    if (!ff(1005)) return;
-    try {
-      window.__ncbLiveMatch = {
-        at: new Date().toISOString(),
-        phase,
-        bracketSubmitStatus: challongeSubmitStatus ?? null,
-        underwayStatus: underwayStatus ?? null,
-        judgeSubmitModalOpen: !!judgeSubmitModal,
-        confirmState: confirmState ?? null,
-        misreportOpen: !!misreportOpen,
-        historyOpen: !!historyOpen,
-        abandonConfirmOpen: !!abandonConfirm,
-        sidePickerOpen: !!sidePicker,
-        picker: picker ? { who: picker.who, slot: picker.slot, cat: picker.cat } : null,
-        shuffleTimer: shuffleTimer ?? null,
-        pts, sets, curSet, shuf, r1, r2, lerStrikes, overlaySlot,
-        slug: challongeSlug || "",
-        challongeMatchId: challongeMatchId ?? null,
-        matchKey: matchKey ?? null,
-        config: config ? { bo: config.bo, pts: config.pts, tm: config.tm, tournamentName: config.tournamentName || "" } : null
-      };
-    } catch {}
-  });
-  useEffect(() => () => {
-    try {
-      delete window.__ncbLiveMatch;
-    } catch {}
-  }, []);
   // Section heights in px — null = auto/flex
   const [sectionH, setSectionH] = useState({
     score: null,
@@ -7179,6 +6998,7 @@ function MatchScreen({
     setJudge("");
     setSetScores([]);
     setSideAssign(null);
+    setSet1PriorityName(null);
     setSidePicker(null);
     setCurrentSides({
       p1Side: "",
@@ -11512,6 +11332,7 @@ function MatchScreen({
       onClick: () => {
         const p1Side = sidePicker.priority === 0 ? side : side === "B" ? "X" : "B";
         const p2Side = sidePicker.priority === 0 ? side === "B" ? "X" : "B" : side;
+        if (curSet === 1) setSet1PriorityName(sidePicker.priority === 0 ? p1 : p2);
         setSideAssign({
           pickPriority: sidePicker.priority,
           p1Side,
@@ -12346,7 +12167,8 @@ function MatchScreen({
               shuffles: shuf,
               judge,
               challongeMatchId,
-              challongeSlug
+              challongeSlug,
+              set1PriorityName
             });
           } else {
             onDownloadCSV(currentMatch, {
@@ -12355,7 +12177,8 @@ function MatchScreen({
               sets,
               config,
               winner,
-              shuffles: shuf
+              shuffles: shuf,
+              set1PriorityName
             });
           }
           if (submitChallongeCheck && hasChallonge) {
@@ -12487,7 +12310,8 @@ function MatchScreen({
         sets,
         config,
         winner,
-        shuffles: shuf
+        shuffles: shuf,
+        set1PriorityName
       })
     }, IC.download, " Download CSV"), /*#__PURE__*/React.createElement("button", {
       style: {
@@ -12772,7 +12596,7 @@ function MatchScreen({
         ...lbl,
         color: config.tm ? "#E9D5FF" : "var(--text-secondary)"
       }
-    }, "Swap")), ff(1005) && /*#__PURE__*/React.createElement(BugReportInlineButton, null));
+    }, "Swap")));
   })()), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -21471,8 +21295,7 @@ function RolePicker({
     style: {
       position: "absolute",
       top: 12,
-      // FLAG 1005: the "?" button takes the corner, so move over. --espiiii
-      right: ff(1005) ? 56 : 12,
+      right: 12,
       width: 34,
       height: 34,
       borderRadius: 10,
@@ -21733,31 +21556,6 @@ function BeyJudgeApp() {
   // button also submits to Challonge, and gating it broke Challonge. A new match
   // produces a different payload, so it is never blocked. --espiiii
   const lastSheetsPayloadRef = useRef(null);
-  // FLAG 1005: top-level trail + live state (which area, Sheets result). The
-  // flag is checked inside each hook so hook order never changes. --espiiii
-  useEffect(() => {
-    if (ff(1005)) bugLog("screen", "area: " + (role || "home") + (flagsOpen ? " (flags menu)" : ""));
-  }, [role, flagsOpen]);
-  useEffect(() => {
-    if (ff(1005)) bugLog("screen", "judge step: " + screen);
-  }, [screen]);
-  useEffect(() => {
-    if (ff(1005) && sheetsStatus != null) bugLog("submit", "sheets: " + String(sheetsStatus));
-  }, [sheetsStatus]);
-  useEffect(() => {
-    if (!ff(1005)) return;
-    try {
-      window.__ncbLiveApp = {
-        at: new Date().toISOString(),
-        area: role || "home",
-        flagsMenuOpen: !!flagsOpen,
-        judgeStep: screen,
-        eventRanked: !!eventRanked,
-        judge: judge || "",
-        sheetsStatus: sheetsStatus ?? null
-      };
-    } catch {}
-  });
   const [challongeSlug, setChallongeSlug] = useState("");
   const [challongeParticipants, setChallongeParticipants] = useState({});
   const [judgeEventDeleted, setJudgeEventDeleted] = useState(false);
@@ -21817,11 +21615,17 @@ function BeyJudgeApp() {
   }, []);
   const SHEETS_URL = "https://script.google.com/macros/s/AKfycbzvb5LkqMDXaMVJNFNQSf7dsUJK_0vbTfQ4gRRISGsRWg4mINvawLROxn0SaPqJ5o9E/exec";
 
+  // Pick-priority marker. Appends "~P~" to the name of the player who had pick priority in
+  // set 1 of the match (meta.set1PriorityName). Used ONLY on the P1/P2 name columns of the
+  // Sheets rows and the CSV backup - winner/loser/scorer/judge-log columns stay clean.
+  // Unknown priority (null) = no tag, same as events from before tracking existed.
+  const tagP = (name, meta) => meta && meta.set1PriorityName && name === meta.set1PriorityName ? `${name}~P~` : name;
+
   // Download CSV to device — always available, never sends to sheets
   const handleDownloadCSV = (roundLog, meta) => {
     let csv = "Slot,Set,Shuffle,Judge,Tournament,Winner,WinnerCombo,FinishType,Points,Penalty,P1,P1Side,P1Score,P1Combo,P2,P2Side,P2Score,P2Combo,Timestamp\n";
     roundLog.forEach(r => {
-      csv += `${r.slot},${r.set},${r.shuffle},"${r.judge || ""}","${meta.config?.tournamentName || ""}","${r.scorer}","${r.winnerCombo}",${r.type},${r.points},${r.penalty ? 1 : 0},"${r.p1Name}",${r.p1Side || ""},"${r.p1Score}","${comboStr(r.p1Combo)}","${r.p2Name}",${r.p2Side || ""},"${r.p2Score}","${comboStr(r.p2Combo)}",${r.time}\n`;
+      csv += `${r.slot},${r.set},${r.shuffle},"${r.judge || ""}","${meta.config?.tournamentName || ""}","${r.scorer}","${r.winnerCombo}",${r.type},${r.points},${r.penalty ? 1 : 0},"${tagP(r.p1Name, meta)}",${r.p1Side || ""},"${r.p1Score}","${comboStr(r.p1Combo)}","${tagP(r.p2Name, meta)}",${r.p2Side || ""},"${r.p2Score}","${comboStr(r.p2Combo)}",${r.time}\n`;
     });
     const blob = new Blob([csv], {
       type: "text/csv"
@@ -21837,7 +21641,7 @@ function BeyJudgeApp() {
   // Send to Google Sheets only — no CSV download
   const handleSendSheets = async (roundLog, meta) => {
     // Sheet 1: existing summary rows
-    const rows = roundLog.map(r => [r.time, r.judge || "", meta.config?.tournamentName || "", `${r.p1Name} vs ${r.p2Name}`, r.p1Name, r.p1Side || "", r.p2Name, r.p2Side || "", r.set, r.shuffle, r.slot, r.scorer, r.winnerCombo, r.typeName, r.points, r.penalty ? 1 : 0, r.p1Score, r.p2Score, comboStr(r.p1Combo), comboStr(r.p2Combo)]);
+    const rows = roundLog.map(r => [r.time, r.judge || "", meta.config?.tournamentName || "", `${r.p1Name} vs ${r.p2Name}`, tagP(r.p1Name, meta), r.p1Side || "", tagP(r.p2Name, meta), r.p2Side || "", r.set, r.shuffle, r.slot, r.scorer, r.winnerCombo, r.typeName, r.points, r.penalty ? 1 : 0, r.p1Score, r.p2Score, comboStr(r.p1Combo), comboStr(r.p2Combo)]);
 
     // Sheet 2: one row per battle with specific battle-level detail
     const battleRows = roundLog.map(r => {
@@ -21865,7 +21669,7 @@ function BeyJudgeApp() {
       const loserSide = winnerIsP1 ? r.p2Side || "" : r.p1Side || "";
       const winnerCombo = r.winnerCombo;
       const loserCombo = winnerIsP1 ? comboStr(r.p2Combo) : comboStr(r.p1Combo);
-      return [dateTime, r.judge || "", r.p1Name, r.p1Side || "", comboStr(r.p1Combo), r.p2Name, r.p2Side || "", comboStr(r.p2Combo), winnerName, winnerCombo, winCondition, loserCombo, loserName];
+      return [dateTime, r.judge || "", tagP(r.p1Name, meta), r.p1Side || "", comboStr(r.p1Combo), tagP(r.p2Name, meta), r.p2Side || "", comboStr(r.p2Combo), winnerName, winnerCombo, winCondition, loserCombo, loserName];
     });
 
     // Sheet 3: one row per match for judge accountability
@@ -22121,361 +21925,6 @@ function BeyJudgeApp() {
     eventRanked: eventRanked
   }));
 }
-/* ═══════════════════════════════════════
-   BUG REPORTS — FLAG 1005 (report + UI)
-   A "?" button that is always on screen. Judge types what went wrong, taps
-   Submit, gets a bug number and a "Send to organizers" button that opens the
-   phone's share sheet with the report attached. Nothing leaves the device
-   unless they send it.
-   --espiiii
-═══════════════════════════════════════ */
-
-// Not sequential — there is no server to count. Date + random is unique
-// enough to match a report to a message.
-function _bugId() {
-  const d = new Date();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L - easy to read out loud
-  let r = "";
-  for (let i = 0; i < 4; i++) r += chars[Math.floor(Math.random() * chars.length)];
-  return `NCB-${mm}${dd}-${r}`;
-}
-
-function _bugRead(store, key) {
-  try {
-    const v = store.getItem(key);
-    if (v == null) return null;
-    try {
-      return JSON.parse(v);
-    } catch {
-      return v;
-    }
-  } catch {
-    return null;
-  }
-}
-
-// Key names and sizes only, never values. Shows a bloated log at a glance.
-function _bugStorageSizes(store) {
-  const out = {};
-  try {
-    for (let i = 0; i < store.length; i++) {
-      const k = store.key(i);
-      out[k] = (store.getItem(k) || "").length;
-    }
-  } catch {}
-  return out;
-}
-
-// ALLOWLIST ONLY. Every value included is named here on purpose. Auth tokens,
-// the master key and OAuth results are never read, and anything new added to
-// storage later stays out until someone adds it here deliberately.
-function buildBugReport(description) {
-  const resume = _bugRead(sessionStorage, "ncblast-match-resume-v1");
-  const stored = _bugRead(localStorage, "bx-matchlog-v1");
-  const logArr = Array.isArray(stored) ? stored : [];
-  const key = resume && resume.matchKey ? resume.matchKey : null;
-  const flags = {};
-  allFlagIds().forEach(id => {
-    flags[id] = { on: ff(id), default: flagDefault(id) };
-  });
-  return {
-    reportVersion: 2, // 2 = adds live + tap/screen/submit trail
-    id: _bugId(),
-    createdAt: new Date().toISOString(),
-    description: String(description || "").slice(0, 4000),
-    app: {
-      url: location.origin + location.pathname,
-      userAgent: navigator.userAgent,
-      language: navigator.language,
-      online: navigator.onLine,
-      screen: { w: screen.width, h: screen.height },
-      viewport: { w: window.innerWidth, h: window.innerHeight },
-      dpr: window.devicePixelRatio,
-      timezone: (() => {
-        try {
-          return Intl.DateTimeFormat().resolvedOptions().timeZone;
-        } catch {
-          return "";
-        }
-      })()
-    },
-    flags,
-    // What was on screen when the report was filed (FLAG 1005). Built by the
-    // app from named fields only, never copied from storage.
-    live: {
-      app: window.__ncbLiveApp || null,
-      match: window.__ncbLiveMatch || null
-    },
-    state: {
-      role: _bugRead(sessionStorage, "ncblast-pending-role"),
-      resume,
-      matchStart: _bugRead(localStorage, "bx-matchstart-v1"),
-      overlaySlot: _bugRead(localStorage, "bx-overlay-slot-v1"),
-      dark: _bugRead(localStorage, "ncblast-dark"),
-      reading: _bugRead(localStorage, "ncblast-reading")
-    },
-    battles: {
-      totalStored: logArr.length,
-      currentMatchKey: key,
-      currentMatch: key ? logArr.filter(e => e && e.matchKey === key) : [],
-      recent: logArr.slice(-60)
-    },
-    storageSizes: {
-      local: _bugStorageSizes(localStorage),
-      session: _bugStorageSizes(sessionStorage)
-    },
-    events: BUGLOG.slice()
-  };
-}
-
-// Keeps a short list of filed reports so a judge can find their bug number
-// again. Only id/time/description — the full report is too big to hoard.
-function _bugRemember(report) {
-  try {
-    const list = _bugRead(localStorage, BUGREPORTS_KEY);
-    const next = (Array.isArray(list) ? list : []).concat([{ id: report.id, createdAt: report.createdAt, description: report.description.slice(0, 200) }]).slice(-10);
-    localStorage.setItem(BUGREPORTS_KEY, JSON.stringify(next));
-  } catch {}
-}
-
-// Share sheet with the file attached where supported (most phones/tablets).
-// Otherwise download the file and copy a one-line summary.
-async function shareBugReport(report) {
-  const json = JSON.stringify(report, null, 2);
-  const fname = `ncblast-bug-${report.id}.json`;
-  const summary = `NC BLAST bug ${report.id}: ${report.description.slice(0, 140)}`;
-  try {
-    if (navigator.canShare && typeof File === "function") {
-      const file = new File([json], fname, { type: "application/json" });
-      if (navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: `NC BLAST bug ${report.id}`, text: summary });
-        return "shared";
-      }
-    }
-  } catch (e) {
-    if (e && e.name === "AbortError") return "cancelled";
-    // any other share failure: fall through to download
-  }
-  try {
-    const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fname;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-  } catch {}
-  try {
-    if (navigator.clipboard) await navigator.clipboard.writeText(summary);
-  } catch {}
-  return "downloaded";
-}
-
-const _bugFont = "'Outfit',sans-serif";
-const _bugQStyle = {
-  width: 34,
-  height: 34,
-  borderRadius: "50%",
-  border: "2px solid #fff",
-  background: "#2563EB",
-  color: "#fff",
-  fontSize: 18,
-  fontWeight: 900,
-  lineHeight: 1,
-  fontFamily: _bugFont,
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 0,
-  boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
-  flexShrink: 0
-};
-
-// The battle screen's header has Undo in the top-right corner, where the
-// floating button would sit. So on that screen the "?" lives inside the header
-// instead, and the floating one hides itself while this is mounted.
-function BugReportInlineButton() {
-  useEffect(() => {
-    document.body.classList.add("ncb-bug-inline");
-    return () => document.body.classList.remove("ncb-bug-inline");
-  }, []);
-  return /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: () => window.__ncbOpenBugReport && window.__ncbOpenBugReport(),
-    title: "Report a problem",
-    "aria-label": "Report a problem",
-    style: { ..._bugQStyle, width: 28, height: 28, fontSize: 15, border: "none", boxShadow: "none" }
-  }, "?");
-}
-
-function BugReporter() {
-  const [open, setOpen] = useState(false);
-  const [text, setText] = useState("");
-  const [report, setReport] = useState(null);
-  const [shareState, setShareState] = useState(null);
-  const [sending, setSending] = useState(false);
-
-  useEffect(() => {
-    window.__ncbOpenBugReport = () => setOpen(true);
-    return () => {
-      delete window.__ncbOpenBugReport;
-    };
-  }, []);
-
-  const close = () => {
-    setOpen(false);
-    setText("");
-    setReport(null);
-    setShareState(null);
-    setSending(false);
-  };
-
-  const submit = () => {
-    const r = buildBugReport(text.trim());
-    _bugRemember(r);
-    bugLog("report", "filed " + r.id);
-    setReport(r);
-  };
-
-  const send = async () => {
-    if (!report || sending) return;
-    setSending(true);
-    const s = await shareBugReport(report);
-    setShareState(s);
-    setSending(false);
-  };
-
-  const big = (bg, fg, enabled = true) => ({
-    width: "100%",
-    padding: "15px 0",
-    borderRadius: 12,
-    border: "none",
-    background: enabled ? bg : "#CBD5E1",
-    color: enabled ? fg : "#64748B",
-    fontSize: 16,
-    fontWeight: 900,
-    fontFamily: _bugFont,
-    cursor: enabled ? "pointer" : "not-allowed"
-  });
-
-  const quiet = {
-    width: "100%",
-    padding: "11px 0",
-    borderRadius: 10,
-    border: "1px solid #CBD5E1",
-    background: "transparent",
-    color: "#475569",
-    fontSize: 13,
-    fontWeight: 700,
-    fontFamily: _bugFont,
-    cursor: "pointer",
-    marginTop: 8
-  };
-
-  const fab = /*#__PURE__*/React.createElement("button", {
-    id: "ncb-bug-fab",
-    type: "button",
-    onClick: () => setOpen(true),
-    title: "Report a problem",
-    "aria-label": "Report a problem",
-    style: { ..._bugQStyle, position: "fixed", top: 12, right: 12, zIndex: 99990 }
-  }, "?");
-
-  if (!open) return fab;
-
-  const canSubmit = text.trim().length > 0;
-
-  const body = !report ? [
-    /*#__PURE__*/React.createElement("h2", { key: "h", style: { margin: "0 0 4px", fontSize: 20, fontWeight: 900, color: "#0F172A" } }, "Report a problem"),
-    /*#__PURE__*/React.createElement("p", { key: "p", style: { margin: "0 0 12px", fontSize: 13, color: "#475569", lineHeight: 1.5 } }, "Tell us what went wrong. Plain words are fine."),
-    /*#__PURE__*/React.createElement("textarea", {
-      key: "t",
-      autoFocus: true,
-      value: text,
-      onChange: e => setText(e.target.value),
-      rows: 5,
-      maxLength: 4000,
-      placeholder: "Example: I pressed Submit after the match and nothing happened.",
-      style: {
-        width: "100%",
-        boxSizing: "border-box",
-        padding: 12,
-        borderRadius: 12,
-        border: "2px solid #CBD5E1",
-        fontSize: 16, // 16px stops iOS from zooming in on focus
-        fontFamily: _bugFont,
-        resize: "vertical",
-        marginBottom: 12,
-        color: "#0F172A",
-        background: "#fff"
-      }
-    }),
-    /*#__PURE__*/React.createElement("button", { key: "s", type: "button", disabled: !canSubmit, onClick: submit, style: big("#2563EB", "#fff", canSubmit) }, "Submit"),
-    !canSubmit && /*#__PURE__*/React.createElement("p", { key: "hint", style: { margin: "6px 0 0", fontSize: 11, color: "#94A3B8", textAlign: "center" } }, "Type something first"),
-    /*#__PURE__*/React.createElement("button", { key: "c", type: "button", onClick: close, style: quiet }, "Cancel")
-  ] : [
-    /*#__PURE__*/React.createElement("p", { key: "ok", style: { margin: "0 0 6px", fontSize: 14, color: "#15803D", fontWeight: 800, textAlign: "center" } }, "✓ Got it. Your bug number is"),
-    /*#__PURE__*/React.createElement("div", { key: "id", style: { fontSize: 28, fontWeight: 900, letterSpacing: 1.5, color: "#0F172A", textAlign: "center", margin: "0 0 14px", userSelect: "all" } }, report.id),
-    /*#__PURE__*/React.createElement("p", { key: "how", style: { margin: "0 0 12px", fontSize: 13, color: "#475569", lineHeight: 1.5, textAlign: "center" } }, "Tap the button below and send it to the organizers. Nothing is sent until you do."),
-    /*#__PURE__*/React.createElement("button", { key: "send", type: "button", onClick: send, disabled: sending, style: big("#16A34A", "#fff", !sending) }, sending ? "Opening…" : "Send to organizers"),
-    shareState === "shared" && /*#__PURE__*/React.createElement("p", { key: "r1", style: { margin: "10px 0 0", fontSize: 13, color: "#15803D", fontWeight: 700, textAlign: "center" } }, "✓ Sent. You can close this now."),
-    shareState === "downloaded" && /*#__PURE__*/React.createElement("p", { key: "r2", style: { margin: "10px 0 0", fontSize: 13, color: "#B45309", fontWeight: 700, textAlign: "center", lineHeight: 1.5 } }, "Saved as a file on this device, and the bug number was copied. Send that file to the organizers."),
-    shareState === "cancelled" && /*#__PURE__*/React.createElement("p", { key: "r3", style: { margin: "10px 0 0", fontSize: 12, color: "#64748B", textAlign: "center" } }, "Not sent. Tap the green button to try again."),
-    /*#__PURE__*/React.createElement("button", { key: "d", type: "button", onClick: close, style: quiet }, "Done")
-  ];
-
-  return /*#__PURE__*/React.createElement(React.Fragment, null, fab, /*#__PURE__*/React.createElement("div", {
-    onClick: e => {
-      if (e.target === e.currentTarget && !report) close();
-    },
-    style: {
-      position: "fixed",
-      inset: 0,
-      zIndex: 99995,
-      background: "rgba(15,23,42,0.55)",
-      display: "flex",
-      alignItems: "flex-start",
-      justifyContent: "center",
-      padding: "60px 16px 24px",
-      overflowY: "auto",
-      boxSizing: "border-box",
-      fontFamily: _bugFont
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    role: "dialog",
-    "aria-label": "Report a problem",
-    style: {
-      width: "100%",
-      maxWidth: 420,
-      background: "#fff",
-      borderRadius: 18,
-      padding: 18,
-      boxSizing: "border-box",
-      boxShadow: "0 12px 40px rgba(0,0,0,0.3)"
-    }
-  }, body)));
-}
-
-// Separate React root, outside the main app. That keeps the "?" on screen on
-// every page, and working even if the main app crashes to its error screen.
-if (!window.__NCBLAST_OAUTH_CALLBACK__ && ff(1005)) {
-  try {
-    const st = document.createElement("style");
-    st.textContent = "body.ncb-bug-inline #ncb-bug-fab{display:none!important}";
-    document.head.appendChild(st);
-    const el = document.createElement("div");
-    el.id = "ncb-bug-root";
-    document.body.appendChild(el);
-    ReactDOM.createRoot(el).render(/*#__PURE__*/React.createElement(BugReporter, null));
-  } catch (e) {
-    console.warn("NC BLAST bug reporter failed to start", e);
-  }
-}
-
 if (!window.__NCBLAST_OAUTH_CALLBACK__) {
   ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(BeyJudgeApp, null));
 }
