@@ -354,6 +354,14 @@
   #p1-flash { background: rgba(59,130,246,0.22); }
   #p2-flash { background: rgba(249,115,22,0.22); }
 
+  /* FLAG 1007: the flash used to sit on top of the name, side and combo with
+     a see-through background, so both lots of text showed at once. While a
+     player's flash is up, fade that player's own content out so the flash has
+     the panel to itself. Only applies with body.ff-1007. --espiiii */
+  body.ff-1007 .player > :not(.player-flash) { transition: opacity 0.15s ease; }
+  body.ff-1007 .player.flashing > :not(.player-flash) { opacity: 0; }
+  body.ff-1007 .player-flash { padding: 0 16px; }
+
   .flash-type {
     font-family: 'Barlow Condensed', sans-serif;
     font-size: 32px;
@@ -509,10 +517,35 @@
   <div class="resize-handle" id="rh-bottom"></div>
 </div><!-- #widget -->
 
+<!-- Same flag defaults as the judge app. Loaded before the overlay script,
+     not deferred, because that script reads it straight away. --espiiii -->
+<script src="/flags.js"></script>
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────
 const WORKER = "https://challonge-proxy.danny61734.workers.dev";
 const params = new URLSearchParams(location.search);
+// Feature flags for the overlay. Defaults come from /flags.js. OBS has no
+// gear menu, so a browser source can override per URL: ?ff=1007 turns a flag
+// on, ?ff=-1007 forces it off, comma-separated for several. Anything missing
+// or malformed means off, i.e. the old behaviour. --espiiii
+const OVERLAY_FLAGS = (() => {
+  const on = new Set();
+  try {
+    (window.FEATURE_FLAGS || []).forEach(id => on.add(Number(id)));
+  } catch (e) {}
+  try {
+    (params.get("ff") || "").split(",").forEach(raw => {
+      const n = Number(raw.trim());
+      if (!raw.trim() || Number.isNaN(n)) return;
+      if (n < 0) on.delete(-n); else on.add(n);
+    });
+  } catch (e) {}
+  return on;
+})();
+function ff(id) {
+  return OVERLAY_FLAGS.has(id);
+}
+if (ff(1007)) document.body.classList.add("ff-1007");
 const SLOT = parseInt(params.get("slot") || "1");
 const EDIT_MODE = params.get("edit") === "1"; // ?edit=1 shows controls
 // ?fullscreen=1 — locks widget to full 1920px width at bottom of canvas;
@@ -805,6 +838,10 @@ function showFlash(type, scorerIdx, p1Name, p2Name, p1Color, p2Color) {
   // Clear both flashes first
   p1Flash.classList.remove("visible");
   p2Flash.classList.remove("visible");
+  // FLAG 1007: the "flashing" class hides that player's name/combo (CSS).
+  // Harmless when the flag is off - no CSS targets it. --espiiii
+  p1Flash.parentElement.classList.remove("flashing");
+  p2Flash.parentElement.classList.remove("flashing");
   clearTimeout(flashTimer);
 
   let flashIdx;   // which player block to light up
@@ -846,10 +883,13 @@ function showFlash(type, scorerIdx, p1Name, p2Name, p1Color, p2Color) {
   flashEl.querySelector(".flash-type").style.textShadow = `0 0 24px ${flashColor}`;
   flashEl.querySelector(".flash-winner").textContent = bottomLine;
   flashEl.classList.add("visible");
+  flashEl.parentElement.classList.add("flashing");
 
   flashTimer = setTimeout(() => {
     p1Flash.classList.remove("visible");
     p2Flash.classList.remove("visible");
+    p1Flash.parentElement.classList.remove("flashing");
+    p2Flash.parentElement.classList.remove("flashing");
   }, 2200);
 }
 

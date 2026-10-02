@@ -43,6 +43,9 @@ window.FEATURE_FLAGS = new Set([
   // 1006 - new, ships off. Overlay set dots. Turn on per-device on the
   // judging device, finish a 2-0 and a 2-1 match, check the stream shows
   // every set dot.
+  // 1007 - new, ships off. Overlay finish flash no longer overlaps the
+  // player's name/combo. OBS has no gear menu: add &ff=1007 to the browser
+  // source URL to try it on one source.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -76,5 +79,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Overlay set dots",
     desc: "Fixes the stream overlay missing the last set dot. The point that wins a set now sends the new set count to the overlay right away, so the match-winning dot appears. Also stops quick back-to-back updates from being dropped.",
     off: "Old behaviour: the overlay gets the set count from before the point. The final set dot never appears, and earlier dots show up late."
+  },
+  1007: {
+    name: "Overlay finish text cleanup",
+    desc: "On the stream overlay, the XTREME / OVER / BURST flash used to print on top of the scoring player's name and combo. Now that player's name and combo fade out while the flash shows, so the text is centred in their panel and readable. Overlay only - add &ff=1007 to the OBS source URL to try it.",
+    off: "Old behaviour: the flash text overlaps the player's name and combo."
   }
 };
