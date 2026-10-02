@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-09-29 | set1-pick-priority-tag: the player with pick priority in set 1 gets "~P~" appended to their name in the P1/P2 columns of the Sheets Battle + summary rows and the CSV backup (name-based, survives resume; no Apps Script change). Previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
+// NC BLAST app.js | last updated: 2026-10-01 | battle-banner-cog: top banner slimmed to Back / Undo / Swap / dark toggle plus one cog button; Redo, Fix, Log, Stream overlay, Handoff and Adjust layout moved into a cog settings menu; set-score pill moved from the banner into the middle of the score card above the B/X side display | previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
 const {
   useState,
   useEffect,
@@ -6014,10 +6014,6 @@ function MatchScreen({
   const [manualJudge, setManualJudge] = useState(_resume ? _resume.manualJudge : false);
   const [setScores, setSetScores] = useState(_resume ? _resume.setScores : []);
   const [sideAssign, setSideAssign] = useState(_resume ? _resume.sideAssign : null);
-  // Name of the player who had pick priority in SET 1 of this match. Stored by name (not
-  // P1/P2 position) so a side/position swap can't flip it. Sent to Sheets as a "~P~" tag
-  // on that player's name. null = unknown (e.g. match resumed from before this existed).
-  const [set1PriorityName, setSet1PriorityName] = useState(_resume ? _resume.set1PriorityName || null : null);
   const [sidePicker, setSidePicker] = useState(null);
   const [currentSides, setCurrentSides] = useState(_resume ? _resume.currentSides : {
     p1Side: "",
@@ -6097,12 +6093,12 @@ function MatchScreen({
       phase, p1, p2, d1, d2, r1, r2, used1, used2, pts, sets, curSet, shuf,
       manualJudge, setScores, sideAssign, currentSides, lerStrikes,
       challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId,
-      matchStartIdx, swapped, matchKey, set1PriorityName
+      matchStartIdx, swapped, matchKey
     });
   }, [phase, p1, p2, d1, d2, r1, r2, used1, used2, pts, sets, curSet, shuf,
       manualJudge, setScores, sideAssign, currentSides, lerStrikes,
       challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId,
-      matchStartIdx, swapped, matchKey, set1PriorityName]);
+      matchStartIdx, swapped, matchKey]);
   const [sideSwapConfirm, setSideSwapConfirm] = useState(false); // swap B/X sides modal
   const [swapStadium, setSwapStadium] = useState(true); // checkbox: swap B/X sides
   const [swapPosition, setSwapPosition] = useState(false); // checkbox: swap p1/p2 in app
@@ -6113,6 +6109,7 @@ function MatchScreen({
   const [judgeEditMode, setJudgeEditMode] = useState(false); // judge name editable on over screen
   const [layoutEditMode, setLayoutEditMode] = useState(false); // height adjustment mode
   const [overlayModal, setOverlayModal] = useState(false); // stream slot picker modal
+  const [settingsMenuOpen, setSettingsMenuOpen] = useState(false); // cog-wheel settings menu in the top banner (Redo/Fix/Log/Stream/Handoff/Adjust layout)
   const [pingModal, setPingModal] = useState(false); // Contact TO ping modal
   const [handoffModal, setHandoffModal] = useState(false); // Match handoff QR generator
   const [handoffToken, setHandoffToken] = useState(null); // 6-char token written to KV
@@ -6998,7 +6995,6 @@ function MatchScreen({
     setJudge("");
     setSetScores([]);
     setSideAssign(null);
-    setSet1PriorityName(null);
     setSidePicker(null);
     setCurrentSides({
       p1Side: "",
@@ -11332,7 +11328,6 @@ function MatchScreen({
       onClick: () => {
         const p1Side = sidePicker.priority === 0 ? side : side === "B" ? "X" : "B";
         const p2Side = sidePicker.priority === 0 ? side === "B" ? "X" : "B" : side;
-        if (curSet === 1) setSet1PriorityName(sidePicker.priority === 0 ? p1 : p2);
         setSideAssign({
           pickPriority: sidePicker.priority,
           p1Side,
@@ -12167,8 +12162,7 @@ function MatchScreen({
               shuffles: shuf,
               judge,
               challongeMatchId,
-              challongeSlug,
-              set1PriorityName
+              challongeSlug
             });
           } else {
             onDownloadCSV(currentMatch, {
@@ -12177,8 +12171,7 @@ function MatchScreen({
               sets,
               config,
               winner,
-              shuffles: shuf,
-              set1PriorityName
+              shuffles: shuf
             });
           }
           if (submitChallongeCheck && hasChallonge) {
@@ -12310,8 +12303,7 @@ function MatchScreen({
         sets,
         config,
         winner,
-        shuffles: shuf,
-        set1PriorityName
+        shuffles: shuf
       })
     }, IC.download, " Download CSV"), /*#__PURE__*/React.createElement("button", {
       style: {
@@ -12471,19 +12463,7 @@ function MatchScreen({
       color: config.tm ? "#E9D5FF" : undefined
     },
     onClick: goBack
-  }, IC.back), config.bo > 1 && /*#__PURE__*/React.createElement("span", {
-    style: {
-      ...S.pill,
-      flexShrink: 0,
-      margin: 0,
-      fontSize: bf(9),
-      ...(config.tm ? {
-        background: "rgba(255,255,255,0.18)",
-        color: "#E9D5FF",
-        border: "1px solid rgba(255,255,255,0.2)"
-      } : {})
-    }
-  }, dA.sets, "\u2013", dB.sets), /*#__PURE__*/React.createElement("div", {
+  }, IC.back), /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1,
       display: "flex",
@@ -12516,17 +12496,6 @@ function MatchScreen({
       marginTop: 1
     };
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
-      onClick: () => setHistoryOpen(true),
-      style: {
-        ...btnBase,
-        color: config.tm ? "#C4B5FD" : "var(--text-muted)"
-      }
-    }, IC.history, /*#__PURE__*/React.createElement("span", {
-      style: {
-        ...lbl,
-        color: config.tm ? "#C4B5FD" : "var(--text-muted)"
-      }
-    }, "Log")), /*#__PURE__*/React.createElement("button", {
       onClick: undo,
       disabled: !canUndo,
       style: {
@@ -12540,35 +12509,7 @@ function MatchScreen({
         ...lbl,
         color: canUndo ? config.tm ? "#C4B5FD" : "var(--text-muted)" : "var(--text-disabled)"
       }
-    }, "Undo")), /*#__PURE__*/React.createElement("button", {
-      onClick: redo,
-      disabled: !future.length,
-      style: {
-        ...btnBase,
-        color: future.length ? "#EA580C" : "var(--text-disabled)",
-        opacity: future.length ? 1 : 0.3,
-        cursor: future.length ? "pointer" : "default"
-      }
-    }, IC.redo, /*#__PURE__*/React.createElement("span", {
-      style: {
-        ...lbl,
-        color: future.length ? "#EA580C" : "var(--text-disabled)"
-      }
-    }, "Redo")), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setMisreportOpen(true),
-      disabled: !canUndo,
-      style: {
-        ...btnBase,
-        color: canUndo ? config.tm ? "#C4B5FD" : "var(--text-muted)" : "var(--text-disabled)",
-        opacity: canUndo ? 1 : 0.3,
-        cursor: canUndo ? "pointer" : "default"
-      }
-    }, IC.editLog, /*#__PURE__*/React.createElement("span", {
-      style: {
-        ...lbl,
-        color: canUndo ? config.tm ? "#C4B5FD" : "var(--text-muted)" : "var(--text-disabled)"
-      }
-    }, "Fix")), currentSides.p1Side && /*#__PURE__*/React.createElement("button", {
+    }, "Undo")), currentSides.p1Side && /*#__PURE__*/React.createElement("button", {
       type: "button",
       onClick: () => {
         setSwapped(s => !s);
@@ -12617,48 +12558,138 @@ function MatchScreen({
       lineHeight: 1,
       flexShrink: 0
     };
-    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    const canUndoMenu = hasCurrentBattles || log[log.length - 1]?.type === "LER-STRIKE";
+    const cogIcon = React.createElement("svg", {
+      width: "18",
+      height: "18",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: "2",
+      strokeLinecap: "round",
+      strokeLinejoin: "round"
+    }, React.createElement("circle", {
+      cx: 12,
+      cy: 12,
+      r: 3
+    }), React.createElement("path", {
+      d: "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+    }));
+    // One row in the settings menu. Closes the menu, then runs the same action the old banner button ran.
+    const menuRow = (key, icon, label, onPick, opts = {}) => React.createElement("button", {
+      key,
       type: "button",
-      onClick: () => setOverlayModal(true),
-      style: {
-        ...sq,
-        background: overlaySlot > 0 ? "#1D4ED8" : "none",
-        border: overlaySlot > 0 ? "none" : `1px solid ${config.tm ? "rgba(255,255,255,0.3)" : "var(--border2)"}`,
-        color: overlaySlot > 0 ? "#fff" : config.tm ? "#E9D5FF" : "var(--text-muted)",
-        fontSize: bf(overlaySlot > 0 ? 8 : 13),
-        fontWeight: 800,
-        fontFamily: "'Outfit',sans-serif"
-      },
-      title: "Stream overlay"
-    }, overlaySlot > 0 ? `📡${overlaySlot}` : "📡"), config.tm && challongeMatchId && /*#__PURE__*/React.createElement("button", {
-      type: "button",
+      disabled: !!opts.disabled,
       onClick: () => {
-        if (sharedJudges) {
-          setHandoffMethodPicker(true);
-        } else {
-          startHandoff();
-        }
+        setSettingsMenuOpen(false);
+        onPick();
       },
       style: {
-        ...sq,
-        background: "rgba(255,255,255,0.15)",
-        border: "1px solid rgba(255,255,255,0.3)",
-        color: "#E9D5FF"
-      },
-      title: "Hand off match to another judge"
-    }, "\uD83D\uDD00"), /*#__PURE__*/React.createElement("button", {
-      type: "button",
-      onClick: () => setLayoutEditMode(m => !m),
+        display: "flex",
+        alignItems: "center",
+        gap: bp(10),
+        width: "100%",
+        padding: `${bp(10)}px ${bp(10)}px`,
+        borderRadius: bp(7),
+        border: "none",
+        background: "none",
+        textAlign: "left",
+        fontFamily: "'Outfit',sans-serif",
+        fontSize: bf(13),
+        fontWeight: 700,
+        color: opts.color || "var(--text-primary)",
+        opacity: opts.disabled ? 0.35 : 1,
+        cursor: opts.disabled ? "default" : "pointer"
+      }
+    }, React.createElement("span", {
       style: {
-        ...sq,
-        background: layoutEditMode ? "#7C3AED" : "none",
-        border: layoutEditMode ? "none" : `1px solid ${config.tm ? "rgba(255,255,255,0.3)" : "var(--border2)"}`,
-        color: layoutEditMode ? "#fff" : config.tm ? "#E9D5FF" : "var(--text-muted)",
+        width: bp(22),
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        fontSize: bf(15),
+        lineHeight: 1
+      }
+    }, icon), React.createElement("span", {
+      style: {
+        flex: 1
+      }
+    }, label), opts.hint ? React.createElement("span", {
+      style: {
+        fontSize: bf(10),
+        fontWeight: 600,
+        color: "var(--text-muted)"
+      }
+    }, opts.hint) : null);
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      style: {
         position: "relative",
-        zIndex: 160
+        flexShrink: 0,
+        zIndex: 300
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => setSettingsMenuOpen(o => !o),
+      style: {
+        ...sq,
+        position: "relative",
+        background: layoutEditMode ? "#7C3AED" : settingsMenuOpen ? config.tm ? "rgba(255,255,255,0.2)" : "var(--surface2)" : "none",
+        border: layoutEditMode ? "none" : `1px solid ${config.tm ? "rgba(255,255,255,0.3)" : "var(--border2)"}`,
+        color: layoutEditMode ? "#fff" : config.tm ? "#E9D5FF" : "var(--text-muted)"
       },
-      title: layoutEditMode ? "Exit layout edit" : "Adjust layout heights"
-    }, "\u283F"), /*#__PURE__*/React.createElement("button", {
+      title: "Settings"
+    }, cogIcon, overlaySlot > 0 && /*#__PURE__*/React.createElement("span", {
+      style: {
+        position: "absolute",
+        top: 1,
+        right: 1,
+        width: bp(7),
+        height: bp(7),
+        borderRadius: "50%",
+        background: "#3B82F6",
+        border: "1px solid #fff",
+        pointerEvents: "none"
+      }
+    })), settingsMenuOpen && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      onClick: () => setSettingsMenuOpen(false),
+      style: {
+        position: "fixed",
+        inset: 0,
+        zIndex: 299,
+        background: "transparent"
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: "absolute",
+        top: "calc(100% + 8px)",
+        right: 0,
+        zIndex: 300,
+        minWidth: bp(200),
+        padding: bp(4),
+        display: "flex",
+        flexDirection: "column",
+        background: "var(--surface)",
+        border: "1px solid var(--border2)",
+        borderRadius: bp(10),
+        boxShadow: "0 6px 24px rgba(0,0,0,0.28)"
+      }
+    }, menuRow("redo", IC.redo, "Redo", redo, {
+      disabled: !future.length,
+      color: future.length ? "#EA580C" : "var(--text-disabled)"
+    }), menuRow("fix", IC.editLog, "Fix", () => setMisreportOpen(true), {
+      disabled: !canUndoMenu
+    }), menuRow("log", IC.history, "Log", () => setHistoryOpen(true)), menuRow("stream", "\uD83D\uDCE1", "Stream overlay", () => setOverlayModal(true), {
+      hint: overlaySlot > 0 ? `Slot ${overlaySlot}` : "Off"
+    }), config.tm && challongeMatchId && menuRow("handoff", "\uD83D\uDD00", "Hand off match", () => {
+      if (sharedJudges) {
+        setHandoffMethodPicker(true);
+      } else {
+        startHandoff();
+      }
+    }), menuRow("layout", "\u283F", layoutEditMode ? "Exit layout edit" : "Adjust layout", () => setLayoutEditMode(m => !m), {
+      color: layoutEditMode ? "#7C3AED" : undefined
+    })))), /*#__PURE__*/React.createElement("button", {
       onClick: toggleDark,
       style: {
         ...sq,
@@ -12720,7 +12751,17 @@ function MatchScreen({
       flexDirection: "column",
       alignItems: "center"
     }
-  }, (currentSides.p1Side || currentSides.p2Side) && /*#__PURE__*/React.createElement("span", {
+  }, config.bo > 1 && /*#__PURE__*/React.createElement("span", {
+    style: {
+      ...S.pill,
+      margin: 0,
+      marginBottom: bp(2),
+      padding: `${bp(1)}px ${bp(8)}px`,
+      fontSize: Math.max(8, Math.round(bf(10) * scoreFrac)),
+      lineHeight: 1.25,
+      whiteSpace: "nowrap"
+    }
+  }, dA.sets, "\u2013", dB.sets), (currentSides.p1Side || currentSides.p2Side) && /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: Math.round(bf(7) * scoreFrac),
       fontWeight: 700,
@@ -21615,17 +21656,11 @@ function BeyJudgeApp() {
   }, []);
   const SHEETS_URL = "https://script.google.com/macros/s/AKfycbzvb5LkqMDXaMVJNFNQSf7dsUJK_0vbTfQ4gRRISGsRWg4mINvawLROxn0SaPqJ5o9E/exec";
 
-  // Pick-priority marker. Appends "~P~" to the name of the player who had pick priority in
-  // set 1 of the match (meta.set1PriorityName). Used ONLY on the P1/P2 name columns of the
-  // Sheets rows and the CSV backup - winner/loser/scorer/judge-log columns stay clean.
-  // Unknown priority (null) = no tag, same as events from before tracking existed.
-  const tagP = (name, meta) => meta && meta.set1PriorityName && name === meta.set1PriorityName ? `${name}~P~` : name;
-
   // Download CSV to device — always available, never sends to sheets
   const handleDownloadCSV = (roundLog, meta) => {
     let csv = "Slot,Set,Shuffle,Judge,Tournament,Winner,WinnerCombo,FinishType,Points,Penalty,P1,P1Side,P1Score,P1Combo,P2,P2Side,P2Score,P2Combo,Timestamp\n";
     roundLog.forEach(r => {
-      csv += `${r.slot},${r.set},${r.shuffle},"${r.judge || ""}","${meta.config?.tournamentName || ""}","${r.scorer}","${r.winnerCombo}",${r.type},${r.points},${r.penalty ? 1 : 0},"${tagP(r.p1Name, meta)}",${r.p1Side || ""},"${r.p1Score}","${comboStr(r.p1Combo)}","${tagP(r.p2Name, meta)}",${r.p2Side || ""},"${r.p2Score}","${comboStr(r.p2Combo)}",${r.time}\n`;
+      csv += `${r.slot},${r.set},${r.shuffle},"${r.judge || ""}","${meta.config?.tournamentName || ""}","${r.scorer}","${r.winnerCombo}",${r.type},${r.points},${r.penalty ? 1 : 0},"${r.p1Name}",${r.p1Side || ""},"${r.p1Score}","${comboStr(r.p1Combo)}","${r.p2Name}",${r.p2Side || ""},"${r.p2Score}","${comboStr(r.p2Combo)}",${r.time}\n`;
     });
     const blob = new Blob([csv], {
       type: "text/csv"
@@ -21641,7 +21676,7 @@ function BeyJudgeApp() {
   // Send to Google Sheets only — no CSV download
   const handleSendSheets = async (roundLog, meta) => {
     // Sheet 1: existing summary rows
-    const rows = roundLog.map(r => [r.time, r.judge || "", meta.config?.tournamentName || "", `${r.p1Name} vs ${r.p2Name}`, tagP(r.p1Name, meta), r.p1Side || "", tagP(r.p2Name, meta), r.p2Side || "", r.set, r.shuffle, r.slot, r.scorer, r.winnerCombo, r.typeName, r.points, r.penalty ? 1 : 0, r.p1Score, r.p2Score, comboStr(r.p1Combo), comboStr(r.p2Combo)]);
+    const rows = roundLog.map(r => [r.time, r.judge || "", meta.config?.tournamentName || "", `${r.p1Name} vs ${r.p2Name}`, r.p1Name, r.p1Side || "", r.p2Name, r.p2Side || "", r.set, r.shuffle, r.slot, r.scorer, r.winnerCombo, r.typeName, r.points, r.penalty ? 1 : 0, r.p1Score, r.p2Score, comboStr(r.p1Combo), comboStr(r.p2Combo)]);
 
     // Sheet 2: one row per battle with specific battle-level detail
     const battleRows = roundLog.map(r => {
@@ -21669,7 +21704,7 @@ function BeyJudgeApp() {
       const loserSide = winnerIsP1 ? r.p2Side || "" : r.p1Side || "";
       const winnerCombo = r.winnerCombo;
       const loserCombo = winnerIsP1 ? comboStr(r.p2Combo) : comboStr(r.p1Combo);
-      return [dateTime, r.judge || "", tagP(r.p1Name, meta), r.p1Side || "", comboStr(r.p1Combo), tagP(r.p2Name, meta), r.p2Side || "", comboStr(r.p2Combo), winnerName, winnerCombo, winCondition, loserCombo, loserName];
+      return [dateTime, r.judge || "", r.p1Name, r.p1Side || "", comboStr(r.p1Combo), r.p2Name, r.p2Side || "", comboStr(r.p2Combo), winnerName, winnerCombo, winCondition, loserCombo, loserName];
     });
 
     // Sheet 3: one row per match for judge accountability
