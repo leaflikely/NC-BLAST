@@ -40,6 +40,9 @@ window.FEATURE_FLAGS = new Set([
   // per-device from the gear menu to test against a real WCB bracket first.
   // 1005 - new, ships off. "?" bug report button on every screen. Turn on
   // per-device from the gear menu, file a test report, check it shares.
+  // 1006 - new, ships off. Overlay set dots. Turn on per-device on the
+  // judging device, finish a 2-0 and a 2-1 match, check the stream shows
+  // every set dot.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -68,5 +71,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Report a problem button",
     desc: "Adds a ? button on every screen. Judges describe what went wrong, get a bug number, and can send a report with this device's recent errors and match state to the organizers. Nothing is sent unless they choose to.",
     off: "No ? button, and no error recording on this device."
+  },
+  1006: {
+    name: "Overlay set dots",
+    desc: "Fixes the stream overlay missing the last set dot. The point that wins a set now sends the new set count to the overlay right away, so the match-winning dot appears. Also stops quick back-to-back updates from being dropped.",
+    off: "Old behaviour: the overlay gets the set count from before the point. The final set dot never appears, and earlier dots show up late."
   }
 };
