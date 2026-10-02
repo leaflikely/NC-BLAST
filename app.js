@@ -6145,6 +6145,16 @@ function MatchScreen({
   const dragRef = useRef(null); // {section, startY, startH, startH2} — startH2 = neighbour below
   const rafRef = useRef(null); // requestAnimationFrame handle for drag throttling
   const pushOverlayDebounceRef = useRef(0); // timestamp of last pushOverlay call — throttles to 1/500ms
+  // FLAG 1006: a push that lands inside the 500ms window used to be dropped.
+  // Now the newest one is held and sent when the window opens. The timer calls
+  // the newest pushOverlay (via the ref) so it reads current state, not the
+  // state from the render that scheduled it. --espiiii
+  const pushOverlayTrailExtraRef = useRef(null);
+  const pushOverlayTrailTimerRef = useRef(null);
+  const pushOverlayLatestRef = useRef(null);
+  useEffect(() => () => {
+    if (pushOverlayTrailTimerRef.current) clearTimeout(pushOverlayTrailTimerRef.current);
+  }, []);
   const scoreBlockSectionRef = useRef(null); // for reliable height read on drag start
   const comboDisplaySectionRef = useRef(null);
   const comboPickerSectionRef = useRef(null);
@@ -6375,6 +6385,20 @@ function MatchScreen({
     setFuture([]);
     setPts(np);
     const setWon = config.pts > 0 && np[scoringPi] >= config.pts;
+    // FLAG 1006: the set count has to go out in the scoring push. pushOverlay fills
+    // sets/matchOver from state, which still holds the pre-point values here.
+    // When the point ends the match the over screen never pushes again, so
+    // without this the overlay keeps the old count and never shows the last
+    // set dot. --espiiii
+    const setsAfter = setWon ? (() => {
+      const n = [sets[0], sets[1]];
+      n[scoringPi] += 1;
+      return n;
+    })() : [sets[0], sets[1]];
+    const setsExtra = ff(1006) ? {
+      sets: setsAfter,
+      matchOver: setWon && setsAfter[scoringPi] >= need
+    } : {};
 
     // LER — 1-strike system: first LER adds a strike, second converts to a point
     // Combos do NOT advance on LER — push overlay now with unchanged r1/r2
@@ -6384,7 +6408,8 @@ function MatchScreen({
           type: fin.id,
           scorerIdx: scoringPi
         },
-        pts: np
+        pts: np,
+        ...setsExtra
       });
       if (setWon) {
         const ns = [sets[0], sets[1]];
@@ -6443,7 +6468,8 @@ function MatchScreen({
       },
       pts: np,
       p1ComboIdx: setWon ? null : (nxR1 !== undefined ? nxR1 : null),
-      p2ComboIdx: setWon ? null : (nxR2 !== undefined ? nxR2 : null)
+      p2ComboIdx: setWon ? null : (nxR2 !== undefined ? nxR2 : null),
+      ...setsExtra
     });
     if (setWon) {
       const ns = [sets[0], sets[1]];
@@ -6786,8 +6812,25 @@ function MatchScreen({
     // Throttle: never fire more than once per 500ms. Prevents runaway loops
     // if something triggers pushOverlay in a tight re-render cycle.
     const now = Date.now();
-    if (now - pushOverlayDebounceRef.current < 500) return;
+    const sinceLast = now - pushOverlayDebounceRef.current;
+    if (sinceLast < 500) {
+      // FLAG 1006 off: drop it, as before.
+      if (!ff(1006)) return;
+      // Keep only the newest held push; anything older is out of date.
+      pushOverlayTrailExtraRef.current = extraState;
+      if (!pushOverlayTrailTimerRef.current) {
+        pushOverlayTrailTimerRef.current = setTimeout(() => {
+          pushOverlayTrailTimerRef.current = null;
+          const held = pushOverlayTrailExtraRef.current;
+          pushOverlayTrailExtraRef.current = null;
+          if (held && pushOverlayLatestRef.current) pushOverlayLatestRef.current(held);
+        }, 500 - sinceLast + 20);
+      }
+      return;
+    }
     pushOverlayDebounceRef.current = now;
+    // A push is going out now, so anything held is superseded.
+    if (ff(1006)) pushOverlayTrailExtraRef.current = null;
     const activeComboOf = (deck, idx) => {
       const c = idx !== null ? deck[idx] : null;
       return c?.blade ? {
@@ -6875,6 +6918,7 @@ function MatchScreen({
       setOverlayStatus("error");
     });
   };
+  pushOverlayLatestRef.current = pushOverlay;
   const submitChallongeScore = async (matchId, p1Score, p2Score, winnerChallongeId) => {
     if (!challongeSlug || !matchId) return;
     setChallongeSubmitStatus("loading");
