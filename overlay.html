@@ -354,13 +354,21 @@
   #p1-flash { background: rgba(59,130,246,0.22); }
   #p2-flash { background: rgba(249,115,22,0.22); }
 
-  /* FLAG 1007: the flash used to sit on top of the name, side and combo with
-     a see-through background, so both lots of text showed at once. While a
-     player's flash is up, fade that player's own content out so the flash has
-     the panel to itself. Only applies with body.ff-1007. --espiiii */
+  /* FLAG 1007: the flash must not print on top of the player's name, side or
+     combo. It sits on the inner edge of the scorer's column, next to the score,
+     where the column is empty, and is only as wide as its text. If it still
+     covers something (long name, small layout), JS marks just that element
+     .under-flash and it fades. Only applies with body.ff-1007. --espiiii */
+  body.ff-1007 .player-flash {
+    inset: 0 auto;           /* full height, width from its text */
+    width: max-content;
+    max-width: 75%;
+    padding: 0 18px;
+  }
+  body.ff-1007 #p1-flash { left: auto; right: 0; }   /* p1: towards the score */
+  body.ff-1007 #p2-flash { left: 0; right: auto; }   /* p2: towards the score */
   body.ff-1007 .player > :not(.player-flash) { transition: opacity 0.15s ease; }
-  body.ff-1007 .player.flashing > :not(.player-flash) { opacity: 0; }
-  body.ff-1007 .player-flash { padding: 0 16px; }
+  body.ff-1007 .player > .under-flash { opacity: 0; }
 
   .flash-type {
     font-family: 'Barlow Condensed', sans-serif;
@@ -834,14 +842,54 @@ function popScore(elId, timerRef) {
 //                                     committer = 1 - scorerIdx
 //   LER-STRIKE (first LER, no point): scorerIdx = the committer themselves
 
+// FLAG 1007 helpers. Measure what the text actually covers, not the element's
+// box: name and combo boxes can span the whole column while the text is short.
+function _contentRect(node) {
+  // Union of the rects of every piece of visible text inside the node. A block
+  // child (e.g. the "COMBO" label row) spans the full column even when its text
+  // is short, so measuring boxes would report overlaps that aren't there.
+  let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+  try {
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (!n.textContent.trim()) continue;
+      range.selectNodeContents(n);
+      for (const q of range.getClientRects()) {
+        if (!q.width && !q.height) continue;
+        l = Math.min(l, q.left); t = Math.min(t, q.top);
+        r = Math.max(r, q.right); b = Math.max(b, q.bottom);
+      }
+    }
+  } catch (e) {}
+  if (l === Infinity) return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
+  return { left: l, top: t, right: r, bottom: b, width: r - l, height: b - t };
+}
+function _clearUnderFlash() {
+  document.querySelectorAll(".player > .under-flash").forEach(n => n.classList.remove("under-flash"));
+}
+// Fade only the parts of the scorer's column the flash really covers.
+function _markUnderFlash(flashEl) {
+  const f = flashEl.getBoundingClientRect();
+  Array.from(flashEl.parentElement.children).forEach(child => {
+    if (child === flashEl) return;
+    const b = _contentRect(child);
+    if (!b.width && !b.height) return;
+    const pad = 6; // px of breathing room around the flash
+    const overlaps = b.left < f.right + pad && b.right > f.left - pad && b.top < f.bottom && b.bottom > f.top;
+    child.classList.toggle("under-flash", overlaps);
+  });
+}
+
 function showFlash(type, scorerIdx, p1Name, p2Name, p1Color, p2Color) {
   // Clear both flashes first
   p1Flash.classList.remove("visible");
   p2Flash.classList.remove("visible");
-  // FLAG 1007: the "flashing" class hides that player's name/combo (CSS).
-  // Harmless when the flag is off - no CSS targets it. --espiiii
+  // "flashing" marks the scorer's column; with 1007 on, .under-flash fades only
+  // what the flash covers. No CSS targets either when 1007 is off. --espiiii
   p1Flash.parentElement.classList.remove("flashing");
   p2Flash.parentElement.classList.remove("flashing");
+  if (ff(1007)) _clearUnderFlash();
   clearTimeout(flashTimer);
 
   let flashIdx;   // which player block to light up
@@ -884,12 +932,14 @@ function showFlash(type, scorerIdx, p1Name, p2Name, p1Color, p2Color) {
   flashEl.querySelector(".flash-winner").textContent = bottomLine;
   flashEl.classList.add("visible");
   flashEl.parentElement.classList.add("flashing");
+  if (ff(1007)) _markUnderFlash(flashEl);
 
   flashTimer = setTimeout(() => {
     p1Flash.classList.remove("visible");
     p2Flash.classList.remove("visible");
     p1Flash.parentElement.classList.remove("flashing");
     p2Flash.parentElement.classList.remove("flashing");
+    if (ff(1007)) _clearUnderFlash();
   }, 2200);
 }
 
