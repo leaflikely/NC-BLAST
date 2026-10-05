@@ -82,7 +82,7 @@ window.FEATURE_FLAG_INFO = {
   },
   1007: {
     name: "Overlay finish text cleanup",
-    desc: "On the stream overlay, the XTREME / OVER / BURST flash used to print on top of the scoring player's name and combo. Now that player's name and combo fade out while the flash shows, so the text is centred in their panel and readable. Overlay only - add &ff=1007 to the OBS source URL to try it.",
+    desc: "On the stream overlay, the XTREME / OVER / BURST flash sits next to the score, in the empty space on the scoring player's side, instead of on top of their name and combo. The combo stays visible. If the flash would still cover something, only that piece fades while it shows. Overlay only - add &ff=1007 to the OBS source URL to try it.",
     off: "Old behaviour: the flash text overlaps the player's name and combo."
   }
 };
