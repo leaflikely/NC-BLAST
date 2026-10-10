@@ -6190,6 +6190,10 @@ function MatchScreen({
   // swapped: purely a display-order flip. When true, p2 is shown on the left (blue side) and p1 on right (red side).
   // sets[], pts[], setScores[] always use canonical index 0=p1 1=p2 regardless of swap.
   const [swapped, setSwapped] = useState(_resume ? _resume.swapped : false);
+  // FLAG 1008: left/right of the stream overlay only. Independent of the
+  // judge's own Swap, which flips the judge screen. Reset every match.
+  // --espiiii
+  const [overlaySwapped, setOverlaySwapped] = useState(_resume ? !!_resume.overlaySwapped : false);
 
   // Start a new match at the end of the log, pruning first if it has grown
   // past the cap. This is the only place the log is pruned. --espiiii
@@ -6231,12 +6235,12 @@ function MatchScreen({
       phase, p1, p2, d1, d2, r1, r2, used1, used2, pts, sets, curSet, shuf,
       manualJudge, setScores, sideAssign, currentSides, lerStrikes,
       challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId,
-      matchStartIdx, swapped, matchKey
+      matchStartIdx, swapped, matchKey, overlaySwapped
     });
   }, [phase, p1, p2, d1, d2, r1, r2, used1, used2, pts, sets, curSet, shuf,
       manualJudge, setScores, sideAssign, currentSides, lerStrikes,
       challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId,
-      matchStartIdx, swapped, matchKey]);
+      matchStartIdx, swapped, matchKey, overlaySwapped]);
   const [sideSwapConfirm, setSideSwapConfirm] = useState(false); // swap B/X sides modal
   const [swapStadium, setSwapStadium] = useState(true); // checkbox: swap B/X sides
   const [swapPosition, setSwapPosition] = useState(false); // checkbox: swap p1/p2 in app
@@ -7088,10 +7092,10 @@ function MatchScreen({
       comboHistory,
       p1ActiveCombo: activeComboOf(d1, r1eff),
       p2ActiveCombo: activeComboOf(d2, r2eff),
-      // FLAG 1008: tells the overlay to mirror left/right when the judge has
-      // swapped. Not sent at all with the flag off, so the overlay never flips.
-      // --espiiii
-      ...(ff(1008) ? { swapped: !!swapped } : {}),
+      // FLAG 1008: tells the overlay to mirror left/right. Driven by the
+      // Stream button only, never by the judge's own Swap. Not sent at all
+      // with the flag off, so the overlay never flips. --espiiii
+      ...(ff(1008) ? { swapped: !!overlaySwapped } : {}),
       ...rest
     };
 
@@ -7280,6 +7284,7 @@ function MatchScreen({
     // after every match, as before. --espiiii
     if (!ff(1011)) setOverlaySlot(0);
     setSwapped(false);
+    setOverlaySwapped(false);
     setShuffleTimer(null);
     setSharedJudgePicker(false);
     if (!ff(1011)) {
@@ -12757,6 +12762,15 @@ function MatchScreen({
       textTransform: "uppercase",
       marginTop: 1
     };
+    // FLAG 1008: overlay-only left/right swap. Shown only while this match is
+    // streaming to a slot - the overlay listens by slot, so without one the
+    // button would do nothing. --espiiii
+    const showStreamSwap = ff(1008) && overlaySlot > 0;
+    const toggleStreamSwap = () => {
+      const next = !overlaySwapped;
+      setOverlaySwapped(next);
+      pushOverlay({ swapped: next }); // the setter is async; send the new value
+    };
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
       onClick: undo,
       disabled: !canUndo,
@@ -12784,14 +12798,6 @@ function MatchScreen({
           p1Side: a.p2Side || "",
           p2Side: a.p1Side || ""
         } : a);
-        // FLAG 1008: Swap used to reach the overlay only on the next point.
-        // Push now with the post-swap values (the setters above are async).
-        // --espiiii
-        if (ff(1008)) pushOverlay({
-          swapped: !swapped,
-          p1Side: currentSides.p2Side || "",
-          p2Side: currentSides.p1Side || ""
-        });
       },
       style: {
         ...btnBase,
@@ -12807,7 +12813,27 @@ function MatchScreen({
         ...lbl,
         color: config.tm ? "#E9D5FF" : "var(--text-secondary)"
       }
-    }, "Swap")));
+    }, "Swap")), showStreamSwap && /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: toggleStreamSwap,
+      "aria-pressed": overlaySwapped,
+      title: "Swap left/right on the stream overlay only",
+      style: {
+        ...btnBase,
+        color: config.tm ? "#E9D5FF" : "var(--text-secondary)",
+        background: overlaySwapped ? (config.tm ? "rgba(255,255,255,0.18)" : "rgba(37,99,235,0.12)") : btnBase.background,
+        borderRadius: bp(6)
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: bf(12)
+      }
+    }, "\uD83D\uDCFA"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        ...lbl,
+        color: config.tm ? "#E9D5FF" : "var(--text-secondary)"
+      }
+    }, overlaySwapped ? "Stream \u21C4" : "Stream")));
   })()), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
