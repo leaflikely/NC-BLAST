@@ -6878,6 +6878,10 @@ function MatchScreen({
       comboHistory,
       p1ActiveCombo: activeComboOf(d1, r1eff),
       p2ActiveCombo: activeComboOf(d2, r2eff),
+      // FLAG 1008: tells the overlay to mirror left/right when the judge has
+      // swapped. Not sent at all with the flag off, so the overlay never flips.
+      // --espiiii
+      ...(ff(1008) ? { swapped: !!swapped } : {}),
       ...rest
     };
 
@@ -12566,6 +12570,14 @@ function MatchScreen({
           p1Side: a.p2Side || "",
           p2Side: a.p1Side || ""
         } : a);
+        // FLAG 1008: Swap used to reach the overlay only on the next point.
+        // Push now with the post-swap values (the setters above are async).
+        // --espiiii
+        if (ff(1008)) pushOverlay({
+          swapped: !swapped,
+          p1Side: currentSides.p2Side || "",
+          p2Side: currentSides.p1Side || ""
+        });
       },
       style: {
         ...btnBase,

@@ -46,6 +46,10 @@ window.FEATURE_FLAGS = new Set([
   // 1007 - new, ships off. Overlay finish flash no longer overlaps the
   // player's name/combo. OBS has no gear menu: add &ff=1007 to the browser
   // source URL to try it on one source.
+  // 1008 - new, ships off. Judge app sends Swap to the overlay. Turn on per
+  // device (gear menu) on the judging tablet.
+  // 1009 - new, ships off. Overlay mirrors when it receives a Swap. Turn on
+  // per OBS source with &ff=1009. Needs 1008 on the judging device to matter.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -84,5 +88,15 @@ window.FEATURE_FLAG_INFO = {
     name: "Overlay finish text cleanup",
     desc: "On the stream overlay, the XTREME / OVER / BURST flash sits next to the score, in the empty space on the scoring player's side, instead of on top of their name and combo. The combo stays visible. If the flash would still cover something, only that piece fades while it shows. Overlay only - add &ff=1007 to the OBS source URL to try it.",
     off: "Old behaviour: the flash text overlaps the player's name and combo."
+  },
+  1008: {
+    name: "Send Swap to the overlay (judge)",
+    desc: "When the judge taps Swap, the judge app tells the stream overlay right away instead of waiting for the next point. The overlay only mirrors if its own flag, 1009, is on.",
+    off: "Old behaviour: Swap isn't sent to the overlay; it only picks up new sides on the next point."
+  },
+  1009: {
+    name: "Overlay mirrors on Swap (overlay)",
+    desc: "Stream overlay only. When the judge swaps sides, player 1 moves to the right and player 2 to the left, each keeping their colour, so the stream matches where players are standing. Needs 1008 on the judging device. Add &ff=1009 to the OBS source URL to try it.",
+    off: "Old behaviour: the overlay always shows player 1 on the left."
   }
 };
