@@ -370,6 +370,25 @@
   body.ff-1007 .player > :not(.player-flash) { transition: opacity 0.15s ease; }
   body.ff-1007 .player > .under-flash { opacity: 0; }
 
+  /* FLAG 1009 (overlay): when the judge swaps sides (judge flag 1008) the
+     pushed state has swapped:true and, with 1009 on, the scoreboard gets
+     .swapped. Player 1's whole column -
+     name, side, combo, points, set dots, flash - moves right and player 2's
+     moves left. Each player keeps their colour, so nobody changes colour
+     mid-match. Nothing here applies unless .swapped is set. --espiiii */
+  .scoreboard.swapped #p1-block { order: 3; align-items: flex-end; text-align: right; }
+  .scoreboard.swapped .center-score { order: 2; }
+  .scoreboard.swapped #p2-block { order: 1; align-items: flex-start; text-align: left; }
+  .scoreboard.swapped #p1-block .combo-display { align-items: flex-end; }
+  .scoreboard.swapped #p1-block .combo-parts { justify-content: flex-end; }
+  .scoreboard.swapped #p2-block .combo-display { align-items: flex-start; }
+  .scoreboard.swapped #p2-block .combo-parts { justify-content: flex-start; }
+  .scoreboard.swapped .pts-row,
+  .scoreboard.swapped .sets-row { flex-direction: row-reverse; }
+  /* the 1007 flash stays on the side facing the score */
+  body.ff-1007 .scoreboard.swapped #p1-flash { right: auto; left: 0; }
+  body.ff-1007 .scoreboard.swapped #p2-flash { left: auto; right: 0; }
+
   .flash-type {
     font-family: 'Barlow Condensed', sans-serif;
     font-size: 32px;
@@ -953,6 +972,10 @@ function renderState(state, prevState) {
 
   offlineMsg.classList.remove("visible");
   scoreboard.style.display = "";
+  // FLAG 1009 (overlay): mirror left/right when the judge has swapped. The
+  // judge only sends swapped with its own flag (1008) on. Only an explicit
+  // true flips it, and with 1009 off the overlay never flips. --espiiii
+  scoreboard.classList.toggle("swapped", ff(1009) && state.swapped === true);
 
   // Names
   el("p1-name").textContent = state.p1 || "Player 1";
