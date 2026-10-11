@@ -6319,6 +6319,31 @@ function MatchScreen({
       delete window.__ncbLiveMatch;
     } catch {}
   }, []);
+  // FLAG 1011: show a new matchup on the overlay as soon as both players are
+  // picked, not on its first point. Sends once per pairing while on the pick
+  // screen, with a clean 0-0 / set 1 / no combos since nothing has been played
+  // yet. Leaving the pick screen clears the memory, so a rematch later still
+  // sends. --espiiii
+  const lastMatchupRef = useRef("");
+  useEffect(() => {
+    if (!ff(1011)) return;
+    if (phase !== "pick") {
+      lastMatchupRef.current = "";
+      return;
+    }
+    if (!p1 || !p2) return;
+    const pair = p1 + "\u0000" + p2;
+    if (pair === lastMatchupRef.current) return;
+    lastMatchupRef.current = pair;
+    pushOverlay({
+      pts: [0, 0],
+      sets: [0, 0],
+      curSet: 1,
+      matchOver: false,
+      p1ComboIdx: null,
+      p2ComboIdx: null
+    });
+  }, [p1, p2, phase]);
   // Section heights in px — null = auto/flex
   const [sectionH, setSectionH] = useState({
     score: null,
@@ -7250,14 +7275,18 @@ function MatchScreen({
     // beginMatchLog keeps that behaviour and prunes the log if it hit the cap.
     // --espiiii
     beginMatchLog(log);
-    setOverlaySlot(0);
+    // FLAG 1011: a streaming station stays streaming between matches; the
+    // judge turns the slot off in the cog menu. Off = the slot is cleared
+    // after every match, as before. --espiiii
+    if (!ff(1011)) setOverlaySlot(0);
     setSwapped(false);
     setShuffleTimer(null);
     setSharedJudgePicker(false);
-    try {
-      localStorage.setItem(KEYS.overlaySlot, "0");
-    } catch {}
-    ;
+    if (!ff(1011)) {
+      try {
+        localStorage.setItem(KEYS.overlaySlot, "0");
+      } catch {}
+    }
   };
   // After reset(), restore judge from session storage for solo mode.
   // Duo mode intentionally leaves judge blank — the per-match picker handles it.
