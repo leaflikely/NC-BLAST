@@ -370,6 +370,13 @@
   body.ff-1007 .player > :not(.player-flash) { transition: opacity 0.15s ease; }
   body.ff-1007 .player > .under-flash { opacity: 0; }
 
+  /* FLAG 1010: combo chips at 2x so they read from across the room. Wider
+     chips can reach the 1007 flash; the scorer's combo then fades for the
+     2.2s the flash shows (the .under-flash rule above). --espiiii */
+  body.ff-1010 .combo-part { font-size: 24px; padding: 6px 16px; border-radius: 5px; }
+  body.ff-1010 .combo-label { font-size: 14px; }
+  body.ff-1010 .combo-dot { font-size: 20px; }
+
   /* FLAG 1009 (overlay): when the judge swaps sides (judge flag 1008) the
      pushed state has swapped:true and, with 1009 on, the scoreboard gets
      .swapped. Player 1's whole column -
@@ -573,6 +580,7 @@ function ff(id) {
   return OVERLAY_FLAGS.has(id);
 }
 if (ff(1007)) document.body.classList.add("ff-1007");
+if (ff(1010)) document.body.classList.add("ff-1010");
 const SLOT = parseInt(params.get("slot") || "1");
 const EDIT_MODE = params.get("edit") === "1"; // ?edit=1 shows controls
 // ?fullscreen=1 — locks widget to full 1920px width at bottom of canvas;
