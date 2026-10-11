@@ -55,6 +55,10 @@ window.FEATURE_FLAGS = new Set([
   // 1011 - new, ships off. Overlay shows each new matchup as soon as it's
   // picked, and the stream slot stays on between matches. Turn on per device
   // (gear menu) on the streaming station's tablet.
+  // 1012 - new, ships off. Organizer view: type any number of stadiums
+  // (1-99) instead of only tapping 1-8. Turn on per device (gear menu) on the
+  // organizer's device, set e.g. 10 stadiums, check the queue/assign screens
+  // show A-J. Judge devices don't need the flag to see the extra stations.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -113,5 +117,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Overlay shows each new matchup (judge)",
     desc: "As soon as the judge picks the next two players, the stream overlay switches to them at 0-0 instead of waiting for the first point. The stream slot also stays on between matches, so a streaming station keeps streaming until the judge turns it off in the cog menu.",
     off: "Old behaviour: the stream slot turns off after every match, and a new matchup only reaches the overlay on its first point."
+  },
+  1012: {
+    name: "Any number of stadiums (Organizer)",
+    desc: "In Organizer view, the 'How many stadiums are you running?' step gets a number box (1-99) next to the 1-8 buttons. Stadium names continue past H as I, J ... Z, then AA, AB. Colours past H repeat the first eight. Judge devices show the extra stations automatically.",
+    off: "Old behaviour: only the buttons 1-8 (stadiums A-H)."
   }
 };
