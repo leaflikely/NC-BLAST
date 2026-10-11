@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-10-01 | battle-banner-cog: top banner slimmed to Back / Undo / Swap / dark toggle plus one cog button; Redo, Fix, Log, Stream overlay, Handoff and Adjust layout moved into a cog settings menu; set-score pill moved from the banner into the middle of the score card above the B/X side display | previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
+// NC BLAST app.js | last updated: 2026-10-11 | stadium-count-textbox (flag 1012, off by default): Organizer view's "How many stadiums are you running?" step gets a number box (1-99) beside the 1-8 buttons, so events can run any number of stadiums. Stadium names continue past H as I..Z, then AA, AB... (helpers stadiumLabel/stadiumLabelList near ff()); colours past H rotate through the 8 existing ones; the judge-side station picker lists as many stations as the org set. Names A-H and all behaviour for 8 or fewer stadiums are unchanged. EZQ tab still capped at A-H. | previous: battle-banner-cog: top banner slimmed to Back / Undo / Swap / dark toggle plus one cog button; Redo, Fix, Log, Stream overlay, Handoff and Adjust layout moved into a cog settings menu; set-score pill moved from the banner into the middle of the score card above the B/X side display | previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
 const {
   useState,
   useEffect,
@@ -60,6 +60,31 @@ function ff(id) {
     return FLAG_OVERRIDES[key];
   }
   return flagDefault(id);
+}
+
+// ── Stadium names beyond H ───────────────────────────────────────────
+// stadiumLabel(0) = "A" ... stadiumLabel(25) = "Z", stadiumLabel(26) = "AA",
+// stadiumLabel(27) = "AB" and so on (like spreadsheet columns). The first 8 are
+// exactly the old A-H, so nothing changes for events with 8 or fewer stadiums.
+const MAX_STADIUMS = 99;
+function stadiumLabel(i) {
+  let n = i, s = "";
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return s;
+}
+function stadiumLabelList(count) {
+  const c = Math.max(0, Math.min(MAX_STADIUMS, Math.floor(Number(count) || 0)));
+  return Array.from({ length: c }, (_, i) => stadiumLabel(i));
+}
+// Position of a name in the list (A = 0, Z = 25, AA = 26), or -1 if it isn't one.
+function stadiumLabelIndex(label) {
+  if (typeof label !== "string" || !/^[A-Z]+$/.test(label)) return -1;
+  let n = 0;
+  for (let i = 0; i < label.length; i++) n = n * 26 + (label.charCodeAt(i) - 64);
+  return n - 1;
 }
 
 // All known flag ids — defaults plus anything described in FLAG_INFO.
@@ -10964,7 +10989,7 @@ function MatchScreen({
       const isNoAssign = stationMatchesData?.noAssign === true;
       const hasData    = stationMatchesData && typeof stationMatchesData === "object" && !stationMatchesData.noAssign;
       // Station letters available for the manual picker
-      const SLETTERS = ["A","B","C","D","E","F","G","H"];
+      const SLETTERS = stadiumLabelList(MAX_STADIUMS);
       const pickerCount = stationMatchesData?.stationCount || 0;
 
       return /*#__PURE__*/React.createElement("div", null,
@@ -14836,7 +14861,8 @@ function OrgApp({
   const [jwInput, setJwInput] = useState(""); // textarea paste input
 
   // ── Stadium assignment state ──────────────────────────────────────────
-  const [stadiumCount, setStadiumCount] = useState(null); // null = not set yet, 1-8 once chosen
+  const [stadiumCount, setStadiumCount] = useState(null); // null = not set yet, a whole number once chosen (1-8 via buttons; any 1-99 with flag 1012)
+  const [stadiumCountText, setStadiumCountText] = useState(""); // what is typed in the flag-1012 number box
   const [stadiumAssign, setStadiumAssign] = useState({}); // { challongeUsername: "A"|"B"|... }
   const [stadiumDragOver, setStadiumDragOver] = useState(null);
   const [stadiumSaving, setStadiumSaving] = useState(false);
@@ -14877,8 +14903,8 @@ function OrgApp({
     if (!challongeUsername) return null;
     return judgeNameMap[challongeUsername.toLowerCase()] || null;
   };
-  const STADIUM_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H"];
-  const STADIUM_COLORS = {
+  const STADIUM_LABELS = stadiumLabelList(MAX_STADIUMS); // A..Z, AA.. (was A-H only)
+  const STADIUM_COLORS_BASE = {
     A: {
       bg: "#0D9488",
       border: "#14B8A6",
@@ -14928,6 +14954,16 @@ function OrgApp({
       faint: "#E9D5FF"
     }
   };
+  // Stadiums past H reuse the 8 colours in rotation (I = A's colour, J = B's, ...)
+  // so a bigger event never hits a missing colour.
+  const STADIUM_COLORS = new Proxy(STADIUM_COLORS_BASE, {
+    get: (t, k) => {
+      if (typeof k !== "string") return t[k];
+      if (t[k]) return t[k];
+      const idx = stadiumLabelIndex(k);
+      return idx >= 0 ? t[Object.keys(t)[idx % 8]] : undefined;
+    }
+  });
   const getStadiumLetter = displayName => {
     if (!displayName) return null;
     const key = Object.keys(stadiumAssign).find(k => k.toLowerCase() === displayName.toLowerCase());
@@ -17033,7 +17069,55 @@ function OrgApp({
         fontFamily: "'Outfit',sans-serif",
         cursor: "pointer"
       }
-    }, n)))), stadiumCount && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    }, n)), ff(1012) && /*#__PURE__*/React.createElement("div", {
+      style: { display: "flex", gap: 6, alignItems: "center", width: "100%", marginTop: 4 }
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      inputMode: "numeric",
+      min: 1,
+      max: MAX_STADIUMS,
+      placeholder: "Or type a number (1-" + MAX_STADIUMS + ")",
+      value: stadiumCountText,
+      onChange: e => setStadiumCountText(e.target.value),
+      onKeyDown: e => {
+        if (e.key === "Enter") {
+          const v = Math.floor(Number(stadiumCountText));
+          if (v >= 1 && v <= MAX_STADIUMS) setStadiumCount(v);
+        }
+      },
+      style: {
+        flex: 1,
+        minWidth: 0,
+        height: 38,
+        borderRadius: 10,
+        border: "2px solid var(--border2)",
+        background: "var(--input-bg)",
+        color: "var(--text-primary)",
+        fontSize: 14,
+        fontWeight: 700,
+        padding: "0 10px",
+        fontFamily: "'Outfit',sans-serif"
+      }
+    }), /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        const v = Math.floor(Number(stadiumCountText));
+        if (v >= 1 && v <= MAX_STADIUMS) setStadiumCount(v);
+      },
+      disabled: !(Math.floor(Number(stadiumCountText)) >= 1 && Math.floor(Number(stadiumCountText)) <= MAX_STADIUMS),
+      style: {
+        height: 38,
+        padding: "0 16px",
+        borderRadius: 10,
+        border: "none",
+        background: "var(--accent)",
+        color: "#fff",
+        fontSize: 14,
+        fontWeight: 800,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: "pointer",
+        opacity: Math.floor(Number(stadiumCountText)) >= 1 && Math.floor(Number(stadiumCountText)) <= MAX_STADIUMS ? 1 : 0.4
+      }
+    }, "Set")))), stadiumCount && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
       style: {
         fontSize: 10,
         fontWeight: 700,
