@@ -46,10 +46,16 @@ window.FEATURE_FLAGS = new Set([
   // 1007 - new, ships off. Overlay finish flash no longer overlaps the
   // player's name/combo. OBS has no gear menu: add &ff=1007 to the browser
   // source URL to try it on one source.
-  // 1008 - new, ships off. Judge app sends Swap to the overlay. Turn on per
-  // device (gear menu) on the judging tablet.
+  // 1008 - new, ships off. Adds a separate 'Stream' button to the battle
+  // header (only while streaming) that swaps the overlay's left/right. Turn on
+  // per device (gear menu) on the judging tablet.
   // 1009 - new, ships off. Overlay mirrors when it receives a Swap. Turn on
   // per OBS source with &ff=1009. Needs 1008 on the judging device to matter.
+  // 1010 - new, ships off. Overlay combo chips at 2x. Overlay only: add
+  // &ff=1010 to the OBS source URL.
+  // 1011 - new, ships off. Overlay shows each new matchup as soon as it's
+  // picked, and the stream slot stays on between matches. Turn on per device
+  // (gear menu) on the streaming station's tablet.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -90,13 +96,23 @@ window.FEATURE_FLAG_INFO = {
     off: "Old behaviour: the flash text overlaps the player's name and combo."
   },
   1008: {
-    name: "Send Swap to the overlay (judge)",
-    desc: "When the judge taps Swap, the judge app tells the stream overlay right away instead of waiting for the next point. The overlay only mirrors if its own flag, 1009, is on.",
-    off: "Old behaviour: Swap isn't sent to the overlay; it only picks up new sides on the next point."
+    name: "Stream swap button (judge)",
+    desc: "Adds a 'Stream' button next to Swap on the battle screen, shown only while the match is streaming to an overlay slot. It flips the stream overlay's left/right on its own - the judge's own Swap no longer moves the overlay. The overlay only mirrors if its flag, 1009, is on.",
+    off: "Old behaviour: no Stream button; the overlay always shows player 1 on the left."
   },
   1009: {
     name: "Overlay mirrors on Swap (overlay)",
-    desc: "Stream overlay only. When the judge swaps sides, player 1 moves to the right and player 2 to the left, each keeping their colour, so the stream matches where players are standing. Needs 1008 on the judging device. Add &ff=1009 to the OBS source URL to try it.",
+    desc: "Stream overlay only. When the judge taps Stream, player 1 moves to the right and player 2 to the left, each keeping their colour, so the stream matches where players are standing. Driven by the Stream button (1008 on the judging device). Add &ff=1009 to the OBS source URL to try it.",
     off: "Old behaviour: the overlay always shows player 1 on the left."
+  },
+  1010: {
+    name: "Bigger combos on the overlay (overlay)",
+    desc: "Stream overlay only. Combo chips (blade / ratchet / bit) are twice the size so viewers can read them. While a finish flash shows, the scorer's combo may fade for those 2 seconds if it would overlap. Add &ff=1010 to the OBS source URL.",
+    off: "Old behaviour: small combo text."
+  },
+  1011: {
+    name: "Overlay shows each new matchup (judge)",
+    desc: "As soon as the judge picks the next two players, the stream overlay switches to them at 0-0 instead of waiting for the first point. The stream slot also stays on between matches, so a streaming station keeps streaming until the judge turns it off in the cog menu.",
+    off: "Old behaviour: the stream slot turns off after every match, and a new matchup only reaches the overlay on its first point."
   }
 };
