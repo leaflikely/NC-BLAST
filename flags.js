@@ -18,11 +18,13 @@
  *   Hooks cannot be called conditionally - call the hook unconditionally and
  *   branch on the result. See the boundary-persistence effect in app.js.
  *
- * RELEASE POLICY - new flags ship OFF
- *   Merge with the id commented out. Then turn it on deliberately, on one
- *   device first (gear menu on the home page), and only add it to the set
- *   below once it has been seen working. A merge should never change
- *   behaviour on its own.
+ * RELEASE POLICY - new flags ship ON (changed 2026-10-11)
+ *   Flags 1001-1012 were all tested and are now on by default. From here on a
+ *   new flag is added to the set below already enabled, so everyone gets the
+ *   change. The flag still exists as the safety switch: if something goes
+ *   wrong, comment its id out below and push (off for everyone), or a judge can
+ *   uncheck it in the gear menu (off for that device only). Test a change
+ *   yourself before merging it, since it reaches every device straight away.
  *
  * CLEANUP
  *   Flags are temporary. Once a change has survived a few tournaments, delete
@@ -31,34 +33,18 @@
  * --espiiii
  */
 window.FEATURE_FLAGS = new Set([
-  1001,
-  1002,
-  // 1003 - off after it broke the Challonge submit button. The Sheets fix
-  // itself is fine; the button gating was the problem and is now removed.
-  // Turn on per-device from the gear menu to verify before enabling here.
-  // 1004 - new, ships off. WCB event creation in Organizer view. Turn on
-  // per-device from the gear menu to test against a real WCB bracket first.
-  // 1005 - new, ships off. "?" bug report button on every screen. Turn on
-  // per-device from the gear menu, file a test report, check it shares.
-  // 1006 - new, ships off. Overlay set dots. Turn on per-device on the
-  // judging device, finish a 2-0 and a 2-1 match, check the stream shows
-  // every set dot.
-  // 1007 - new, ships off. Overlay finish flash no longer overlaps the
-  // player's name/combo. OBS has no gear menu: add &ff=1007 to the browser
-  // source URL to try it on one source.
-  // 1008 - new, ships off. Judge app sends Swap to the overlay. Turn on per
-  // device (gear menu) on the judging tablet.
-  // 1009 - new, ships off. Overlay mirrors when it receives a Swap. Turn on
-  // per OBS source with &ff=1009. Needs 1008 on the judging device to matter.
-  // 1010 - new, ships off. Overlay combo chips at 2x. Overlay only: add
-  // &ff=1010 to the OBS source URL.
-  // 1011 - new, ships off. Overlay shows each new matchup as soon as it's
-  // picked, and the stream slot stays on between matches. Turn on per device
-  // (gear menu) on the streaming station's tablet.
-  // 1012 - new, ships off. Organizer view: type any number of stadiums
-  // (1-99) instead of only tapping 1-8. Turn on per device (gear menu) on the
-  // organizer's device, set e.g. 10 stadiums, check the queue/assign screens
-  // show A-J. Judge devices don't need the flag to see the extra stations.
+  1001, // match log scoping
+  1002, // tag battles by match
+  1003, // honest Sheets submit result (re-enabled 2026-10-11 after the button gating was removed and it was tested)
+  1004, // WCB event creation in Organizer view
+  1005, // "?" bug report button on every screen
+  1006, // overlay set dots
+  1007, // overlay finish flash no longer overlaps name/combo
+  1008, // judge app sends Swap to the overlay
+  1009, // overlay mirrors on Swap (needs 1008)
+  1010, // overlay combo chips at 2x
+  1011, // overlay shows each new matchup; stream slot stays on between matches
+  1012, // Organizer view: type any number of stadiums (1-99)
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
