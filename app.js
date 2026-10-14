@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-10-11b | set1-pick-priority-tag: the player with pick priority in set 1 gets "~P~" appended to their name in the P1/P2 columns of the Sheets Battle + summary rows and the CSV backup (name-based, survives resume; no Apps Script change) | previous: stadium-count-textbox (flag 1012, off by default): Organizer view's "How many stadiums are you running?" step gets a number box (1-99) beside the 1-8 buttons, so events can run any number of stadiums. Stadium names continue past H as I..Z, then AA, AB... (helpers stadiumLabel/stadiumLabelList near ff()); colours past H rotate through the 8 existing ones; the judge-side station picker lists as many stations as the org set. Names A-H and all behaviour for 8 or fewer stadiums are unchanged. EZQ tab still capped at A-H. | previous: battle-banner-cog: top banner slimmed to Back / Undo / Swap / dark toggle plus one cog button; Redo, Fix, Log, Stream overlay, Handoff and Adjust layout moved into a cog settings menu; set-score pill moved from the banner into the middle of the score card above the B/X side display | previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
+// NC BLAST app.js | last updated: 2026-10-13 | database-send (flag 1013, ON by default): when a judge submits to Sheets, the SAME rows are also sent to the NC BLAST database via the Worker's POST /db/ingest route, with its own separate "Database: sending / sent / failed" status line, tap-to-retry (resending is safe) and the CSV download as fallback on failure; a judge name is now required before a match can submit (blank = the Submit window asks for it); Glory Valkyrie and Hells Nether added to UXE_BLADES so they get no ratchet. Sheets payload, Challonge submit, scoring and the combo picker code are unchanged | previous: set1-pick-priority-tag: the player with pick priority in set 1 gets "~P~" appended to their name in the P1/P2 columns of the Sheets Battle + summary rows and the CSV backup (name-based, survives resume; no Apps Script change) | previous: stadium-count-textbox (flag 1012, off by default): Organizer view's "How many stadiums are you running?" step gets a number box (1-99) beside the 1-8 buttons, so events can run any number of stadiums. Stadium names continue past H as I..Z, then AA, AB... (helpers stadiumLabel/stadiumLabelList near ff()); colours past H rotate through the 8 existing ones; the judge-side station picker lists as many stations as the org set. Names A-H and all behaviour for 8 or fewer stadiums are unchanged. EZQ tab still capped at A-H. | previous: battle-banner-cog: top banner slimmed to Back / Undo / Swap / dark toggle plus one cog button; Redo, Fix, Log, Stream overlay, Handoff and Adjust layout moved into a cog settings menu; set-score pill moved from the banner into the middle of the score card above the B/X side display | previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
 const {
   useState,
   useEffect,
@@ -1289,7 +1289,7 @@ function computeMisreportLog(entries, config, need) {
 }
 
 // UXE Expanded line: blade + bit only, no ratchet slot.
-const UXE_BLADES = ["Bullet Griffon", "Cutter Shinobi", "Rampart Aegis", "Valor Bison"];
+const UXE_BLADES = ["Bullet Griffon", "Cutter Shinobi", "Rampart Aegis", "Valor Bison", "Glory Valkyrie", "Hells Nether"];
 const NO_RATCHET_BLADES = UXE_BLADES;
 // Combo ratchets that include a built-in bit — no separate bit needed.
 const NO_BIT_RATCHETS = ["Turbo", "Operate"];
@@ -6062,6 +6062,9 @@ function MatchScreen({
   sharedJudges,
   sheetsStatus,
   setSheetsStatus,
+  dbStatus,
+  setDbStatus,
+  onRetryDatabase,
   onBack,
   onMainMenu,
   onDownloadCSV,
@@ -7278,6 +7281,7 @@ function MatchScreen({
     setUsed2([]);
     setPhase("pick");
     setSheetsStatus(null);
+    if (setDbStatus) setDbStatus(null); // FLAG 1013: clear the Database status line for the next match
     setConfirmState(null);
     setJudge("");
     setSetScores([]);
@@ -12433,13 +12437,39 @@ function MatchScreen({
           textAlign: "center",
           marginBottom: 6
         }
-      }, "\u2715 Sheets failed \u2014 CSV downloaded"), /*#__PURE__*/React.createElement("button", {
+      }, "\u2715 Sheets failed \u2014 CSV downloaded"),
+      // FLAG 1013: a judge name is required before anything is submitted. If it is
+      // blank, ask for it here (same name box as the Judge field on this screen).
+      // Off = no prompt and no check, exactly as before. --espiiii
+      ff(1013) && !(judge || "").trim() && /*#__PURE__*/React.createElement("div", {
+        style: {
+          marginBottom: 10
+        }
+      }, /*#__PURE__*/React.createElement("p", {
+        style: {
+          fontSize: 11,
+          color: "#DC2626",
+          fontWeight: 600,
+          textAlign: "center",
+          marginBottom: 6
+        }
+      }, "Judge name needed to submit \u2014 type it, then press Enter or tap outside the box"), /*#__PURE__*/React.createElement(JudgeInput, {
+        style: {
+          ...S.inp,
+          width: "100%",
+          fontSize: 14
+        },
+        value: judge,
+        onCommit: v => setJudge(v),
+        onClear: () => {}
+      })), /*#__PURE__*/React.createElement("button", {
         // Do NOT gate this button on sheetsStatus. It submits to Challonge AND
         // Sheets in one click, so keying it off one service's state kills the
         // other — that broke Challonge submits. Duplicate protection lives
         // inside handleSendSheets instead. --espiiii
-        disabled: challongeSubmitStatus === "loading",
+        disabled: challongeSubmitStatus === "loading" || ff(1013) && !(judge || "").trim(),
         onClick: () => {
+          if (ff(1013) && !(judge || "").trim()) return; // FLAG 1013: blank judge name - do not submit
           setJudgeSubmitModal(false);
           setConfirmState({
             ...cs,
@@ -12649,7 +12679,35 @@ function MatchScreen({
         color: "#DC2626",
         textAlign: "center"
       }
-    }, "\u2715 Sheets submission failed \u2014 download CSV manually"));
+    }, "\u2715 Sheets submission failed \u2014 download CSV manually"),
+    // FLAG 1013: separate Database status line. Never changes the Sheets wording above.
+    config.tm && ff(1013) && dbStatus && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 10,
+        padding: "10px 14px",
+        borderRadius: 10,
+        background: dbStatus === "sent" ? "#15803D15" : dbStatus === "failed" ? "#DC262615" : dbStatus === "sending" ? "#B4530915" : "var(--surface2)",
+        border: "1px solid " + (dbStatus === "sent" ? "#15803D40" : dbStatus === "failed" ? "#DC262640" : dbStatus === "sending" ? "#B4530940" : "var(--border)"),
+        fontSize: 12,
+        fontWeight: 600,
+        color: dbStatus === "sent" ? "#15803D" : dbStatus === "failed" ? "#DC2626" : dbStatus === "sending" ? "#B45309" : "var(--text-muted)",
+        textAlign: "center"
+      }
+    }, dbStatus === "sending" ? "\u2026 Database: sending" : dbStatus === "sent" ? "\u2713 Database: sent" : dbStatus === "skipped" ? "Database: skipped (no tournament)" : /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => onRetryDatabase && onRetryDatabase(),
+      style: {
+        background: "none",
+        border: "none",
+        padding: 0,
+        color: "#DC2626",
+        fontSize: 12,
+        fontWeight: 700,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: "pointer",
+        textDecoration: "underline"
+      }
+    }, "\u2715 Database: failed \u2014 CSV downloaded \u2014 tap to retry")));
   }
 
   // Battle screen (merged: combo pick + scoring in one view)
@@ -21964,6 +22022,16 @@ function BeyJudgeApp() {
   // button also submits to Challonge, and gating it broke Challonge. A new match
   // produces a different payload, so it is never blocked. --espiiii
   const lastSheetsPayloadRef = useRef(null);
+  // FLAG 1013: "send to database" runs beside the Sheets submit. Its own status line,
+  // so Sheets wording/state is never touched. null | "sending" | "sent" | "failed" | "skipped".
+  // dbPendingRef keeps the last payload so a failed send can be retried with one tap
+  // (safe: the database ignores battles it already has). lastDbPayloadRef is the
+  // double-send guard (same idea as lastSheetsPayloadRef). dbCsvPayloadRef makes sure the
+  // CSV fallback downloads once per payload, not again on every retry. --espiiii
+  const [dbStatus, setDbStatus] = useState(null);
+  const lastDbPayloadRef = useRef(null);
+  const dbPendingRef = useRef(null);
+  const dbCsvPayloadRef = useRef(null);
   // FLAG 1005: top-level trail + live state (which area, Sheets result). The
   // flag is checked inside each hook so hook order never changes. --espiiii
   useEffect(() => {
@@ -22071,8 +22139,94 @@ function BeyJudgeApp() {
     URL.revokeObjectURL(url);
   };
 
+  // FLAG 1013: send one finished match to the NC BLAST database (through the BLAST
+  // Worker's /db/ingest door, which holds the database secret - never put it here).
+  // Runs BESIDE the Sheets submit and reuses the exact same rows array. Nothing in
+  // here touches the Sheets status or the Challonge submit: success or failure only
+  // changes the separate "Database:" status line. Resending is always safe because
+  // the database ignores any battle it already has. --espiiii
+  const postDatabasePayload = async (payload, roundLog, meta) => {
+    setDbStatus("sending");
+    try {
+      // Normal CORS fetch (NOT no-cors) so the reply can be read.
+      const resp = await fetch(`${OVERLAY_WORKER}/db/ingest`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: payload,
+        signal: AbortSignal.timeout(20000)
+      });
+      let reply = null;
+      try {
+        reply = await resp.json();
+      } catch (_) {}
+      if (!resp.ok || !reply || reply.ok !== true) {
+        const why = reply && reply.error ? reply.error : "HTTP " + resp.status;
+        throw new Error(String(why));
+      }
+      lastDbPayloadRef.current = payload;
+      dbPendingRef.current = null;
+      // skipped > 0 just means a repeat submit - fine. "notes" are small things the
+      // database tidied up: console only, never shown to the judge.
+      console.log("[database] inserted " + reply.inserted + ", skipped " + reply.skipped);
+      if (Array.isArray(reply.notes) ? reply.notes.length : reply.notes) console.log("[database] notes:", reply.notes);
+      setDbStatus("sent");
+      if (ff(1005)) bugLog("submit", "database: sent");
+    } catch (err) {
+      console.warn("[database] send failed:", err && err.message ? err.message : err);
+      setDbStatus("failed");
+      if (ff(1005)) bugLog("submit", "database: failed - " + (err && err.message ? err.message : "unknown"));
+      // Never lose the match: use the same CSV fallback as Sheets, once per payload
+      // (a retry that fails again does not download a second copy).
+      if (dbCsvPayloadRef.current !== payload) {
+        dbCsvPayloadRef.current = payload;
+        try {
+          handleDownloadCSV(roundLog, meta);
+        } catch (_) {}
+      }
+    }
+  };
+  const sendToDatabase = async (rows, flagged, roundLog, meta) => {
+    const slug = meta && meta.challongeSlug;
+    if (!slug) {
+      setDbStatus("skipped");
+      return;
+    }
+    const payload = JSON.stringify({
+      slug,
+      rows,
+      flagged: !!flagged
+    });
+    // Keep it so the judge can tap to retry if this send fails.
+    dbPendingRef.current = {
+      payload,
+      roundLog,
+      meta
+    };
+    // Same double-send idea as Sheets: an exact repeat of a send that already
+    // succeeded is skipped. A new match gives a different payload, so it is never blocked.
+    if (lastDbPayloadRef.current === payload) {
+      setDbStatus("sent");
+      return;
+    }
+    await postDatabasePayload(payload, roundLog, meta);
+  };
+  // "Tap to retry" on the Database status line.
+  const handleRetryDatabase = () => {
+    const pending = dbPendingRef.current;
+    if (!pending) return;
+    postDatabasePayload(pending.payload, pending.roundLog, pending.meta).catch(() => {});
+  };
+
   // Send to Google Sheets only — no CSV download
   const handleSendSheets = async (roundLog, meta) => {
+    // FLAG 1013: a judge name is required to submit, so a battle that was logged with a
+    // blank name takes the name entered at submit time. Off = rows built exactly as before.
+    if (ff(1013) && meta && meta.judge) roundLog = roundLog.map(r => r && !r.judge ? {
+      ...r,
+      judge: meta.judge
+    } : r);
     // Sheet 1: existing summary rows
     const rows = roundLog.map(r => [r.time, r.judge || "", meta.config?.tournamentName || "", `${r.p1Name} vs ${r.p2Name}`, tagP(r.p1Name, meta), r.p1Side || "", tagP(r.p2Name, meta), r.p2Side || "", r.set, r.shuffle, r.slot, r.scorer, r.winnerCombo, r.typeName, r.points, r.penalty ? 1 : 0, r.p1Score, r.p2Score, comboStr(r.p1Combo), comboStr(r.p2Combo)]);
 
@@ -22126,6 +22280,15 @@ function BeyJudgeApp() {
       battleRows,
       judgeLog
     });
+    // FLAG 1013: also send the SAME rows to the database. Not awaited and fully wrapped,
+    // so it can never delay, fail or change the Sheets / Challonge submit below.
+    // It runs even when the Sheets double-send guard below skips, so a database send
+    // that failed earlier gets another try (the database ignores repeats). --espiiii
+    if (ff(1013)) {
+      try {
+        sendToDatabase(rows, roundLog.some(r => r && Array.isArray(r.errors) && r.errors.length > 0), roundLog, meta).catch(() => {});
+      } catch (_) {}
+    }
     // FLAG 1003 off: original behaviour. Reports failure whenever the reply
     // can't be parsed, even though the rows were already written.
     if (!ff(1003)) {
@@ -22339,6 +22502,9 @@ function BeyJudgeApp() {
     sharedJudges: sharedJudges,
     sheetsStatus: sheetsStatus,
     setSheetsStatus: setSheetsStatus,
+    dbStatus: dbStatus,
+    setDbStatus: setDbStatus,
+    onRetryDatabase: handleRetryDatabase,
     onBack: () => setScreen("format"),
     onMainMenu: () => setScreen("format"),
     onDownloadCSV: handleDownloadCSV,
