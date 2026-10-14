@@ -45,6 +45,7 @@ window.FEATURE_FLAGS = new Set([
   1010, // overlay combo chips at 2x
   1011, // overlay shows each new matchup; stream slot stays on between matches
   1012, // Organizer view: type any number of stadiums (1-99)
+  1013, // Send to database beside the Sheets submit; judge name required to submit
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -108,5 +109,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Any number of stadiums (Organizer)",
     desc: "In Organizer view, the 'How many stadiums are you running?' step gets a number box (1-99) next to the 1-8 buttons. Stadium names continue past H as I, J ... Z, then AA, AB. Colours past H repeat the first eight. Judge devices show the extra stations automatically.",
     off: "Old behaviour: only the buttons 1-8 (stadiums A-H)."
+  },
+  1013: {
+    name: "Send to database (judge)",
+    desc: "When a judge submits a finished match to Sheets, the same battle rows are also sent to the NC BLAST database. A separate 'Database: sending / sent / failed' line appears under the Sheets one, and a failed send can be retried with one tap (sending twice is safe, the database ignores repeats). If a send fails, the match CSV is also downloaded so nothing is lost. Also requires a judge name before a match can be submitted: if it is blank, the Submit window asks for it. Sheets and the bracket submit are not changed.",
+    off: "Old behaviour: results go to Sheets and the bracket only. Nothing is sent to the database, and a blank judge name does not block the submit."
   }
 };
