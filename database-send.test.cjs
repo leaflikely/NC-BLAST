@@ -25,6 +25,7 @@ const dbBlock = slice(app, "  const postDatabasePayload = async", "\n  // Send t
 // Builds a fresh copy of the database code with a fake network + recording stubs.
 function makeDb(fetchImpl) {
   const statuses = [];
+  const errors = [];
   const csv = [];
   const fetches = [];
   const logs = [];
@@ -32,6 +33,7 @@ function makeDb(fetchImpl) {
     ff: () => true,
     OVERLAY_WORKER: "https://worker.test",
     setDbStatus: s => statuses.push(s),
+    setDbError: e => errors.push(e),
     lastDbPayloadRef: { current: null },
     dbPendingRef: { current: null },
     dbCsvPayloadRef: { current: null },
@@ -49,7 +51,7 @@ function makeDb(fetchImpl) {
     }
   });
   const fns = new Function("scope", "with (scope) {" + dbBlock + "\nreturn { sendToDatabase, handleRetryDatabase }; }")(scope);
-  return { ...fns, statuses, csv, fetches, logs, refs: known };
+  return { ...fns, statuses, errors, csv, fetches, logs, refs: known };
 }
 
 const okReply = (body, status = 200) => Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) });
@@ -174,6 +176,42 @@ const test = async (name, fn) => { await fn(); passed++; console.log("  ok  " + 
     const db = makeDb(() => okReply({ ok: true }));
     db.handleRetryDatabase();
     assert.strictEqual(db.fetches.length, 0);
+  });
+
+  await test("failure reason carries the HTTP code, the Worker message and what the database said", async () => {
+    const db = makeDb(() => okReply({ error: "Database answered with something unreadable.", raw: "error code: 1042" }, 502));
+    await db.sendToDatabase(ROWS, false, ROWS, META);
+    const reason = db.errors[db.errors.length - 1];
+    assert(reason.includes("HTTP 502"), reason);
+    assert(reason.includes("Database answered with something unreadable."), reason);
+    assert(reason.includes("error code: 1042"), reason);
+  });
+
+  await test("missing-secret reply shows its reason; a non-JSON reply says so; network and timeout are named", async () => {
+    let db = makeDb(() => okReply({ error: "Database ingest is not set up (no DB_INGEST_KEY secret)." }, 503));
+    await db.sendToDatabase(ROWS, false, ROWS, META);
+    assert(/HTTP 503.*DB_INGEST_KEY/.test(db.errors[db.errors.length - 1]));
+    db = makeDb(() => Promise.resolve({ ok: false, status: 502, json: () => Promise.reject(new Error("x")) }));
+    await db.sendToDatabase(ROWS, false, ROWS, META);
+    assert(/HTTP 502.*not JSON/.test(db.errors[db.errors.length - 1]));
+    db = makeDb(() => Promise.reject(new TypeError("Failed to fetch")));
+    await db.sendToDatabase(ROWS, false, ROWS, META);
+    assert(/network: Failed to fetch/.test(db.errors[db.errors.length - 1]));
+    const t = new Error("t"); t.name = "TimeoutError";
+    db = makeDb(() => Promise.reject(t));
+    await db.sendToDatabase(ROWS, false, ROWS, META);
+    assert(/timed out after 20 seconds/.test(db.errors[db.errors.length - 1]));
+  });
+
+  await test("the reason is cleared when a new send starts and shown on the failed line", async () => {
+    let n = 0;
+    const db = makeDb(() => (++n === 1 ? okReply({ error: "down" }, 503) : okReply({ ok: true, inserted: 1, skipped: 0 })));
+    await db.sendToDatabase(ROWS, false, ROWS, META);
+    assert.strictEqual(db.errors[0], "");
+    db.handleRetryDatabase();
+    await new Promise(r => setTimeout(r, 10));
+    assert.strictEqual(db.errors[db.errors.length - 1], "", "cleared at start of retry");
+    assert(/Reason: " \+ dbError/.test(app), "UI must render the reason");
   });
 
   await test("the database code never touches Sheets or Challonge state", () => {
