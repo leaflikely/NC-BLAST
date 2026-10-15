@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-10-15f | judge-first-confirm: final score screen now starts with one big Judge Confirm button, which opens a full-screen split (top half = Player 1, bottom half = Player 2) so each player taps a large target, then the Submit window opens; shuffle screen header leaves room so the ? bug-report button no longer covers the countdown | previous: 2026-10-15e | feature-requests: Swiss bye banner on Organizer screen; Launch Error confirmation window; Reset set (restart current set at 0-0, with confirmation) button next to Swap; popular parts searchable and keep popular colour in search results | previous: 2026-10-15d | Antler picture added to the CX Picture Guide | previous: 2026-10-15c | cx-tab-label + Picture Guide button (twice as tall, two lines) | previous: 2026-10-15b confusing-spots: (a) Own Over / Own Xtreme now ask "This action will award N points to [other player]. Continue?" before scoring; (b) CX is a full-width button above the part search bar; (c) Organizer Station Queues has a "Judges at own stadiums" toggle (off by default) that puts judge-vs-judge matches on a judge's home station and stops suggesting cross-station handoffs | previous: 2026-10-15 organizer-report-fixes: (1) ranked results screen now shows the Challonge send status with a Retry button, /submit waits 20s and retries once on a network failure; (2) combo saves check the reply, retry and double-check the Worker kept them, and a failed refresh no longer blanks a player's combos; (3) Undo button on the reshuffle / new-set deck-order screen and on the new-set side picker, and undo now closes those screens and restores the sides | previous: 2026-10-14 database-fail-reason (flag 1013): the "Database: failed" line now also shows the reason with its HTTP code (and what the database said) so a failed send can be diagnosed from the screen and the ? report | previous: 2026-10-13 database-send (flag 1013, ON by default): when a judge submits to Sheets, the SAME rows are also sent to the NC BLAST database via the Worker's POST /db/ingest route, with its own separate "Database: sending / sent / failed" status line, tap-to-retry (resending is safe) and the CSV download as fallback on failure; a judge name is now required before a match can submit (blank = the Submit window asks for it); Glory Valkyrie and Hells Nether added to UXE_BLADES so they get no ratchet. Sheets payload, Challonge submit, scoring and the combo picker code are unchanged | previous: set1-pick-priority-tag: the player with pick priority in set 1 gets "~P~" appended to their name in the P1/P2 columns of the Sheets Battle + summary rows and the CSV backup (name-based, survives resume; no Apps Script change) | previous: stadium-count-textbox (flag 1012, off by default): Organizer view's "How many stadiums are you running?" step gets a number box (1-99) beside the 1-8 buttons, so events can run any number of stadiums. Stadium names continue past H as I..Z, then AA, AB... (helpers stadiumLabel/stadiumLabelList near ff()); colours past H rotate through the 8 existing ones; the judge-side station picker lists as many stations as the org set. Names A-H and all behaviour for 8 or fewer stadiums are unchanged. EZQ tab still capped at A-H. | previous: battle-banner-cog: top banner slimmed to Back / Undo / Swap / dark toggle plus one cog button; Redo, Fix, Log, Stream overlay, Handoff and Adjust layout moved into a cog settings menu; set-score pill moved from the banner into the middle of the score card above the B/X side display | previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
+// NC BLAST app.js | last updated: 2026-10-15g | popular-update-and-ratchet-sort: new Top 15 blades (+Suppress Superion, Glory Valkyrie, Ring Aether; Tyranno Beat, Dran Buster, Knight Mail dropped) with colors, new Top 10 ratchets (+5-50) and bits (+Narrow) in popularity order, Popular / Numerical toggle on the judge's ratchet picker | previous: 2026-10-15f | judge-first-confirm: final score screen now starts with one big Judge Confirm button, which opens a full-screen split (top half = Player 1, bottom half = Player 2) so each player taps a large target, then the Submit window opens; shuffle screen header leaves room so the ? bug-report button no longer covers the countdown | previous: 2026-10-15e | feature-requests: Swiss bye banner on Organizer screen; Launch Error confirmation window; Reset set (restart current set at 0-0, with confirmation) button next to Swap; popular parts searchable and keep popular colour in search results | previous: 2026-10-15d | Antler picture added to the CX Picture Guide | previous: 2026-10-15c | cx-tab-label + Picture Guide button (twice as tall, two lines) | previous: 2026-10-15b confusing-spots: (a) Own Over / Own Xtreme now ask "This action will award N points to [other player]. Continue?" before scoring; (b) CX is a full-width button above the part search bar; (c) Organizer Station Queues has a "Judges at own stadiums" toggle (off by default) that puts judge-vs-judge matches on a judge's home station and stops suggesting cross-station handoffs | previous: 2026-10-15 organizer-report-fixes: (1) ranked results screen now shows the Challonge send status with a Retry button, /submit waits 20s and retries once on a network failure; (2) combo saves check the reply, retry and double-check the Worker kept them, and a failed refresh no longer blanks a player's combos; (3) Undo button on the reshuffle / new-set deck-order screen and on the new-set side picker, and undo now closes those screens and restores the sides | previous: 2026-10-14 database-fail-reason (flag 1013): the "Database: failed" line now also shows the reason with its HTTP code (and what the database said) so a failed send can be diagnosed from the screen and the ? report | previous: 2026-10-13 database-send (flag 1013, ON by default): when a judge submits to Sheets, the SAME rows are also sent to the NC BLAST database via the Worker's POST /db/ingest route, with its own separate "Database: sending / sent / failed" status line, tap-to-retry (resending is safe) and the CSV download as fallback on failure; a judge name is now required before a match can submit (blank = the Submit window asks for it); Glory Valkyrie and Hells Nether added to UXE_BLADES so they get no ratchet. Sheets payload, Challonge submit, scoring and the combo picker code are unchanged | previous: set1-pick-priority-tag: the player with pick priority in set 1 gets "~P~" appended to their name in the P1/P2 columns of the Sheets Battle + summary rows and the CSV backup (name-based, survives resume; no Apps Script change) | previous: stadium-count-textbox (flag 1012, off by default): Organizer view's "How many stadiums are you running?" step gets a number box (1-99) beside the 1-8 buttons, so events can run any number of stadiums. Stadium names continue past H as I..Z, then AA, AB... (helpers stadiumLabel/stadiumLabelList near ff()); colours past H rotate through the 8 existing ones; the judge-side station picker lists as many stations as the org set. Names A-H and all behaviour for 8 or fewer stadiums are unchanged. EZQ tab still capped at A-H. | previous: battle-banner-cog: top banner slimmed to Back / Undo / Swap / dark toggle plus one cog button; Redo, Fix, Log, Stream overlay, Handoff and Adjust layout moved into a cog settings menu; set-score pill moved from the banner into the middle of the score card above the B/X side display | previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
 const {
   useState,
   useEffect,
@@ -634,9 +634,9 @@ function ssClear(key) {
   } catch {}
 }
 const DEFAULT_PARTS = {
-  blades: ["Wizard Rod", "Shark Scale", "Cobalt Dragoon", "Aero Pegasus", "Hover Wyvern", "Golem Rock", "Meteor Dragoon", "Phoenix Wing", "Silver Wolf", "Clock Mirage", "Antler", "Arc", "Assault", "Bear Scratch", "Bite Croc", "Black Shell", "Blast", "Blitz", "Brave", "Break", "Brush", "Bullet Griffon", "Bumper", "Bumblebee", "Captain America", "Charge", "Chewbacca", "Cobalt Drake", "Crimson Garuda", "Cutter Shinobi", "Dark", "Darth Vader", "Draciel Shield", "Dragoon Storm", "Dran Buster", "Dran Dagger", "Dran Strike", "Dran Sword", "Dranzer Spiral", "Driger S", "Dual", "Eclipse", "Emperor", "Erase", "Fang", "Flame", "Flare", "Flow", "Fort", "Fortress", "Free", "General Grievous", "Ghost Circle", "Gill Shark", "Goat Tackle", "Green Goblin", "Guard", "Hack Viking", "Heavy", "Hells Chain", "Hells Hammer", "Hells Scythe", "Hunt", "Impact Drake", "Iron Man", "Jaggy", "Knight Lance", "Knight Mail", "Knight Shield", "Knuckle", "Leon Claw", "Leon Crest", "Lightning L-Drago", "Luke Skywalker", "Massive", "Megatron", "Might", "Miles Morales", "Moff Gideon", "Mosasaurus", "Mummy Curse", "Obi-Wan Kenobi", "Optimus Primal", "Optimus Prime", "Orochi Cluster", "Phoenix Feather", "Phoenix Rudder", "Ptera Wing", "Quetzalcoatlus", "Rage", "Rampart Aegis", "Reaper", "Red Hulk", "Rhino Horn", "Ridge Triceratops", "Ring Aether", "Rock Leone", "Round", "Samurai Calibur", "Samurai Saber", "Samurai Steel", "Scorpio Spear", "Shadow Shinobi", "Shark Edge", "Shelter Drake", "Shinobi Knife", "Slash", "Soundwave", "Sphinx Cowl", "Spider-Man", "Spinosaurus", "Standard", "Starscream", "Storm Pegasus", "Storm Spriggan", "Storm Trooper", "Stun Medusa", "T.Rex", "Thanos", "The Mandalorian", "Tricera Press", "Turn", "Tusk Mammoth", "Tyranno Beat", "Tyranno Roar", "Unicorn Sting", "Valor Bison", "Valkyrie", "Venom", "Vertical", "Victory Valkyrie", "Viper Tail", "Volt", "Weiss Tiger", "Whale Wave", "Wheel", "Wizard Arrow", "Wriggle", "Wyvern Gale", "Xeno Xcalibur", "Yell Kong", "Zillion"],
-  ratchets: ["1-60", "3-60", "9-60", "7-60", "5-60", "1-70", "1-50", "7-70", "7-55", "8-70", "0-60", "0-70", "0-80", "1-80", "2-60", "2-70", "2-80", "3-70", "3-80", "3-85", "4-50", "4-55", "4-60", "4-70", "4-80", "5-70", "5-80", "6-60", "6-70", "6-80", "7-80", "9-65", "9-70", "9-80", "M-85", "Operate", "Turbo"],
-  bits: ["Elevate", "Rush", "Low Rush", "Free Ball", "Hexa", "Low Orb", "Kick", "Level", "Ball", "Jolt", "Accel", "Bound Spike", "Cyclone", "Disk Ball", "Disk Spike", "Dot", "Flat", "Free Flat", "Gear Ball", "Gear Flat", "Gear Needle", "Gear Point", "Gear Rush", "Glide", "High Needle", "High Taper", "Ignition", "Low Flat", "Merge", "Needle", "Orb", "Point", "Quake", "Rubber Accel", "Spike", "Taper", "Trans Kick", "Trans Point", "Under Flat", "Under Needle", "Unite", "Vortex", "Wall Ball", "Wall Wedge", "Wedge", "Yielding", "Zap"]
+  blades: ["Wizard Rod", "Shark Scale", "Cobalt Dragoon", "Aero Pegasus", "Hover Wyvern", "Golem Rock", "Meteor Dragoon", "Phoenix Wing", "Silver Wolf", "Clock Mirage", "Antler", "Arc", "Assault", "Bear Scratch", "Bite Croc", "Black Shell", "Blast", "Blitz", "Brave", "Break", "Brush", "Bullet Griffon", "Bumper", "Bumblebee", "Captain America", "Charge", "Chewbacca", "Cobalt Drake", "Crimson Garuda", "Cutter Shinobi", "Dark", "Darth Vader", "Draciel Shield", "Dragoon Storm", "Dran Buster", "Dran Dagger", "Dran Strike", "Dran Sword", "Dranzer Spiral", "Driger S", "Dual", "Eclipse", "Emperor", "Erase", "Fang", "Flame", "Flare", "Flow", "Fort", "Fortress", "Free", "General Grievous", "Ghost Circle", "Gill Shark", "Goat Tackle", "Green Goblin", "Guard", "Hack Viking", "Heavy", "Hells Chain", "Hells Hammer", "Hells Scythe", "Hunt", "Impact Drake", "Iron Man", "Jaggy", "Knight Lance", "Knight Mail", "Knight Shield", "Knuckle", "Leon Claw", "Leon Crest", "Lightning L-Drago", "Luke Skywalker", "Massive", "Megatron", "Might", "Miles Morales", "Moff Gideon", "Mosasaurus", "Mummy Curse", "Obi-Wan Kenobi", "Optimus Primal", "Optimus Prime", "Orochi Cluster", "Phoenix Feather", "Phoenix Rudder", "Ptera Wing", "Quetzalcoatlus", "Rage", "Rampart Aegis", "Reaper", "Red Hulk", "Rhino Horn", "Ridge Triceratops", "Ring Aether", "Rock Leone", "Round", "Samurai Calibur", "Samurai Saber", "Samurai Steel", "Scorpio Spear", "Shadow Shinobi", "Shark Edge", "Shelter Drake", "Shinobi Knife", "Slash", "Soundwave", "Sphinx Cowl", "Spider-Man", "Spinosaurus", "Standard", "Starscream", "Storm Pegasus", "Storm Spriggan", "Storm Trooper", "Stun Medusa", "Suppress Superion", "T.Rex", "Thanos", "The Mandalorian", "Tricera Press", "Turn", "Tusk Mammoth", "Tyranno Beat", "Tyranno Roar", "Unicorn Sting", "Valor Bison", "Valkyrie", "Venom", "Vertical", "Victory Valkyrie", "Viper Tail", "Volt", "Weiss Tiger", "Whale Wave", "Wheel", "Wizard Arrow", "Wriggle", "Wyvern Gale", "Xeno Xcalibur", "Yell Kong", "Zillion"],
+  ratchets: ["1-60", "3-60", "9-60", "7-60", "5-60", "1-70", "1-50", "7-70", "7-55", "8-70", "0-60", "0-70", "0-80", "1-80", "2-60", "2-70", "2-80", "3-70", "3-80", "3-85", "4-50", "4-55", "4-60", "4-70", "4-80", "5-50", "5-70", "5-80", "6-60", "6-70", "6-80", "7-80", "9-65", "9-70", "9-80", "M-85", "Operate", "Turbo"],
+  bits: ["Elevate", "Rush", "Low Rush", "Free Ball", "Hexa", "Low Orb", "Kick", "Level", "Ball", "Jolt", "Accel", "Bound Spike", "Cyclone", "Disk Ball", "Disk Spike", "Dot", "Flat", "Free Flat", "Gear Ball", "Gear Flat", "Gear Needle", "Gear Point", "Gear Rush", "Glide", "High Needle", "High Taper", "Ignition", "Low Flat", "Merge", "Narrow", "Needle", "Orb", "Point", "Quake", "Rubber Accel", "Spike", "Taper", "Trans Kick", "Trans Point", "Under Flat", "Under Needle", "Unite", "Vortex", "Wall Ball", "Wall Wedge", "Wedge", "Yielding", "Zap"]
 };
 
 // Crossover blades (collapsible section at bottom of blade picker)
@@ -787,43 +787,62 @@ const QUICK_COMBOS = [{
 
 // Top 10 priority items per category (displayed first as a group)
 const TOP10 = {
-  blades: ["Shark Scale", "Wizard Rod", "Aero Pegasus", "Cobalt Dragoon", "Hover Wyvern", "Meteor Dragoon", "Phoenix Wing", "Dran Strike", "Golem Rock", "Silver Wolf", "Clock Mirage", "Tyranno Beat", "Dran Buster", "Knight Mail", "Bullet Griffon"],
-  ratchets: ["1-50", "1-60", "1-70", "3-60", "5-60", "7-55", "7-60", "7-70", "8-70", "9-60"],
-  bits: ["Ball", "Elevate", "Free Ball", "Hexa", "Jolt", "Kick", "Level", "Low Orb", "Low Rush", "Rush"]
+  // All three lists are in popularity order (most used first).
+  blades: ["Wizard Rod", "Shark Scale", "Cobalt Dragoon", "Aero Pegasus", "Meteor Dragoon", "Suppress Superion", "Dran Strike", "Hover Wyvern", "Glory Valkyrie", "Bullet Griffon", "Golem Rock", "Ring Aether", "Silver Wolf", "Phoenix Wing", "Clock Mirage"],
+  ratchets: ["1-60", "9-60", "3-60", "1-50", "7-60", "5-60", "1-70", "5-50", "0-60", "7-70"],
+  bits: ["Hexa", "Rush", "Elevate", "Low Rush", "Free Ball", "Narrow", "Kick", "Level", "Low Orb", "Orb"]
 };
 
 // Individual colors for top 15 blades
+// Blades not listed here fall back to grey wherever combos are shown.
 const BLADE_COLORS = {
-  "Shark Scale": "#7C3AED",
-  // purple
   "Wizard Rod": "#EAB308",
   // yellow
-  "Aero Pegasus": "#0D9488",
-  // teal
+  "Shark Scale": "#7C3AED",
+  // purple
   "Cobalt Dragoon": "#1E40AF",
   // dark blue
-  "Hover Wyvern": "#16A34A",
-  // bright green
+  "Aero Pegasus": "#0D9488",
+  // teal
   "Meteor Dragoon": "#A855F7",
   // bright purple
-  "Phoenix Wing": "#DC2626",
-  // pure red
+  "Suppress Superion": "#A16207",
+  // darker gold
   "Dran Strike": "#2563EB",
   // bright blue (brighter than Cobalt Dragoon)
+  "Hover Wyvern": "#16A34A",
+  // bright green
+  "Glory Valkyrie": "#1E3A8A",
+  // darker blue (darker than Cobalt Dragoon)
+  "Bullet Griffon": "#991B1B",
+  // dark red (darker than Phoenix Wing)
   "Golem Rock": "#EA580C",
   // orange
+  "Ring Aether": "#FDE047",
+  // pale yellow (lighter than Wizard Rod)
   "Silver Wolf": "#64748B",
   // grey
-  "Clock Mirage": "#EC4899",
-  // pink
-  "Tyranno Beat": "#166534",
-  // dark green
-  "Dran Buster": "#1E3A8A",
-  // darker blue (darker than Cobalt Dragoon)
-  "Knight Mail": "#4ADE80",
-  // mid green (between Hover and Tyranno)
-  "Bullet Griffon": "#991B1B" // dark red (darker than Phoenix Wing)
+  "Phoenix Wing": "#DC2626",
+  // pure red
+  "Clock Mirage": "#EC4899" // pink
 };
+
+// Numerical order for ratchets: by first number, then second ("0-60", "0-70", "1-50" ...).
+// Anything that is not a plain number-number name (M-85, Operate, Turbo) goes at the end, A to Z.
+function sortRatchetsNumeric(names) {
+  const key = n => {
+    const m = /^(\d+)-(\d+)$/.exec(n);
+    return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : null;
+  };
+  return [...names].sort((a, b) => {
+    const ka = key(a),
+      kb = key(b);
+    if (ka && kb) return ka[0] - kb[0] || ka[1] - kb[1];
+    if (ka) return -1;
+    if (kb) return 1;
+    return a.localeCompare(b);
+  });
+}
 function mergeWithDefaults(saved) {
   // Merge: defaults keep their order (pinned first), user extras appended alphabetically.
   // new Set deduplicates in case the stored data has duplicate entries.
@@ -6216,6 +6235,7 @@ function MatchScreen({
     p2Side: ""
   });
   const [pickerSearch, setPickerSearch] = useState("");
+  const [ratchetSort, setRatchetSort] = useState("popular"); // ratchet picker: "popular" (Top box first) or "numeric" (one list, lowest number first)
   const [crossoverOpen, setCrossoverOpen] = useState(false);
   const [cxPicker, setCxPicker] = useState(null); // null | {step,who,slot,chip?,blade?,returnToReview?}
   const [cxGuide, setCxGuide] = useState(null); // null | "blade" | "over_blade" | "assist" — reference image overlay
@@ -8740,9 +8760,13 @@ function MatchScreen({
     // Ratchet and bit pickers use a viewport-filling fixed layout
     if (cat === "ratchet" || cat === "bit") {
       const COLS = 5;
-      const restItems = list.filter(n => !top10.includes(n));
+      // Ratchet picker only: "numeric" mode hides the Top box and shows every ratchet in one
+      // list, lowest number first. "popular" (the default) is the original Top box + the rest.
+      const numericMode = cat === "ratchet" && ratchetSort === "numeric";
+      const baseList = numericMode ? sortRatchetsNumeric(list) : list;
+      const restItems = numericMode ? baseList : list.filter(n => !top10.includes(n));
       // When searching, show all matching items in one flat grid
-      const searchItems = pickerSearch ? list.filter(n => n.toLowerCase().includes(pickerSearch.toLowerCase())) : null;
+      const searchItems = pickerSearch ? baseList.filter(n => n.toLowerCase().includes(pickerSearch.toLowerCase())) : null;
       // Rows helper
       const toRows = items => {
         const r = [];
@@ -8836,7 +8860,33 @@ function MatchScreen({
           borderRadius: 2,
           transition: "width 0.2s"
         }
-      }))), !pickerSearch && /*#__PURE__*/React.createElement("div", {
+      }))), cat === "ratchet" && /*#__PURE__*/React.createElement("div", {
+        style: {
+          flexShrink: 0,
+          display: "flex",
+          gap: 6,
+          padding: "4px 10px 0"
+        }
+      }, [["popular", "★ Popular"], ["numeric", "# Numerical"]].map(([mode, label]) => {
+        const on = ratchetSort === mode;
+        return /*#__PURE__*/React.createElement("button", {
+          key: mode,
+          type: "button",
+          onClick: () => setRatchetSort(mode),
+          style: {
+            flex: 1,
+            padding: "7px 0",
+            borderRadius: 9,
+            border: `2px solid ${on ? cc : cc + "50"}`,
+            background: on ? cc : "transparent",
+            color: on ? "#fff" : cc,
+            fontSize: 12,
+            fontWeight: 800,
+            fontFamily: "'Outfit',sans-serif",
+            cursor: "pointer"
+          }
+        }, label);
+      })), !pickerSearch && !numericMode && /*#__PURE__*/React.createElement("div", {
         style: {
           flexShrink: 0,
           background: cc + "0D",
@@ -9038,8 +9088,9 @@ function MatchScreen({
             minWidth: 0,
             height: "100%",
             borderRadius: 9,
-            border: sel ? `2px solid ${cc}` : taken ? "2px solid var(--border)" : "2px solid var(--border2)",
-            background: sel ? cc : taken ? "var(--surface2)" : "var(--surface2)",
+            // In numerical mode the popular ones keep the same light tint they have in the Top box.
+            border: sel ? `2px solid ${cc}` : taken ? "2px solid var(--border)" : numericMode && isTop ? `2px solid ${cc}50` : "2px solid var(--border2)",
+            background: sel ? cc : taken ? "var(--surface2)" : numericMode && isTop ? cc + "14" : "var(--surface2)",
             color: sel ? "#fff" : taken ? "var(--text-disabled)" : "var(--text-primary)",
             cursor: taken ? "not-allowed" : "pointer",
             opacity: taken ? 0.45 : 1,
