@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-10-15e | feature-requests: Swiss bye banner on Organizer screen; Launch Error confirmation window; Reset set (restart current set at 0-0, with confirmation) button next to Swap; popular parts searchable and keep popular colour in search results | previous: 2026-10-15d | Antler picture added to the CX Picture Guide | previous: 2026-10-15c | cx-tab-label + Picture Guide button (twice as tall, two lines) | previous: 2026-10-15b confusing-spots: (a) Own Over / Own Xtreme now ask "This action will award N points to [other player]. Continue?" before scoring; (b) CX is a full-width button above the part search bar; (c) Organizer Station Queues has a "Judges at own stadiums" toggle (off by default) that puts judge-vs-judge matches on a judge's home station and stops suggesting cross-station handoffs | previous: 2026-10-15 organizer-report-fixes: (1) ranked results screen now shows the Challonge send status with a Retry button, /submit waits 20s and retries once on a network failure; (2) combo saves check the reply, retry and double-check the Worker kept them, and a failed refresh no longer blanks a player's combos; (3) Undo button on the reshuffle / new-set deck-order screen and on the new-set side picker, and undo now closes those screens and restores the sides | previous: 2026-10-14 database-fail-reason (flag 1013): the "Database: failed" line now also shows the reason with its HTTP code (and what the database said) so a failed send can be diagnosed from the screen and the ? report | previous: 2026-10-13 database-send (flag 1013, ON by default): when a judge submits to Sheets, the SAME rows are also sent to the NC BLAST database via the Worker's POST /db/ingest route, with its own separate "Database: sending / sent / failed" status line, tap-to-retry (resending is safe) and the CSV download as fallback on failure; a judge name is now required before a match can submit (blank = the Submit window asks for it); Glory Valkyrie and Hells Nether added to UXE_BLADES so they get no ratchet. Sheets payload, Challonge submit, scoring and the combo picker code are unchanged | previous: set1-pick-priority-tag: the player with pick priority in set 1 gets "~P~" appended to their name in the P1/P2 columns of the Sheets Battle + summary rows and the CSV backup (name-based, survives resume; no Apps Script change) | previous: stadium-count-textbox (flag 1012, off by default): Organizer view's "How many stadiums are you running?" step gets a number box (1-99) beside the 1-8 buttons, so events can run any number of stadiums. Stadium names continue past H as I..Z, then AA, AB... (helpers stadiumLabel/stadiumLabelList near ff()); colours past H rotate through the 8 existing ones; the judge-side station picker lists as many stations as the org set. Names A-H and all behaviour for 8 or fewer stadiums are unchanged. EZQ tab still capped at A-H. | previous: battle-banner-cog: top banner slimmed to Back / Undo / Swap / dark toggle plus one cog button; Redo, Fix, Log, Stream overlay, Handoff and Adjust layout moved into a cog settings menu; set-score pill moved from the banner into the middle of the score card above the B/X side display | previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
+// NC BLAST app.js | last updated: 2026-10-15f | judge-first-confirm: final score screen now starts with one big Judge Confirm button, which opens a full-screen split (top half = Player 1, bottom half = Player 2) so each player taps a large target, then the Submit window opens; shuffle screen header leaves room so the ? bug-report button no longer covers the countdown | previous: 2026-10-15e | feature-requests: Swiss bye banner on Organizer screen; Launch Error confirmation window; Reset set (restart current set at 0-0, with confirmation) button next to Swap; popular parts searchable and keep popular colour in search results | previous: 2026-10-15d | Antler picture added to the CX Picture Guide | previous: 2026-10-15c | cx-tab-label + Picture Guide button (twice as tall, two lines) | previous: 2026-10-15b confusing-spots: (a) Own Over / Own Xtreme now ask "This action will award N points to [other player]. Continue?" before scoring; (b) CX is a full-width button above the part search bar; (c) Organizer Station Queues has a "Judges at own stadiums" toggle (off by default) that puts judge-vs-judge matches on a judge's home station and stops suggesting cross-station handoffs | previous: 2026-10-15 organizer-report-fixes: (1) ranked results screen now shows the Challonge send status with a Retry button, /submit waits 20s and retries once on a network failure; (2) combo saves check the reply, retry and double-check the Worker kept them, and a failed refresh no longer blanks a player's combos; (3) Undo button on the reshuffle / new-set deck-order screen and on the new-set side picker, and undo now closes those screens and restores the sides | previous: 2026-10-14 database-fail-reason (flag 1013): the "Database: failed" line now also shows the reason with its HTTP code (and what the database said) so a failed send can be diagnosed from the screen and the ? report | previous: 2026-10-13 database-send (flag 1013, ON by default): when a judge submits to Sheets, the SAME rows are also sent to the NC BLAST database via the Worker's POST /db/ingest route, with its own separate "Database: sending / sent / failed" status line, tap-to-retry (resending is safe) and the CSV download as fallback on failure; a judge name is now required before a match can submit (blank = the Submit window asks for it); Glory Valkyrie and Hells Nether added to UXE_BLADES so they get no ratchet. Sheets payload, Challonge submit, scoring and the combo picker code are unchanged | previous: set1-pick-priority-tag: the player with pick priority in set 1 gets "~P~" appended to their name in the P1/P2 columns of the Sheets Battle + summary rows and the CSV backup (name-based, survives resume; no Apps Script change) | previous: stadium-count-textbox (flag 1012, off by default): Organizer view's "How many stadiums are you running?" step gets a number box (1-99) beside the 1-8 buttons, so events can run any number of stadiums. Stadium names continue past H as I..Z, then AA, AB... (helpers stadiumLabel/stadiumLabelList near ff()); colours past H rotate through the 8 existing ones; the judge-side station picker lists as many stations as the org set. Names A-H and all behaviour for 8 or fewer stadiums are unchanged. EZQ tab still capped at A-H. | previous: battle-banner-cog: top banner slimmed to Back / Undo / Swap / dark toggle plus one cog button; Redo, Fix, Log, Stream overlay, Handoff and Adjust layout moved into a cog settings menu; set-score pill moved from the banner into the middle of the score card above the B/X side display | previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
 const {
   useState,
   useEffect,
@@ -5209,7 +5209,9 @@ function ShuffleOrderScreen({
     }
   }, "continue when ready")), /*#__PURE__*/React.createElement("div", {
     style: {
-      padding: "12px 16px 10px",
+      // Wider right padding (56 vs 16) while the floating "?" bug-report button is on, so the
+      // countdown and Undo button end before the "?" begins instead of sitting under it.
+      padding: ff(1005) ? "12px 56px 10px 16px" : "12px 16px 10px",
       borderBottom: "1px solid var(--border)",
       flexShrink: 0,
       display: "flex",
@@ -6301,6 +6303,7 @@ function MatchScreen({
   const [swapPosition, setSwapPosition] = useState(false); // checkbox: swap p1/p2 in app
   const [historyConfirmClear, setHistoryConfirmClear] = useState(false);
   const [judgeSubmitModal, setJudgeSubmitModal] = useState(false);
+  const [confirmOverlay, setConfirmOverlay] = useState(false); // full-screen "tap your half to confirm" screen on the final score page
   const [submitChallongeCheck, setSubmitChallongeCheck] = useState(true);
   const [submitSheetsCheck, setSubmitSheetsCheck] = useState(true); // clear log confirmation in battle screen history panel
   const [judgeEditMode, setJudgeEditMode] = useState(false); // judge name editable on over screen
@@ -7385,6 +7388,7 @@ function MatchScreen({
     setSheetsStatus(null);
     if (setDbStatus) setDbStatus(null); // FLAG 1013: clear the Database status line for the next match
     setConfirmState(null);
+    setConfirmOverlay(false);
     setJudge("");
     setSetScores([]);
     setSideAssign(null);
@@ -11842,6 +11846,7 @@ function MatchScreen({
       setShuf(last._sh);
       if (last._ss) setSetScores(last._ss);else setSetScores(ss => ss.slice(0, -1));
       setConfirmState(null);
+      setConfirmOverlay(false);
       setOverBackConfirm(false);
       setPendingFinish(null);
       if (last._d1) setD1(last._d1);
@@ -12342,71 +12347,131 @@ function MatchScreen({
         textAlign: "center",
         marginBottom: 12
       }
-    }, "Both players confirm, then the judge submits."), /*#__PURE__*/React.createElement("div", {
-      style: {
-        display: "flex",
-        gap: 8,
-        marginBottom: 8
-      }
-    }, /*#__PURE__*/React.createElement("button", {
-      onClick: () => setConfirmState({
-        ...cs,
-        p1ok: true
-      }),
-      disabled: cs.p1ok,
-      style: {
-        flex: 1,
-        padding: "11px 0",
-        borderRadius: 10,
-        border: "none",
-        background: cs.p1ok ? "#15803D" : "#2563EB",
-        color: "#fff",
-        fontSize: 12,
-        fontWeight: 700,
-        fontFamily: "'Outfit',sans-serif",
-        cursor: cs.p1ok ? "default" : "pointer",
-        opacity: cs.p1ok ? 0.75 : 1
-      }
-    }, cs.p1ok ? "✓ " + p1 : p1 + " — Confirm"), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setConfirmState({
-        ...cs,
-        p2ok: true
-      }),
-      disabled: cs.p2ok,
-      style: {
-        flex: 1,
-        padding: "11px 0",
-        borderRadius: 10,
-        border: "none",
-        background: cs.p2ok ? "#15803D" : "#DC2626",
-        color: "#fff",
-        fontSize: 12,
-        fontWeight: 700,
-        fontFamily: "'Outfit',sans-serif",
-        cursor: cs.p2ok ? "default" : "pointer",
-        opacity: cs.p2ok ? 0.75 : 1
-      }
-    }, cs.p2ok ? "✓ " + p2 : p2 + " — Confirm")), allPlayersDone && /*#__PURE__*/React.createElement("button", {
-      onClick: () => setJudgeSubmitModal(true),
+    }, "Judge confirms first, then each player taps their half of the screen."), /*#__PURE__*/React.createElement("button", {
+      onClick: () => allPlayersDone ? setJudgeSubmitModal(true) : setConfirmOverlay(true),
       style: {
         display: "block",
         width: "100%",
-        padding: "12px 0",
-        borderRadius: 10,
+        padding: "18px 0",
+        borderRadius: 12,
         border: "none",
         background: "linear-gradient(135deg,#7C3AED,#6D28D9)",
         color: "#fff",
-        fontSize: 13,
-        fontWeight: 700,
+        fontSize: 16,
+        fontWeight: 800,
         fontFamily: "'Outfit',sans-serif",
         cursor: "pointer"
       }
-    }, "\u2696\uFE0F Judge Confirms \u2192"), !allPlayersDone && /*#__PURE__*/React.createElement("p", {
-      style: {
-        ...S.hint,
-        marginTop: 8
-      }
-    }, "Both players must confirm before judge can act")), judgeSubmitModal && (() => {
+    }, "⚖️ Judge Confirm →")), confirmOverlay && (() => {
+      // Full-screen confirmation: top half = Player 1, bottom half = Player 2.
+      // Big targets so a tap lands easily on a phone. When both have tapped, this
+      // screen closes by itself and the Submit Results window opens.
+      const tapConfirm = who => {
+        if (cs[who]) return;
+        const next = {
+          ...cs,
+          [who]: true
+        };
+        setConfirmState(next);
+        if (next.p1ok && next.p2ok) {
+          setTimeout(() => {
+            setConfirmOverlay(false);
+            setJudgeSubmitModal(true);
+          }, 400);
+        }
+      };
+      return /*#__PURE__*/React.createElement("div", {
+        style: {
+          position: "fixed",
+          inset: 0,
+          zIndex: 99995,
+          display: "flex",
+          flexDirection: "column",
+          background: "var(--bg-solid)",
+          fontFamily: "'Outfit',sans-serif"
+        }
+      }, [{
+        who: "p1ok",
+        name: p1,
+        color: "#2563EB"
+      }, {
+        who: "p2ok",
+        name: p2,
+        color: "#DC2626"
+      }].map((b, bi) => /*#__PURE__*/React.createElement("button", {
+        key: bi,
+        type: "button",
+        disabled: !!cs[b.who],
+        onClick: () => tapConfirm(b.who),
+        style: {
+          flex: 1,
+          width: "100%",
+          margin: 0,
+          padding: "0 24px",
+          border: "none",
+          borderTop: bi === 1 ? "3px solid var(--bg-solid)" : "none",
+          borderRadius: 0,
+          background: cs[b.who] ? "#15803D" : b.color,
+          color: "#fff",
+          fontFamily: "'Outfit',sans-serif",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 10,
+          cursor: cs[b.who] ? "default" : "pointer"
+        }
+      }, /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 34,
+          fontWeight: 900,
+          lineHeight: 1.1,
+          textAlign: "center",
+          wordBreak: "break-word"
+        }
+      }, cs[b.who] ? "✓ " + b.name : b.name), /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 20,
+          fontWeight: 800,
+          letterSpacing: 1,
+          textTransform: "uppercase"
+        }
+      }, cs[b.who] ? "Confirmed" : "Tap to confirm"), /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 13,
+          fontWeight: 600,
+          opacity: 0.85,
+          textAlign: "center"
+        }
+      }, winner, " defeats ", loserName, " \xB7 ", sets[0], "–", sets[1]))), !(cs.p1ok && cs.p2ok) && /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        onClick: () => {
+          // Start over: clears any taps so far and goes back to the Judge Confirm button.
+          setConfirmState({
+            ...cs,
+            p1ok: false,
+            p2ok: false
+          });
+          setConfirmOverlay(false);
+        },
+        style: {
+          position: "absolute",
+          left: 12,
+          top: "50%",
+          transform: "translateY(-50%)",
+          zIndex: 2,
+          padding: "8px 14px",
+          borderRadius: 999,
+          border: "2px solid #fff",
+          background: "rgba(15,23,42,0.85)",
+          color: "#fff",
+          fontSize: 13,
+          fontWeight: 700,
+          fontFamily: "'Outfit',sans-serif",
+          cursor: "pointer"
+        }
+      }, "← Cancel"));
+    })(), judgeSubmitModal && (() => {
       const winnerIsP1 = sets[0] >= need;
       const winnerId = winnerIsP1 ? challongeP1ParticipantId : challongeP2ParticipantId;
       const p1FinalScore = sets[0];
