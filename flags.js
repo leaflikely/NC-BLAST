@@ -46,6 +46,7 @@ window.FEATURE_FLAGS = new Set([
   1011, // overlay shows each new matchup; stream slot stays on between matches
   1012, // Organizer view: type any number of stadiums (1-99)
   1013, // Send to database beside the Sheets submit; judge name required to submit
+  1014, // Match timing notebook (judge). Nothing is sent anywhere yet; the notebook is kept on the device and shown in the cog menu.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -114,5 +115,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Send to database (judge)",
     desc: "When a judge submits a finished match to Sheets, the same battle rows are also sent to the NC BLAST database. A separate 'Database: sending / sent / failed' line appears under the Sheets one, and a failed send can be retried with one tap (sending twice is safe, the database ignores repeats). If a send fails, the match CSV is also downloaded so nothing is lost. Also requires a judge name before a match can be submitted: if it is blank, the Submit window asks for it. Sheets and the bracket submit are not changed.",
     off: "Old behaviour: results go to Sheets and the bracket only. Nothing is sent to the database, and a blank judge name does not block the submit."
+  },
+  1014: {
+    name: "Match timing (judge)",
+    desc: "Keeps a small clock notebook for each match on the judge's device: Start (the first time the deck builder opens), Decks Recorded, Priority, Side Selection, Shuffle and Match Complete, plus the time of every battle and launch error. Nothing is erased: undone battles stay in the notebook, marked as undone, so all the time adds up to the full match. Every Undo or Reset set starts a fix timer that runs until the match is back where it was, split into time-to-notice and time-to-repair. Abandoning a match throws its timing away; the QR handoff carries it over. The Redo item is hidden from the cog menu while this is on, and the cog menu gets a read-only Match timing window to check it. Nothing is sent anywhere yet.",
+    off: "Old behaviour: no timing is kept, Redo stays in the cog menu, and there is no Match timing item."
   }
 };
