@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-10-15h | big-change-one-part-menu: holding a Quick Combo or Previous Combo now opens a large centered menu with one big Blade / Ratchet / Bit button and an X (cancel) in the top right, replacing the small dropdown | previous: 2026-10-15g | popular-update-and-ratchet-sort: new Top 15 blades (+Suppress Superion, Glory Valkyrie, Ring Aether; Tyranno Beat, Dran Buster, Knight Mail dropped) with colors, new Top 10 ratchets (+5-50) and bits (+Narrow) in popularity order, Popular / Numerical toggle on the judge's ratchet picker | previous: 2026-10-15f | judge-first-confirm: final score screen now starts with one big Judge Confirm button, which opens a full-screen split (top half = Player 1, bottom half = Player 2) so each player taps a large target, then the Submit window opens; shuffle screen header leaves room so the ? bug-report button no longer covers the countdown | previous: 2026-10-15e | feature-requests: Swiss bye banner on Organizer screen; Launch Error confirmation window; Reset set (restart current set at 0-0, with confirmation) button next to Swap; popular parts searchable and keep popular colour in search results | previous: 2026-10-15d | Antler picture added to the CX Picture Guide | previous: 2026-10-15c | cx-tab-label + Picture Guide button (twice as tall, two lines) | previous: 2026-10-15b confusing-spots: (a) Own Over / Own Xtreme now ask "This action will award N points to [other player]. Continue?" before scoring; (b) CX is a full-width button above the part search bar; (c) Organizer Station Queues has a "Judges at own stadiums" toggle (off by default) that puts judge-vs-judge matches on a judge's home station and stops suggesting cross-station handoffs | previous: 2026-10-15 organizer-report-fixes: (1) ranked results screen now shows the Challonge send status with a Retry button, /submit waits 20s and retries once on a network failure; (2) combo saves check the reply, retry and double-check the Worker kept them, and a failed refresh no longer blanks a player's combos; (3) Undo button on the reshuffle / new-set deck-order screen and on the new-set side picker, and undo now closes those screens and restores the sides | previous: 2026-10-14 database-fail-reason (flag 1013): the "Database: failed" line now also shows the reason with its HTTP code (and what the database said) so a failed send can be diagnosed from the screen and the ? report | previous: 2026-10-13 database-send (flag 1013, ON by default): when a judge submits to Sheets, the SAME rows are also sent to the NC BLAST database via the Worker's POST /db/ingest route, with its own separate "Database: sending / sent / failed" status line, tap-to-retry (resending is safe) and the CSV download as fallback on failure; a judge name is now required before a match can submit (blank = the Submit window asks for it); Glory Valkyrie and Hells Nether added to UXE_BLADES so they get no ratchet. Sheets payload, Challonge submit, scoring and the combo picker code are unchanged | previous: set1-pick-priority-tag: the player with pick priority in set 1 gets "~P~" appended to their name in the P1/P2 columns of the Sheets Battle + summary rows and the CSV backup (name-based, survives resume; no Apps Script change) | previous: stadium-count-textbox (flag 1012, off by default): Organizer view's "How many stadiums are you running?" step gets a number box (1-99) beside the 1-8 buttons, so events can run any number of stadiums. Stadium names continue past H as I..Z, then AA, AB... (helpers stadiumLabel/stadiumLabelList near ff()); colours past H rotate through the 8 existing ones; the judge-side station picker lists as many stations as the org set. Names A-H and all behaviour for 8 or fewer stadiums are unchanged. EZQ tab still capped at A-H. | previous: battle-banner-cog: top banner slimmed to Back / Undo / Swap / dark toggle plus one cog button; Redo, Fix, Log, Stream overlay, Handoff and Adjust layout moved into a cog settings menu; set-score pill moved from the banner into the middle of the score card above the B/X side display | previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
+// NC BLAST app.js | last updated: 2026-10-16b | match-timing-keep-everything (flag 1014, now ON by default like every new flag): the timing notebook now erases nothing - battles and launch errors removed by Undo / Reset set, and markers wiped out or pressed again, are kept and tagged undone / replaced; every Undo or Reset set opens a fix timer (from the confirm click of the most recent undone entry until the match is back to the same number of entries, split into time to notice + time to repair) so fixing mistakes is its own category and all categories add up to the full match time; Redo is hidden from the cog menu while 1014 is on; the Match timing window shows all of it | previous: 2026-10-15i | match-timing-notebook (flag 1014, off by default): a small device-saved notebook of clock times per match - Start (first time the deck builder opens, always 0.00), Decks Recorded, Priority, Side Selection N, Shuffle N, Match Complete - while Battle and Launch Error times are read from the saved battle log (so Undo, Redo, Reset set, abandon and the QR handoff keep them in step); cog menu gets a read-only Match timing window; nothing is sent to the database yet | previous: 2026-10-15h | big-change-one-part-menu: holding a Quick Combo or Previous Combo now opens a large centered menu with one big Blade / Ratchet / Bit button and an X (cancel) in the top right, replacing the small dropdown | previous: 2026-10-15g | popular-update-and-ratchet-sort: new Top 15 blades (+Suppress Superion, Glory Valkyrie, Ring Aether; Tyranno Beat, Dran Buster, Knight Mail dropped) with colors, new Top 10 ratchets (+5-50) and bits (+Narrow) in popularity order, Popular / Numerical toggle on the judge's ratchet picker | previous: 2026-10-15f | judge-first-confirm: final score screen now starts with one big Judge Confirm button, which opens a full-screen split (top half = Player 1, bottom half = Player 2) so each player taps a large target, then the Submit window opens; shuffle screen header leaves room so the ? bug-report button no longer covers the countdown | previous: 2026-10-15e | feature-requests: Swiss bye banner on Organizer screen; Launch Error confirmation window; Reset set (restart current set at 0-0, with confirmation) button next to Swap; popular parts searchable and keep popular colour in search results | previous: 2026-10-15d | Antler picture added to the CX Picture Guide | previous: 2026-10-15c | cx-tab-label + Picture Guide button (twice as tall, two lines) | previous: 2026-10-15b confusing-spots: (a) Own Over / Own Xtreme now ask "This action will award N points to [other player]. Continue?" before scoring; (b) CX is a full-width button above the part search bar; (c) Organizer Station Queues has a "Judges at own stadiums" toggle (off by default) that puts judge-vs-judge matches on a judge's home station and stops suggesting cross-station handoffs | previous: 2026-10-15 organizer-report-fixes: (1) ranked results screen now shows the Challonge send status with a Retry button, /submit waits 20s and retries once on a network failure; (2) combo saves check the reply, retry and double-check the Worker kept them, and a failed refresh no longer blanks a player's combos; (3) Undo button on the reshuffle / new-set deck-order screen and on the new-set side picker, and undo now closes those screens and restores the sides | previous: 2026-10-14 database-fail-reason (flag 1013): the "Database: failed" line now also shows the reason with its HTTP code (and what the database said) so a failed send can be diagnosed from the screen and the ? report | previous: 2026-10-13 database-send (flag 1013, ON by default): when a judge submits to Sheets, the SAME rows are also sent to the NC BLAST database via the Worker's POST /db/ingest route, with its own separate "Database: sending / sent / failed" status line, tap-to-retry (resending is safe) and the CSV download as fallback on failure; a judge name is now required before a match can submit (blank = the Submit window asks for it); Glory Valkyrie and Hells Nether added to UXE_BLADES so they get no ratchet. Sheets payload, Challonge submit, scoring and the combo picker code are unchanged | previous: set1-pick-priority-tag: the player with pick priority in set 1 gets "~P~" appended to their name in the P1/P2 columns of the Sheets Battle + summary rows and the CSV backup (name-based, survives resume; no Apps Script change) | previous: stadium-count-textbox (flag 1012, off by default): Organizer view's "How many stadiums are you running?" step gets a number box (1-99) beside the 1-8 buttons, so events can run any number of stadiums. Stadium names continue past H as I..Z, then AA, AB... (helpers stadiumLabel/stadiumLabelList near ff()); colours past H rotate through the 8 existing ones; the judge-side station picker lists as many stations as the org set. Names A-H and all behaviour for 8 or fewer stadiums are unchanged. EZQ tab still capped at A-H. | previous: battle-banner-cog: top banner slimmed to Back / Undo / Swap / dark toggle plus one cog button; Redo, Fix, Log, Stream overlay, Handoff and Adjust layout moved into a cog settings menu; set-score pill moved from the banner into the middle of the score card above the B/X side display | previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
 const {
   useState,
   useEffect,
@@ -302,6 +302,8 @@ const KEYS = {
   overlaySlot: "bx-overlay-slot-v1",
   lastJudge: "ncblast-last-judge-v1",
   matchResume: "ncblast-match-resume-v1",
+  // FLAG 1014: the per-match timing notebook. localStorage (not session) so it survives a crash.
+  matchTiming: "bx-matchtiming-v1",
   orgResume: "ncblast-org-resume-v1"
 };
 const OVERLAY_WORKER = "https://challonge-proxy.danny61734.workers.dev";
@@ -632,6 +634,399 @@ function ssClear(key) {
   try {
     sessionStorage.removeItem(key);
   } catch {}
+}
+// ── Match timing notebook (FLAG 1014) ───────────────────────────────────────
+// A small notebook of clock readings for ONE match, saved on the device. The clock starts the
+// first time the deck builder is opened. Every reading is a real clock time (so a refresh, a crash
+// or a lost connection cannot lose or bend it) and is only turned into "seconds since Start" when
+// it is read.
+// NOTHING IS EVER ERASED. Battles and launch errors still in the match log are read from it (each
+// has its own clock time, entry.time). When Undo or Reset set removes one from the log it is first
+// copied into "gone". A marker that an Undo wipes out, or that is pressed again later, moves into
+// "old" tagged "undone" or "replaced". Every Undo / Reset set also opens a "fix" window: it starts
+// at the confirm click of the most recent entry that was undone and ends when the match is back to
+// the same number of entries (or is over). Fixing a mistake is therefore its own category, and
+// every second of the match lands in exactly one category, so they add up to the full match time.
+function timingClean(t) {
+  // Tolerate anything odd read back from storage or from a handoff. No Start = no clock.
+  if (!t || typeof t !== "object") return null;
+  const num = v => typeof v === "number" && isFinite(v) ? v : null;
+  const mapOf = o => {
+    const out = {};
+    if (o && typeof o === "object") Object.keys(o).forEach(k => {
+      const n = num(o[k]);
+      if (n !== null) out[k] = n;
+    });
+    return out;
+  };
+  const arr = (a, f) => Array.isArray(a) ? a.map(f).filter(Boolean) : [];
+  if (num(t.start) === null) return null;
+  return {
+    start: num(t.start),
+    decks: num(t.decks),
+    priority: num(t.priority),
+    sides: mapOf(t.sides),
+    shuffles: mapOf(t.shuffles),
+    complete: num(t.complete),
+    old: arr(t.old, o => o && typeof o.k === "string" && num(o.ms) !== null ? {
+      k: o.k,
+      key: o.key === null || o.key === undefined ? null : String(o.key),
+      ms: o.ms,
+      why: o.why === "undone" ? "undone" : "replaced"
+    } : null),
+    gone: arr(t.gone, g => g && num(g.ms) !== null ? {
+      ms: g.ms,
+      kind: g.kind === "launch" ? "launch" : "battle",
+      type: typeof g.type === "string" ? g.type : "",
+      set: num(g.set)
+    } : null),
+    fixes: arr(t.fixes, f => f && num(f.startMs) !== null && num(f.firstUndoMs) !== null && num(f.target) !== null ? {
+      startMs: f.startMs,
+      firstUndoMs: f.firstUndoMs,
+      endMs: num(f.endMs),
+      target: f.target,
+      presses: arr(f.presses, p => p && num(p.ms) !== null ? {
+        ms: p.ms,
+        kind: p.kind === "reset" ? "reset" : "undo"
+      } : null)
+    } : null)
+  };
+}
+function timingStampPure(t, kind, key, now) {
+  // No clock yet: only opening the deck builder ("start") or pressing Start Match on the deck
+  // review ("decks") may start one. Anything else (for example a match handed over from an older
+  // app version that sent no clock) stays without timing instead of guessing a wrong Start.
+  if (!t && kind !== "start" && kind !== "decks") return t;
+  if (kind === "start" && t) return t; // clock already running - same object, no re-render
+  const base = t ? {
+    ...t,
+    sides: {
+      ...t.sides
+    },
+    shuffles: {
+      ...t.shuffles
+    },
+    old: [...(t.old || [])],
+    gone: t.gone || [],
+    fixes: t.fixes || []
+  } : {
+    start: null,
+    decks: null,
+    priority: null,
+    sides: {},
+    shuffles: {},
+    complete: null,
+    old: [],
+    gone: [],
+    fixes: []
+  };
+  // Pressing a step again keeps the earlier press as "replaced" (a second tap within a second is the
+  // same press, not a new one).
+  const keep = (k, key2, prev) => {
+    if (typeof prev === "number" && now - prev >= 1000) base.old.push({
+      k,
+      key: key2,
+      ms: prev,
+      why: "replaced"
+    });
+  };
+  if (base.start === null) base.start = now;
+  if (kind === "decks") {
+    keep("decks", null, base.decks);
+    base.decks = now;
+  } else if (kind === "priority") {
+    keep("priority", null, base.priority);
+    base.priority = now;
+  } else if (kind === "side") {
+    const k = String(key);
+    keep("side", k, base.sides[k]);
+    base.sides[k] = now;
+  } else if (kind === "shuffle") {
+    const k = String(key);
+    keep("shuffle", k, base.shuffles[k]);
+    base.shuffles[k] = now;
+  } else if (kind === "complete" && base.complete === null) base.complete = now;
+  return base;
+}
+// Markers whose step no longer exists (Undo, Reset set and Undo match end all move the match
+// backwards) are MOVED to "old" tagged "undone", never deleted. Side Selection N belongs to set N;
+// Shuffle "S:N" is shuffle N of set S. When nothing moves, the SAME object comes back, so nothing
+// re-renders.
+function timingPrune(t, curSet, shuf, phase) {
+  if (!t) return t;
+  let changed = false;
+  const old = [...(t.old || [])];
+  const sides = {};
+  const shuffles = {};
+  Object.keys(t.sides).forEach(k => {
+    if (Number(k) <= curSet) sides[k] = t.sides[k];else {
+      old.push({
+        k: "side",
+        key: k,
+        ms: t.sides[k],
+        why: "undone"
+      });
+      changed = true;
+    }
+  });
+  Object.keys(t.shuffles).forEach(k => {
+    const p = k.split(":").map(Number);
+    if (p[0] < curSet || p[0] === curSet && p[1] <= shuf) shuffles[k] = t.shuffles[k];else {
+      old.push({
+        k: "shuffle",
+        key: k,
+        ms: t.shuffles[k],
+        why: "undone"
+      });
+      changed = true;
+    }
+  });
+  let complete = t.complete;
+  if (complete !== null && phase !== "over") {
+    old.push({
+      k: "complete",
+      key: null,
+      ms: complete,
+      why: "undone"
+    });
+    complete = null;
+    changed = true;
+  }
+  return changed ? {
+    ...t,
+    sides,
+    shuffles,
+    complete,
+    old
+  } : t;
+}
+// An Undo / Reset set happened. "removed" = the log entries it took out, "before" = how many
+// entries the match had just before. The removed entries are kept in "gone". If no fix window is
+// open, one opens now: it starts at the confirm click of the most recent removed entry (earlier
+// entries keep their own real battle lengths) and remembers when the first press happened, so
+// "time to notice" and "time to repair" can be told apart. If one is already open (more undos
+// while still fixing) it just gets another press.
+function timingUndoPure(t, removed, kind, now, before) {
+  if (!t) return t;
+  const gone = [...(t.gone || [])];
+  let latest = -Infinity;
+  (Array.isArray(removed) ? removed : []).forEach(e => {
+    const ms = e && e.time ? Date.parse(e.time) : NaN;
+    if (!isFinite(ms)) return;
+    if (ms > latest) latest = ms;
+    gone.push({
+      ms,
+      kind: e.type === "LER" || e.type === "LER-STRIKE" ? "launch" : "battle",
+      type: String(e.type || ""),
+      set: typeof e.set === "number" ? e.set : null
+    });
+  });
+  const press = {
+    ms: now,
+    kind: kind === "reset" ? "reset" : "undo"
+  };
+  const fixes = [...(t.fixes || [])];
+  const last = fixes.length ? fixes[fixes.length - 1] : null;
+  if (last && last.endMs === null) {
+    fixes[fixes.length - 1] = {
+      ...last,
+      presses: [...(last.presses || []), press]
+    };
+  } else {
+    fixes.push({
+      startMs: isFinite(latest) ? Math.min(latest, now) : now,
+      firstUndoMs: now,
+      endMs: null,
+      target: before,
+      presses: [press]
+    });
+  }
+  return {
+    ...t,
+    gone,
+    fixes
+  };
+}
+// Close the open fix window once the match has as many entries as it had before the first Undo
+// (that entry's confirm click is the end), or when the match is over. Otherwise the SAME object
+// comes back.
+function timingCloseFixes(t, entries, phase, now) {
+  if (!t || !t.fixes || !t.fixes.length) return t;
+  const i = t.fixes.length - 1;
+  const f = t.fixes[i];
+  if (f.endMs !== null) return t;
+  const list = Array.isArray(entries) ? entries : [];
+  const back = list.length >= f.target;
+  if (!back && phase !== "over") return t;
+  const idx = back ? f.target - 1 : list.length - 1;
+  const ms = idx >= 0 && list[idx] && list[idx].time ? Date.parse(list[idx].time) : NaN;
+  const fixes = t.fixes.slice();
+  fixes[i] = {
+    ...f,
+    endMs: isFinite(ms) && ms >= f.firstUndoMs ? ms : now
+  };
+  return {
+    ...t,
+    fixes
+  };
+}
+function timingQuartile(sorted, q) {
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+// The standard box-plot rule: take the middle half of the values; anything more than 1.5
+// box-widths outside it is an outlier. Under 4 values is too few to judge, so nothing is flagged.
+function timingOutlierFences(values) {
+  if (values.length < 4) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const q1 = timingQuartile(s, 0.25);
+  const q3 = timingQuartile(s, 0.75);
+  const iqr = q3 - q1;
+  return {
+    low: q1 - 1.5 * iqr,
+    high: q3 + 1.5 * iqr
+  };
+}
+function timingShuffleCmp(a, b) {
+  const pa = String(a).split(":").map(Number);
+  const pb = String(b).split(":").map(Number);
+  return pa[0] - pb[0] || pa[1] - pb[1];
+}
+// Turns the notebook + the match's battles still in the log into one time-ordered list.
+// Row fields: label, kind (marker | battle | launch | press | fix), ms, secs (seconds since Start),
+// gap (seconds since the row before it that is not inside a fix window), status (undone |
+// replaced | correction), inFix (happened inside a fix window), outlier.
+// Undone battles keep their real length. A battle re-entered during a fix is a "correction": it
+// belongs to the fix window, not to the battle averages. The fix row's gap runs from the last good
+// entry to the moment the match was back where it was, and is split into notice (to the first
+// Undo press) + repair (the rest). Time lost to launch errors is its own row kind.
+function timingBuildLines(t, entries, now) {
+  if (!t || t.start === null) return [];
+  const nowMs = typeof now === "number" && isFinite(now) ? now : Date.now();
+  const old = t.old || [];
+  const gone = t.gone || [];
+  const fixes = t.fixes || [];
+  const rows = [];
+  const add = (label, kind, ms, extra) => {
+    if (typeof ms === "number" && isFinite(ms)) rows.push({
+      label,
+      kind,
+      ms,
+      ...(extra || {})
+    });
+  };
+  // Shuffle numbers count EVERY shuffle that happened in the match, undone ones included.
+  const shKeys = [...new Set([...Object.keys(t.shuffles), ...old.filter(o => o.k === "shuffle").map(o => String(o.key))])].sort(timingShuffleCmp);
+  const shNo = k => shKeys.indexOf(String(k)) + 1;
+  const markerLabel = (k, key) => k === "decks" ? "Decks Recorded" : k === "priority" ? "Priority" : k === "side" ? "Side Selection " + key : k === "shuffle" ? "Shuffle " + shNo(key) : "Match Complete";
+  add("Start", "marker", t.start);
+  add(markerLabel("decks"), "marker", t.decks);
+  add(markerLabel("priority"), "marker", t.priority);
+  Object.keys(t.sides).forEach(k => add(markerLabel("side", k), "marker", t.sides[k]));
+  Object.keys(t.shuffles).forEach(k => add(markerLabel("shuffle", k), "marker", t.shuffles[k]));
+  add(markerLabel("complete"), "marker", t.complete);
+  old.forEach(o => add(markerLabel(o.k, o.key), "marker", o.ms, {
+    status: o.why
+  }));
+  (Array.isArray(entries) ? entries : []).forEach(e => {
+    const ms = e && e.time ? Date.parse(e.time) : NaN;
+    if (!isFinite(ms)) return;
+    if (e.type === "LER" || e.type === "LER-STRIKE") add("Launch Error", "launch", ms, {
+      set: e.set,
+      finish: e.type === "LER-STRIKE" ? "warning" : "scored",
+      fromLog: true
+    });else add("Battle", "battle", ms, {
+      set: e.set,
+      finish: e.type,
+      fromLog: true
+    });
+  });
+  gone.forEach(g => {
+    if (g.kind === "launch") add("Launch Error", "launch", g.ms, {
+      set: g.set,
+      finish: g.type === "LER-STRIKE" ? "warning" : "scored",
+      status: "undone"
+    });else add("Battle", "battle", g.ms, {
+      set: g.set,
+      finish: g.type,
+      status: "undone"
+    });
+  });
+  fixes.forEach(f => {
+    (f.presses || []).forEach(p => add(p.kind === "reset" ? "Reset set pressed" : "Undo pressed", "press", p.ms));
+    add("Fix", "fix", f.endMs !== null ? f.endMs : nowMs, {
+      startMs: f.startMs,
+      firstUndoMs: f.firstUndoMs,
+      open: f.endMs === null
+    });
+  });
+  rows.sort((a, b) => a.ms - b.ms);
+  const insideFix = r => fixes.some(f => r.ms > f.startMs && r.ms <= (f.endMs !== null ? f.endMs : Infinity));
+  let origNo = 0;
+  let finalNo = 0;
+  rows.forEach(r => {
+    r.secs = Math.max(0, (r.ms - t.start) / 1000);
+    r.inFix = r.kind !== "fix" && insideFix(r);
+    if (r.kind === "battle") {
+      if (r.fromLog) finalNo += 1;
+      if (!r.inFix) r.label = "Battle " + ++origNo;else if (r.fromLog) {
+        r.label = "Battle " + finalNo;
+        if (!r.status) r.status = "correction";
+      } else r.label = "Battle (re-entry)";
+    } else if (r.kind === "launch" && r.inFix && r.fromLog && !r.status) r.status = "correction";
+  });
+  let cursor = null;
+  rows.forEach(r => {
+    if (r.inFix) return;
+    if (r.kind === "fix") {
+      r.gap = Math.max(0, (r.ms - r.startMs) / 1000);
+      r.notice = Math.max(0, (Math.min(r.firstUndoMs, r.ms) - r.startMs) / 1000);
+      r.repair = Math.max(0, r.gap - r.notice);
+    } else if (cursor !== null) r.gap = Math.max(0, (r.ms - cursor) / 1000);
+    cursor = r.ms;
+  });
+  const fences = timingOutlierFences(rows.filter(r => r.kind === "battle" && !r.inFix && typeof r.gap === "number").map(r => r.gap));
+  if (fences) rows.forEach(r => {
+    if (r.kind === "battle" && !r.inFix && typeof r.gap === "number" && (r.gap < fences.low || r.gap > fences.high)) r.outlier = true;
+  });
+  return rows;
+}
+// Category totals. battles = every original battle (undone ones included); launch errors, setup
+// (Decks Recorded / Priority / Side Selection / Shuffle / Match Complete gaps) and fixes are kept
+// apart. battleTotal + launchTotal + setupTotal + fixTotal = total (the full match time so far).
+function timingSummary(lines) {
+  const s = {
+    battles: 0,
+    battleTotal: 0,
+    launches: 0,
+    launchTotal: 0,
+    setupTotal: 0,
+    fixes: 0,
+    fixTotal: 0,
+    fixNotice: 0,
+    fixRepair: 0
+  };
+  lines.forEach(l => {
+    if (l.inFix || typeof l.gap !== "number") return;
+    if (l.kind === "battle") {
+      s.battles += 1;
+      s.battleTotal += l.gap;
+    } else if (l.kind === "launch") {
+      s.launches += 1;
+      s.launchTotal += l.gap;
+    } else if (l.kind === "fix") {
+      s.fixes += 1;
+      s.fixTotal += l.gap;
+      s.fixNotice += l.notice;
+      s.fixRepair += l.repair;
+    } else if (l.kind === "marker") s.setupTotal += l.gap;
+  });
+  s.avgBattle = s.battles ? s.battleTotal / s.battles : null;
+  s.total = lines.length ? Math.max(...lines.map(l => l.secs)) : null;
+  s.accounted = s.battleTotal + s.launchTotal + s.setupTotal + s.fixTotal;
+  return s;
 }
 const DEFAULT_PARTS = {
   blades: ["Wizard Rod", "Shark Scale", "Cobalt Dragoon", "Aero Pegasus", "Hover Wyvern", "Golem Rock", "Meteor Dragoon", "Phoenix Wing", "Silver Wolf", "Clock Mirage", "Antler", "Arc", "Assault", "Bear Scratch", "Bite Croc", "Black Shell", "Blast", "Blitz", "Brave", "Break", "Brush", "Bullet Griffon", "Bumper", "Bumblebee", "Captain America", "Charge", "Chewbacca", "Cobalt Drake", "Crimson Garuda", "Cutter Shinobi", "Dark", "Darth Vader", "Draciel Shield", "Dragoon Storm", "Dran Buster", "Dran Dagger", "Dran Strike", "Dran Sword", "Dranzer Spiral", "Driger S", "Dual", "Eclipse", "Emperor", "Erase", "Fang", "Flame", "Flare", "Flow", "Fort", "Fortress", "Free", "General Grievous", "Ghost Circle", "Gill Shark", "Goat Tackle", "Green Goblin", "Guard", "Hack Viking", "Heavy", "Hells Chain", "Hells Hammer", "Hells Scythe", "Hunt", "Impact Drake", "Iron Man", "Jaggy", "Knight Lance", "Knight Mail", "Knight Shield", "Knuckle", "Leon Claw", "Leon Crest", "Lightning L-Drago", "Luke Skywalker", "Massive", "Megatron", "Might", "Miles Morales", "Moff Gideon", "Mosasaurus", "Mummy Curse", "Obi-Wan Kenobi", "Optimus Primal", "Optimus Prime", "Orochi Cluster", "Phoenix Feather", "Phoenix Rudder", "Ptera Wing", "Quetzalcoatlus", "Rage", "Rampart Aegis", "Reaper", "Red Hulk", "Rhino Horn", "Ridge Triceratops", "Ring Aether", "Rock Leone", "Round", "Samurai Calibur", "Samurai Saber", "Samurai Steel", "Scorpio Spear", "Shadow Shinobi", "Shark Edge", "Shelter Drake", "Shinobi Knife", "Slash", "Soundwave", "Sphinx Cowl", "Spider-Man", "Spinosaurus", "Standard", "Starscream", "Storm Pegasus", "Storm Spriggan", "Storm Trooper", "Stun Medusa", "Suppress Superion", "T.Rex", "Thanos", "The Mandalorian", "Tricera Press", "Turn", "Tusk Mammoth", "Tyranno Beat", "Tyranno Roar", "Unicorn Sting", "Valor Bison", "Valkyrie", "Venom", "Vertical", "Victory Valkyrie", "Viper Tail", "Volt", "Weiss Tiger", "Whale Wave", "Wheel", "Wizard Arrow", "Wriggle", "Wyvern Gale", "Xeno Xcalibur", "Yell Kong", "Zillion"],
@@ -6312,6 +6707,46 @@ function MatchScreen({
   // migration needed and nothing is deleted. --espiiii
   const [matchKey, setMatchKey] = useState(_resume ? _resume.matchKey || null : null);
 
+  // ── Match timing notebook (FLAG 1014) — see timingClean() for the idea ───────
+  const [timing, setTiming] = useState(() => {
+    if (!ff(1014) || !_resume) return null;
+    const saved = sGet(KEYS.matchTiming, null);
+    return saved && saved.matchKey && saved.matchKey === (_resume.matchKey || null) ? timingClean(saved.t) : null;
+  });
+  const [timingOpen, setTimingOpen] = useState(false);
+  const stampTiming = (kind, key) => {
+    if (!ff(1014)) return;
+    const now = Date.now();
+    setTiming(t => timingStampPure(t, kind, key, now));
+  };
+  // An Undo / Reset set is about to remove these log entries: keep them and open (or extend) a
+  // fix window. "before" = how many entries the match has right now. Nothing is erased.
+  const timingNoteUndo = (removed, kind) => {
+    if (!ff(1014)) return;
+    const now = Date.now();
+    const before = currentMatch.length;
+    setTiming(t => timingUndoPure(t, removed, kind, now, before));
+  };
+  // Move markers whose step was undone / reset into the notebook's "old" list (see timingPrune).
+  useEffect(() => {
+    if (!ff(1014)) return;
+    setTiming(t => timingPrune(t, curSet, shuf, phase));
+  }, [curSet, shuf, phase]);
+  // Save to the device after every change so a refresh or crash loses nothing.
+  useEffect(() => {
+    if (!ff(1014)) return;
+    if (!timing) {
+      try {
+        localStorage.removeItem(KEYS.matchTiming);
+      } catch (_) {}
+      return;
+    }
+    sSave(KEYS.matchTiming, {
+      matchKey: matchKey || null,
+      t: timing
+    });
+  }, [timing, matchKey]);
+
   // The current match's battles. Falls back to the index when 1002 is off, or
   // when we have no key yet (e.g. resuming a session started on the old build).
   const useKeyScoping = ff(1002) && !!matchKey;
@@ -6324,6 +6759,129 @@ function MatchScreen({
     ? log.filter(e => e.matchKey !== matchKey)
     : log.slice(0, matchStartIdx);
   const hasCurrentBattles = currentMatch.length > 0;
+  // FLAG 1014: close an open fix window once the match is back to the number of entries it had
+  // before the Undo / Reset set (or is over). It sits here because it needs currentMatch.
+  useEffect(() => {
+    if (!ff(1014)) return;
+    setTiming(t => timingCloseFixes(t, currentMatch, phase, Date.now()));
+  }, [currentMatch.length, phase]);
+  // FLAG 1014: read-only "Match timing" window (cog menu). Lists every clock reading (seconds since
+  // Start), how long each battle took, the fix windows (time to notice + time to repair a
+  // mistake) and the category totals. Undone and replaced lines stay on the list, greyed. Nothing
+  // here writes or sends anything.
+  const renderTimingModal = () => {
+    if (!ff(1014) || !timingOpen) return null;
+    const lines = timingBuildLines(timing, currentMatch, Date.now());
+    const sum = timingSummary(lines);
+    const f2 = n => typeof n === "number" && isFinite(n) ? n.toFixed(2) : "\u2014";
+    const line = (key, label, secs, len, color, bold, dim) => React.createElement("div", {
+      key,
+      style: {
+        display: "flex",
+        gap: 8,
+        padding: "5px 0",
+        borderBottom: "1px solid var(--border)",
+        fontSize: 12,
+        fontWeight: bold ? 800 : 600,
+        color: color || "var(--text-primary)",
+        opacity: dim ? 0.55 : 1,
+        fontVariantNumeric: "tabular-nums"
+      }
+    }, React.createElement("span", {
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, label), React.createElement("span", {
+      style: {
+        width: 62,
+        textAlign: "right",
+        flexShrink: 0
+      }
+    }, secs), React.createElement("span", {
+      style: {
+        width: 70,
+        textAlign: "right",
+        flexShrink: 0,
+        color: color || "var(--text-muted)"
+      }
+    }, len));
+    return React.createElement("div", {
+      onClick: () => setTimingOpen(false),
+      style: {
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.5)",
+        zIndex: 300,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }
+    }, React.createElement("div", {
+      onClick: e => e.stopPropagation(),
+      style: {
+        background: "var(--surface)",
+        borderRadius: 16,
+        padding: "16px 18px",
+        width: Math.min(400, window.innerWidth - 32),
+        maxHeight: "82dvh",
+        overflowY: "auto",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+        fontFamily: "'Outfit',sans-serif"
+      }
+    }, React.createElement("div", {
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 10
+      }
+    }, React.createElement("span", {
+      style: {
+        fontSize: 14,
+        fontWeight: 800,
+        color: "var(--text-primary)"
+      }
+    }, "\u23F1 Match timing"), React.createElement("button", {
+      type: "button",
+      onClick: () => setTimingOpen(false),
+      style: {
+        background: "var(--surface3)",
+        border: "none",
+        borderRadius: 6,
+        width: 26,
+        height: 26,
+        cursor: "pointer",
+        color: "var(--text-muted)",
+        fontSize: 12,
+        fontWeight: 700
+      }
+    }, "\u2715")), !lines.length ? React.createElement("p", {
+      style: {
+        fontSize: 12,
+        color: "var(--text-muted)",
+        margin: 0
+      }
+    }, "No clock is running for this match yet. It starts the first time the deck builder is opened.") : React.createElement(React.Fragment, null, line("head", "Marker", "Seconds", "Length", "var(--text-muted)", true), lines.map((r, i) => {
+      if (r.kind === "fix") return line("r" + i, "Fix" + (r.open ? " (still open)" : "") + " \u00B7 notice " + f2(r.notice) + " + repair " + f2(r.repair), f2(r.secs), f2(r.gap), "#B45309", true);
+      let label = r.label;
+      if (r.kind === "battle") label += " \u00B7 " + r.finish + (r.set ? " (set " + r.set + ")" : "");else if (r.kind === "launch") label += " \u00B7 " + r.finish;
+      if (r.status) label += " \u00B7 " + r.status;
+      const len = typeof r.gap === "number" && (r.kind === "battle" || r.kind === "launch") ? f2(r.gap) + (r.outlier ? " \u2691" : "") : "";
+      return line("r" + i, label, f2(r.secs), len, r.outlier ? "#DC2626" : r.kind === "launch" ? "#B45309" : undefined, false, r.inFix || r.kind === "press" || r.status === "undone" || r.status === "replaced");
+    }), React.createElement("div", {
+      style: {
+        height: 8
+      }
+    }), line("avg", "Average battle (" + sum.battles + ", undone ones included)", "", f2(sum.avgBattle), undefined, true), line("ler", "Launch errors (" + sum.launches + ") \u2014 time lost", "", f2(sum.launchTotal), undefined, true), line("set", "Setup, sides and shuffles", "", f2(sum.setupTotal), undefined, true), line("fix", "Fixing mistakes (" + sum.fixes + "): notice " + f2(sum.fixNotice) + " + repair " + f2(sum.fixRepair), "", f2(sum.fixTotal), "#B45309", true), line("tot", "Time so far (all of the above)", "", f2(sum.total), undefined, true), React.createElement("p", {
+      style: {
+        fontSize: 10,
+        color: "var(--text-muted)",
+        margin: "8px 0 0",
+        lineHeight: 1.4
+      }
+    }, "Seconds = time since Start. Length = time since the line above it. A fix runs from the last good entry until the match was back where it was before the Undo. Grey lines were undone, replaced, or happened during a fix; they are kept. \u2691 = an unusually long or short battle (needs 4 or more battles to judge)."))));
+  };
   const [picker, setPicker] = useState(null);
   const [qcEditMenu, setQcEditMenu] = useState(null); // { qi, qc } — which quick combo is showing the part-edit menu
   const [pcEditMenu, setPcEditMenu] = useState(null); // { ci, combo } — which prev combo is showing the part-edit menu
@@ -6332,6 +6890,7 @@ function MatchScreen({
   // useCallback so the part-button grid can stay memoized across renders
   // (identity only changes when `picker` does, not on every keystroke). --espiiii
   const openPicker = useCallback(val => {
+    if (ff(1014)) setTiming(t => timingStampPure(t, "start", null, Date.now())); // FLAG 1014: the clock starts the first time the deck builder opens
     setPickerHistory(h => picker ? [...h, picker] : h);
     setPicker(val);
     setPickerSearch("");
@@ -6424,6 +6983,7 @@ function MatchScreen({
     // FLAG 1002: mint a fresh identity for this match. Kept outside the 1001
     // branch so key scoping works regardless of the older flag. --espiiii
     setMatchKey(`${challongeSlug || "manual"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    setTiming(null); // FLAG 1014: a new match always starts with an empty timing notebook
     // FLAG 1001 off: no pruning, just set the boundary like before.
     if (!ff(1001)) {
       setMatchStartIdx(source.length);
@@ -6963,6 +7523,7 @@ function MatchScreen({
     if (!hasCurrentBattles && !lastIsStrike) return;
     const l = log[log.length - 1];
     const undoLog = log.slice(0, -1);
+    timingNoteUndo([l], "undo"); // FLAG 1014: keep the undone entry, open / extend a fix window
     setFuture([l, ...future]);
     setLog(undoLog);
     sSave(KEYS.matchLog, undoLog);
@@ -7027,6 +7588,7 @@ function MatchScreen({
   const resetCurrentSet = () => {
     const inSet = currentMatch.filter(e => e.set === curSet);
     if (!inSet.length) return;
+    timingNoteUndo(inSet, "reset"); // FLAG 1014: keep the discarded entries, open / extend a fix window
     const e0 = inSet[0];
     const eD = inSet.find(e => e._d1) || e0;
     const drop = new Set(inSet);
@@ -7534,6 +8096,7 @@ function MatchScreen({
   };
   const reset = () => {
     ssClear(KEYS.matchResume);
+    setTiming(null); // FLAG 1014: abandon / finish / handoff all start the next match with a blank notebook
     setP1(null);
     p1Ref.current = null;
     setP2(null);
@@ -7737,6 +8300,8 @@ function MatchScreen({
       challongeP2ParticipantId,
       overlaySlot,
       challongeSlug,
+      timing: ff(1014) ? timing : null,
+      // FLAG 1014: the clock travels with the match
       claimed: false
     };
     try {
@@ -7984,6 +8549,7 @@ function MatchScreen({
     setSets(preview.sets || [0, 0]);
     setCurSet(preview.curSet || 1);
     setShuf(preview.shuf || 1);
+    if (ff(1014)) setTiming(timingClean(preview.timing)); // FLAG 1014: keep the same clock across judges (none if the sender had none)
     // FLAG 1001: keep this judge's own history and append just the handed-off
     // match. Slicing by the sender's matchStartIdx also protects us from
     // tablets still on the old build, which sent their whole log.
@@ -11513,6 +12079,7 @@ function MatchScreen({
       },
       disabled: !allDone,
       onClick: () => {
+        stampTiming("decks"); // FLAG 1014: Decks Recorded marker
         // Save decks to registry NOW so the next judge can see them immediately,
         // before the match has finished. Also saved again at match completion as a backup.
         pushDeckToRegistry();
@@ -11591,6 +12158,7 @@ function MatchScreen({
     return /*#__PURE__*/React.createElement(ShuffleOrderScreen, {
       showTimer: !!shuffleTimer,
       onConfirm: () => {
+        stampTiming("shuffle", curSet + ":" + displayShuf); // FLAG 1014: Shuffle marker (set:shuffle-in-set)
         if (shuffleTimer) {
           // Pass combo index 0 — deck order may have changed on this screen,
           // but the first bey to play is always slot 0 after a shuffle.
@@ -11706,9 +12274,12 @@ function MatchScreen({
       cl: "#DC2626"
     }].map(pl => /*#__PURE__*/React.createElement("button", {
       key: pl.pi,
-      onClick: () => setSidePicker({
-        priority: pl.pi
-      }),
+      onClick: () => {
+        if (curSet === 1) stampTiming("priority"); // FLAG 1014: Priority marker
+        setSidePicker({
+          priority: pl.pi
+        });
+      },
       style: {
         width: "100%",
         padding: "28px 0",
@@ -11744,6 +12315,7 @@ function MatchScreen({
     }, ["B", "X"].map(side => /*#__PURE__*/React.createElement("button", {
       key: side,
       onClick: () => {
+        stampTiming("side", curSet); // FLAG 1014: Side Selection marker (number = set number)
         const p1Side = sidePicker.priority === 0 ? side : side === "B" ? "X" : "B";
         const p2Side = sidePicker.priority === 0 ? side === "B" ? "X" : "B" : side;
         if (curSet === 1) setSet1PriorityName(sidePicker.priority === 0 ? p1 : p2);
@@ -11833,6 +12405,7 @@ function MatchScreen({
       const last = log[log.length - 1];
       // Restore all state from the last entry snapshot
       const restoredLog = log.slice(0, -1);
+      timingNoteUndo([last], "undo"); // FLAG 1014: keep the undone entry, open / extend a fix window
       setLog(restoredLog);
       sSave(KEYS.matchLog, restoredLog);
       setFuture([last, ...future]);
@@ -12672,6 +13245,7 @@ function MatchScreen({
         disabled: challongeSubmitStatus === "loading" || ff(1013) && !(judge || "").trim(),
         onClick: () => {
           if (ff(1013) && !(judge || "").trim()) return; // FLAG 1013: blank judge name - do not submit
+          stampTiming("complete"); // FLAG 1014: Match Complete marker (first Submit press only)
           setJudgeSubmitModal(false);
           setConfirmState({
             ...cs,
@@ -13340,7 +13914,7 @@ function MatchScreen({
         borderRadius: bp(10),
         boxShadow: "0 6px 24px rgba(0,0,0,0.28)"
       }
-    }, menuRow("redo", IC.redo, "Redo", redo, {
+    }, ff(1014) ? null : menuRow("redo", IC.redo, "Redo", redo, {
       disabled: !future.length,
       color: future.length ? "#EA580C" : "var(--text-disabled)"
     }), menuRow("fix", IC.editLog, "Fix", () => setMisreportOpen(true), {
@@ -13353,7 +13927,7 @@ function MatchScreen({
       } else {
         startHandoff();
       }
-    }), menuRow("layout", "\u283F", layoutEditMode ? "Exit layout edit" : "Adjust layout", () => setLayoutEditMode(m => !m), {
+    }), ff(1014) && menuRow("timing", "\u23F1", "Match timing", () => setTimingOpen(true)), menuRow("layout", "\u283F", layoutEditMode ? "Exit layout edit" : "Adjust layout", () => setLayoutEditMode(m => !m), {
       color: layoutEditMode ? "#7C3AED" : undefined
     })))), /*#__PURE__*/React.createElement("button", {
       onClick: toggleDark,
@@ -14151,7 +14725,7 @@ function MatchScreen({
     },
     onPointerDown: e => e.stopPropagation(),
     onClick: e => e.stopPropagation()
-  }), overlayModal && /*#__PURE__*/React.createElement("div", {
+  }), renderTimingModal(), overlayModal && /*#__PURE__*/React.createElement("div", {
     onClick: () => setOverlayModal(false),
     style: {
       position: "fixed",
