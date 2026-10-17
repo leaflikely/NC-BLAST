@@ -1,4 +1,4 @@
-// NC BLAST app.js | last updated: 2026-10-16b | match-timing-keep-everything (flag 1014, now ON by default like every new flag): the timing notebook now erases nothing - battles and launch errors removed by Undo / Reset set, and markers wiped out or pressed again, are kept and tagged undone / replaced; every Undo or Reset set opens a fix timer (from the confirm click of the most recent undone entry until the match is back to the same number of entries, split into time to notice + time to repair) so fixing mistakes is its own category and all categories add up to the full match time; Redo is hidden from the cog menu while 1014 is on; the Match timing window shows all of it | previous: 2026-10-15i | match-timing-notebook (flag 1014, off by default): a small device-saved notebook of clock times per match - Start (first time the deck builder opens, always 0.00), Decks Recorded, Priority, Side Selection N, Shuffle N, Match Complete - while Battle and Launch Error times are read from the saved battle log (so Undo, Redo, Reset set, abandon and the QR handoff keep them in step); cog menu gets a read-only Match timing window; nothing is sent to the database yet | previous: 2026-10-15h | big-change-one-part-menu: holding a Quick Combo or Previous Combo now opens a large centered menu with one big Blade / Ratchet / Bit button and an X (cancel) in the top right, replacing the small dropdown | previous: 2026-10-15g | popular-update-and-ratchet-sort: new Top 15 blades (+Suppress Superion, Glory Valkyrie, Ring Aether; Tyranno Beat, Dran Buster, Knight Mail dropped) with colors, new Top 10 ratchets (+5-50) and bits (+Narrow) in popularity order, Popular / Numerical toggle on the judge's ratchet picker | previous: 2026-10-15f | judge-first-confirm: final score screen now starts with one big Judge Confirm button, which opens a full-screen split (top half = Player 1, bottom half = Player 2) so each player taps a large target, then the Submit window opens; shuffle screen header leaves room so the ? bug-report button no longer covers the countdown | previous: 2026-10-15e | feature-requests: Swiss bye banner on Organizer screen; Launch Error confirmation window; Reset set (restart current set at 0-0, with confirmation) button next to Swap; popular parts searchable and keep popular colour in search results | previous: 2026-10-15d | Antler picture added to the CX Picture Guide | previous: 2026-10-15c | cx-tab-label + Picture Guide button (twice as tall, two lines) | previous: 2026-10-15b confusing-spots: (a) Own Over / Own Xtreme now ask "This action will award N points to [other player]. Continue?" before scoring; (b) CX is a full-width button above the part search bar; (c) Organizer Station Queues has a "Judges at own stadiums" toggle (off by default) that puts judge-vs-judge matches on a judge's home station and stops suggesting cross-station handoffs | previous: 2026-10-15 organizer-report-fixes: (1) ranked results screen now shows the Challonge send status with a Retry button, /submit waits 20s and retries once on a network failure; (2) combo saves check the reply, retry and double-check the Worker kept them, and a failed refresh no longer blanks a player's combos; (3) Undo button on the reshuffle / new-set deck-order screen and on the new-set side picker, and undo now closes those screens and restores the sides | previous: 2026-10-14 database-fail-reason (flag 1013): the "Database: failed" line now also shows the reason with its HTTP code (and what the database said) so a failed send can be diagnosed from the screen and the ? report | previous: 2026-10-13 database-send (flag 1013, ON by default): when a judge submits to Sheets, the SAME rows are also sent to the NC BLAST database via the Worker's POST /db/ingest route, with its own separate "Database: sending / sent / failed" status line, tap-to-retry (resending is safe) and the CSV download as fallback on failure; a judge name is now required before a match can submit (blank = the Submit window asks for it); Glory Valkyrie and Hells Nether added to UXE_BLADES so they get no ratchet. Sheets payload, Challonge submit, scoring and the combo picker code are unchanged | previous: set1-pick-priority-tag: the player with pick priority in set 1 gets "~P~" appended to their name in the P1/P2 columns of the Sheets Battle + summary rows and the CSV backup (name-based, survives resume; no Apps Script change) | previous: stadium-count-textbox (flag 1012, off by default): Organizer view's "How many stadiums are you running?" step gets a number box (1-99) beside the 1-8 buttons, so events can run any number of stadiums. Stadium names continue past H as I..Z, then AA, AB... (helpers stadiumLabel/stadiumLabelList near ff()); colours past H rotate through the 8 existing ones; the judge-side station picker lists as many stations as the org set. Names A-H and all behaviour for 8 or fewer stadiums are unchanged. EZQ tab still capped at A-H. | previous: battle-banner-cog: top banner slimmed to Back / Undo / Swap / dark toggle plus one cog button; Redo, Fix, Log, Stream overlay, Handoff and Adjust layout moved into a cog settings menu; set-score pill moved from the banner into the middle of the score card above the B/X side display | previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
+// NC BLAST app.js | last updated: 2026-10-16e | cloud-backup-for-error-files (flag 1016, on by default: every error file - failed battles send, failed Sheets send, failed timing send, bug reports - is queued on the device and uploaded to the cloud backup folder through the Worker /backup/upload door instead of being saved to the judge device; it keeps retrying until the upload works) | previous: 2026-10-16d | match-timing-outbox (flag 1015: a failed timing send keeps retrying by itself, survives closing the app, and after 10 minutes is uploaded as a CSV to the cloud backup folder through the Worker /backup/upload door; the judge device only downloads it if that fails too) | previous: 2026-10-16c | match-timing-send (flag 1015, on by default: after Submit the match timing is sent to the database through the Worker /db/timing door, with its own Timing status line and tap-to-retry) | previous: 2026-10-16b | match-timing-keep-everything (flag 1014, now ON by default like every new flag): the timing notebook now erases nothing - battles and launch errors removed by Undo / Reset set, and markers wiped out or pressed again, are kept and tagged undone / replaced; every Undo or Reset set opens a fix timer (from the confirm click of the most recent undone entry until the match is back to the same number of entries, split into time to notice + time to repair) so fixing mistakes is its own category and all categories add up to the full match time; Redo is hidden from the cog menu while 1014 is on; the Match timing window shows all of it | previous: 2026-10-15i | match-timing-notebook (flag 1014, off by default): a small device-saved notebook of clock times per match - Start (first time the deck builder opens, always 0.00), Decks Recorded, Priority, Side Selection N, Shuffle N, Match Complete - while Battle and Launch Error times are read from the saved battle log (so Undo, Redo, Reset set, abandon and the QR handoff keep them in step); cog menu gets a read-only Match timing window; nothing is sent to the database yet | previous: 2026-10-15h | big-change-one-part-menu: holding a Quick Combo or Previous Combo now opens a large centered menu with one big Blade / Ratchet / Bit button and an X (cancel) in the top right, replacing the small dropdown | previous: 2026-10-15g | popular-update-and-ratchet-sort: new Top 15 blades (+Suppress Superion, Glory Valkyrie, Ring Aether; Tyranno Beat, Dran Buster, Knight Mail dropped) with colors, new Top 10 ratchets (+5-50) and bits (+Narrow) in popularity order, Popular / Numerical toggle on the judge's ratchet picker | previous: 2026-10-15f | judge-first-confirm: final score screen now starts with one big Judge Confirm button, which opens a full-screen split (top half = Player 1, bottom half = Player 2) so each player taps a large target, then the Submit window opens; shuffle screen header leaves room so the ? bug-report button no longer covers the countdown | previous: 2026-10-15e | feature-requests: Swiss bye banner on Organizer screen; Launch Error confirmation window; Reset set (restart current set at 0-0, with confirmation) button next to Swap; popular parts searchable and keep popular colour in search results | previous: 2026-10-15d | Antler picture added to the CX Picture Guide | previous: 2026-10-15c | cx-tab-label + Picture Guide button (twice as tall, two lines) | previous: 2026-10-15b confusing-spots: (a) Own Over / Own Xtreme now ask "This action will award N points to [other player]. Continue?" before scoring; (b) CX is a full-width button above the part search bar; (c) Organizer Station Queues has a "Judges at own stadiums" toggle (off by default) that puts judge-vs-judge matches on a judge's home station and stops suggesting cross-station handoffs | previous: 2026-10-15 organizer-report-fixes: (1) ranked results screen now shows the Challonge send status with a Retry button, /submit waits 20s and retries once on a network failure; (2) combo saves check the reply, retry and double-check the Worker kept them, and a failed refresh no longer blanks a player's combos; (3) Undo button on the reshuffle / new-set deck-order screen and on the new-set side picker, and undo now closes those screens and restores the sides | previous: 2026-10-14 database-fail-reason (flag 1013): the "Database: failed" line now also shows the reason with its HTTP code (and what the database said) so a failed send can be diagnosed from the screen and the ? report | previous: 2026-10-13 database-send (flag 1013, ON by default): when a judge submits to Sheets, the SAME rows are also sent to the NC BLAST database via the Worker's POST /db/ingest route, with its own separate "Database: sending / sent / failed" status line, tap-to-retry (resending is safe) and the CSV download as fallback on failure; a judge name is now required before a match can submit (blank = the Submit window asks for it); Glory Valkyrie and Hells Nether added to UXE_BLADES so they get no ratchet. Sheets payload, Challonge submit, scoring and the combo picker code are unchanged | previous: set1-pick-priority-tag: the player with pick priority in set 1 gets "~P~" appended to their name in the P1/P2 columns of the Sheets Battle + summary rows and the CSV backup (name-based, survives resume; no Apps Script change) | previous: stadium-count-textbox (flag 1012, off by default): Organizer view's "How many stadiums are you running?" step gets a number box (1-99) beside the 1-8 buttons, so events can run any number of stadiums. Stadium names continue past H as I..Z, then AA, AB... (helpers stadiumLabel/stadiumLabelList near ff()); colours past H rotate through the 8 existing ones; the judge-side station picker lists as many stations as the org set. Names A-H and all behaviour for 8 or fewer stadiums are unchanged. EZQ tab still capped at A-H. | previous: battle-banner-cog: top banner slimmed to Back / Undo / Swap / dark toggle plus one cog button; Redo, Fix, Log, Stream overlay, Handoff and Adjust layout moved into a cog settings menu; set-score pill moved from the banner into the middle of the score card above the B/X side display | previous: wcb-dont-mark-underway: live test match confirmed WCB's own /result endpoint rejects a score once the match has been PATCHed to "underway" — {error: "match_result_error", message: "Only ready, unfinished matches can be scored."} — unlike Challonge, where marking underway first is expected and harmless, WCB requires the match to still be in its original "ready" state to accept a result. markMatchUnderway() no longer calls /wcb/match/start automatically for wcb- events; the Worker route itself is untouched in case a later flow needs it. | wcb-submit-checkbox-label: the confirm screen's bracket checkbox/button always said "Submit to Challonge" and "Submitted to Challonge" even for a WCB event — likely cause of a real match where the score reached Sheets but never reached WCB, since the judge had no way to tell the checkbox even applied. All four spots (the checkbox in the ranked confirm modal, its two status lines, and the two unranked-mode submit buttons) now read the event's own backend off challongeSlug and say "WCB" or "Challonge" accordingly — same submitChallongeScore()/checkbox plumbing underneath, just honest labeling. | wcb-start-match-button: the WCB match panel could be selected but had no way to actually proceed — the "Marking in progress" status + Start Match/Build Decks button that the Challonge match-select panel has was never added when the WCB panel became selectable. Copied the same block over (same handler, same beginMatchLog/refreshCombos/deckReview flow), just re-colored purple and re-worded "Challonge access confirmed" to "WCB access confirmed". | wcb-phase2-writes: Judge view's "Open WCB Matches" panel is now selectable — tapping a match calls the same selectActivePairing() used for Challonge (it already worked generically off player1_id/player2_id/player1_name/player2_name), and markMatchUnderway/submitChallongeScore each grew an internal branch that calls the Worker's new /wcb/match/start and /wcb/match/result routes instead of the Challonge ones when challongeSlug starts with "wcb-" — no new feature flag needed since this is only reachable through a wcb- event, which flag 1004 already gates. | ezq-stuck-judge-fix: EZQ's isUnderway() only checked underway_at truthiness, not match state — if a completed match ever carried a leftover underway_at value (Challonge normally clears it on completion, but this closes the gap for any edge case where it doesn't), the judge who played that match would show red/occupied forever with no way to self-correct. isUnderway now also requires state !== "complete". The manual Refresh button already force-bypasses the Worker's 60s pairings cache, so it remains the fastest way to clear a stuck judge if the cause turns out to be caching lag rather than this logic gap | ezq-floaters-and-poll: EZQ now polls Challonge every 5s (matching Org view's rhythm) instead of 15s — costs the same real Challonge traffic since the Worker's 60s cache absorbs the extra checks either way, it just means EZQ catches a fresh cache entry sooner. Floaters are no longer treated as judges in queue priority/coverage math (isJudgeName now means judge only) — a floater's match schedules as ordinary PvP and floaters never appear in a station's judge header, since they have no fixed station. Added a separate display-only badge (FvP/FvJ/FvF) so the queue card still shows when a floater is involved, without that affecting scheduling | ezq-dragdrop-fix: EZQ station queue container had both a container-level onDrop AND a card-level onDrop covering the same area; HTML drop events bubble, so dropping on a card fired both handlers and inserted the dragged match twice with no way to remove the extra copy. Replaced the container-level catch-all with a dedicated thin spacer div after the card list (same pattern the Organizer view's queue already used) and added stopPropagation as a backstop | ezq-v1: new EZQ tab (RolePicker) — standalone, single-device queue-only tool for TOs not running BLAST scoring; paste Challonge link, tap-designate judges/floaters locally (no login/master-code), assign stations, then a trimmed Org-style queue view that detects "in progress" via Challonge's own underway_at field (not BLAST overlay state) and auto-generates/reorders station queues | matchstartidx-fix: reset() now sets matchStartIdx from in-memory log.length instead of re-reading localStorage, fixing rare Sheets submissions that included the device's entire accumulated match history | wcb-org-create (flag 1004, off by default): Organizer view gets a "Load from WCB link" box alongside the Challonge one — paste a West Coast Bladers bracket link, Worker fetches name+roster from WCB via /org/tournament/add-wcb and registers it in BLAST's shared cached-tournament list, tagged with a small "WCB" pill. Entirely separate state/handlers from the existing Challonge add-tournament flow — no shared code paths touched. Judges/players actually scoring a WCB event is separate, later work. | wcb-judge-preview: Judge view's "Active Matches" tab now shows a read-only "Open WCB Matches (preview)" list for wcb- slugs instead of the normal Challonge matches UI — real match data from WCB's confirmed Swiss response shape, but deliberately not selectable/scoreable yet, since selecting a match in the existing flow writes an "underway" state to Challonge specifically; scoring a WCB match is separate work still to come.
 const {
   useState,
   useEffect,
@@ -635,6 +635,106 @@ function ssClear(key) {
     sessionStorage.removeItem(key);
   } catch {}
 }
+// ── Cloud backup queue (FLAG 1016) ────────────────────────────────────────────────────────────
+// Error files (a battles CSV when a send failed, a timing CSV, a bug report) are uploaded to the
+// cloud backup folder through the Worker's /backup/upload door instead of being saved on the
+// judge's device. Every file waits in a small queue on the device (localStorage) until the
+// upload works: it retries every minute, when the connection returns, and after the app is
+// reopened. The same file name replaces the earlier copy, so a retry never makes a duplicate.
+var CLOUD_BACKUP_KEY = "bx-cloudbackup-v1";
+var _cbRun = null;
+var _cbAgain = false;
+function cloudBackupLoad() {
+  try {
+    const a = JSON.parse(localStorage.getItem(CLOUD_BACKUP_KEY) || "[]");
+    return Array.isArray(a) ? a.filter(x => x && x.id && x.kind && x.fileName && typeof x.content === "string") : [];
+  } catch (_) {
+    return [];
+  }
+}
+function cloudBackupSave(list) {
+  try {
+    const keep = list.slice(-40);
+    while (keep.length > 1 && JSON.stringify(keep).length > 2500000) keep.shift(); // stay well inside the browser's storage limit
+    if (keep.length) localStorage.setItem(CLOUD_BACKUP_KEY, JSON.stringify(keep));else localStorage.removeItem(CLOUD_BACKUP_KEY);
+  } catch (_) {}
+}
+function cloudBackupPending(kind, fileName) {
+  return cloudBackupLoad().some(x => x.kind === kind && x.fileName === fileName);
+}
+async function _cloudBackupPass() {
+  for (const item of cloudBackupLoad()) {
+    let ok = false;
+    try {
+      const resp = await fetch(`${OVERLAY_WORKER}/backup/upload`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          slug: item.slug || "",
+          kind: item.kind,
+          fileName: item.fileName,
+          content: item.content
+        }),
+        signal: AbortSignal.timeout(20000)
+      });
+      let reply = null;
+      try {
+        reply = await resp.json();
+      } catch (_) {}
+      ok = !!(resp.ok && reply && reply.ok === true);
+    } catch (_) {}
+    const now = cloudBackupLoad();
+    if (ok) cloudBackupSave(now.filter(x => x.id !== item.id));else cloudBackupSave(now.map(x => x.id === item.id ? {
+      ...x,
+      tries: (x.tries || 0) + 1
+    } : x).filter(x => (x.tries || 0) <= 300)); // about five hours of trying, then let go
+  }
+}
+function cloudBackupFlush() {
+  if (!ff(1016)) return Promise.resolve();
+  if (_cbRun) {
+    _cbAgain = true; // something new arrived mid-run: go round once more
+    return _cbRun;
+  }
+  _cbRun = (async () => {
+    do {
+      _cbAgain = false;
+      try {
+        await _cloudBackupPass();
+      } catch (_) {}
+    } while (_cbAgain);
+  })().then(() => {
+    _cbRun = null;
+  });
+  return _cbRun;
+}
+// Adds a file to the queue (same kind + name replaces) and tries to upload right away.
+function cloudBackupEnqueue(f) {
+  const id = f.kind + "|" + f.fileName;
+  cloudBackupSave(cloudBackupLoad().filter(x => x.id !== id).concat([{
+    id,
+    kind: f.kind,
+    slug: f.slug || "",
+    fileName: f.fileName,
+    content: String(f.content),
+    addedAt: Date.now(),
+    tries: 0
+  }]));
+  return cloudBackupFlush();
+}
+if (typeof window !== "undefined") {
+  setTimeout(() => {
+    cloudBackupFlush().catch(() => {});
+  }, 5000);
+  setInterval(() => {
+    cloudBackupFlush().catch(() => {});
+  }, 60000);
+  window.addEventListener("online", () => {
+    cloudBackupFlush().catch(() => {});
+  });
+}
 // ── Match timing notebook (FLAG 1014) ───────────────────────────────────────
 // A small notebook of clock readings for ONE match, saved on the device. The clock starts the
 // first time the deck builder is opened. Every reading is a real clock time (so a refresh, a crash
@@ -1027,6 +1127,152 @@ function timingSummary(lines) {
   s.total = lines.length ? Math.max(...lines.map(l => l.secs)) : null;
   s.accounted = s.battleTotal + s.launchTotal + s.setupTotal + s.fixTotal;
   return s;
+}
+// ── Match timing SEND (FLAG 1015) ──────────────────────────────────────────────────────────────
+// Turns the notebook into the agreed "contract" for the Worker's /db/timing door: one line per
+// event, in the order it happened. Clock lines (markers, battles, launch errors) carry sincePrev =
+// the gap from the previous CLOCK line, so the gaps add up to the full match time; fix and
+// fix_press lines are skipped when finding the previous line. Nothing is dropped: undone,
+// replaced and correction lines go along with their status. Pure function - changes nothing.
+function timingToContract(t, entries, info, now) {
+  if (!t || t.start === null || !info || !info.matchKey || !info.slug) return null;
+  const lines = timingBuildLines(t, entries, now);
+  if (!lines.length || lines.length > 600) return null;
+  const timeByMs = {};
+  (Array.isArray(entries) ? entries : []).forEach(e => {
+    const ms = e && typeof e.time === "string" ? Date.parse(e.time) : NaN;
+    if (isFinite(ms)) timeByMs[ms] = e.time;
+  });
+  const FIN = {
+    SPF: "Spin",
+    OVR: "Over",
+    BST: "Burst",
+    XTR: "Xtreme",
+    OF2: "Own Finish",
+    OF3: "Own Finish"
+  };
+  const r2 = n => Math.round(n * 100) / 100;
+  const out = [];
+  let prev = null;
+  lines.forEach(l => {
+    const tt = r2(l.secs);
+    const label = String(l.label || "");
+    const o = {
+      label: label.slice(0, 80),
+      t: tt
+    };
+    const num = /(\d+)\s*$/.exec(label);
+    if (l.kind === "marker") {
+      o.kind = label === "Start" ? "start" : label === "Decks Recorded" ? "decks" : label === "Priority" ? "priority" : label === "Match Complete" ? "complete" : label.indexOf("Side Selection") === 0 ? "side" : "shuffle";
+      if ((o.kind === "side" || o.kind === "shuffle") && num) o.n = +num[1];
+    } else if (l.kind === "battle") {
+      o.kind = "battle";
+      if (num) o.n = +num[1];
+      o.set = Math.max(1, Math.round(Number(l.set)) || 1);
+      if (FIN[l.finish]) o.finishType = FIN[l.finish];
+      if (l.fromLog && timeByMs[l.ms]) o.battleTs = timeByMs[l.ms];
+    } else if (l.kind === "launch") {
+      o.kind = "launch_error";
+    } else if (l.kind === "press") {
+      o.kind = "fix_press";
+      o.press = label.indexOf("Reset") === 0 ? "reset" : "undo";
+    } else if (l.kind === "fix") {
+      o.kind = "fix";
+      const fe = tt;
+      const fs = Math.min(fe, r2(Math.max(0, (l.startMs - t.start) / 1000)));
+      const fp = r2(Math.min(fe, Math.max(fs, (l.firstUndoMs - t.start) / 1000)));
+      o.fixStart = fs;
+      o.firstPress = fp;
+      o.fixEnd = fe;
+      o.notice = r2(fp - fs);
+      o.repair = r2(fe - fp);
+    } else return;
+    if (l.status === "undone" || l.status === "replaced" || l.status === "correction") o.status = l.status;
+    if (o.kind !== "fix" && o.kind !== "fix_press") {
+      o.sincePrev = prev === null ? 0 : r2(Math.max(0, tt - prev));
+      prev = tt;
+    }
+    out.push(o);
+  });
+  return {
+    slug: info.slug,
+    tournament: info.tournament || "",
+    matchKey: String(info.matchKey),
+    ...(info.match ? {
+      match: info.match
+    } : {}),
+    ...(info.judge ? {
+      judge: info.judge
+    } : {}),
+    ...(info.p1 ? {
+      p1: info.p1
+    } : {}),
+    ...(info.p2 ? {
+      p2: info.p2
+    } : {}),
+    startedAt: new Date(t.start).toISOString(),
+    lines: out
+  };
+}
+// ── Match timing OUTBOX helpers (FLAG 1015) ───────────────────────────────────────────────────
+// A timing send that fails is kept on the device (so closing the app does not lose it), retried
+// by itself, and after TIMING_GIVE_UP_MS turned into a CSV and uploaded to the cloud backup
+// folder. Only if that upload also fails is the CSV downloaded to the judge's device.
+const TIMING_OUTBOX_KEY = "bx-timing-outbox-v1";
+const TIMING_GIVE_UP_MS = 10 * 60 * 1000;
+function timingOutboxLoad() {
+  try {
+    const a = JSON.parse(localStorage.getItem(TIMING_OUTBOX_KEY) || "[]");
+    return Array.isArray(a) ? a.filter(x => x && x.id && typeof x.payload === "string") : [];
+  } catch (_) {
+    return [];
+  }
+}
+function timingOutboxSave(list) {
+  try {
+    if (list.length) localStorage.setItem(TIMING_OUTBOX_KEY, JSON.stringify(list.slice(-10)));else localStorage.removeItem(TIMING_OUTBOX_KEY);
+  } catch (_) {}
+}
+// One row per stopwatch line; the match details repeat on every row so the file stands alone.
+function timingCsv(p) {
+  const q = v => {
+    const t = v === undefined || v === null ? "" : String(v);
+    return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  };
+  const head = ["tournament", "judge", "match", "matchKey", "startedAt", "label", "kind", "t", "sincePrev", "status", "set", "n", "finishType", "battleTs", "press", "fixStart", "firstPress", "fixEnd", "notice", "repair"];
+  const rows = [head.join(",")];
+  (p && Array.isArray(p.lines) ? p.lines : []).forEach(l => rows.push([p.tournament, p.judge, p.match, p.matchKey, p.startedAt, l.label, l.kind, l.t, l.sincePrev, l.status || "counted", l.set, l.n, l.finishType, l.battleTs, l.press, l.fixStart, l.firstPress, l.fixEnd, l.notice, l.repair].map(q).join(",")));
+  return rows.join("\r\n") + "\r\n";
+}
+// File name: event, judge, both players, round number (characters that file names cannot hold are removed).
+function backupCleanPart(v) {
+  return String(v === undefined || v === null ? "" : v).replace(/[\\/:*?"<>|\x00-\x1f]/g, " ").replace(/\s+/g, " ").trim();
+}
+function backupFileName(event, judge, p1, p2, round, ext) {
+  const r = backupCleanPart(round);
+  const parts = [backupCleanPart(event) || "Event", backupCleanPart(judge) || "Judge", (backupCleanPart(p1) || "Player 1") + " vs " + (backupCleanPart(p2) || "Player 2"), r ? "Round " + r : "Round unknown"];
+  return parts.join(" - ").slice(0, 180) + (ext || ".csv");
+}
+function timingBackupFileName(p, round) {
+  return backupFileName(p && p.tournament, p && p.judge, p && p.p1, p && p.p2, round, ".csv");
+}
+// Bug reports have no round: "Bug <number> - <event> - <judge>.json".
+function bugBackupFileName(report) {
+  const live = report && report.live || {};
+  const ev = live.match && live.match.config && live.match.config.tournamentName || live.match && live.match.slug || "";
+  const judge = live.app && live.app.judge || "";
+  return ("Bug " + backupCleanPart(report && report.id) + " - " + (backupCleanPart(ev) || "no event") + " - " + (backupCleanPart(judge) || "no judge")).slice(0, 180) + ".json";
+}
+function timingDownloadText(name, text) {
+  const blob = new Blob([text], {
+    type: "text/csv"
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 const DEFAULT_PARTS = {
   blades: ["Wizard Rod", "Shark Scale", "Cobalt Dragoon", "Aero Pegasus", "Hover Wyvern", "Golem Rock", "Meteor Dragoon", "Phoenix Wing", "Silver Wolf", "Clock Mirage", "Antler", "Arc", "Assault", "Bear Scratch", "Bite Croc", "Black Shell", "Blast", "Blitz", "Brave", "Break", "Brush", "Bullet Griffon", "Bumper", "Bumblebee", "Captain America", "Charge", "Chewbacca", "Cobalt Drake", "Crimson Garuda", "Cutter Shinobi", "Dark", "Darth Vader", "Draciel Shield", "Dragoon Storm", "Dran Buster", "Dran Dagger", "Dran Strike", "Dran Sword", "Dranzer Spiral", "Driger S", "Dual", "Eclipse", "Emperor", "Erase", "Fang", "Flame", "Flare", "Flow", "Fort", "Fortress", "Free", "General Grievous", "Ghost Circle", "Gill Shark", "Goat Tackle", "Green Goblin", "Guard", "Hack Viking", "Heavy", "Hells Chain", "Hells Hammer", "Hells Scythe", "Hunt", "Impact Drake", "Iron Man", "Jaggy", "Knight Lance", "Knight Mail", "Knight Shield", "Knuckle", "Leon Claw", "Leon Crest", "Lightning L-Drago", "Luke Skywalker", "Massive", "Megatron", "Might", "Miles Morales", "Moff Gideon", "Mosasaurus", "Mummy Curse", "Obi-Wan Kenobi", "Optimus Primal", "Optimus Prime", "Orochi Cluster", "Phoenix Feather", "Phoenix Rudder", "Ptera Wing", "Quetzalcoatlus", "Rage", "Rampart Aegis", "Reaper", "Red Hulk", "Rhino Horn", "Ridge Triceratops", "Ring Aether", "Rock Leone", "Round", "Samurai Calibur", "Samurai Saber", "Samurai Steel", "Scorpio Spear", "Shadow Shinobi", "Shark Edge", "Shelter Drake", "Shinobi Knife", "Slash", "Soundwave", "Sphinx Cowl", "Spider-Man", "Spinosaurus", "Standard", "Starscream", "Storm Pegasus", "Storm Spriggan", "Storm Trooper", "Stun Medusa", "Suppress Superion", "T.Rex", "Thanos", "The Mandalorian", "Tricera Press", "Turn", "Tusk Mammoth", "Tyranno Beat", "Tyranno Roar", "Unicorn Sting", "Valor Bison", "Valkyrie", "Venom", "Vertical", "Victory Valkyrie", "Viper Tail", "Volt", "Weiss Tiger", "Whale Wave", "Wheel", "Wizard Arrow", "Wriggle", "Wyvern Gale", "Xeno Xcalibur", "Yell Kong", "Zillion"],
@@ -6650,6 +6896,10 @@ function MatchScreen({
   dbError,
   setDbStatus,
   onRetryDatabase,
+  timingSendStatus,
+  timingSendError,
+  setTimingSendStatus,
+  onRetryTiming,
   onBack,
   onMainMenu,
   onDownloadCSV,
@@ -6951,6 +7201,7 @@ function MatchScreen({
   // Station Matches tab: loaded on first open; { letter, queuedMatches: [{id,p1,p2},...] } | null | "loading" | "no-assign"
   const [stationMatchesData, setStationMatchesData] = useState(null);
   const [challongeMatchId, setChallongeMatchId] = useState(_resume ? _resume.challongeMatchId : null);
+  const [challongeRound, setChallongeRound] = useState(_resume ? _resume.challongeRound ?? null : null); // FLAG 1015: round number, for the backup file name
   const [challongeP1ParticipantId, setChallongeP1ParticipantId] = useState(_resume ? _resume.challongeP1ParticipantId : null);
   const [challongeP2ParticipantId, setChallongeP2ParticipantId] = useState(_resume ? _resume.challongeP2ParticipantId : null);
   const [challongeSubmitStatus, setChallongeSubmitStatus] = useState(null);
@@ -7016,12 +7267,12 @@ function MatchScreen({
     ssSave(KEYS.matchResume, {
       phase, p1, p2, d1, d2, r1, r2, used1, used2, pts, sets, curSet, shuf,
       manualJudge, setScores, sideAssign, currentSides, lerStrikes,
-      challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId,
+      challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId, challongeRound,
       matchStartIdx, swapped, matchKey, set1PriorityName
     });
   }, [phase, p1, p2, d1, d2, r1, r2, used1, used2, pts, sets, curSet, shuf,
       manualJudge, setScores, sideAssign, currentSides, lerStrikes,
-      challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId,
+      challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId, challongeRound,
       matchStartIdx, swapped, matchKey, set1PriorityName]);
   const [sideSwapConfirm, setSideSwapConfirm] = useState(false); // swap B/X sides modal
   const [swapStadium, setSwapStadium] = useState(true); // checkbox: swap B/X sides
@@ -7096,6 +7347,7 @@ function MatchScreen({
         pts, sets, curSet, shuf, r1, r2, lerStrikes, overlaySlot,
         slug: challongeSlug || "",
         challongeMatchId: challongeMatchId ?? null,
+        challongeRound: challongeRound ?? null,
         matchKey: matchKey ?? null,
         config: config ? { bo: config.bo, pts: config.pts, tm: config.tm, tournamentName: config.tournamentName || "" } : null
       };
@@ -8115,6 +8367,7 @@ function MatchScreen({
     setPhase("pick");
     setSheetsStatus(null);
     if (setDbStatus) setDbStatus(null); // FLAG 1013: clear the Database status line for the next match
+    if (setTimingSendStatus) setTimingSendStatus(null); // FLAG 1015: and the Timing status line
     setConfirmState(null);
     setConfirmOverlay(false);
     setJudge("");
@@ -8131,6 +8384,7 @@ function MatchScreen({
     setManualJudge(false);
     setLerStrikes([0, 0]);
     setChallongeMatchId(null);
+    setChallongeRound(null);
     setChallongeP1ParticipantId(null);
     setChallongeP2ParticipantId(null);
     setChallongeSubmitStatus(null);
@@ -8579,6 +8833,7 @@ function MatchScreen({
       setMatchKey(preview.matchKey || fromEntry || null);
     })();
     setChallongeMatchId(preview.challongeMatchId || null);
+    setChallongeRound(preview.challongeRound ?? null);
     setChallongeP1ParticipantId(preview.challongeP1ParticipantId || null);
     setChallongeP2ParticipantId(preview.challongeP2ParticipantId || null);
     setOverlaySlot(preview.overlaySlot || 0);
@@ -10723,6 +10978,7 @@ function MatchScreen({
         })();
       }
       setChallongeMatchId(match.id);
+      setChallongeRound(match.round ?? null);
       // For group stage tournaments, winner_id must be player1_id/player2_id (the group player IDs),
       // NOT the real participant.id — Challonge validates winner_id against the match's player IDs directly.
       setChallongeP1ParticipantId(match.player1_id || null);
@@ -13246,6 +13502,24 @@ function MatchScreen({
         onClick: () => {
           if (ff(1013) && !(judge || "").trim()) return; // FLAG 1013: blank judge name - do not submit
           stampTiming("complete"); // FLAG 1014: Match Complete marker (first Submit press only)
+          // FLAG 1015: build the timing lines to send with the match. Same "first press wins" rule
+          // as the marker above, worked out here because the saved state is not updated yet.
+          let timingPayload = null;
+          if (ff(1015) && ff(1014)) {
+            try {
+              const nowT = Date.now();
+              const first = currentMatch[0] || {};
+              timingPayload = timingToContract(timingStampPure(timing, "complete", null, nowT), currentMatch, {
+                slug: challongeSlug,
+                tournament: config && config.tournamentName || "",
+                matchKey,
+                match: first.p1Name ? first.p1Name + " vs " + first.p2Name : "",
+                judge,
+                p1,
+                p2
+              }, nowT);
+            } catch (_) {}
+          }
           setJudgeSubmitModal(false);
           setConfirmState({
             ...cs,
@@ -13262,7 +13536,9 @@ function MatchScreen({
               judge,
               challongeMatchId,
               challongeSlug,
-              set1PriorityName
+              set1PriorityName,
+              timing: timingPayload,
+              timingRound: challongeRound
             });
           } else {
             onDownloadCSV(currentMatch, {
@@ -13554,7 +13830,45 @@ function MatchScreen({
         userSelect: "text",
         WebkitUserSelect: "text"
       }
-    }, "Reason: " + dbError)));
+    }, "Reason: " + dbError)),
+    // FLAG 1015: separate Timing status line (match timing sent to the database).
+    config.tm && ff(1015) && timingSendStatus && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 10,
+        padding: "10px 14px",
+        borderRadius: 10,
+        background: timingSendStatus === "sent" ? "#15803D15" : timingSendStatus === "failed" ? "#DC262615" : timingSendStatus === "sending" ? "#B4530915" : "var(--surface2)",
+        border: "1px solid " + (timingSendStatus === "sent" ? "#15803D40" : timingSendStatus === "failed" ? "#DC262640" : timingSendStatus === "sending" ? "#B4530940" : "var(--border)"),
+        fontSize: 12,
+        fontWeight: 600,
+        color: timingSendStatus === "sent" ? "#15803D" : timingSendStatus === "failed" ? "#DC2626" : timingSendStatus === "sending" ? "#B45309" : "var(--text-muted)",
+        textAlign: "center"
+      }
+    }, timingSendStatus === "sending" ? "\u2026 Timing: sending" : timingSendStatus === "sent" ? "\u2713 Timing: sent" : timingSendStatus === "skipped" ? "Timing: nothing to send" : timingSendStatus === "backup" ? "Timing: not sent to the database \u2014 a backup file is going to the cloud folder" : timingSendStatus === "downloaded" ? "Timing: CSV downloaded to this device" : /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => onRetryTiming && onRetryTiming(),
+      style: {
+        background: "none",
+        border: "none",
+        padding: 0,
+        color: "#DC2626",
+        fontSize: 12,
+        fontWeight: 700,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: "pointer",
+        textDecoration: "underline"
+      }
+    }, "\u2715 Timing: not sent yet \u2014 retrying on its own \u2014 tap to retry now"), timingSendStatus === "failed" && timingSendError && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 6,
+        fontSize: 11,
+        fontWeight: 500,
+        color: "var(--text-muted)",
+        wordBreak: "break-word",
+        userSelect: "text",
+        WebkitUserSelect: "text"
+      }
+    }, "Reason: " + timingSendError)));
   }
 
   // Battle screen (merged: combo pick + scoring in one view)
@@ -23158,6 +23472,10 @@ function BeyJudgeApp() {
   const [dbError, setDbError] = useState("");
   const lastDbPayloadRef = useRef(null);
   const dbPendingRef = useRef(null);
+  // FLAG 1015: the match TIMING send has its own status line and its own retry, so the battle
+  // send above is never touched by it. null | "sending" | "sent" | "failed" | "skipped".
+  const [timingSendStatus, setTimingSendStatus] = useState(null);
+  const [timingSendError, setTimingSendError] = useState("");
   const dbCsvPayloadRef = useRef(null);
   // FLAG 1005: top-level trail + live state (which area, Sheets result). The
   // flag is checked inside each hook so hook order never changes. --espiiii
@@ -23250,11 +23568,22 @@ function BeyJudgeApp() {
   // Unknown priority (null) = no tag, same as events from before tracking existed.
   const tagP = (name, meta) => meta && meta.set1PriorityName && name === meta.set1PriorityName ? `${name}~P~` : name;
 
-  const handleDownloadCSV = (roundLog, meta) => {
+  const handleDownloadCSV = (roundLog, meta, asError) => {
     let csv = "Slot,Set,Shuffle,Judge,Tournament,Winner,WinnerCombo,FinishType,Points,Penalty,P1,P1Side,P1Score,P1Combo,P2,P2Side,P2Score,P2Combo,Timestamp\n";
     roundLog.forEach(r => {
       csv += `${r.slot},${r.set},${r.shuffle},"${r.judge || ""}","${meta.config?.tournamentName || ""}","${r.scorer}","${r.winnerCombo}",${r.type},${r.points},${r.penalty ? 1 : 0},"${tagP(r.p1Name, meta)}",${r.p1Side || ""},"${r.p1Score}","${comboStr(r.p1Combo)}","${tagP(r.p2Name, meta)}",${r.p2Side || ""},"${r.p2Score}","${comboStr(r.p2Combo)}",${r.time}\n`;
     });
+    // FLAG 1016: when this is an ERROR copy (a send failed), it goes to the cloud backup folder
+    // instead of this device. The Download CSV button and the "no Sheets" submit still download.
+    if (asError && ff(1016)) {
+      cloudBackupEnqueue({
+        kind: "battle-error",
+        slug: meta.challongeSlug,
+        fileName: backupFileName(meta.config?.tournamentName, meta.judge || roundLog[0] && roundLog[0].judge, meta.p1, meta.p2, meta.timingRound, ".csv"),
+        content: csv
+      }).catch(() => {});
+      return;
+    }
     const blob = new Blob([csv], {
       type: "text/csv"
     });
@@ -23264,6 +23593,162 @@ function BeyJudgeApp() {
     a.download = `ncblast_${meta.p1 || "p1"}_vs_${meta.p2 || "p2"}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // FLAG 1015: send one match's timing lines to the database through the BLAST Worker's
+  // /db/timing door (the Worker adds the secret). Sending the same match again is safe: the
+  // database swaps that match's old lines for the new ones. Every send goes through a small
+  // "outbox" kept on the device: a failed send retries by itself every minute (and when the
+  // connection comes back, and after the app is reopened). After 10 minutes of failing, the
+  // timing is uploaded as a CSV to the cloud backup folder (Worker /backup/upload); only if that
+  // fails too is the CSV downloaded to this device. None of this touches Sheets, the battles
+  // send or the bracket.
+  const timingOutboxRef = useRef(null);
+  if (timingOutboxRef.current === null) timingOutboxRef.current = timingOutboxLoad();
+  const timingShownIdRef = useRef(null);
+  const timingBusyRef = useRef(false);
+  const timingAgainRef = useRef(false);
+  const showTimingStatus = (id, status, err) => {
+    if (id !== timingShownIdRef.current) return; // only the match on screen owns the status line
+    setTimingSendError(err || "");
+    setTimingSendStatus(status);
+  };
+  const timingDropItem = id => {
+    timingOutboxRef.current = timingOutboxRef.current.filter(x => x.id !== id);
+    timingOutboxSave(timingOutboxRef.current);
+  };
+  // One try. Returns null when the database accepted it, otherwise a readable reason.
+  const timingTryOnce = async item => {
+    try {
+      const resp = await fetch(`${OVERLAY_WORKER}/db/timing`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: item.payload,
+        signal: AbortSignal.timeout(20000)
+      });
+      let reply = null;
+      try {
+        reply = await resp.json();
+      } catch (_) {}
+      if (!resp.ok || !reply || reply.ok !== true) {
+        let detail = "HTTP " + resp.status;
+        if (reply && reply.error) detail += " - " + reply.error;else if (!reply) detail += " - reply was not JSON";
+        return detail;
+      }
+      console.log("[timing] inserted " + reply.inserted + ", replaced " + reply.replaced);
+      if (Array.isArray(reply.notes) && reply.notes.length) console.log("[timing] notes:", reply.notes);
+      return null;
+    } catch (err) {
+      const msg = err && err.message ? err.message : "unknown";
+      return err && (err.name === "TimeoutError" || err.name === "AbortError") ? "timed out after 20 seconds" : err instanceof TypeError ? "network: " + msg : msg;
+    }
+  };
+  // Out of patience: the CSV is queued for the cloud backup folder (flag 1016), which keeps
+  // trying until the upload works. Only with 1016 off is it downloaded to this device.
+  const timingGiveUp = async item => {
+    let p = null;
+    try {
+      p = JSON.parse(item.payload);
+    } catch (_) {}
+    if (!p) {
+      timingDropItem(item.id);
+      return;
+    }
+    const fileName = timingBackupFileName(p, item.round);
+    const content = timingCsv(p);
+    if (ff(1016)) {
+      cloudBackupEnqueue({
+        kind: "timing-error",
+        slug: p.slug,
+        fileName,
+        content
+      }).catch(() => {});
+      timingDropItem(item.id);
+      showTimingStatus(item.id, "backup");
+      if (ff(1005)) bugLog("submit", "timing: backup file queued for the cloud folder");
+      return;
+    }
+    try {
+      timingDownloadText(fileName, content);
+    } catch (_) {}
+    timingDropItem(item.id);
+    showTimingStatus(item.id, "downloaded");
+    if (ff(1005)) bugLog("submit", "timing: CSV downloaded");
+  };
+  const timingAttempt = async item => {
+    showTimingStatus(item.id, "sending");
+    const reason = await timingTryOnce(item);
+    if (!reason) {
+      timingDropItem(item.id);
+      showTimingStatus(item.id, "sent");
+      if (ff(1005)) bugLog("submit", "timing: sent");
+      return;
+    }
+    console.warn("[timing] send failed:", reason);
+    item.tries = (item.tries || 0) + 1;
+    timingOutboxSave(timingOutboxRef.current);
+    if (Date.now() - item.addedAt > TIMING_GIVE_UP_MS) {
+      await timingGiveUp(item);
+      return;
+    }
+    showTimingStatus(item.id, "failed", reason.slice(0, 400));
+    if (ff(1005)) bugLog("submit", "timing: failed - " + reason);
+  };
+  const processTimingOutbox = async () => {
+    if (!ff(1015)) return;
+    if (timingBusyRef.current) {
+      timingAgainRef.current = true; // something new arrived mid-run: go round once more
+      return;
+    }
+    timingBusyRef.current = true;
+    try {
+      for (const item of [...timingOutboxRef.current]) await timingAttempt(item);
+    } catch (_) {} finally {
+      timingBusyRef.current = false;
+    }
+    if (timingAgainRef.current) {
+      timingAgainRef.current = false;
+      processTimingOutbox().catch(() => {});
+    }
+  };
+  const processTimingRef = useRef(null);
+  processTimingRef.current = processTimingOutbox;
+  useEffect(() => {
+    const run = () => {
+      if (processTimingRef.current) processTimingRef.current().catch(() => {});
+    };
+    const first = setTimeout(run, 4000); // after the app opens: pick up anything left in the outbox
+    const every = setInterval(run, 60000);
+    window.addEventListener("online", run);
+    return () => {
+      clearTimeout(first);
+      clearInterval(every);
+      window.removeEventListener("online", run);
+    };
+  }, []);
+  const sendTiming = async (timing, round) => {
+    if (!timing) {
+      timingShownIdRef.current = null;
+      setTimingSendStatus("skipped");
+      return;
+    }
+    const id = String(timing.matchKey);
+    timingShownIdRef.current = id;
+    // Re-submitting the same match replaces its waiting copy (the database does the same).
+    timingOutboxRef.current = [...timingOutboxRef.current.filter(x => x.id !== id), {
+      id,
+      payload: JSON.stringify(timing),
+      round: round ?? null,
+      addedAt: Date.now(),
+      tries: 0
+    }];
+    timingOutboxSave(timingOutboxRef.current);
+    await processTimingOutbox();
+  };
+  const handleRetryTiming = () => {
+    processTimingOutbox().catch(() => {});
   };
 
   // FLAG 1013: send one finished match to the NC BLAST database (through the BLAST
@@ -23329,7 +23814,7 @@ function BeyJudgeApp() {
       if (dbCsvPayloadRef.current !== payload) {
         dbCsvPayloadRef.current = payload;
         try {
-          handleDownloadCSV(roundLog, meta);
+          handleDownloadCSV(roundLog, meta, true);
         } catch (_) {}
       }
     }
@@ -23436,6 +23921,13 @@ function BeyJudgeApp() {
         sendToDatabase(rows, roundLog.some(r => r && Array.isArray(r.errors) && r.errors.length > 0), roundLog, meta).catch(() => {});
       } catch (_) {}
     }
+    // FLAG 1015: the match timing goes to the database beside the battles. Not awaited and fully
+    // wrapped, so it can never delay, fail or change the Sheets / Challonge submit below.
+    if (ff(1015)) {
+      try {
+        sendTiming(meta && meta.timing, meta && meta.timingRound).catch(() => {});
+      } catch (_) {}
+    }
     // FLAG 1003 off: original behaviour. Reports failure whenever the reply
     // can't be parsed, even though the rows were already written.
     if (!ff(1003)) {
@@ -23484,7 +23976,7 @@ function BeyJudgeApp() {
       // The old message claimed a CSV was downloaded but nothing was. Now it is
       // true, so a real failure never loses the match. --espiiii
       try {
-        handleDownloadCSV(roundLog, meta);
+        handleDownloadCSV(roundLog, meta, true);
       } catch (_) {}
     }
   };
@@ -23653,6 +24145,10 @@ function BeyJudgeApp() {
     dbError: dbError,
     setDbStatus: setDbStatus,
     onRetryDatabase: handleRetryDatabase,
+    timingSendStatus: timingSendStatus,
+    timingSendError: timingSendError,
+    setTimingSendStatus: setTimingSendStatus,
+    onRetryTiming: handleRetryTiming,
     onBack: () => setScreen("format"),
     onMainMenu: () => setScreen("format"),
     onDownloadCSV: handleDownloadCSV,
@@ -23895,6 +24391,23 @@ function BugReporter() {
   const send = async () => {
     if (!report || sending) return;
     setSending(true);
+    // FLAG 1016: the report goes to the cloud backup folder (queued and retried if there is no
+    // connection) instead of the share sheet / a file on this device.
+    if (ff(1016)) {
+      const fileName = bugBackupFileName(report);
+      const live = report.live && report.live.match || {};
+      try {
+        await cloudBackupEnqueue({
+          kind: "bug-report",
+          slug: live.slug || "",
+          fileName,
+          content: JSON.stringify(report, null, 2)
+        });
+      } catch (_) {}
+      setShareState(cloudBackupPending("bug-report", fileName) ? "queued" : "shared");
+      setSending(false);
+      return;
+    }
     const s = await shareBugReport(report);
     setShareState(s);
     setSending(false);
@@ -23975,6 +24488,7 @@ function BugReporter() {
     /*#__PURE__*/React.createElement("button", { key: "send", type: "button", onClick: send, disabled: sending, style: big("#16A34A", "#fff", !sending) }, sending ? "Opening…" : "Send to organizers"),
     shareState === "shared" && /*#__PURE__*/React.createElement("p", { key: "r1", style: { margin: "10px 0 0", fontSize: 13, color: "#15803D", fontWeight: 700, textAlign: "center" } }, "✓ Sent. You can close this now."),
     shareState === "downloaded" && /*#__PURE__*/React.createElement("p", { key: "r2", style: { margin: "10px 0 0", fontSize: 13, color: "#B45309", fontWeight: 700, textAlign: "center", lineHeight: 1.5 } }, "Saved as a file on this device, and the bug number was copied. Send that file to the organizers."),
+    shareState === "queued" && /*#__PURE__*/React.createElement("p", { key: "r4", style: { margin: "10px 0 0", fontSize: 13, color: "#B45309", fontWeight: 700, textAlign: "center", lineHeight: 1.5 } }, "No connection right now. Your report is saved and will be sent to the organizers by itself as soon as this device is online."),
     shareState === "cancelled" && /*#__PURE__*/React.createElement("p", { key: "r3", style: { margin: "10px 0 0", fontSize: 12, color: "#64748B", textAlign: "center" } }, "Not sent. Tap the green button to try again."),
     /*#__PURE__*/React.createElement("button", { key: "d", type: "button", onClick: close, style: quiet }, "Done")
   ];
