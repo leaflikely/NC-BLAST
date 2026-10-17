@@ -47,6 +47,8 @@ window.FEATURE_FLAGS = new Set([
   1012, // Organizer view: type any number of stadiums (1-99)
   1013, // Send to database beside the Sheets submit; judge name required to submit
   1014, // Match timing notebook (judge). Nothing is sent anywhere yet; the notebook is kept on the device and shown in the cog menu.
+  1015, // Send match timing to the database after Submit (needs 1014 and 1013; needs the Worker /db/timing door deployed first).
+  1016, // Error files (failed battles send, failed timing send, bug reports) go to the cloud backup folder instead of the judge's device (needs the Worker /backup/upload door deployed first).
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -120,5 +122,15 @@ window.FEATURE_FLAG_INFO = {
     name: "Match timing (judge)",
     desc: "Keeps a small clock notebook for each match on the judge's device: Start (the first time the deck builder opens), Decks Recorded, Priority, Side Selection, Shuffle and Match Complete, plus the time of every battle and launch error. Nothing is erased: undone battles stay in the notebook, marked as undone, so all the time adds up to the full match. Every Undo or Reset set starts a fix timer that runs until the match is back where it was, split into time-to-notice and time-to-repair. Abandoning a match throws its timing away; the QR handoff carries it over. The Redo item is hidden from the cog menu while this is on, and the cog menu gets a read-only Match timing window to check it. Nothing is sent anywhere yet.",
     off: "Old behaviour: no timing is kept, Redo stays in the cog menu, and there is no Match timing item."
+  },
+  1015: {
+    name: "Send match timing to the database (judge)",
+    desc: "When a judge submits a finished match, the match timing notebook (flag 1014) is also sent to the NC BLAST database, one line per event, undone and corrected entries included and tagged. A separate 'Timing: sending / sent / failed' line appears under the Database one, and a failed send can be retried with one tap (sending twice is safe, the database swaps the old lines for the new). A failed send also keeps retrying by itself (every minute, when the connection returns, and after the app is reopened). After 10 minutes of failing, the timing is uploaded as a CSV to the cloud backup folder, named by event, judge, both players and round; only if that fails too is the CSV downloaded to the judge's device. It never touches the Sheets, Database battles or bracket submits. Needs the Worker's /db/timing and /backup/upload doors to be deployed.",
+    off: "Old behaviour: the timing stays on the device and is not sent."
+  },
+  1016: {
+    name: "Error files go to the cloud (judge)",
+    desc: "When something fails, the file that would have been saved on the judge's device goes to the cloud backup folder instead: the battles CSV when a Database or Sheets send fails, the timing CSV when the timing send keeps failing, and bug reports (the Send button now sends it straight to the organizers). Each file is named by event, judge, both players and round. If there is no connection, the file waits on the device and uploads by itself, every minute, when the internet returns, and after the app is reopened. The Download CSV button and the choice to submit without Sheets still download a file as before. Needs the Worker's /backup/upload door deployed first.",
+    off: "Old behaviour: error files are downloaded to the judge's device, and bug reports use the share sheet."
   }
 };
