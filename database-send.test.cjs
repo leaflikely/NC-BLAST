@@ -8,8 +8,9 @@ const path = require("path");
 const assert = require("assert");
 
 const root = path.join(__dirname, "..");
-const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
-const flags = fs.readFileSync(path.join(root, "flags.js"), "utf8");
+let helper; try { helper = require("./tests/load-app.cjs"); } catch (_) { helper = require("./load-app.cjs"); } // works from the top folder or from tests/
+const app = helper.loadApp(); // all the app script files, in load order
+const flags = helper.loadText("flags.js");
 
 function slice(src, start, endMarker) {
   const i = src.indexOf(start);

@@ -8,8 +8,9 @@ const path = require("path");
 const assert = require("assert");
 
 const root = path.join(__dirname, "..");
-const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
-const overlay = fs.readFileSync(path.join(root, "overlay.html"), "utf8");
+const { loadApp, loadText, root: ROOT } = require("./load-app.cjs");
+const app = loadApp(); // all the app script files, in load order
+const overlay = loadText("overlay.html");
 
 function slice(src, start, endMarker, from = 0) {
   const i = src.indexOf(start, from);

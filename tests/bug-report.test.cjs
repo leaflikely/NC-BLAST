@@ -8,7 +8,8 @@ const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
 
-const app = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+const { loadApp, loadText, root: ROOT } = require("./load-app.cjs");
+const app = loadApp(); // all the app script files, in load order
 
 function slice(start, endMarker) {
   const i = app.indexOf(start);

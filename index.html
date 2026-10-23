@@ -1,4 +1,4 @@
-<!-- NC BLAST index.html | last updated: 2026-06-30 | perf+resume+cleanup+safari-fix2: app code moved out of inline <script> into a separate /app.js file (loaded with defer, same as react.js) — a ~590KB inline script embedded in the HTML itself was likely causing mobile Safari to abort the page load under memory pressure ("network connection was lost"); fonts/React self-hosted, judge match state + org tournament selection survive a refresh via sessionStorage (KEYS.matchResume / KEYS.orgResume), dead player-view code removed -->
+<!-- NC BLAST index.html | last updated: 2026-10-22b | split-app-js-into-parts (app.js is now loaded as 6 script files in a fixed order: blade-images.js, core.js, screens.js, judge-match.js, organizer.js, app.js) | previous: 2026-06-30 | perf+resume+cleanup+safari-fix2: app code moved out of inline <script> into a separate /app.js file (loaded with defer, same as react.js) — a ~590KB inline script embedded in the HTML itself was likely causing mobile Safari to abort the page load under memory pressure ("network connection was lost"); fonts/React self-hosted, judge match state + org tournament selection survive a refresh via sessionStorage (KEYS.matchResume / KEYS.orgResume), dead player-view code removed -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10259,7 +10259,13 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
 
 <!-- Must load before app.js. defer scripts run in document order, so
      window.FEATURE_FLAGS is set by the time app.js executes. --espiiii -->
+<!-- The app is 6 script files. ORDER MATTERS - keep it exactly: blade-images, core, screens, judge-match, organizer, then app.js LAST (app.js checks the others loaded, then starts the app). -->
 <script src="/flags.js" defer></script>
+<script src="/blade-images.js" defer></script>
+<script src="/core.js" defer></script>
+<script src="/screens.js" defer></script>
+<script src="/judge-match.js" defer></script>
+<script src="/organizer.js" defer></script>
 <script src="/app.js" defer></script>
 </body>
 </html>
