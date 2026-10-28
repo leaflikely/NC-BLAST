@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-10-22b | split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-10-27a | submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 function MatchScreen({
   config,
   parts,
@@ -321,6 +321,8 @@ function MatchScreen({
   const [challongeP1ParticipantId, setChallongeP1ParticipantId] = useState(_resume ? _resume.challongeP1ParticipantId : null);
   const [challongeP2ParticipantId, setChallongeP2ParticipantId] = useState(_resume ? _resume.challongeP2ParticipantId : null);
   const [challongeSubmitStatus, setChallongeSubmitStatus] = useState(null);
+  const [bracketEscape, setBracketEscape] = useState(null); // FLAG 1017: null | "confirm" | "sending" | "failed" | "done" | "skipped" (done = the TO was told to enter this score by hand; skipped = the TO could not be reached and the judge carried on)
+  const bracketFailReportedRef = useRef(false); // FLAG 1017: a send problem for this match was already reported to the org view
   const [underwayStatus, setUnderwayStatus] = useState(null); // null | "checking" | "ok" | "denied" | "error"
   const [pendingFinish, setPendingFinish] = useState(null); // {pi, fin} — selected but not yet confirmed
   const [lerConfirm, setLerConfirm] = useState(null); // {pi, second, run} — a Launch Error waiting for its confirmation window
@@ -1358,6 +1360,172 @@ function MatchScreen({
     });
   };
   pushOverlayLatestRef.current = pushOverlay;
+  // ── FLAG 1017: submit check + notifications ────────────────────────────
+  // Tell the org view about a score that has not reached the bracket site (status "failed" while
+  // the judge can still retry, "manual" when the TO must enter it), and clear it once it goes through
+  // (status "sent"). Returns true when the Worker accepted the note. Never throws.
+  const notifyBracket = async (status, matchId, p1Score, p2Score, winnerChallongeId, errText) => {
+    if (!ff(1017) || !challongeSlug) return false;
+    try {
+      const winnerIsP1 = String(winnerChallongeId) === String(challongeP1ParticipantId);
+      const scoresCsv = setScores.length > 0 ? setScores.map(s => `${s.p1}-${s.p2}`).join(",") : `${p1Score}-${p2Score}`;
+      const res = await fetch(`${OVERLAY_WORKER}/notify/add`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          slug: challongeSlug,
+          type: "bracket-send",
+          status,
+          matchId,
+          round: challongeRound ?? null,
+          judge: judge || "",
+          p1: p1 || "",
+          p2: p2 || "",
+          p1Sets: p1Score,
+          p2Sets: p2Score,
+          winner: winnerIsP1 ? p1 || "" : p2 || "",
+          scoresCsv,
+          error: errText || ""
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      return res.ok;
+    } catch (_) {
+      return false;
+    }
+  };
+  // Ask the Worker to read the match back from the bracket site. confirmed: true | false | null (could not check).
+  // A check that fails or is missing on the Worker counts as null, never as false, so it can never block a judge by itself.
+  const verifyBracketScore = async (matchId, scoresCsv) => {
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/submit/verify`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          slug: challongeSlug,
+          matchId,
+          scores_csv: scoresCsv
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!res.ok) return {
+        confirmed: null,
+        reason: ""
+      };
+      const d = await res.json();
+      return {
+        confirmed: d.confirmed === true ? true : d.confirmed === false ? false : null,
+        reason: d.reason || ""
+      };
+    } catch (_) {
+      return {
+        confirmed: null,
+        reason: ""
+      };
+    }
+  };
+  // One extra look after a short wait, in case the bracket site was a moment slow to update.
+  const verifyBracketScoreTwice = async (matchId, scoresCsv) => {
+    const first = await verifyBracketScore(matchId, scoresCsv);
+    if (first.confirmed !== false) return first;
+    await new Promise(r => setTimeout(r, 2500));
+    return verifyBracketScore(matchId, scoresCsv);
+  };
+  // New Match stays locked until the bracket site confirmed the score, or the judge told the TO to enter it by hand.
+  const newMatchLocked = ff(1017) && !!challongeSlug && !!challongeMatchId && challongeSubmitStatus !== "ok" && bracketEscape !== "done" && bracketEscape !== "skipped";
+  // The "send it again" and "tell the TO" buttons shown under the Challonge/WCB status while New Match is locked.
+  const bracketEscapeUI = (bracketLabel, winnerId, showSend) => {
+    if (!ff(1017)) return null;
+    if (!newMatchLocked) {
+      return bracketEscape === "done" || bracketEscape === "skipped" ? /*#__PURE__*/React.createElement("div", {
+        style: {
+          padding: "10px 14px",
+          borderRadius: 10,
+          background: bracketEscape === "done" ? "#B4530915" : "#DC262615",
+          border: bracketEscape === "done" ? "1px solid #B4530940" : "1px solid #DC262640",
+          fontSize: 12,
+          fontWeight: 700,
+          color: bracketEscape === "done" ? "#B45309" : "#DC2626",
+          textAlign: "center",
+          marginBottom: 10
+        }
+      }, bracketEscape === "done" ? "The TO has been told to enter this score by hand." : `This score was NOT sent. Tell the TO yourself: ${p1 || "Player 1"} ${sets[0]}-${sets[1]} ${p2 || "Player 2"}.`) : null;
+    }
+    const st = challongeSubmitStatus;
+    if (st === "loading") return null;
+    return /*#__PURE__*/React.createElement(React.Fragment, null, !st && showSend !== false && /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => submitChallongeScore(challongeMatchId, sets[0], sets[1], winnerId),
+      style: {
+        display: "block",
+        width: "100%",
+        padding: "14px 0",
+        borderRadius: 12,
+        border: "none",
+        background: "#EA580C",
+        color: "#fff",
+        fontSize: 15,
+        fontWeight: 800,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: "pointer",
+        marginBottom: 6
+      }
+    }, `Send to ${bracketLabel}`), bracketEscape === "sending" ? /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 12,
+        fontWeight: 700,
+        color: "var(--text-muted)",
+        textAlign: "center",
+        marginBottom: 10
+      }
+    }, "Telling the TO\u2026") : bracketEscape === "failed" ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+      style: {
+        fontSize: 12,
+        fontWeight: 700,
+        color: "#DC2626",
+        textAlign: "center",
+        marginBottom: 6
+      }
+    }, `Could not reach the TO's list. Write this down and tell the TO: ${p1 || "Player 1"} ${sets[0]}-${sets[1]} ${p2 || "Player 2"}.`), /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => setBracketEscape("skipped"),
+      style: {
+        display: "block",
+        width: "100%",
+        padding: "10px 0",
+        borderRadius: 10,
+        border: "2px solid var(--border2)",
+        background: "var(--surface2)",
+        color: "var(--text-secondary)",
+        fontSize: 13,
+        fontWeight: 700,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: "pointer",
+        marginBottom: 10
+      }
+    }, "Continue anyway")) : /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => setBracketEscape("confirm"),
+      style: {
+        display: "block",
+        width: "100%",
+        padding: "10px 0",
+        borderRadius: 10,
+        border: "2px solid var(--border2)",
+        background: "var(--surface2)",
+        color: "var(--text-secondary)",
+        fontSize: 13,
+        fontWeight: 700,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: "pointer",
+        marginBottom: 10
+      }
+    }, "Can't send? Tell the TO to enter it by hand"));
+  };
   const submitChallongeScore = async (matchId, p1Score, p2Score, winnerChallongeId, isRetry) => {
     if (!challongeSlug || !matchId) return;
     setChallongeSubmitStatus("loading");
@@ -1382,8 +1550,21 @@ function MatchScreen({
         });
         const data = await res.json();
         console.log("[BLAST] submitWcbScore response", { status: res.status, data });
-        if (!data.ok) throw new Error(data.data?.message || data.data?.code || `HTTP ${data.status || res.status}`);
+        if (!data.ok) {
+          // FLAG 1017: WCB refuses a second result for a match it already finished. If WCB really shows it finished, that is a success, not a failure.
+          const alreadyDone = ff(1017) && /unfinished/i.test(String(data.data?.message || ""));
+          const again = alreadyDone ? await verifyBracketScore(matchId, scoresCsv) : null;
+          if (!(again && again.confirmed === true)) throw new Error(data.data?.message || data.data?.code || `HTTP ${data.status || res.status}`);
+        }
+        if (ff(1017)) {
+          const vr = await verifyBracketScoreTwice(matchId, scoresCsv);
+          if (vr.confirmed === false) throw new Error("Not confirmed by WCB - " + vr.reason);
+        }
         setChallongeSubmitStatus("ok");
+        if (ff(1017) && bracketFailReportedRef.current) {
+          bracketFailReportedRef.current = false;
+          notifyBracket("sent", matchId, p1Score, p2Score, winnerChallongeId, "");
+        }
         fetchWcbOpenMatches();
         const winnerIsP1 = String(winnerChallongeId) === String(challongeP1ParticipantId);
         fetch(`${OVERLAY_WORKER}/scorelog/push`, {
@@ -1403,6 +1584,10 @@ function MatchScreen({
         }).catch(() => {}); // ignore errors — log is best-effort
       } catch (err) {
         setChallongeSubmitStatus(err.message || "error");
+        if (ff(1017)) {
+          bracketFailReportedRef.current = true;
+          notifyBracket("failed", matchId, p1Score, p2Score, winnerChallongeId, err.message || "error");
+        }
       }
       return;
     }
@@ -1430,7 +1615,16 @@ function MatchScreen({
         data
       });
       if (!res.ok || data.errors) throw new Error(data.errors?.[0] || JSON.stringify(data.errors) || `HTTP ${res.status}`);
+      if (ff(1017)) {
+        // The send was accepted. Now ask the bracket site to confirm the match really shows as finished.
+        const vr = await verifyBracketScoreTwice(matchId, scoresCsv);
+        if (vr.confirmed === false) throw new Error("Not confirmed by Challonge - " + vr.reason);
+      }
       setChallongeSubmitStatus("ok");
+      if (ff(1017) && bracketFailReportedRef.current) {
+        bracketFailReportedRef.current = false;
+        notifyBracket("sent", matchId, p1Score, p2Score, winnerChallongeId, "");
+      }
       fetchActiveMatches();
       // Push to judge accountability log in Worker KV (fire-and-forget, never blocks submit)
       const winnerIsP1 = String(winnerChallongeId) === String(challongeP1ParticipantId);
@@ -1460,6 +1654,10 @@ function MatchScreen({
         return submitChallongeScore(matchId, p1Score, p2Score, winnerChallongeId, true);
       }
       setChallongeSubmitStatus(netTrouble ? "network problem - " + (err.message || "no connection") : err.message || "error");
+      if (ff(1017)) {
+        bracketFailReportedRef.current = true;
+        notifyBracket("failed", matchId, p1Score, p2Score, winnerChallongeId, netTrouble ? "network problem - " + (err.message || "no connection") : err.message || "error");
+      }
     }
   };
   const reset = () => {
@@ -1504,6 +1702,8 @@ function MatchScreen({
     setChallongeP1ParticipantId(null);
     setChallongeP2ParticipantId(null);
     setChallongeSubmitStatus(null);
+    setBracketEscape(null); // FLAG 1017
+    bracketFailReportedRef.current = false; // FLAG 1017
     setUnderwayStatus(null);
     setPendingFinish(null);
     // Use in-memory log.length (not sGet(KEYS.matchLog)) — localStorage can be
@@ -6719,7 +6919,7 @@ function MatchScreen({
           marginBottom: 10
         }
       }, `\u2026 Sending to ${bracketLabel}`);
-      if (!st) return null;
+      if (!st) return bracketEscapeUI(bracketLabel, winnerId, true);
       return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
         type: "button",
         onClick: () => submitChallongeScore(challongeMatchId, sets[0], sets[1], winnerId),
@@ -6746,14 +6946,20 @@ function MatchScreen({
           marginBottom: 10,
           wordBreak: "break-word"
         }
-      }, st));
+      }, st), bracketEscapeUI(bracketLabel, winnerId, true));
     })(), config.tm && eventRanked && submitted && /*#__PURE__*/React.createElement("button", {
-      style: S.pri,
+      style: newMatchLocked ? {
+        ...S.pri,
+        opacity: 0.4,
+        cursor: "not-allowed"
+      } : S.pri,
+      disabled: newMatchLocked,
       onClick: () => {
+        if (newMatchLocked) return;
         setSheetsStatus(null);
         resetAndRestoreJudge();
       }
-    }, "New Match"), config.tm && !eventRanked && (() => {
+    }, newMatchLocked ? "New Match (waiting for " + ((challongeSlug || "").startsWith("wcb-") ? "WCB" : "Challonge") + ")" : "New Match"), config.tm && !eventRanked && (() => {
       // ── Unranked over screen: simple bracket submit + New Match ──
       const winnerIsP1 = sets[0] >= need;
       const winnerId = winnerIsP1 ? challongeP1ParticipantId : challongeP2ParticipantId;
@@ -6796,9 +7002,16 @@ function MatchScreen({
         challongeSubmitStatus && challongeSubmitStatus !== "ok" && challongeSubmitStatus !== "loading" && /*#__PURE__*/React.createElement("p", {
           style: { fontSize: 11, color: "#DC2626", fontWeight: 600, textAlign: "center", marginBottom: 8 }
         }, challongeSubmitStatus),
+        bracketEscapeUI(bracketLabel, winnerId, false),
         /*#__PURE__*/React.createElement("button", {
-          style: S.pri,
+          style: newMatchLocked ? {
+            ...S.pri,
+            opacity: 0.4,
+            cursor: "not-allowed"
+          } : S.pri,
+          disabled: newMatchLocked,
           onClick: () => {
+            if (newMatchLocked) return;
             setSheetsStatus(null);
             resetAndRestoreJudge();
           }
@@ -9026,6 +9239,17 @@ function MatchScreen({
     onOk: () => {
       setResetSetConfirm(false);
       resetCurrentSet();
+    }
+  }), bracketEscape === "confirm" && /*#__PURE__*/React.createElement(ConfirmWindow, {
+    title: "Enter this score by hand",
+    text: "Tell the TO to enter " + (p1 || "Player 1") + " " + sets[0] + "-" + sets[1] + " " + (p2 || "Player 2") + " by hand? Then you can start the next match.",
+    okLabel: "Tell the TO",
+    onCancel: () => setBracketEscape(null),
+    onOk: async () => {
+      setBracketEscape("sending");
+      const winnerId = sets[0] >= need ? challongeP1ParticipantId : challongeP2ParticipantId;
+      const sent = await notifyBracket("manual", challongeMatchId, sets[0], sets[1], winnerId, challongeSubmitStatus && challongeSubmitStatus !== "loading" ? String(challongeSubmitStatus) : "not sent");
+      setBracketEscape(sent ? "done" : "failed");
     }
   })));
 }

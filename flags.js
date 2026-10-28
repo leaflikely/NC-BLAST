@@ -49,6 +49,7 @@ window.FEATURE_FLAGS = new Set([
   1014, // Match timing notebook (judge). Nothing is sent anywhere yet; the notebook is kept on the device and shown in the cog menu.
   1015, // Send match timing to the database after Submit (needs 1014 and 1013; needs the Worker /db/timing door deployed first).
   1016, // Error files (failed battles send, failed timing send, bug reports) go to the cloud backup folder instead of the judge's device (needs the Worker /backup/upload door deployed first).
+  1017, // Submit check + notifications: a score only counts as sent once the bracket site confirms it; New Match waits (with an escape button); the org view gets a Notifications tab (needs the Worker add-on routes /submit/verify and /notify/* deployed first).
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -132,5 +133,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Error files go to the cloud (judge)",
     desc: "When something fails, the file that would have been saved on the judge's device goes to the cloud backup folder instead: the battles CSV when a Database or Sheets send fails, the timing CSV when the timing send keeps failing, and bug reports (the Send button now sends it straight to the organizers). Each file is named by event, judge, both players and round. If there is no connection, the file waits on the device and uploads by itself, every minute, when the internet returns, and after the app is reopened. The Download CSV button and the choice to submit without Sheets still download a file as before. Needs the Worker's /backup/upload door deployed first.",
     off: "Old behaviour: error files are downloaded to the judge's device, and bug reports use the share sheet."
+  },
+  1017: {
+    name: "Submit check and notifications (judge + Organizer)",
+    desc: "After a judge sends a score to the bracket site (Challonge or WCB), the app asks the site to confirm the match really shows as finished. Until it does, the judge's New Match button stays locked. If the bracket site cannot be reached, the judge can press 'Tell the TO to enter it by hand', which adds the score to a new Notifications tab in Organizer view (red number on the tab). The tab also lists send errors and matches that were added to a station queue automatically, and has a Resolved section. Waiting matches that are missing from every station queue are now added to the shortest queue automatically. Needs the Worker add-on routes deployed first.",
+    off: "Old behaviour: a score counts as sent as soon as the bracket site answers, New Match is never locked, there is no Notifications tab, and a match missing from every station queue stays missing until the queues are regenerated."
   }
 };
