@@ -1,4 +1,4 @@
-// NC BLAST organizer.js | part 5 of 6 (load order is set in index.html) | last updated: 2026-10-22b | split-from-app.js (PIN window, organizer dashboard (OrgApp) and event add/list screen; code moved here unchanged)
+// NC BLAST organizer.js | part 5 of 6 (load order is set in index.html) | last updated: 2026-10-27a | notifications-tab-and-queue-auto-add (flag 1017) | previous: 2026-10-22b split-from-app.js (PIN window, organizer dashboard (OrgApp) and event add/list screen; code moved here unchanged)
 function PinModal({
   title,
   subtitle,
@@ -967,6 +967,366 @@ function OrgApp({
     return () => clearInterval(orgDeletionRef.current);
   }, [slug]);
 
+  // ── FLAG 1017: Notifications tab + automatic queue fix (Organizer view) ───────────────
+  const [notifs, setNotifs] = useState([]); // everything the Worker has filed for this event
+  const [notifResolvedOpen, setNotifResolvedOpen] = useState(false);
+  const [notifCopied, setNotifCopied] = useState(null); // id of the entry whose score was just copied
+  const notifAutoResolvedRef = React.useRef({}); // entries already auto-resolved (so each is only sent once)
+  const queueAutoAddRef = React.useRef({}); // matchId -> time it was last auto-added to a queue
+  const notifAuth = () => ({
+    token: sessionStorage.getItem("ncblast-auth-token") || "",
+    username: sessionStorage.getItem("ncblast-auth-user") || "",
+    masterKey: sessionStorage.getItem("ncblast-master-key") || localStorage.getItem("ncblast-master-key") || ""
+  });
+  const loadNotifs = async () => {
+    if (!ff(1017) || !slug) return;
+    try {
+      const d = await workerGet(`/notify/list?slug=${encodeURIComponent(slug)}`);
+      if (Array.isArray(d.notifications)) setNotifs(d.notifications);
+    } catch (_) {}
+  };
+  const resolveNotif = async (n, resolved, by) => {
+    const a = notifAuth();
+    setNotifs(prev => prev.map(x => x.id === n.id ? {
+      ...x,
+      resolved,
+      resolvedAt: resolved ? Date.now() : null,
+      resolvedBy: resolved ? by || a.username || "organizer" : ""
+    } : x));
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/notify/resolve`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Auth-Token": a.token,
+          ...(a.masterKey ? {
+            "X-Master-Key": a.masterKey
+          } : {})
+        },
+        body: JSON.stringify({
+          slug,
+          id: n.id,
+          resolved,
+          username: a.username,
+          by: by || ""
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+    } catch (_) {
+      loadNotifs(); // the save did not go through: show what the Worker really has
+    }
+  };
+  React.useEffect(() => {
+    if (!ff(1017) || !slug) return;
+    loadNotifs();
+    const t = setInterval(loadNotifs, 10000);
+    return () => clearInterval(t);
+  }, [slug]);
+  // A score the judge could not send is done as soon as the bracket shows the match finished (Challonge only:
+  // WCB's match list never shows finished matches, so those are marked entered by hand).
+  React.useEffect(() => {
+    if (!ff(1017) || !slug || slug.startsWith("wcb-") || !Array.isArray(pairings) || notifs.length === 0) return;
+    notifs.forEach(n => {
+      if (n.resolved || n.type !== "bracket-send" || !n.matchId) return;
+      const m = pairings.find(p => String(p.id) === String(n.matchId));
+      if (m && m.state === "complete" && !notifAutoResolvedRef.current[n.id]) {
+        notifAutoResolvedRef.current[n.id] = true;
+        resolveNotif(n, true, "auto: bracket shows finished");
+      }
+    });
+  }, [notifs, pairings]);
+  // A waiting match that is missing from every station queue is added to a queue by itself. Only for a round whose
+  // queues already exist (otherwise the TO just has not pressed Generate yet), and a hand-placed match is never moved.
+  React.useEffect(() => {
+    if (!ff(1017) || !slug || !queuesGenerated || !stadiumCount || !Array.isArray(pairings) || pairings.length === 0) return;
+    const letters = STADIUM_LABELS.slice(0, stadiumCount);
+    if (letters.length === 0) return;
+    const open = pairings.filter(m => m.state !== "complete");
+    const nums = open.map(m => m.round).filter(r => r != null && r !== 0 && isFinite(Number(r))).map(Number);
+    const cur = nums.length > 0 ? Math.min(...nums) : null;
+    let rm = cur !== null ? pairings.filter(m => String(m.round) === String(cur)) : pairings;
+    if (rm.length === 0 && open.length > 0) rm = open;
+    const queued = new Set();
+    Object.keys(stationQueues || {}).forEach(l => (stationQueues[l] || []).forEach(id => queued.add(String(id))));
+    if (!rm.some(m => queued.has(String(m.id)))) return;
+    const liveIds = new Set();
+    const livePairs = new Set();
+    liveSlots.forEach(s => {
+      if (!s.state) return;
+      if (s.state.challongeMatchId) liveIds.add(String(s.state.challongeMatchId));
+      const a = (s.state.p1 || "").toLowerCase().trim();
+      const b = (s.state.p2 || "").toLowerCase().trim();
+      if (a && b) livePairs.add([a, b].sort().join("|"));
+    });
+    const now = Date.now();
+    const missing = rm.filter(m => {
+      if (m.state === "complete" || !m.id || !m.player1_name || !m.player2_name) return false;
+      if (queued.has(String(m.id)) || liveIds.has(String(m.id))) return false;
+      if (livePairs.has([m.player1_name.toLowerCase().trim(), m.player2_name.toLowerCase().trim()].sort().join("|"))) return false;
+      const last = queueAutoAddRef.current[String(m.id)];
+      return !(last && now - last < 30000);
+    });
+    if (missing.length === 0) return;
+    const next = {};
+    letters.forEach(l => {
+      next[l] = [...(stationQueues[l] || [])];
+    });
+    const placed = [];
+    missing.forEach(m => {
+      // a match with a judge in it goes to that judge's own station; anything else to the shortest line
+      let target = null;
+      [m.player1_name, m.player2_name].forEach(nm => {
+        if (target) return;
+        const dl = nm.toLowerCase();
+        const u = judgeWhitelist.find(x => {
+          const mapped = judgeNameMap[x.toLowerCase()];
+          return mapped ? mapped.toLowerCase() === dl : x.toLowerCase() === dl;
+        });
+        if (u && stadiumAssign[u] && letters.includes(stadiumAssign[u])) target = stadiumAssign[u];
+      });
+      if (!target) target = letters.reduce((best, l) => next[l].length < next[best].length ? l : best, letters[0]);
+      next[target].push(m.id);
+      queueAutoAddRef.current[String(m.id)] = now;
+      placed.push({
+        m,
+        target
+      });
+    });
+    setStationQueues(prev => {
+      const out = {
+        ...prev
+      };
+      placed.forEach(({
+        m,
+        target
+      }) => {
+        const arr = [...(out[target] || [])];
+        if (!arr.map(String).includes(String(m.id))) arr.push(m.id);
+        out[target] = arr;
+      });
+      return out;
+    });
+    saveStationQueues({
+      ...stationQueues,
+      ...next
+    });
+    placed.forEach(({
+      m,
+      target
+    }) => {
+      fetch(`${OVERLAY_WORKER}/notify/add`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          slug,
+          type: "queue-auto-add",
+          matchId: m.id,
+          round: m.round,
+          p1: m.player1_name,
+          p2: m.player2_name,
+          message: `${m.player1_name} vs ${m.player2_name} was missing from every station queue and was added to Stadium ${target}.`
+        }),
+        signal: AbortSignal.timeout(8000)
+      }).catch(() => {});
+    });
+  }, [pairings, liveSlots, stationQueues, queuesGenerated, stadiumCount]);
+  // Red number on the Notifications tab: things the TO has to act on (not the quiet "added to a queue" notes).
+  const notifBadgeCount = ff(1017) ? notifs.filter(n => !n.resolved && (n.type === "bracket-send" || n.type === "error")).length : 0;
+  const renderNotificationsPanel = () => {
+    const h = React.createElement;
+    const needs = notifs.filter(n => !n.resolved && (n.type === "bracket-send" || n.type === "error"));
+    const quiet = notifs.filter(n => !n.resolved && n.type !== "bracket-send" && n.type !== "error");
+    const done = notifs.filter(n => n.resolved);
+    const isWcb = slug.startsWith("wcb-");
+    const bracketUrl = isWcb ? `https://westcoastbladers.com/brackets/view/${slug.slice(4)}` : slug.indexOf("-") > 0 ? `https://${slug.slice(0, slug.indexOf("-"))}.challonge.com/${slug.slice(slug.indexOf("-") + 1)}` : `https://challonge.com/${slug}`;
+    const when = t => t ? new Date(t).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit"
+    }) : "";
+    const scoreLine = n => `${n.p1 || "?"} ${n.p1Sets ?? "?"}-${n.p2Sets ?? "?"} ${n.p2 || "?"}`;
+    const copyText = n => `Round ${n.round ?? "?"}: ${scoreLine(n)}. Winner: ${n.winner || "?"}.` + (n.scoresCsv ? ` Set scores to enter: ${n.scoresCsv.replace(/,/g, ", ")}` : "");
+    const copyScore = n => {
+      try {
+        navigator.clipboard.writeText(copyText(n)).then(() => {
+          setNotifCopied(n.id);
+          setTimeout(() => setNotifCopied(null), 2500);
+        }).catch(() => {});
+      } catch (_) {}
+    };
+    const btn = (label, onClick, kind) => h("button", {
+      onClick,
+      style: {
+        padding: "8px 12px",
+        borderRadius: 8,
+        border: kind === "primary" ? "none" : "1px solid var(--border2)",
+        background: kind === "primary" ? "#15803D" : "var(--surface2)",
+        color: kind === "primary" ? "#fff" : "var(--text-secondary)",
+        fontSize: 12,
+        fontWeight: 800,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: "pointer"
+      }
+    }, label);
+    const card = n => {
+      const manual = n.status === "manual";
+      const isSend = n.type === "bracket-send";
+      return h("div", {
+        key: n.id,
+        style: {
+          padding: "12px 14px",
+          borderRadius: 12,
+          background: "var(--surface)",
+          border: n.resolved ? "1px solid var(--border)" : isSend && manual ? "2px solid #DC2626" : "1px solid #B45309",
+          marginBottom: 10,
+          opacity: n.resolved ? 0.75 : 1
+        }
+      }, h("p", {
+        style: {
+          fontSize: 12,
+          fontWeight: 800,
+          color: n.resolved ? "var(--text-muted)" : isSend && manual ? "#DC2626" : "#B45309",
+          margin: "0 0 4px"
+        }
+      }, isSend ? manual ? `Enter this score on ${isWcb ? "WCB" : "Challonge"} by hand` : "Score not sent yet (the judge is still retrying)" : n.type === "queue-auto-add" ? "Added to a queue automatically" : n.type === "info" ? "Note" : "Error", h("span", {
+        style: {
+          fontWeight: 600,
+          color: "var(--text-muted)"
+        }
+      }, `  ·  ${when(n.updatedAt)}${n.attempts > 1 ? `  ·  ${n.attempts} tries` : ""}`)), isSend ? h(React.Fragment, null, h("p", {
+        style: {
+          fontSize: 16,
+          fontWeight: 900,
+          color: "var(--text-primary)",
+          margin: "0 0 2px"
+        }
+      }, scoreLine(n)), h("p", {
+        style: {
+          fontSize: 12,
+          color: "var(--text-secondary)",
+          margin: "0 0 2px"
+        }
+      }, `Round ${n.round ?? "?"}  ·  Winner: ${n.winner || "?"}${n.judge ? `  ·  Judge: ${n.judge}` : ""}`), n.scoresCsv && h("p", {
+        style: {
+          fontSize: 12,
+          color: "var(--text-secondary)",
+          margin: "0 0 2px"
+        }
+      }, `Set scores to enter: ${n.scoresCsv.replace(/,/g, ", ")}`), n.error && h("p", {
+        style: {
+          fontSize: 11,
+          color: "var(--text-muted)",
+          margin: "0 0 2px",
+          wordBreak: "break-word"
+        }
+      }, `Why: ${n.error}`)) : h("p", {
+        style: {
+          fontSize: 12,
+          color: "var(--text-secondary)",
+          margin: "0 0 2px",
+          wordBreak: "break-word"
+        }
+      }, n.message || n.error || ""), n.resolved && h("p", {
+        style: {
+          fontSize: 11,
+          color: "var(--text-muted)",
+          margin: "2px 0 0"
+        }
+      }, `Resolved ${when(n.resolvedAt)}${n.resolvedBy ? ` by ${n.resolvedBy}` : ""}`), h("div", {
+        style: {
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          marginTop: 10
+        }
+      }, !n.resolved && isSend && btn(notifCopied === n.id ? "Copied!" : "Copy score", () => copyScore(n)), !n.resolved && isSend && h("a", {
+        href: bracketUrl,
+        target: "_blank",
+        rel: "noopener noreferrer",
+        style: {
+          padding: "8px 12px",
+          borderRadius: 8,
+          border: "1px solid var(--border2)",
+          background: "var(--surface2)",
+          color: "var(--text-secondary)",
+          fontSize: 12,
+          fontWeight: 800,
+          fontFamily: "'Outfit',sans-serif",
+          textDecoration: "none"
+        }
+      }, "Open bracket"), !n.resolved && btn(isSend ? "Mark as entered" : "Done", () => resolveNotif(n, true), "primary"), n.resolved && btn("Re-open", () => resolveNotif(n, false))));
+    };
+    return h("div", null, h("div", {
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 12
+      }
+    }, h("div", null, h("p", {
+      style: {
+        fontSize: 12,
+        fontWeight: 800,
+        color: "var(--text-primary)",
+        margin: "0 0 1px"
+      }
+    }, "Notifications"), h("p", {
+      style: {
+        fontSize: 10,
+        color: "var(--text-muted)",
+        margin: 0
+      }
+    }, "Scores that need entering, send errors, and automatic queue fixes")), btn("↻ Refresh", loadNotifs)), needs.length === 0 && h("div", {
+      style: {
+        padding: "14px",
+        borderRadius: 12,
+        background: "#15803D12",
+        border: "1px solid #15803D40",
+        fontSize: 13,
+        fontWeight: 700,
+        color: "#15803D",
+        textAlign: "center",
+        marginBottom: 12
+      }
+    }, "Nothing needs your attention."), needs.map(card), quiet.length > 0 && h("p", {
+      style: {
+        fontSize: 11,
+        fontWeight: 800,
+        color: "var(--text-muted)",
+        textTransform: "uppercase",
+        letterSpacing: 0.8,
+        margin: "14px 0 8px"
+      }
+    }, "Automatic fixes"), quiet.map(card), h("button", {
+      onClick: () => setNotifResolvedOpen(o => !o),
+      style: {
+        width: "100%",
+        marginTop: 14,
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: "1px solid var(--border)",
+        background: "var(--surface)",
+        color: "var(--text-muted)",
+        fontSize: 12,
+        fontWeight: 800,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: "pointer",
+        textAlign: "left"
+      }
+    }, `${notifResolvedOpen ? "▾" : "▸"} Resolved (${done.length})`), notifResolvedOpen && h("div", {
+      style: {
+        marginTop: 10
+      }
+    }, done.length === 0 ? h("p", {
+      style: {
+        fontSize: 12,
+        color: "var(--text-muted)"
+      }
+    }, "Nothing resolved yet.") : done.map(card)));
+  };
+
   // ── Tournament select screen ──────────────────────────────────────
   if (!slug) {
     return /*#__PURE__*/React.createElement(OrgTournamentSelect, {
@@ -1163,7 +1523,7 @@ function OrgApp({
       background: "var(--surface)",
       flexShrink: 0
     }
-  }, ["dashboard", "combos"].map(tab => /*#__PURE__*/React.createElement("button", {
+  }, (ff(1017) ? ["dashboard", "combos", "notifications"] : ["dashboard", "combos"]).map(tab => /*#__PURE__*/React.createElement("button", {
     key: tab,
     onClick: async () => {
       setOrgTab(tab);
@@ -1180,6 +1540,7 @@ function OrgApp({
       }
     },
     style: {
+      position: "relative",
       background: "none",
       border: "none",
       borderBottom: orgTab === tab ? "2px solid #7C3AED" : "2px solid transparent",
@@ -1194,14 +1555,32 @@ function OrgApp({
       marginBottom: -1,
       transition: "color 0.1s, border-color 0.1s"
     }
-  }, tab === "dashboard" ? "Dashboard" : "Combos"))), /*#__PURE__*/React.createElement("div", {
+  }, tab === "dashboard" ? "Dashboard" : tab === "combos" ? "Combos" : "Notifications", tab === "notifications" && notifBadgeCount > 0 && /*#__PURE__*/React.createElement("span", {
+    style: {
+      position: "absolute",
+      top: 2,
+      right: -12,
+      minWidth: 18,
+      height: 18,
+      padding: "0 5px",
+      boxSizing: "border-box",
+      borderRadius: 9,
+      background: "#DC2626",
+      color: "#fff",
+      fontSize: 11,
+      fontWeight: 800,
+      lineHeight: "18px",
+      textAlign: "center",
+      letterSpacing: 0
+    }
+  }, notifBadgeCount > 99 ? "99+" : notifBadgeCount)))), /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1,
       overflowY: "auto",
       padding: "16px 24px 40px",
       boxSizing: "border-box"
     }
-  }, orgTab === "combos" ? (() => {
+  }, orgTab === "notifications" && ff(1017) ? renderNotificationsPanel() : orgTab === "combos" ? (() => {
     // ── Combo Registry tab ───────────────────────────────────────────
     const refreshComboRegistry = async () => {
       if (!slug) return;
