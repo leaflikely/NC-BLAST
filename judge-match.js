@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-10-29a | die-roll-wording (priority question now reads "Who Won the Die Roll?") | previous: 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-10-29b | confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 function MatchScreen({
   config,
   parts,
@@ -6579,14 +6579,55 @@ function MatchScreen({
           letterSpacing: 1,
           textTransform: "uppercase"
         }
-      }, cs[b.who] ? "Confirmed" : "Tap to confirm"), /*#__PURE__*/React.createElement("span", {
+      }, cs[b.who] ? "Confirmed" : "Tap to confirm"), /*#__PURE__*/React.createElement("div", {
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 8,
+          marginTop: 6,
+          width: "100%"
+        }
+      }, /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 12,
+          fontWeight: 700,
+          letterSpacing: 1,
+          textTransform: "uppercase",
+          opacity: 0.85
+        }
+      }, "Final match score"), /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 26,
+          fontWeight: 900,
+          lineHeight: 1.15,
+          textAlign: "center",
+          wordBreak: "break-word"
+        }
+      }, p1, "  ", sets[0], " \u2013 ", sets[1], "  ", p2), setScores.length > 0 && /*#__PURE__*/React.createElement("div", {
+        style: {
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "center",
+          gap: 8
+        }
+      }, setScores.map((ss, si) => /*#__PURE__*/React.createElement("span", {
+        key: si,
+        style: {
+          fontSize: 18,
+          fontWeight: 800,
+          padding: "4px 12px",
+          borderRadius: 10,
+          background: "rgba(255,255,255,0.2)"
+        }
+      }, "Set ", si + 1, ": ", ss.p1, " \u2013 ", ss.p2))), /*#__PURE__*/React.createElement("span", {
         style: {
           fontSize: 13,
           fontWeight: 600,
           opacity: 0.85,
           textAlign: "center"
         }
-      }, winner, " defeats ", loserName, " \xB7 ", sets[0], "–", sets[1]))), !(cs.p1ok && cs.p2ok) && /*#__PURE__*/React.createElement("button", {
+      }, winner, " defeats ", loserName)))), !(cs.p1ok && cs.p2ok) && /*#__PURE__*/React.createElement("button", {
         type: "button",
         onClick: () => {
           // Start over: clears any taps so far and goes back to the Judge Confirm button.

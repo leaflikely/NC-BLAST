@@ -1,4 +1,4 @@
-// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-10-22b | split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
+// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-10-29a | quick-combos-update (new Top 10 quick combos, Glory Valkyrie Kick has no ratchet) | previous: 2026-10-22b split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
 const {
   useState,
   useEffect,
@@ -1344,39 +1344,39 @@ const QUICK_COMBOS = [{
 }, {
   blade: "Shark Scale",
   ratchet: "3-60",
-  bit: "Low Rush"
+  bit: "Narrow"
 }, {
   blade: "Cobalt Dragoon",
-  ratchet: "5-60",
+  ratchet: "9-60",
   bit: "Elevate"
 }, {
-  blade: "Aero Pegasus",
-  ratchet: "1-60",
-  bit: "Rush"
-}, {
-  blade: "Hover Wyvern",
-  ratchet: "9-60",
+  blade: "Glory Valkyrie",
+  ratchet: "",
   bit: "Kick"
 }, {
-  blade: "Shark Scale",
+  blade: "Meteor Dragoon",
+  ratchet: "9-60",
+  bit: "Elevate"
+}, {
+  blade: "Wizard Rod",
   ratchet: "9-60",
   bit: "Free Ball"
 }, {
   blade: "Shark Scale",
   ratchet: "7-60",
-  bit: "Free Flat"
+  bit: "Low Rush"
+}, {
+  blade: "Aero Pegasus",
+  ratchet: "1-60",
+  bit: "Rush"
+}, {
+  blade: "Suppress Superion",
+  ratchet: "7-60",
+  bit: "Kick"
 }, {
   blade: "Meteor Dragoon",
-  ratchet: "7-70",
+  ratchet: "7-60",
   bit: "Level"
-}, {
-  blade: "Golem Rock",
-  ratchet: "9-60",
-  bit: "Free Ball"
-}, {
-  blade: "Clock Mirage",
-  ratchet: "7-55",
-  bit: "Low Orb"
 }];
 
 // Top 10 priority items per category (displayed first as a group)
