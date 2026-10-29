@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-10-27a | submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-10-29a | die-roll-wording (priority question now reads "Who Won the Die Roll?") | previous: 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 function MatchScreen({
   config,
   parts,
@@ -5809,13 +5809,13 @@ function MatchScreen({
         margin: "0 0 10px",
         lineHeight: 1
       }
-    }, priorityKnown ? "Pick a Side" : "Who Has Priority?"), !priorityKnown && /*#__PURE__*/React.createElement("p", {
+    }, priorityKnown ? "Pick a Side" : "Who Won the Die Roll?"), !priorityKnown && /*#__PURE__*/React.createElement("p", {
       style: {
         fontSize: 16,
         color: "var(--text-secondary)",
         fontWeight: 500
       }
-    }, "Judge: select the player with pick priority"), priorityKnown && /*#__PURE__*/React.createElement("p", {
+    }, "Judge: select the player who won the die roll"), priorityKnown && /*#__PURE__*/React.createElement("p", {
       style: {
         fontSize: 16,
         color: "var(--text-secondary)"
