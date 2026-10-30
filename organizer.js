@@ -1,4 +1,4 @@
-// NC BLAST organizer.js | part 5 of 6 (load order is set in index.html) | last updated: 2026-10-27a | notifications-tab-and-queue-auto-add (flag 1017) | previous: 2026-10-22b split-from-app.js (PIN window, organizer dashboard (OrgApp) and event add/list screen; code moved here unchanged)
+// NC BLAST organizer.js | part 5 of 6 (load order is set in index.html) | last updated: 2026-10-30a | station-live-row (each Station Queue module shows its current live match, score and judge) | previous: 2026-10-27a notifications-tab-and-queue-auto-add (flag 1017) | previous: 2026-10-22b split-from-app.js (PIN window, organizer dashboard (OrgApp) and event add/list screen; code moved here unchanged)
 function PinModal({
   title,
   subtitle,
@@ -4074,6 +4074,64 @@ function OrgApp({
       const nextMatch = nextId ? matchById[nextId] : null;
       const nextCoverage = coverageFor(nextMatch, letter);
       const stationJudges = judgesAt(letter);
+      // The match being played right now at this station: first queued match that a judge has started scoring.
+      const liveMatch = queueIds.map(id => matchById[id]).find(m => m && m.state !== 'complete' && (() => {
+        const st = getLiveState(m);
+        return st && !st.abandoned;
+      })()) || null;
+      const liveSt = liveMatch ? getLiveState(liveMatch) : null;
+      const liveSets = liveSt && Array.isArray(liveSt.sets) ? liveSt.sets : [0, 0];
+      const livePts = liveSt && Array.isArray(liveSt.pts) ? liveSt.pts : [0, 0];
+      const liveRow = /*#__PURE__*/React.createElement("div", {
+        style: {
+          padding: '8px 13px',
+          background: sc.bg + '0C',
+          borderBottom: `1px solid ${sc.bg}30`,
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '4px 10px'
+        }
+      }, liveSt ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 9,
+          fontWeight: 900,
+          padding: '2px 6px',
+          borderRadius: 5,
+          background: liveSt.matchOver ? '#475569' : '#DC2626',
+          color: '#fff',
+          letterSpacing: 0.5
+        }
+      }, liveSt.matchOver ? 'DONE' : 'LIVE'), /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 12,
+          fontWeight: 800,
+          color: 'var(--text-primary)'
+        }
+      }, liveSt.p1 || liveMatch.player1_name || '?', " ", /*#__PURE__*/React.createElement("span", {
+        style: {
+          color: sc.bg
+        }
+      }, liveSets[0], "\u2013", liveSets[1]), " ", liveSt.p2 || liveMatch.player2_name || '?'), !liveSt.matchOver && /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 10,
+          fontWeight: 700,
+          color: 'var(--text-muted)'
+        }
+      }, "Set ", liveSt.curSet || 1, ": ", livePts[0], "\u2013", livePts[1]), /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 10,
+          fontWeight: 700,
+          color: 'var(--text-muted)',
+          marginLeft: 'auto'
+        }
+      }, "Judge: ", liveSt.judge || '\u2014')) : /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 11,
+          color: 'var(--text-faint)',
+          fontStyle: 'italic'
+        }
+      }, "No match in progress"));
       return /*#__PURE__*/React.createElement("div", {
         key: letter,
         style: {
@@ -4131,7 +4189,7 @@ function OrgApp({
           color: sc.bg,
           fontWeight: 700
         }
-      }, visibleIds.length, " queued")), /*#__PURE__*/React.createElement("div", {
+      }, visibleIds.length, " queued")), liveRow, /*#__PURE__*/React.createElement("div", {
         style: {
           padding: '8px 10px',
           background: 'var(--surface)'
