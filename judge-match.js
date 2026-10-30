@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-10-29b | confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-10-29c | confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 function MatchScreen({
   config,
   parts,
@@ -6570,9 +6570,10 @@ function MatchScreen({
           fontWeight: 900,
           lineHeight: 1.1,
           textAlign: "center",
-          wordBreak: "break-word"
+          wordBreak: "break-word",
+          color: "#000"
         }
-      }, cs[b.who] ? "✓ " + b.name : b.name), /*#__PURE__*/React.createElement("span", {
+      }, cs[b.who] ? "✓ " + b.name : b.name, b.name === winner ? " \uD83D\uDC51" : ""), /*#__PURE__*/React.createElement("span", {
         style: {
           fontSize: 20,
           fontWeight: 800,
@@ -6604,7 +6605,15 @@ function MatchScreen({
           textAlign: "center",
           wordBreak: "break-word"
         }
-      }, p1, "  ", sets[0], " \u2013 ", sets[1], "  ", p2), setScores.length > 0 && /*#__PURE__*/React.createElement("div", {
+      }, /*#__PURE__*/React.createElement("span", {
+        style: {
+          color: "#000"
+        }
+      }, p1, p1 === winner ? " \uD83D\uDC51" : ""), "  ", sets[0], " \u2013 ", sets[1], "  ", /*#__PURE__*/React.createElement("span", {
+        style: {
+          color: "#000"
+        }
+      }, p2, p2 === winner ? " \uD83D\uDC51" : "")), setScores.length > 0 && /*#__PURE__*/React.createElement("div", {
         style: {
           display: "flex",
           flexWrap: "wrap",
@@ -6627,7 +6636,17 @@ function MatchScreen({
           opacity: 0.85,
           textAlign: "center"
         }
-      }, winner, " defeats ", loserName)))), !(cs.p1ok && cs.p2ok) && /*#__PURE__*/React.createElement("button", {
+      }, /*#__PURE__*/React.createElement("span", {
+        style: {
+          color: "#000",
+          fontWeight: 800
+        }
+      }, winner, " \uD83D\uDC51"), " defeats ", /*#__PURE__*/React.createElement("span", {
+        style: {
+          color: "#000",
+          fontWeight: 800
+        }
+      }, loserName))))), !(cs.p1ok && cs.p2ok) && /*#__PURE__*/React.createElement("button", {
         type: "button",
         onClick: () => {
           // Start over: clears any taps so far and goes back to the Judge Confirm button.
