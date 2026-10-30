@@ -1,15 +1,19 @@
-<!-- NC BLAST index.html | last updated: 2026-10-22b | split-app-js-into-parts (app.js is now loaded as 6 script files in a fixed order: blade-images.js, core.js, screens.js, judge-match.js, organizer.js, app.js) | previous: 2026-06-30 | perf+resume+cleanup+safari-fix2: app code moved out of inline <script> into a separate /app.js file (loaded with defer, same as react.js) — a ~590KB inline script embedded in the HTML itself was likely causing mobile Safari to abort the page load under memory pressure ("network connection was lost"); fonts/React self-hosted, judge match state + org tournament selection survive a refresh via sessionStorage (KEYS.matchResume / KEYS.orgResume), dead player-view code removed -->
+<!-- NC BLAST index.html | last updated: 2026-10-30a | no-auto-zoom (page can no longer zoom itself or by pinch/double-tap; phones stay at normal size) | previous: 2026-10-22b | split-app-js-into-parts (app.js is now loaded as 6 script files in a fixed order: blade-images.js, core.js, screens.js, judge-match.js, organizer.js, app.js) | previous: 2026-06-30 | perf+resume+cleanup+safari-fix2: app code moved out of inline <script> into a separate /app.js file (loaded with defer, same as react.js) — a ~590KB inline script embedded in the HTML itself was likely causing mobile Safari to abort the page load under memory pressure ("network connection was lost"); fonts/React self-hosted, judge match state + org tournament selection survive a refresh via sessionStorage (KEYS.matchResume / KEYS.orgResume), dead player-view code removed -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
 <title>NC BLAST</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
 <script src="/vendor/react.production.min.js" defer></script>
 <script src="/vendor/react-dom.production.min.js" defer></script>
 <!-- qrcodejs: moved to body -->
 <!-- jsQR: moved to body -->
+<script>
+  // iPhones can still pinch-zoom even with the page setting above; block that gesture too.
+  ["gesturestart","gesturechange","gestureend"].forEach(function(t){document.addEventListener(t,function(e){e.preventDefault();});});
+</script>
 <style>
   @font-face {
     font-family: 'OpenDyslexic';
@@ -135,6 +139,9 @@
     user-select:text;
   }
   input,textarea{color:var(--text-primary);background:var(--input-bg);}
+  /* No zoom on double-tap; the page stays at normal size on phones */
+  html,body,button,input,select,textarea,a{touch-action:manipulation;}
+  html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
   input::placeholder{color:var(--text-faint);}
   /* Bottom bar always uses surface color */
   .bottom-bar{background:var(--surface);}
