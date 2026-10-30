@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-10-29c | confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-10-29d | simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 function MatchScreen({
   config,
   parts,
@@ -397,6 +397,7 @@ function MatchScreen({
   const [swapPosition, setSwapPosition] = useState(false); // checkbox: swap p1/p2 in app
   const [historyConfirmClear, setHistoryConfirmClear] = useState(false);
   const [judgeSubmitModal, setJudgeSubmitModal] = useState(false);
+  const [fullStats, setFullStats] = useState(false); // post-game Match History: false = simple view, true = full stat view
   const [confirmOverlay, setConfirmOverlay] = useState(false); // full-screen "tap your half to confirm" screen on the final score page
   const [submitChallongeCheck, setSubmitChallongeCheck] = useState(true);
   const [submitSheetsCheck, setSubmitSheetsCheck] = useState(true); // clear log confirmation in battle screen history panel
@@ -6388,14 +6389,40 @@ function MatchScreen({
         ...S.card,
         marginBottom: 12
       }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 8
+      }
     }, /*#__PURE__*/React.createElement("p", {
       style: {
         fontSize: 12,
         fontWeight: 700,
         color: "var(--text-primary)",
-        marginBottom: 8
+        margin: 0
       }
-    }, "Match History"), currentMatch.map((e, i) => {
+    }, "Match History"), /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => setFullStats(v => !v),
+      "aria-pressed": fullStats,
+      title: "Toggle Full Stat View",
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "4px 10px",
+        borderRadius: 999,
+        border: fullStats ? "1.5px solid #16A34A" : "1.5px solid var(--text-faint)",
+        background: fullStats ? "#16A34A" : "transparent",
+        color: fullStats ? "#fff" : "var(--text-muted)",
+        fontSize: 11,
+        fontWeight: 800,
+        fontFamily: "'Outfit',sans-serif",
+        cursor: "pointer"
+      }
+    }, fullStats ? "\u2713" : "\u25CB", " Full Stat View")), currentMatch.map((e, i) => {
       const battles = currentMatch;
       return /*#__PURE__*/React.createElement("div", {
         key: i,
@@ -6408,7 +6435,7 @@ function MatchScreen({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: e.p1Combo ? 3 : 0
+          marginBottom: !fullStats || e.p1Combo ? 3 : 0
         }
       }, /*#__PURE__*/React.createElement("span", {
         style: {
@@ -6424,14 +6451,49 @@ function MatchScreen({
           flex: 2,
           textAlign: "center"
         }
-      }, e.scorer, " \u2014 ", e.typeName, " +", e.points, e.penalty ? " (pen)" : ""), /*#__PURE__*/React.createElement("span", {
+      }, e.scorer, fullStats ? " \u2014 " + e.typeName + " +" : " +", e.points, e.penalty ? " (pen)" : ""), /*#__PURE__*/React.createElement("span", {
         style: {
           fontSize: 11,
           color: "var(--text-muted)",
           flex: 1,
           textAlign: "right"
         }
-      }, e.p1Score, "\u2013", e.p2Score)), e.p1Combo && e.p2Combo && /*#__PURE__*/React.createElement("div", {
+      }, e.p1Score, "\u2013", e.p2Score)), !fullStats ? /*#__PURE__*/React.createElement("div", {
+        style: {
+          display: "flex",
+          gap: 6,
+          alignItems: "center"
+        }
+      }, /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 10,
+          color: "#2563EB",
+          fontWeight: 600,
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap"
+        }
+      }, p1), /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 9,
+          color: "var(--text-faint)",
+          flexShrink: 0
+        }
+      }, "vs"), /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 10,
+          color: "#DC2626",
+          fontWeight: 600,
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          textAlign: "right"
+        }
+      }, p2)) : e.p1Combo && e.p2Combo && /*#__PURE__*/React.createElement("div", {
         style: {
           display: "flex",
           gap: 6,
