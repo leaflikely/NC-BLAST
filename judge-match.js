@@ -1,4 +1,20 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-10-29d | simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
+// stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
+// (the set that was just won: its score is saved a moment after the overlay push) is added at
+// the end from the win counts. Never throws: on any problem it sends an empty list.
+function overlaySetWinners(setScores, setsNow) {
+  try {
+    const w = (setScores || []).map(s => s.p1 > s.p2 ? 0 : 1);
+    const have = [w.filter(x => x === 0).length, w.filter(x => x === 1).length];
+    [0, 1].forEach(pi => {
+      for (let k = have[pi]; k < (setsNow[pi] || 0); k++) w.push(pi);
+    });
+    return w.slice(0, (setsNow[0] || 0) + (setsNow[1] || 0));
+  } catch (e) {
+    return [];
+  }
+}
 function MatchScreen({
   config,
   parts,
@@ -1320,6 +1336,8 @@ function MatchScreen({
       // swapped. Not sent at all with the flag off, so the overlay never flips.
       // --espiiii
       ...(ff(1008) ? { swapped: !!swapped } : {}),
+      // FLAG 1020: winner of each finished set, in order (see overlaySetWinners above).
+      ...(ff(1020) ? { setWinners: overlaySetWinners(setScores, rest.sets || sets) } : {}),
       ...rest
     };
 

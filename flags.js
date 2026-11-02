@@ -52,6 +52,7 @@ window.FEATURE_FLAGS = new Set([
   1017, // Submit check + notifications: a score only counts as sent once the bracket site confirms it; New Match waits (with an escape button); the org view gets a Notifications tab (needs the Worker add-on routes /submit/verify and /notify/* deployed first).
   // 1018, // Stream overlay stage layout (overlay only). Held OFF on purpose: it changes how every stream looks. Try it per OBS source with ?ff=1018 on the overlay link; to turn it on for everyone, remove the // at the start of this line.
   // 1019, // New stream-overlay scoreboard look from the Claude Design mock-up (overlay only; turns the stage layout 1018 on by itself). Held OFF while it is being tuned: try it per OBS source with ?ff=1019 on the overlay link.
+  1020, // Judge app tells the stream overlay who won each finished set (for the overlay's set dots; only used by the new look, flag 1019).
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -150,5 +151,10 @@ window.FEATURE_FLAG_INFO = {
     name: "New scoreboard look for the stream overlay (overlay)",
     desc: "Stream overlay only. Replaces the scoreboard card with the new compact design: player names and the score big, blade and ratchet/bit lines under each name, set dots under the score, a gold line on top, and a banner above it when a finish is scored. Turns the stage layout (flag 1018) on by itself. No brand label, tournament name, judge name, sides or point-limit text.",
     off: "Old behaviour: the original scoreboard card."
+  },
+  1020: {
+    name: "Overlay set dots show who won each set (judge)",
+    desc: "The judge app adds the winner of every finished set, in order, to what it sends the stream overlay. The new overlay look (flag 1019) uses it to colour set dot 1 for the set 1 winner, dot 2 for the set 2 winner, and so on. Nothing changes on screen without flag 1019.",
+    off: "Old behaviour: the overlay only knows how many sets each player won, so the new look draws player 1's wins first."
   }
 };

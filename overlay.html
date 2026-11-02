@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-02 | flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-02b | flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -499,7 +499,17 @@
     border-top: 2px solid var(--bd-gold);
     transition: opacity 0.25s;
   }
-  #board.offline { opacity: 0; }
+  /* No match data: a short "Pending Match..." panel instead of the scoreboard. */
+  .bd-pending {
+    display: none; align-items: center; justify-content: center;
+    height: 100%;
+    font: 600 26px/1 var(--bd-head-font);
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: rgba(240, 244, 255, 0.65);
+  }
+  #board.pending { height: 84px; }
+  #board.pending .bd-main { display: none; }
+  #board.pending .bd-pending { display: flex; }
   .bd-main {
     display: grid;
     grid-template-columns: 1fr auto 1fr;
@@ -651,7 +661,8 @@
 
     </div><!-- .card -->
     <!-- Scoreboard v2 (flag 1019). Hidden unless the flag is on. -->
-    <div id="board" class="offline">
+    <div id="board" class="pending">
+      <div class="bd-pending">Pending Match...</div>
       <div class="bd-main">
         <div class="bd-side bd-p1">
           <div class="bd-name" id="bd-p1-name"></div>
@@ -1142,7 +1153,7 @@ const BD_P1 = "#3d9bff", BD_P2 = "#ff6a2b";
 
 function renderBoard(state, prevState) {
   const b = el("board");
-  b.classList.remove("offline");
+  b.classList.remove("pending");
   b.classList.toggle("swapped", ff(1009) && state.swapped === true);
 
   el("bd-p1-name").textContent = state.p1 || "Player 1";
@@ -1163,18 +1174,25 @@ function renderBoard(state, prevState) {
   if (prevState && pts[0] !== prev[0]) bdP1PopTimer = popScore("bd-p1-pts", bdP1PopTimer);
   if (prevState && pts[1] !== prev[1]) bdP2PopTimer = popScore("bd-p2-pts", bdP2PopTimer);
 
-  // Set dots: one per set that could be played. Sets a player won are in their colour,
-  // the set being played has a gold ring, sets still to come are white.
-  // The app only sends HOW MANY sets each player won, not in which order, so player 1's
-  // wins are drawn first. Shown only for matches of more than one set.
+  // Set dots: one per set that could be played, left to right = set 1, set 2, ...
+  // A finished set's dot is the colour of the player who won THAT set, the set being
+  // played has a gold ring, sets still to come are white. Shown only for matches of more
+  // than one set. The judge app sends setWinners (flag 1020), the list of set winners in
+  // order (0 = player 1, 1 = player 2). If it is missing (an older judge app, or the flag
+  // is off) we only know how many sets each player won, so player 1's wins are drawn
+  // first, then player 2's.
   const need = state.setsNeeded || 1;
   let html = "";
   if (need > 1) {
     const total = need * 2 - 1;
     const won = state.sets || [0, 0];
+    const winners = Array.isArray(state.setWinners) ? state.setWinners : null;
     for (let i = 0; i < total; i++) {
       let cls = "bd-dot";
-      if (i < won[0]) cls += " p1";
+      if (winners) {
+        if (i < winners.length) cls += winners[i] === 0 ? " p1" : " p2";
+        else if (i === winners.length && !state.matchOver) cls += " cur";
+      } else if (i < won[0]) cls += " p1";
       else if (i < won[0] + won[1]) cls += " p2";
       else if (i === won[0] + won[1] && !state.matchOver) cls += " cur";
       html += '<span class="' + cls + '"></span>';
@@ -1208,7 +1226,7 @@ function renderState(state, prevState) {
   if (!state) {
     scoreboard.style.display = "none";
     offlineMsg.classList.add("visible");
-    if (BOARD) { el("board").classList.add("offline"); el("bd-flash").classList.remove("visible"); }
+    if (BOARD) { el("board").classList.add("pending"); el("bd-flash").classList.remove("visible"); applyTransform(); }
     return;
   }
 
@@ -1383,7 +1401,7 @@ function resetOverlay() {
   el("sets-row").style.display = "none";
   scoreboard.style.display = "none";
   offlineMsg.classList.add("visible");
-  if (BOARD) { el("board").classList.add("offline"); el("bd-flash").classList.remove("visible"); }
+  if (BOARD) { el("board").classList.add("pending"); el("bd-flash").classList.remove("visible"); }
 }
 
 // Stage layout: the card changes height when combos or the set row appear. Re-pin it
