@@ -50,6 +50,7 @@ window.FEATURE_FLAGS = new Set([
   1015, // Send match timing to the database after Submit (needs 1014 and 1013; needs the Worker /db/timing door deployed first).
   1016, // Error files (failed battles send, failed timing send, bug reports) go to the cloud backup folder instead of the judge's device (needs the Worker /backup/upload door deployed first).
   1017, // Submit check + notifications: a score only counts as sent once the bracket site confirms it; New Match waits (with an escape button); the org view gets a Notifications tab (needs the Worker add-on routes /submit/verify and /notify/* deployed first).
+  // 1018, // Stream overlay stage layout (overlay only). Held OFF on purpose: it changes how every stream looks. Try it per OBS source with ?ff=1018 on the overlay link; to turn it on for everyone, remove the // at the start of this line.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -138,5 +139,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Submit check and notifications (judge + Organizer)",
     desc: "After a judge sends a score to the bracket site (Challonge or WCB), the app asks the site to confirm the match really shows as finished. Until it does, the judge's New Match button stays locked. If the bracket site cannot be reached, the judge can press 'Tell the TO to enter it by hand', which adds the score to a new Notifications tab in Organizer view (red number on the tab). The tab also lists send errors and matches that were added to a station queue automatically, and has a Resolved section. Waiting matches that are missing from every station queue are now added to the shortest queue automatically. Needs the Worker add-on routes deployed first.",
     off: "Old behaviour: a score counts as sent as soon as the bracket site answers, New Match is never locked, there is no Notifications tab, and a match missing from every station queue stays missing until the queues are regenerated."
+  },
+  1018: {
+    name: "Stage layout for the stream overlay (overlay)",
+    desc: "Stream overlay only. The overlay becomes a fixed 1920x1080 stage with the scoreboard centered along the bottom, one third of the screen wide by default (change with ?w= and ?bottom= on the overlay link). The rest of the stage stays empty and transparent for future features. Dragging and resizing are switched off, and the scoreboard no longer stretches or runs off the screen. In OBS, make the browser source 1920 wide by 1080 tall.",
+    off: "Old behaviour: a draggable, resizable scoreboard box (or ?fullscreen=1, which runs wider than the screen)."
   }
 };

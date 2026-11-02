@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-07-18 | session: combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-01 | flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default one third of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -462,6 +462,17 @@
     transform-origin: top left;
   }
 
+  /* ── STAGE LAYOUT (flag 1018) ───────────────
+     The page is a fixed 1920x1080 stage. The scoreboard is a band at the
+     bottom, centered. Everything above and beside it is empty, transparent
+     room that future features can use without touching the scoreboard.
+     The card always lays out at its natural width (keep this equal to BASE_W
+     in the script) and is then scaled ONCE to the width we want. Before this,
+     the box was already scaled-width wide and then scaled again, so it ran off
+     the screen and the columns spread apart. */
+  body.ff-1018 #scale-wrap { width: 860px; }
+  body.ff-1018 #widget { cursor: default; }
+
 </style>
 </head>
 <body>
@@ -581,11 +592,30 @@ function ff(id) {
 }
 if (ff(1007)) document.body.classList.add("ff-1007");
 if (ff(1010)) document.body.classList.add("ff-1010");
+if (ff(1018)) document.body.classList.add("ff-1018");
 const SLOT = parseInt(params.get("slot") || "1");
 const EDIT_MODE = params.get("edit") === "1"; // ?edit=1 shows controls
 // ?fullscreen=1 — locks widget to full 1920px width at bottom of canvas;
 // disables drag/resize. Designed for use as a 1920×1080 OBS browser source.
 const FULLSCREEN = params.get("fullscreen") === "1";
+// Flag 1018 - stage layout. Always the full 1920x1080 stage, scoreboard centered
+// at the bottom, nothing to drag. Options on the link:
+//   ?w=0.5  width as a share of the screen (0.1 to 1)     default 0.3333 (one third)
+//   ?w=700  anything above 1 is read as pixels            (clamped 320 to 1920)
+//   ?bottom=20  gap in pixels under the scoreboard         default 0
+// It wins over ?fullscreen=1 if both are on the link.
+const STAGE = ff(1018);
+const LOCKED = FULLSCREEN || STAGE;   // modes where dragging / resizing is switched off
+function stageWidth() {
+  let w = parseFloat(params.get("w"));
+  if (!(w > 0)) w = 1 / 3;
+  if (w <= 1) w = w * 1920;
+  return Math.max(320, Math.min(1920, w));
+}
+function stageBottom() {
+  const b = parseFloat(params.get("bottom"));
+  return b >= 0 && b < 1080 ? b : 0;
+}
 
 // ── STATE ────────────────────────────────────────────────────────
 let lastEtag = null;
@@ -608,6 +638,20 @@ const el = id => document.getElementById(id);
 
 // ── APPLY SAVED POSITION & SCALE ─────────────────────────────────
 function applyTransform() {
+  if (STAGE) {
+    // Stage layout: centered at the bottom, scaled once from the natural 860px card.
+    const sw      = stageWidth();
+    const s       = sw / BASE_W;
+    const cardH   = el("main-card").offsetHeight || BASE_H;
+    const scaledH = Math.round(cardH * s);
+    widget.style.left   = Math.round((1920 - sw) / 2) + "px";
+    widget.style.top    = (1080 - scaledH - stageBottom()) + "px";
+    widget.style.width  = Math.round(sw) + "px";
+    widget.style.height = scaledH + "px";
+    scaleWrap.style.transform       = `scale(${s})`;
+    scaleWrap.style.transformOrigin = "top left";
+    return;
+  }
   if (FULLSCREEN) {
     // Full-screen mode: span the entire 1920px width, anchor to bottom
     const fsScale = 1920 / BASE_W;
@@ -660,7 +704,7 @@ function endDrag() {
   localStorage.setItem("ncblast-pos", JSON.stringify(widgetPos));
 }
 
-if (!FULLSCREEN) {
+if (!LOCKED) {
   el("drag-handle").addEventListener("mousedown", startDrag);
   document.addEventListener("mousemove", onDrag);
   document.addEventListener("mouseup", endDrag);
@@ -743,7 +787,7 @@ function saveResizeState() {
   localStorage.setItem("ncblast-h", String(widgetH));
 }
 
-if (!FULLSCREEN) {
+if (!LOCKED) {
   // ── RESIZE: mouse events ───────────────────────────────────────
   el("rh-corner").addEventListener("mousedown", e => startResize("corner", e));
   el("rh-right").addEventListener("mousedown",  e => startResize("right",  e));
@@ -826,7 +870,7 @@ if (!FULLSCREEN) {
       localStorage.setItem("ncblast-h", "0");
     }
   });
-} // end !FULLSCREEN resize/drag block
+} // end !LOCKED resize/drag block
 
 // ── RENDER COMBO ─────────────────────────────────────────────────
 function renderCombo(containerId, combo, playerClass) {
@@ -1092,15 +1136,15 @@ async function poll() {
 }
 
 // ── INIT ──────────────────────────────────────────────────────────
-if (FULLSCREEN) {
-  // Full-screen mode: pin to full 1920px wide, anchored to bottom of canvas.
+if (LOCKED) {
+  // Full-screen / stage mode: pin to full 1920px wide, anchored to bottom of canvas.
   // Hide all floating-widget chrome so OBS gets a clean 1920×1080 capture.
   el("drag-handle").style.display                  = "none";
   el("rh-corner").style.display                    = "none";
   el("rh-right").style.display                     = "none";
   el("rh-bottom").style.display                    = "none";
   document.getElementById("reset-btn").style.display = "none";
-  widgetScale = 1920 / BASE_W;  // ≈ 2.23 — fills the full 1920px canvas width
+  widgetScale = STAGE ? stageWidth() / BASE_W : 1920 / BASE_W;  // old full-screen mode: ≈ 2.23
   widgetW = 1920;
   widgetH = 0;
   // applyTransform() (called by renderState) will set left/top/size
@@ -1149,6 +1193,10 @@ function resetOverlay() {
   offlineMsg.classList.add("visible");
 }
 
+// Stage layout: the card changes height when combos or the set row appear. Re-pin it
+// to the bottom whenever that happens.
+if (STAGE && window.ResizeObserver) new ResizeObserver(() => applyTransform()).observe(el("main-card"));
+
 // Start polling
 renderState(null, null);
 poll();
@@ -1156,7 +1204,7 @@ poll();
 // ── KEYBOARD SHORTCUTS (floating mode only) ────────────────────────
 // R = reset position and scale to default (75% window width, bottom-left)
 // +/- = scale up/down  (disabled in fullscreen mode)
-if (!FULLSCREEN) document.addEventListener("keydown", e => {
+if (!LOCKED) document.addEventListener("keydown", e => {
   if (e.key === "r" || e.key === "R") {
     widgetPos = { x: 30, y: 880 };
     widgetScale = Math.max(0.3, Math.min(3.0, (window.innerWidth * 0.75) / BASE_W));
