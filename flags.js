@@ -142,7 +142,7 @@ window.FEATURE_FLAG_INFO = {
   },
   1018: {
     name: "Stage layout for the stream overlay (overlay)",
-    desc: "Stream overlay only. The overlay becomes a fixed 1920x1080 stage with the scoreboard centered along the bottom, one third of the screen wide by default (change with ?w= and ?bottom= on the overlay link). The rest of the stage stays empty and transparent for future features. Dragging and resizing are switched off, and the scoreboard no longer stretches or runs off the screen. In OBS, make the browser source 1920 wide by 1080 tall.",
+    desc: "Stream overlay only. The overlay becomes a fixed 1920x1080 stage with the scoreboard centered along the bottom, 40% of the screen wide by default (change with ?w= and ?bottom= on the overlay link). The rest of the stage stays empty and transparent for future features. Dragging and resizing are switched off, and the scoreboard no longer stretches or runs off the screen. In OBS, make the browser source 1920 wide by 1080 tall.",
     off: "Old behaviour: a draggable, resizable scoreboard box (or ?fullscreen=1, which runs wider than the screen)."
   }
 };

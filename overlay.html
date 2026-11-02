@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-01 | flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default one third of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-01 | flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -600,7 +600,7 @@ const EDIT_MODE = params.get("edit") === "1"; // ?edit=1 shows controls
 const FULLSCREEN = params.get("fullscreen") === "1";
 // Flag 1018 - stage layout. Always the full 1920x1080 stage, scoreboard centered
 // at the bottom, nothing to drag. Options on the link:
-//   ?w=0.5  width as a share of the screen (0.1 to 1)     default 0.3333 (one third)
+//   ?w=0.5  width as a share of the screen (0.1 to 1)     default 0.4 (40%)
 //   ?w=700  anything above 1 is read as pixels            (clamped 320 to 1920)
 //   ?bottom=20  gap in pixels under the scoreboard         default 0
 // It wins over ?fullscreen=1 if both are on the link.
@@ -608,7 +608,7 @@ const STAGE = ff(1018);
 const LOCKED = FULLSCREEN || STAGE;   // modes where dragging / resizing is switched off
 function stageWidth() {
   let w = parseFloat(params.get("w"));
-  if (!(w > 0)) w = 1 / 3;
+  if (!(w > 0)) w = 0.4;
   if (w <= 1) w = w * 1920;
   return Math.max(320, Math.min(1920, w));
 }
