@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-02c | edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -482,7 +482,7 @@
   body.ff-1019 #main-card { display: none; }
   body.ff-1019 #board { display: block; }
   body.ff-1019 #scale-wrap { width: 640px; }   /* keep equal to CARD_W in the script */
-  #board {
+  #board, #bd-gfx {
     --bd-bg: #0a0e14;
     --bd-gold: #ffd400;
     --bd-p1: #3d9bff;
@@ -576,6 +576,38 @@
   #bd-flash.visible { opacity: 1; transform: translateX(-50%); }
   .bd-flash-top { font: 700 30px/1 var(--bd-head-font); text-transform: uppercase; }
   .bd-flash-bottom { margin-top: 6px; font: 700 20px/1 var(--bd-text-font); color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  /* ── SPACE SHAPES (flag 1021) ────────────────
+     The overlay lives inside a "space": a fixed-shape rectangle the organizer drags and
+     scales in edit mode (?edit=1). Everything here is in "design pixels" (scale 1):
+       wide = 1280 x 162 (two scoreboards side by side)
+       tall =  640 x 324 (two scoreboards stacked)
+     The scoreboard (#board) and the post-battle graphic (#bd-gfx) are each 640 x 162 and are
+     moved around inside the space by placeSpace() in the script. */
+  body.ff-1021 #scale-wrap { position: relative; }
+  body.ff-1021 #board {
+    position: absolute; left: 0; top: 0; z-index: 2;
+    transition: opacity 0.25s, transform 0.55s cubic-bezier(0.22, 0.8, 0.24, 1);
+  }
+  body.ff-1021 #board.pending { height: 162px; }   /* same height as the scoreboard, so the space never jumps */
+  body.ff-1021 #bd-flash { display: none; }        /* the post-battle graphic replaces the small banner */
+  #bd-gfx { display: none; }
+  body.ff-1021 #bd-gfx {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: absolute; left: 0; top: 0; z-index: 1;
+    visibility: hidden; overflow: hidden; text-align: center;
+    transition: transform 0.55s cubic-bezier(0.22, 0.8, 0.24, 1), visibility 0s linear 0.55s;
+  }
+  body.ff-1021 #bd-gfx.on {
+    visibility: visible;
+    transition: transform 0.55s cubic-bezier(0.22, 0.8, 0.24, 1), visibility 0s;
+  }
+  body.ff-1021.noanim #board, body.ff-1021.noanim #bd-gfx { transition: none; }
+  .gfx-head { font: 700 16px/1 var(--bd-text-font); letter-spacing: 0.16em; text-transform: uppercase; color: rgba(240, 244, 255, 0.55); }
+  .gfx-main { margin-top: 8px; font: 700 54px/1 var(--bd-head-font); text-transform: uppercase; white-space: nowrap; }
+  .gfx-who, .gfx-combo { max-width: 100%; padding: 0 20px; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gfx-who { margin-top: 8px; font: 700 26px/1 var(--bd-text-font); letter-spacing: 0.04em; text-transform: uppercase; color: #fff; }
+  .gfx-combo { margin-top: 7px; font: 700 22px/1 var(--bd-text-font); }
 
 </style>
 </head>
@@ -685,6 +717,13 @@
       </div>
       <div id="bd-flash"><div class="bd-flash-top" id="bd-flash-top"></div><div class="bd-flash-bottom" id="bd-flash-bottom"></div></div>
     </div><!-- #board -->
+    <!-- Post-battle graphic (flag 1021). Hidden unless the flag is on. -->
+    <div id="bd-gfx">
+      <div class="gfx-head" id="gfx-head"></div>
+      <div class="gfx-main" id="gfx-main"><span id="gfx-type"></span> <span id="gfx-pts"></span></div>
+      <div class="gfx-who" id="gfx-who"></div>
+      <div class="gfx-combo" id="gfx-combo"></div>
+    </div>
   </div><!-- #scale-wrap -->
   <div class="resize-handle" id="rh-corner"></div>
   <div class="resize-handle" id="rh-right"></div>
@@ -721,8 +760,9 @@ function ff(id) {
 }
 if (ff(1007)) document.body.classList.add("ff-1007");
 if (ff(1010)) document.body.classList.add("ff-1010");
-if (ff(1018) || ff(1019)) document.body.classList.add("ff-1018");   // 1019 needs the stage layout, so it turns it on
-if (ff(1019)) document.body.classList.add("ff-1019");
+if (ff(1018) || ff(1019) || ff(1021)) document.body.classList.add("ff-1018");   // 1019 and 1021 need the stage layout, so they turn it on
+if (ff(1019) || ff(1021)) document.body.classList.add("ff-1019");   // 1021 needs the new scoreboard look
+if (ff(1021)) document.body.classList.add("ff-1021", "noanim");
 const SLOT = parseInt(params.get("slot") || "1");
 const EDIT_MODE = params.get("edit") === "1"; // ?edit=1 shows controls
 // ?fullscreen=1 — locks widget to full 1920px width at bottom of canvas;
@@ -734,7 +774,8 @@ const FULLSCREEN = params.get("fullscreen") === "1";
 //   ?w=700  anything above 1 is read as pixels            (clamped 320 to 1920)
 //   ?bottom=20  gap in pixels under the scoreboard         default 0
 // It wins over ?fullscreen=1 if both are on the link.
-const BOARD = ff(1019);                 // new scoreboard look (needs the stage layout)
+const SPACE = ff(1021);                 // space shapes + post-battle graphic (turns 1018 and 1019 on by itself)
+const BOARD = ff(1019) || SPACE;        // new scoreboard look (needs the stage layout)
 const STAGE = ff(1018) || BOARD;
 const CARD_ID = BOARD ? "board" : "main-card";   // the box the stage code measures and scales
 const CARD_W  = BOARD ? 640 : 860;               // its natural width (keep equal to the CSS above)
@@ -773,7 +814,151 @@ const p2Flash     = document.getElementById("p2-flash");
 const el = id => document.getElementById(id);
 
 // ── APPLY SAVED POSITION & SCALE ─────────────────────────────────
+// ── SPACE SHAPES + POST-BATTLE GRAPHIC (flag 1021) ───────────────────────
+// The organizer picks a shape, then drags and scales it on the 1920x1080 stage in edit mode.
+// Link options (Copy link in edit mode writes them all):
+//   ?shape=wide|tall      wide = 2 scoreboards side by side, tall = 2 stacked      (default wide)
+//   ?x=  ?y=              top-left corner of the space on the 1920x1080 stage      (default: centered, bottom)
+//   ?s=1.2                size of the space (1 = design size; 1.2 = scoreboard 40% of the screen)
+//   ?side=left|right|alt  wide: which side the scoreboard slides to; alt = swaps every graphic
+//   ?board=bottom|top     tall: where the scoreboard sits; the graphic goes on the other side
+//   ?gfx=5                seconds the post-battle graphic stays                    (default 5)
+const SHAPES = { wide: { w: 1280, h: 162 }, tall: { w: 640, h: 324 } };
+const FIN_POINTS = { SPF: 1, OVR: 2, BST: 2, XTR: 3, OF2: 2, OF3: 3, LER: 1 };   // same values as the judge app
+const space = {
+  shape: params.get("shape") === "tall" ? "tall" : "wide",
+  s: parseFloat(params.get("s")) > 0 ? parseFloat(params.get("s")) : 1.2,
+  x: parseFloat(params.get("x")),
+  y: parseFloat(params.get("y")),
+  side: ["left", "right", "alt"].includes(params.get("side")) ? params.get("side") : "left",
+  board: params.get("board") === "top" ? "top" : "bottom",
+  secs: Math.max(2, Math.min(30, parseFloat(params.get("gfx")) || 5))
+};
+function spaceSize() {
+  const sh = SHAPES[space.shape];
+  return { w: sh.w * space.s, h: sh.h * space.s };
+}
+// Keeps the whole space on the stage. A missing x / y means centered along the bottom.
+function fitSpace() {
+  const sh = SHAPES[space.shape];
+  space.s = Math.max(0.25, Math.min(space.s, 1920 / sh.w, 1080 / sh.h));
+  const z = spaceSize();
+  if (!Number.isFinite(space.x)) space.x = (1920 - z.w) / 2;
+  if (!Number.isFinite(space.y)) space.y = 1080 - z.h;
+  space.x = Math.max(0, Math.min(space.x, 1920 - z.w));
+  space.y = Math.max(0, Math.min(space.y, 1080 - z.h));
+}
+fitSpace();
+
+// Demo match, shown only in edit mode when no real match is coming in.
+const DEMO_STATE = {
+  p1: "Judge 8", p2: "Player 2", pts: [2, 2], sets: [1, 0], curSet: 2, setsNeeded: 2, setWinners: [0],
+  p1ActiveCombo: { blade: "Shark Scale", ratchet: "3-60", bit: "Narrow" },
+  p2ActiveCombo: { blade: "Shark Scale", ratchet: "3-60", bit: "Narrow" }
+};
+
+let gfxOn = false, gfxSide = "left", gfxAlt = false, gfxTimer = null;
+
+// Puts the scoreboard and the graphic where they belong inside the space (design pixels).
+// Each is 640 x 162. With no graphic showing, the graphic is parked behind the scoreboard.
+function placeSpace() {
+  let bx, by, gx, gy;
+  if (space.shape === "wide") {
+    bx = 320; by = 0; gx = 320; gy = 0;                    // scoreboard in the middle
+    if (gfxOn) { if (gfxSide === "left") { bx = 0; gx = 640; } else { bx = 640; gx = 0; } }
+  } else {
+    by = space.board === "top" ? 0 : 162; bx = 0; gx = 0; gy = by;   // graphic starts behind the scoreboard
+    if (gfxOn) gy = space.board === "top" ? 162 : 0;       // and slides out to the other half
+  }
+  el("board").style.transform = `translate(${bx}px, ${by}px)`;
+  el("bd-gfx").style.transform = `translate(${gx}px, ${gy}px)`;
+  el("bd-gfx").classList.toggle("on", gfxOn);
+}
+
+function hideGfx() {
+  clearTimeout(gfxTimer);
+  gfxTimer = null;
+  if (!gfxOn) return;
+  gfxOn = false;
+  placeSpace();
+}
+
+// c = { head, type, pts, who, combo, idx } (see postBattleContent). Shown for space.secs seconds;
+// a second finish while it is up just updates it and restarts the timer.
+function showGfx(c) {
+  const col = c.idx === 1 ? BD_P2 : BD_P1;
+  el("gfx-head").textContent = c.head;
+  el("gfx-type").textContent = c.type;
+  el("gfx-pts").textContent = c.pts;
+  el("gfx-main").style.color = col;
+  el("gfx-who").textContent = c.who;
+  el("gfx-combo").textContent = c.combo;
+  el("gfx-combo").style.color = c.idx === 1 ? "#f8bfa4" : "#a4c9f9";
+  el("gfx-combo").style.display = c.combo ? "" : "none";
+  if (!gfxOn) {
+    if (space.side === "alt") { gfxSide = gfxAlt ? "right" : "left"; gfxAlt = !gfxAlt; }
+    else gfxSide = space.side;
+    gfxOn = true;
+    placeSpace();
+  }
+  clearTimeout(gfxTimer);
+  gfxTimer = setTimeout(hideGfx, space.secs * 1000);
+}
+
+function comboLine(c) {
+  return c && c.blade ? [c.blade, c.ratchet, c.bit].filter(Boolean).join(" · ") : "";
+}
+
+// Builds the card text for the finish that just happened. Uses only what the judge app already
+// sends: who scored, the finish type, the points, the sets, and the combo that was in play
+// (the previous state's combo, because the new state already holds the NEXT combo).
+function postBattleContent(state, prevState) {
+  const f = state.lastFinish;
+  const idx = f.scorerIdx === 1 ? 1 : 0;
+  const name = (idx === 0 ? state.p1 : state.p2) || (idx === 0 ? "Player 1" : "Player 2");
+  const pts = state.pts || [0, 0];
+  const prevPts = prevState ? (prevState.pts || [0, 0]) : null;
+  // Points come from the standard value of the finish (it stays right even if the overlay missed
+  // an update in between). Only an unknown finish type falls back to how much the scorer's points rose.
+  let worth = FIN_POINTS[f.type];
+  if (worth === undefined) worth = prevPts && pts[idx] > prevPts[idx] ? pts[idx] - prevPts[idx] : 0;
+  const labels = { XTR: "Xtreme", OVR: "Over", BST: "Burst", SPF: "Spin", LER: "Launch error", OF2: "Own finish", OF3: "Own finish" };
+  let type, num = "", who, combo = "";
+  if (f.type === "LER-STRIKE") {
+    type = "LER strike"; who = name + " launch error";
+  } else if (f.type === "LER" || f.type === "OF2" || f.type === "OF3") {
+    type = labels[f.type]; who = name + " +" + worth + " pts";
+  } else {
+    type = labels[f.type] || f.type; num = "+" + worth; who = name + " scores";
+    combo = comboLine(prevState ? (idx === 0 ? prevState.p1ActiveCombo : prevState.p2ActiveCombo) : null);
+  }
+  const sets = state.sets || [0, 0];
+  const prevSets = prevState ? (prevState.sets || [0, 0]) : sets;
+  const setWon = sets[0] !== prevSets[0] || sets[1] !== prevSets[1];
+  const cur = state.curSet || 1;
+  let head;
+  if (state.matchOver) head = "Match over · sets " + sets[0] + "–" + sets[1];
+  else if (setWon) head = "Set " + cur + " won · " + pts[0] + "–" + pts[1];
+  else head = "Set " + cur + " · " + pts[0] + "–" + pts[1];
+  return { head, type, pts: num, who, combo, idx };
+}
+
 function applyTransform() {
+  if (SPACE) {
+    // Space layout: the widget IS the space. Position and size come from the link / the editor.
+    fitSpace();
+    const sh = SHAPES[space.shape];
+    widget.style.left   = Math.round(space.x) + "px";
+    widget.style.top    = Math.round(space.y) + "px";
+    widget.style.width  = Math.round(sh.w * space.s) + "px";
+    widget.style.height = Math.round(sh.h * space.s) + "px";
+    scaleWrap.style.width  = sh.w + "px";
+    scaleWrap.style.height = sh.h + "px";
+    scaleWrap.style.transformOrigin = "top left";
+    scaleWrap.style.transform = `scale(${space.s})`;
+    placeSpace();
+    return;
+  }
   if (STAGE) {
     // Stage layout: centered at the bottom, scaled once from the natural 860px card.
     const sw      = stageWidth();
@@ -1226,10 +1411,11 @@ function showBoardFlash(type, scorerIdx, p1Name, p2Name) {
 
 // ── RENDER STATE ──────────────────────────────────────────────────
 function renderState(state, prevState) {
+  if (!state && SPACE && EDIT_MODE) state = DEMO_STATE;   // edit mode with no real match: show a demo so there is something to place
   if (!state) {
     scoreboard.style.display = "none";
     offlineMsg.classList.add("visible");
-    if (BOARD) { el("board").classList.add("pending"); el("bd-flash").classList.remove("visible"); applyTransform(); }
+    if (BOARD) { el("board").classList.add("pending"); el("bd-flash").classList.remove("visible"); if (SPACE) hideGfx(); applyTransform(); }
     return;
   }
 
@@ -1308,7 +1494,8 @@ function renderState(state, prevState) {
         state.p1, state.p2,
         p1Color, p2Color
       );
-      if (BOARD) showBoardFlash(state.lastFinish.type, state.lastFinish.scorerIdx, state.p1, state.p2);
+      if (SPACE) showGfx(postBattleContent(state, prevState));
+      else if (BOARD) showBoardFlash(state.lastFinish.type, state.lastFinish.scorerIdx, state.p1, state.p2);
     }
   }
 
@@ -1404,7 +1591,7 @@ function resetOverlay() {
   el("sets-row").style.display = "none";
   scoreboard.style.display = "none";
   offlineMsg.classList.add("visible");
-  if (BOARD) { el("board").classList.add("pending"); el("bd-flash").classList.remove("visible"); }
+  if (BOARD) { el("board").classList.add("pending"); el("bd-flash").classList.remove("visible"); if (SPACE) hideGfx(); }
 }
 
 // Stage layout: the card changes height when combos or the set row appear. Re-pin it
@@ -1455,10 +1642,156 @@ function buildSizeSwitch() {
   bar.appendChild(hint);
   document.body.appendChild(bar);
 }
-if (STAGE && EDIT_MODE) buildSizeSwitch();
+if (STAGE && EDIT_MODE && !SPACE) buildSizeSwitch();
+
+// Space editor (flag 1021): with ?edit=1 on the link, the page shows the whole 1920x1080 stage
+// shrunk to fit the window. Drag the dashed space to move it, drag the yellow corner to resize it
+// (its shape never changes), pick the options in the bar, then press Copy link and paste the link
+// into the OBS browser source. The bar and preview are never shown without ?edit=1.
+function buildSpaceEditor() {
+  document.documentElement.style.background = "#14171d";
+  document.body.style.background = "#262b34";
+  let editScale = 1;
+  const BTN = "font:inherit;letter-spacing:inherit;text-transform:inherit;padding:4px 10px;border:1px solid rgba(255,255,255,0.35);" +
+    "border-radius:6px;cursor:pointer;background:transparent;color:#F0F4FF;";
+  const mk = (tag, css, text) => {
+    const n = document.createElement(tag);
+    if (css) n.style.cssText = css;
+    if (text) n.textContent = text;
+    return n;
+  };
+  const bar = mk("div", "position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;flex-wrap:wrap;align-items:center;" +
+    "gap:8px 18px;padding:10px 14px;background:rgba(8,12,22,0.96);border-bottom:1px solid rgba(255,255,255,0.2);" +
+    "font:600 14px 'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;color:#F0F4FF;");
+  const painters = [];
+  const group = (title, items, get, set, showWhen) => {
+    const wrap = mk("div", "display:flex;align-items:center;gap:6px;");
+    wrap.appendChild(mk("span", "opacity:0.7;", title));
+    const btns = items.map(([text, value]) => {
+      const b = mk("button", BTN, text);
+      b.onclick = () => { set(value); repaint(); };
+      wrap.appendChild(b);
+      return [b, value];
+    });
+    painters.push(() => {
+      wrap.style.display = showWhen() ? "flex" : "none";
+      btns.forEach(([b, v]) => {
+        const on = get() === v;
+        b.style.background = on ? "#FFD400" : "transparent";
+        b.style.color = on ? "#080C14" : "#F0F4FF";
+      });
+    });
+    bar.appendChild(wrap);
+  };
+  function switchShape(v) {
+    if (v === space.shape) return;
+    const old = spaceSize(), cx = space.x + old.w / 2, bottom = space.y + old.h;
+    space.shape = v;
+    const nz = spaceSize();
+    space.x = cx - nz.w / 2;
+    space.y = bottom - nz.h;
+    hideGfx();
+    applyTransform();
+  }
+  group("Shape", [["Wide (side by side)", "wide"], ["Tall (stacked)", "tall"]], () => space.shape, switchShape, () => true);
+  group("Scoreboard slides", [["Left", "left"], ["Right", "right"], ["Alternate", "alt"]], () => space.side,
+    v => { space.side = v; hideGfx(); }, () => space.shape === "wide");
+  group("Scoreboard sits", [["Bottom", "bottom"], ["Top", "top"]], () => space.board,
+    v => { space.board = v; hideGfx(); applyTransform(); }, () => space.shape === "tall");
+
+  const preview = mk("button", BTN, "Preview graphic");
+  preview.onclick = () => {
+    const base = lastState || DEMO_STATE, p = base.pts || [0, 0];
+    showGfx(postBattleContent({ ...base, pts: [p[0] + 3, p[1]], lastFinish: { type: "XTR", scorerIdx: 0 } }, base));
+  };
+  bar.appendChild(preview);
+  const copy = mk("button", BTN, "Copy link");
+  const input = mk("input", "width:340px;max-width:40vw;font:inherit;letter-spacing:0;text-transform:none;padding:4px 8px;" +
+    "background:#0a0e14;color:#F0F4FF;border:1px solid rgba(255,255,255,0.3);border-radius:6px;");
+  input.readOnly = true;
+  const status = mk("span", "color:#FFD400;");
+  copy.onclick = async () => {
+    const link = buildLink();
+    input.value = link;
+    try { await navigator.clipboard.writeText(link); status.textContent = "Copied. Paste it into the OBS source URL."; }
+    catch (e) {
+      input.focus(); input.select();
+      try { document.execCommand("copy"); status.textContent = "Copied. Paste it into the OBS source URL."; }
+      catch (e2) { status.textContent = "Select the link and copy it yourself."; }
+    }
+  };
+  bar.appendChild(copy); bar.appendChild(input); bar.appendChild(status);
+  const info = mk("span", "opacity:0.85;");
+  bar.appendChild(info);
+  bar.appendChild(mk("div", "flex-basis:100%;opacity:0.65;text-transform:none;letter-spacing:0;font-size:15px;",
+    "Drag the dashed box to move it. Drag the yellow corner to resize it (the shape stays the same). " +
+    "Press Preview graphic to see the slide. When it looks right, press Copy link and paste the link into your OBS browser source."));
+  document.documentElement.appendChild(bar);
+
+  function buildLink() {
+    const p = new URLSearchParams(location.search);
+    p.delete("edit"); p.delete("w"); p.delete("bottom");
+    p.set("shape", space.shape);
+    p.set("x", String(Math.round(space.x)));
+    p.set("y", String(Math.round(space.y)));
+    p.set("s", String(Math.round(space.s * 1000) / 1000));
+    p.set("side", space.side);
+    p.set("board", space.board);
+    return location.origin + location.pathname + "?" + p.toString();
+  }
+  function repaint() {
+    painters.forEach(f => f());
+    info.textContent = "Scoreboard " + Math.round(640 * space.s) + " px wide (" + Math.round(640 * space.s / 19.2) + "% of the screen)";
+    input.value = buildLink();
+  }
+
+  // The dashed frame and the corner handle live inside the space, so they move and scale with it.
+  const frame = mk("div", "position:absolute;left:0;top:0;right:0;bottom:0;z-index:5;border:3px dashed #FFD400;" +
+    "box-sizing:border-box;cursor:move;touch-action:none;");
+  const handle = mk("div", "position:absolute;right:0;bottom:0;width:48px;height:48px;background:#FFD400;cursor:nwse-resize;" +
+    "clip-path:polygon(100% 0,100% 100%,0 100%);touch-action:none;");
+  frame.appendChild(handle);
+  scaleWrap.appendChild(frame);
+  let drag = null;
+  frame.addEventListener("pointerdown", e => {
+    drag = { mode: e.target === handle ? "size" : "move", sx: e.clientX, sy: e.clientY, x: space.x, y: space.y, s: space.s };
+    try { frame.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
+  });
+  window.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const dx = (e.clientX - drag.sx) / editScale, dy = (e.clientY - drag.sy) / editScale;
+    const sh = SHAPES[space.shape];
+    if (drag.mode === "move") {
+      space.x = drag.x + dx; space.y = drag.y + dy;
+    } else {
+      const a = dx / sh.w, b = dy / sh.h;                    // follow whichever way the pointer moved more
+      const newS = drag.s + (Math.abs(a) > Math.abs(b) ? a : b);
+      space.s = Math.max(0.25, Math.min(newS, (1920 - space.x) / sh.w, (1080 - space.y) / sh.h));
+      space.s = Math.round(space.s * 1000) / 1000;           // same precision as the copied link, so OBS matches the preview exactly
+    }
+    applyTransform();
+    repaint();
+  });
+  const end = () => { drag = null; };
+  window.addEventListener("pointerup", end);
+  window.addEventListener("pointercancel", end);
+
+  function fitStage() {
+    const barH = bar.offsetHeight;
+    editScale = Math.max(0.1, Math.min((window.innerWidth - 24) / 1920, (window.innerHeight - barH - 24) / 1080));
+    document.body.style.transformOrigin = "0 0";
+    document.body.style.transform = `translate(12px, ${barH + 12}px) scale(${editScale})`;
+  }
+  window.addEventListener("resize", fitStage);
+  fitStage();
+  repaint();
+}
+if (SPACE && EDIT_MODE) buildSpaceEditor();
 
 // Start polling
 renderState(null, null);
+if (SPACE) requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("noanim")));   // no slide-in on page load
 poll();
 
 // ── KEYBOARD SHORTCUTS (floating mode only) ────────────────────────
