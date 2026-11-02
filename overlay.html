@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-02b | flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-02c | edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -739,8 +739,11 @@ const STAGE = ff(1018) || BOARD;
 const CARD_ID = BOARD ? "board" : "main-card";   // the box the stage code measures and scales
 const CARD_W  = BOARD ? 640 : 860;               // its natural width (keep equal to the CSS above)
 const LOCKED = FULLSCREEN || STAGE;   // modes where dragging / resizing is switched off
+const STAGE_W_KEY = "ncblast-stage-w";   // the width picked with the edit-mode switch (kept in this browser source)
 function stageWidth() {
+  // Order: ?w= on the link always wins, then the saved switch choice, then 40%.
   let w = parseFloat(params.get("w"));
+  if (!(w > 0)) { try { w = parseFloat(localStorage.getItem(STAGE_W_KEY)); } catch (e) {} }
   if (!(w > 0)) w = 0.4;
   if (w <= 1) w = w * 1920;
   return Math.max(320, Math.min(1920, w));
@@ -1407,6 +1410,52 @@ function resetOverlay() {
 // Stage layout: the card changes height when combos or the set row appear. Re-pin it
 // to the bottom whenever that happens.
 if (STAGE && window.ResizeObserver) new ResizeObserver(() => applyTransform()).observe(el(CARD_ID));
+
+// Edit-mode width switch: with ?edit=1 on the link, a small bar in the top-left corner picks
+// the scoreboard width, the mock-up's size (one third of the screen) or 40%. The choice is
+// remembered by this browser source. Never shown without ?edit=1, so it stays off the stream.
+function buildSizeSwitch() {
+  const bar = document.createElement("div");
+  bar.style.cssText = "position:fixed;top:12px;left:12px;z-index:9999;display:flex;align-items:center;gap:8px;" +
+    "padding:8px 12px;background:rgba(8,12,22,0.92);border:1px solid rgba(255,255,255,0.2);border-radius:8px;" +
+    "font:600 14px 'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;color:#F0F4FF;";
+  const label = document.createElement("span");
+  label.textContent = "Scoreboard width";
+  bar.appendChild(label);
+  if (params.has("w")) {
+    const note = document.createElement("span");
+    note.style.opacity = "0.7";
+    note.textContent = "set by ?w= in the link";
+    bar.appendChild(note);
+  } else {
+    const buttons = [];
+    const paint = () => buttons.forEach(([btn, v]) => {
+      const on = Math.abs(stageWidth() / 1920 - v) < 0.002;
+      btn.style.background = on ? "#FFD400" : "transparent";
+      btn.style.color = on ? "#080C14" : "#F0F4FF";
+    });
+    [["Mock size (1/3)", 1 / 3], ["40%", 0.4]].forEach(([text, v]) => {
+      const btn = document.createElement("button");
+      btn.textContent = text;
+      btn.style.cssText = "font:inherit;letter-spacing:inherit;text-transform:inherit;padding:4px 10px;" +
+        "border:1px solid rgba(255,255,255,0.35);border-radius:6px;cursor:pointer;";
+      btn.onclick = () => {
+        try { localStorage.setItem(STAGE_W_KEY, String(v)); } catch (e) {}
+        applyTransform();
+        paint();
+      };
+      buttons.push([btn, v]);
+      bar.appendChild(btn);
+    });
+    paint();
+  }
+  const hint = document.createElement("span");
+  hint.style.opacity = "0.55";
+  hint.textContent = "remove ?edit=1 from the link when done";
+  bar.appendChild(hint);
+  document.body.appendChild(bar);
+}
+if (STAGE && EDIT_MODE) buildSizeSwitch();
 
 // Start polling
 renderState(null, null);

@@ -149,7 +149,7 @@ window.FEATURE_FLAG_INFO = {
   },
   1019: {
     name: "New scoreboard look for the stream overlay (overlay)",
-    desc: "Stream overlay only. Replaces the scoreboard card with the new compact design: player names and the score big, blade and ratchet/bit lines under each name, set dots under the score, a gold line on top, and a banner above it when a finish is scored. Turns the stage layout (flag 1018) on by itself. No brand label, tournament name, judge name, sides or point-limit text.",
+    desc: "Stream overlay only. Replaces the scoreboard card with the new compact design: player names and the score big, blade and ratchet/bit lines under each name, set dots under the score, a gold line on top, and a banner above it when a finish is scored. Turns the stage layout (flag 1018) on by itself. No brand label, tournament name, judge name, sides or point-limit text. Add ?edit=1 to the overlay link to get a small switch for the width: the mock-up's size (one third of the screen) or 40%.",
     off: "Old behaviour: the original scoreboard card."
   },
   1020: {
