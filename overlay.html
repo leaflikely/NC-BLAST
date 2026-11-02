@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-01 | flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-02 | flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <title>NC BLAST Overlay</title>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Chakra+Petch:wght@600;700&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet"/>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -473,6 +473,100 @@
   body.ff-1018 #scale-wrap { width: 860px; }
   body.ff-1018 #widget { cursor: default; }
 
+  /* ── SCOREBOARD V2 (flag 1019) ───────────────
+     Built from the Claude Design mock-up. Its own block (#board); the old card
+     stays in the page but is hidden. Designed at 640 x 162 and scaled once by
+     the stage code, so every number below is in "design pixels".
+     To tune the look, change the variables on #board first. */
+  #board { display: none; }
+  body.ff-1019 #main-card { display: none; }
+  body.ff-1019 #board { display: block; }
+  body.ff-1019 #scale-wrap { width: 640px; }   /* keep equal to CARD_W in the script */
+  #board {
+    --bd-bg: #0a0e14;
+    --bd-gold: #ffd400;
+    --bd-p1: #3d9bff;
+    --bd-p2: #ff6a2b;
+    --bd-p1-sub: #a4c9f9;
+    --bd-p2-sub: #f8bfa4;
+    --bd-dot-p1: #2f8fff;
+    --bd-dash: #5d6672;
+    --bd-head-font: 'Chakra Petch', 'Barlow Condensed', sans-serif;   /* names + score (a best guess at the mock-up's font) */
+    --bd-text-font: 'Barlow Condensed', sans-serif;                    /* blade + ratchet/bit lines */
+    position: relative;
+    width: 640px; height: 162px;
+    background: var(--bd-bg);
+    border-top: 2px solid var(--bd-gold);
+    transition: opacity 0.25s;
+  }
+  #board.offline { opacity: 0; }
+  .bd-main {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    column-gap: 12px;
+    height: 100%;
+    padding: 0 18px;
+  }
+  .bd-side {
+    display: flex; flex-direction: column;
+    align-items: flex-start; text-align: left;
+    padding-top: 28px;
+    min-width: 0;
+  }
+  .bd-p2 { align-items: flex-end; text-align: right; }
+  .bd-name {
+    font: 700 34px/1 var(--bd-head-font);
+    text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .bd-p1 .bd-name { color: var(--bd-p1); }
+  .bd-p2 .bd-name { color: var(--bd-p2); }
+  .bd-blade, .bd-parts {
+    font: 700 24px/1 var(--bd-text-font);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .bd-blade { margin-top: 11px; color: #fff; }
+  .bd-parts { margin-top: 8px; }
+  .bd-p1 .bd-parts { color: var(--bd-p1-sub); }
+  .bd-p2 .bd-parts { color: var(--bd-p2-sub); }
+  .bd-center {
+    display: flex; flex-direction: column; align-items: center;
+    padding-top: 24px;
+  }
+  .bd-score { display: flex; align-items: center; }
+  .bd-pts {
+    font: 700 80px/1 var(--bd-head-font);
+    transition: color 0.15s;
+  }
+  .bd-pts.p1 { color: var(--bd-p1); }
+  .bd-pts.p2 { color: var(--bd-p2); }
+  .bd-pts.pop { color: #fff; }
+  .bd-dash { width: 22px; height: 4px; margin: 0 18px; background: var(--bd-dash); }
+  .bd-dots { display: flex; align-items: center; gap: 14px; height: 28px; margin-top: 8px; }
+  .bd-dot { width: 16px; height: 16px; border-radius: 50%; background: #fff; flex: none; }
+  .bd-dot.p1 { background: var(--bd-dot-p1); }
+  .bd-dot.p2 { background: var(--bd-p2); }
+  .bd-dot.cur { box-shadow: 0 0 0 3px var(--bd-bg), 0 0 0 6px var(--bd-gold); }
+  /* mirrored when the judge has swapped sides (same rule as the old card) */
+  #board.swapped .bd-p1 { order: 3; align-items: flex-end; text-align: right; }
+  #board.swapped .bd-center { order: 2; }
+  #board.swapped .bd-p2 { order: 1; align-items: flex-start; text-align: left; }
+  #board.swapped .bd-score { flex-direction: row-reverse; }
+  /* finish banner: sits just above the scoreboard, in the empty part of the stage */
+  #bd-flash {
+    position: absolute; left: 50%; bottom: calc(100% + 12px);
+    transform: translateX(-50%) translateY(6px);
+    opacity: 0; pointer-events: none; white-space: nowrap; text-align: center;
+    background: var(--bd-bg); border-top: 2px solid var(--bd-gold);
+    padding: 8px 24px 10px;
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  #bd-flash.visible { opacity: 1; transform: translateX(-50%); }
+  .bd-flash-top { font: 700 30px/1 var(--bd-head-font); text-transform: uppercase; }
+  .bd-flash-bottom { margin-top: 6px; font: 700 20px/1 var(--bd-text-font); color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
+
 </style>
 </head>
 <body>
@@ -556,6 +650,30 @@
       </div>
 
     </div><!-- .card -->
+    <!-- Scoreboard v2 (flag 1019). Hidden unless the flag is on. -->
+    <div id="board" class="offline">
+      <div class="bd-main">
+        <div class="bd-side bd-p1">
+          <div class="bd-name" id="bd-p1-name"></div>
+          <div class="bd-blade" id="bd-p1-blade"></div>
+          <div class="bd-parts" id="bd-p1-parts"></div>
+        </div>
+        <div class="bd-center">
+          <div class="bd-score">
+            <span class="bd-pts p1" id="bd-p1-pts">0</span>
+            <span class="bd-dash"></span>
+            <span class="bd-pts p2" id="bd-p2-pts">0</span>
+          </div>
+          <div class="bd-dots" id="bd-dots"></div>
+        </div>
+        <div class="bd-side bd-p2">
+          <div class="bd-name" id="bd-p2-name"></div>
+          <div class="bd-blade" id="bd-p2-blade"></div>
+          <div class="bd-parts" id="bd-p2-parts"></div>
+        </div>
+      </div>
+      <div id="bd-flash"><div class="bd-flash-top" id="bd-flash-top"></div><div class="bd-flash-bottom" id="bd-flash-bottom"></div></div>
+    </div><!-- #board -->
   </div><!-- #scale-wrap -->
   <div class="resize-handle" id="rh-corner"></div>
   <div class="resize-handle" id="rh-right"></div>
@@ -592,7 +710,8 @@ function ff(id) {
 }
 if (ff(1007)) document.body.classList.add("ff-1007");
 if (ff(1010)) document.body.classList.add("ff-1010");
-if (ff(1018)) document.body.classList.add("ff-1018");
+if (ff(1018) || ff(1019)) document.body.classList.add("ff-1018");   // 1019 needs the stage layout, so it turns it on
+if (ff(1019)) document.body.classList.add("ff-1019");
 const SLOT = parseInt(params.get("slot") || "1");
 const EDIT_MODE = params.get("edit") === "1"; // ?edit=1 shows controls
 // ?fullscreen=1 — locks widget to full 1920px width at bottom of canvas;
@@ -604,7 +723,10 @@ const FULLSCREEN = params.get("fullscreen") === "1";
 //   ?w=700  anything above 1 is read as pixels            (clamped 320 to 1920)
 //   ?bottom=20  gap in pixels under the scoreboard         default 0
 // It wins over ?fullscreen=1 if both are on the link.
-const STAGE = ff(1018);
+const BOARD = ff(1019);                 // new scoreboard look (needs the stage layout)
+const STAGE = ff(1018) || BOARD;
+const CARD_ID = BOARD ? "board" : "main-card";   // the box the stage code measures and scales
+const CARD_W  = BOARD ? 640 : 860;               // its natural width (keep equal to the CSS above)
 const LOCKED = FULLSCREEN || STAGE;   // modes where dragging / resizing is switched off
 function stageWidth() {
   let w = parseFloat(params.get("w"));
@@ -641,8 +763,8 @@ function applyTransform() {
   if (STAGE) {
     // Stage layout: centered at the bottom, scaled once from the natural 860px card.
     const sw      = stageWidth();
-    const s       = sw / BASE_W;
-    const cardH   = el("main-card").offsetHeight || BASE_H;
+    const s       = sw / CARD_W;
+    const cardH   = el(CARD_ID).offsetHeight || BASE_H;
     const scaledH = Math.round(cardH * s);
     widget.style.left   = Math.round((1920 - sw) / 2) + "px";
     widget.style.top    = (1080 - scaledH - stageBottom()) + "px";
@@ -1014,11 +1136,79 @@ function showFlash(type, scorerIdx, p1Name, p2Name, p1Color, p2Color) {
   }, 2200);
 }
 
+// ── SCOREBOARD V2 (flag 1019) ─────────────────────────────────────
+let bdP1PopTimer = null, bdP2PopTimer = null, bdFlashTimer = null;
+const BD_P1 = "#3d9bff", BD_P2 = "#ff6a2b";
+
+function renderBoard(state, prevState) {
+  const b = el("board");
+  b.classList.remove("offline");
+  b.classList.toggle("swapped", ff(1009) && state.swapped === true);
+
+  el("bd-p1-name").textContent = state.p1 || "Player 1";
+  el("bd-p2-name").textContent = state.p2 || "Player 2";
+
+  // Combo lines: blade, then "ratchet · bit" (a blade with no ratchet shows just the bit)
+  [["p1", state.p1ActiveCombo], ["p2", state.p2ActiveCombo]].forEach(([k, c]) => {
+    const has = c && c.blade;
+    el("bd-" + k + "-blade").textContent = has ? c.blade : "";
+    el("bd-" + k + "-parts").textContent = has ? [c.ratchet, c.bit].filter(Boolean).join(" \u00B7 ") : "";
+  });
+
+  // Points in the current set (flashes white for a moment when they change)
+  const pts = state.pts || [0, 0];
+  const prev = prevState ? (prevState.pts || [0, 0]) : pts;
+  el("bd-p1-pts").textContent = pts[0];
+  el("bd-p2-pts").textContent = pts[1];
+  if (prevState && pts[0] !== prev[0]) bdP1PopTimer = popScore("bd-p1-pts", bdP1PopTimer);
+  if (prevState && pts[1] !== prev[1]) bdP2PopTimer = popScore("bd-p2-pts", bdP2PopTimer);
+
+  // Set dots: one per set that could be played. Sets a player won are in their colour,
+  // the set being played has a gold ring, sets still to come are white.
+  // The app only sends HOW MANY sets each player won, not in which order, so player 1's
+  // wins are drawn first. Shown only for matches of more than one set.
+  const need = state.setsNeeded || 1;
+  let html = "";
+  if (need > 1) {
+    const total = need * 2 - 1;
+    const won = state.sets || [0, 0];
+    for (let i = 0; i < total; i++) {
+      let cls = "bd-dot";
+      if (i < won[0]) cls += " p1";
+      else if (i < won[0] + won[1]) cls += " p2";
+      else if (i === won[0] + won[1] && !state.matchOver) cls += " cur";
+      html += '<span class="' + cls + '"></span>';
+    }
+  }
+  el("bd-dots").innerHTML = html;
+}
+
+// Same wording as showFlash() above, shown as a banner just above the scoreboard.
+function showBoardFlash(type, scorerIdx, p1Name, p2Name) {
+  let top, bottom;
+  if (type === "LER-STRIKE") { top = "LER STRIKE"; bottom = (scorerIdx === 0 ? p1Name : p2Name) + " LAUNCH ERROR"; }
+  else if (type === "LER") { top = "LAUNCH ERROR"; bottom = "OPPONENT PENALTY"; }
+  else if (type === "OF2" || type === "OF3") { top = "OWN FINISH"; bottom = "OPPONENT +" + (type === "OF2" ? 2 : 3) + " PTS"; }
+  else {
+    const labels = { XTR: "XTREME", OVR: "OVER", BST: "BURST", SPF: "SPIN" };
+    top = labels[type] || type;
+    bottom = (scorerIdx === 0 ? p1Name : p2Name) + " SCORES";
+  }
+  const topEl = el("bd-flash-top");
+  topEl.textContent = top;
+  topEl.style.color = scorerIdx === 0 ? BD_P1 : BD_P2;
+  el("bd-flash-bottom").textContent = bottom;
+  el("bd-flash").classList.add("visible");
+  clearTimeout(bdFlashTimer);
+  bdFlashTimer = setTimeout(() => el("bd-flash").classList.remove("visible"), 2200);
+}
+
 // ── RENDER STATE ──────────────────────────────────────────────────
 function renderState(state, prevState) {
   if (!state) {
     scoreboard.style.display = "none";
     offlineMsg.classList.add("visible");
+    if (BOARD) { el("board").classList.add("offline"); el("bd-flash").classList.remove("visible"); }
     return;
   }
 
@@ -1097,9 +1287,11 @@ function renderState(state, prevState) {
         state.p1, state.p2,
         p1Color, p2Color
       );
+      if (BOARD) showBoardFlash(state.lastFinish.type, state.lastFinish.scorerIdx, state.p1, state.p2);
     }
   }
 
+  if (BOARD) renderBoard(state, prevState);
   applyTransform();
 }
 
@@ -1144,7 +1336,7 @@ if (LOCKED) {
   el("rh-right").style.display                     = "none";
   el("rh-bottom").style.display                    = "none";
   document.getElementById("reset-btn").style.display = "none";
-  widgetScale = STAGE ? stageWidth() / BASE_W : 1920 / BASE_W;  // old full-screen mode: ≈ 2.23
+  widgetScale = STAGE ? stageWidth() / CARD_W : 1920 / BASE_W;  // old full-screen mode: ≈ 2.23
   widgetW = 1920;
   widgetH = 0;
   // applyTransform() (called by renderState) will set left/top/size
@@ -1191,11 +1383,12 @@ function resetOverlay() {
   el("sets-row").style.display = "none";
   scoreboard.style.display = "none";
   offlineMsg.classList.add("visible");
+  if (BOARD) { el("board").classList.add("offline"); el("bd-flash").classList.remove("visible"); }
 }
 
 // Stage layout: the card changes height when combos or the set row appear. Re-pin it
 // to the bottom whenever that happens.
-if (STAGE && window.ResizeObserver) new ResizeObserver(() => applyTransform()).observe(el("main-card"));
+if (STAGE && window.ResizeObserver) new ResizeObserver(() => applyTransform()).observe(el(CARD_ID));
 
 // Start polling
 renderState(null, null);
