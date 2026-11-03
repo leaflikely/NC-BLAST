@@ -1520,6 +1520,8 @@ function MatchScreen({
       ...(ff(1023) ? { battleCount: currentMatch.filter(e => e.type !== "LER-STRIKE").length } : {}),
       // FLAG 1024: the tournament link (so the overlay can tell which other live matches are still unfinished) and this
       // round's upsets (a lower seed beat a higher seed) for the Upset Alert graphic.
+      // Time this update left the judge app, so the overlay's optional &debug=1 readout can show how long it took to reach the screen.
+      sentAt: Date.now(),
       ...(ff(1024) ? { slug: challongeSlug || "", upsets: overlayRecords && Array.isArray(overlayRecords.upsets) ? overlayRecords.upsets : [] } : {}),
       // FLAG 1020: winner of each finished set, in order (see overlaySetWinners above).
       ...(ff(1020) ? { setWinners: overlaySetWinners(setScores, rest.sets || sets) } : {}),
