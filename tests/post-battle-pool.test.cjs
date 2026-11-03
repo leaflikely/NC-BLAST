@@ -405,38 +405,49 @@ test("shown once per match, before the round records, after Match Point", () => 
   const mp = pick6(st({ ...combos, sets: [1, 0], pts: [3, 1] }), st({ ...combos, sets: [1, 0], pts: [2, 1] }));
   assert.strictEqual(mp.card.big, "Match point");
 });
-test("NEXT BATTLE: line, the combo with the higher PPB, its win percentage, PPB and sample size on one line", () => {
+const rowText = k => k.statRow.items.map(i => i.map(r => r.t).join("")).join(" | ") + " | " + k.statRow.right;
+const rowColors = k => k.statRow.items.map(i => i[1].color);
+test("NEXT BATTLE: line, the favorite's blade name in its player's colour, Battle Win and PPB on one row with the sample size", () => {
   setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
   const k = pick6(st(combos), st(combos)).card;
   assert.strictEqual(k.headRuns.map(r => r.t).join(""), "Next battle: Shark Scale 3-60 Narrow vs Dran Sword 3-60 F");
   assert.strictEqual(k.headRuns[0].color, "#fff");
   assert.strictEqual(k.headRuns[1].color, "#3d9bff"); assert.strictEqual(k.headRuns[3].color, "#ff6a2b");
-  assert.strictEqual(k.big, "Shark Scale 3-60 Narrow");
+  assert.strictEqual(k.big, "Shark Scale");   // blade only
   assert.strictEqual(k.bigColor, "#3d9bff");
-  assert.strictEqual(k.sub, "Battle Win: 70%");
-  assert.strictEqual(k.sub2, "PPB: +1.00");
-  assert.strictEqual(k.sub2Right, "20 battles");
+  assert.strictEqual(rowText(k), "Battle Win: 70% | PPB: +1.00 | 20 battles");
+  assert.strictEqual(k.statRow.px, 30);   // both on one row, same size
   setMu({ n: 20, aWins: 6, bWins: 14, aPts: 20, bPts: 40 });
   const k2 = pick6(st(combos), st(combos)).card;
-  assert.strictEqual(k2.big, "Dran Sword 3-60 F");
+  assert.strictEqual(k2.big, "Dran Sword");
   assert.strictEqual(k2.bigColor, "#ff6a2b");
-  assert.strictEqual(k2.sub, "Battle Win: 70%");
-  assert.strictEqual(k2.sub2, "PPB: +1.00");
+  assert.strictEqual(rowText(k2), "Battle Win: 70% | PPB: +1.00 | 20 battles");
 });
-test("higher PPB decides, even if the other combo has more wins", () => {
-  setMu({ n: 10, aWins: 4, bWins: 6, aPts: 30, bPts: 14 });   // B wins more battles, A has the better PPB (+1.60)
+test("the full combo is shown only when both combos use the same blade", () => {
+  setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
+  const same = { p1ActiveCombo: { blade: "Shark Scale", ratchet: "3-60", bit: "Narrow" }, p2ActiveCombo: { blade: "Shark Scale", ratchet: "5-60", bit: "Rush" } };
+  MU.cache.set("shark scale 3-60 narrow|shark scale 5-60 rush", { at: Date.now(), n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
+  assert.strictEqual(pick6(st(same), st(same)).card.big, "Shark Scale 3-60 Narrow");
+  MU.cache.set("shark scale 3-60 narrow|shark scale 5-60 rush", { at: Date.now(), n: 20, aWins: 6, bWins: 14, aPts: 20, bPts: 40 });
+  assert.strictEqual(pick6(st(same), st(same)).card.big, "Shark Scale 5-60 Rush");
+});
+test("win rate and PPB numbers: green above 50% / above 0, red below, white at the line", () => {
+  const G = "#3ddc84", R = "#ff5a5a";
+  setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
+  assert.deepStrictEqual(rowColors(pick6(st(combos), st(combos)).card), [G, G]);
+  setMu({ n: 10, aWins: 4, bWins: 6, aPts: 30, bPts: 14 });   // A has the better PPB but wins only 40%
   const k = pick6(st(combos), st(combos)).card;
-  assert.strictEqual(k.big, "Shark Scale 3-60 Narrow");
-  assert.strictEqual(k.sub, "Battle Win: 40%");
-  assert.strictEqual(k.sub2, "PPB: +1.60");
-  assert.strictEqual(k.sub2Right, "10 battles");
+  assert.strictEqual(rowText(k), "Battle Win: 40% | PPB: +1.60 | 10 battles");
+  assert.deepStrictEqual(rowColors(k), [R, G]);
+  setMu({ n: 20, aWins: 10, bWins: 10, aPts: 25, bPts: 25 });
+  assert.deepStrictEqual(rowColors(pick6(st(combos), st(combos)).card), ["#fff", "#fff"]);
 });
 test("exactly even (same PPB and win rate) reads Even matchup", () => {
   setMu({ n: 20, aWins: 10, bWins: 10, aPts: 25, bPts: 25 });
   assert.strictEqual(pick6(st(combos), st(combos)).card.big, "Even matchup");
   setMu({ n: 20, aWins: 9, bWins: 11, aPts: 25, bPts: 25 });   // same PPB: the better win rate breaks the tie
   const k = pick6(st(combos), st(combos)).card;
-  assert.strictEqual(k.big, "Dran Sword 3-60 F"); assert.strictEqual(k.sub, "Battle Win: 55%");
+  assert.strictEqual(k.big, "Dran Sword"); assert.strictEqual(k.statRow.items[0][1].t, "55%");
 });
 test("skipped with fewer than 10 battles, a failed lookup, no lookup yet, missing combos, a finished match, or the flag off", () => {
   setMu({ n: 9, aWins: 9, bWins: 0, aPts: 20, bPts: 0 });
