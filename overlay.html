@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -603,6 +603,10 @@
     transition: transform 0.55s cubic-bezier(0.22, 0.8, 0.24, 1), visibility 0s;
   }
   body.ff-1021.noanim #board, body.ff-1021.noanim #bd-gfx { transition: none; }
+  /* Wide shape: a yellow line (same 2px as the top line) on the graphic's edge that faces the scoreboard,
+     so the graphic reads as sliding out from behind it. Drawn inside the box, so nothing shifts. */
+  body.ff-1021 #bd-gfx.seam-l { box-shadow: inset 2px 0 0 var(--bd-gold); }
+  body.ff-1021 #bd-gfx.seam-r { box-shadow: inset -2px 0 0 var(--bd-gold); }
   .gfx-head { font: 700 16px/1 var(--bd-text-font); letter-spacing: 0.16em; text-transform: uppercase; color: rgba(240, 244, 255, 0.55); }
   .gfx-main { margin-top: 8px; font: 700 54px/1 var(--bd-head-font); text-transform: uppercase; white-space: nowrap; }
   .gfx-who, .gfx-combo { max-width: 100%; padding: 0 20px; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -875,8 +879,14 @@ function placeSpace() {
   let bx, by, gx, gy;
   if (space.shape === "wide") {
     bx = 320; by = 0; gx = 320; gy = 0;                    // scoreboard in the middle
-    if (gfxOn) { if (gfxSide === "left") { bx = 0; gx = 640; } else { bx = 640; gx = 0; } }
+    if (gfxOn) {
+      if (gfxSide === "left") { bx = 0; gx = 640; } else { bx = 640; gx = 0; }
+      // seam line on the graphic's edge that touches the scoreboard (left edge when the graphic is on the right)
+      el("bd-gfx").classList.toggle("seam-l", gx === 640);
+      el("bd-gfx").classList.toggle("seam-r", gx === 0);
+    }
   } else {
+    el("bd-gfx").classList.remove("seam-l", "seam-r");   // tall: the board's own top line already marks the seam
     by = space.board === "top" ? 0 : 162; bx = 0; gx = 0; gy = by;   // graphic starts behind the scoreboard
     if (gfxOn) gy = space.board === "top" ? 162 : 0;       // and slides out to the other half
   }
