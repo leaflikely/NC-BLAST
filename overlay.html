@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -746,6 +746,7 @@ const OVERLAY_FLAGS = (() => {
   try {
     (window.FEATURE_FLAGS || []).forEach(id => on.add(Number(id)));
   } catch (e) {}
+  on.add(1021);   // the plain channel link must always work, even if OBS cached an older flags.js; ?ff=-1021 turns it off
   try {
     (params.get("ff") || "").split(",").forEach(raw => {
       const n = Number(raw.trim());
@@ -952,15 +953,22 @@ function postBattleContent(state, prevState) {
   return { head, type, pts: num, who, combo, idx };
 }
 
+// Size of the OBS source. Some browsers report 0 until the page has finished loading, so fall
+// back to the other measurements and finally to a 1920x1080 source rather than shrinking to nothing.
+function fillSize() {
+  const w = window.innerWidth || document.documentElement.clientWidth || 1920;
+  const h = window.innerHeight || document.documentElement.clientHeight || 1080;
+  return { w, h };
+}
 function applyTransform() {
   if (SPACE) {
     // Space layout: the widget IS the space. Position and size come from the link / the editor,
     // or (FILL mode) from the size of the OBS source: as big as fits, centered, resting on the bottom.
     if (FILL) {
-      const fs = SHAPES[space.shape];
-      space.s = Math.max(0.05, Math.min(window.innerWidth / fs.w, window.innerHeight / fs.h));
-      space.x = (window.innerWidth - fs.w * space.s) / 2;
-      space.y = window.innerHeight - fs.h * space.s;
+      const fs = SHAPES[space.shape], vw = fillSize();
+      space.s = Math.max(0.05, Math.min(vw.w / fs.w, vw.h / fs.h));
+      space.x = (vw.w - fs.w * space.s) / 2;
+      space.y = vw.h - fs.h * space.s;
     } else fitSpace();
     const sh = SHAPES[space.shape];
     widget.style.left   = Math.round(space.x) + "px";
@@ -1881,6 +1889,10 @@ function buildGear() {
 if (FILL) {
   buildGear();
   window.addEventListener("resize", applyTransform);   // OBS source resized: re-fit
+  window.addEventListener("load", applyTransform);
+  // Safety net: if OBS changes the source size without telling the page, re-fit within a second.
+  let lastFill = "";
+  setInterval(() => { const v = fillSize(), k = v.w + "x" + v.h; if (k !== lastFill) { lastFill = k; applyTransform(); } }, 1000);
 }
 
 // Start polling
