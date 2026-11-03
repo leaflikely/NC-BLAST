@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link for OBS" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -888,7 +888,9 @@ const FIN_POINTS = { SPF: 1, OVR: 2, BST: 2, XTR: 3, OF2: 2, OF3: 3, LER: 1 };  
 const CFG_KEY = "ncblast-overlay-cfg-" + SLOT;
 let savedCfg = {};
 try { savedCfg = JSON.parse(localStorage.getItem(CFG_KEY) || "{}") || {}; } catch (e) { savedCfg = {}; }
-const pick = n => (savedCfg[n] !== undefined ? savedCfg[n] : params.get(n));   // the gear wins; the link only sets the starting values
+const IN_OBS = !!window.obsstudio;   // OBS browser sources have this object: there the page shows ONLY the scoreboard/graphics, never any settings UI
+const pick = n => IN_OBS ? (params.get(n) !== null ? params.get(n) : savedCfg[n])   // in OBS the link decides
+                         : (savedCfg[n] !== undefined ? savedCfg[n] : params.get(n));   // in a normal tab the settings panel wins
 // FILL mode: the plain channel link (no ?x= ?y= ?s=, no ?edit=1). The overlay fills whatever box
 // OBS gives the source, keeping the shape's proportions, so OBS decides position and size.
 const FILL = SPACE;   // always: ?x= ?y= ?s= (from old copied links) and ?edit=1 no longer move or scale anything
@@ -1194,10 +1196,11 @@ function postBattleContent(state, prevState) {
 
 // Size of the OBS source. Some browsers report 0 until the page has finished loading, so fall
 // back to the other measurements and finally to a 1920x1080 source rather than shrinking to nothing.
+let uiTop = 0;   // height of the settings panel in a normal browser tab (always 0 in OBS): the graphic fits in the space below it
 function fillSize() {
   const w = window.innerWidth || document.documentElement.clientWidth || 1920;
   const h = window.innerHeight || document.documentElement.clientHeight || 1080;
-  return { w, h };
+  return { w, h: Math.max(60, h - uiTop), top: uiTop };
 }
 function applyTransform() {
   if (SPACE) {
@@ -1207,7 +1210,7 @@ function applyTransform() {
       const fs = SHAPES[space.shape], vw = fillSize();
       space.s = Math.max(0.05, Math.min(vw.w / fs.w, vw.h / fs.h));
       space.x = (vw.w - fs.w * space.s) / 2;
-      space.y = vw.h - fs.h * space.s;
+      space.y = vw.top + vw.h - fs.h * space.s;
     } else fitSpace();
     const sh = SHAPES[space.shape];
     widget.style.left   = Math.round(space.x) + "px";
@@ -1907,28 +1910,15 @@ function buildSizeSwitch() {
 if (STAGE && EDIT_MODE && !SPACE) buildSizeSwitch();
 
 
-// Gear (FILL mode): invisible until the mouse is over its corner, so it never shows on stream.
-// In OBS: right-click the source > Interact, move the mouse to the top-left corner, click the gear.
-// Choices are saved straight away for this channel in this OBS source.
+// Settings panel (normal browser tab only): always on screen at the top of the page, nothing to open or close.
+// Inside OBS nothing is built at all, so the stream only ever sees the scoreboard and graphics.
+// Choices are saved in this browser for this channel, and the "Link for OBS" line shows the link that carries them to OBS.
 function buildGear() {
-  const st = document.createElement("style");
-  // OBS browser sources have a window.obsstudio object. There the gear hides until hovered (so it never
-  // shows on stream); in an ordinary browser tab it is always visible, with a label.
-  const IN_OBS = !!window.obsstudio;
-  st.textContent = "#cfg-gear{opacity:1}";   // always visible; add ?settings=0 to a link to hide it
-  document.head.appendChild(st);
+  if (IN_OBS || params.get("settings") === "0") return;
   const mk = (tag, css, text) => { const n = document.createElement(tag); if (css) n.style.cssText = css; if (text) n.textContent = text; return n; };
   const BTN = "font:inherit;letter-spacing:inherit;text-transform:inherit;padding:4px 10px;border:1px solid rgba(255,255,255,0.35);border-radius:6px;cursor:pointer;background:transparent;color:#F0F4FF;";
-  const gear = mk("button", "position:fixed;top:4px;left:4px;z-index:10000;width:34px;height:34px;border:none;border-radius:8px;" +
-    "background:rgba(8,12,22,0.9);color:#F0F4FF;font-size:20px;cursor:pointer;", "\u2699");
-  {
-    gear.textContent = "\u2699 Settings";
-    gear.style.cssText += "width:auto;padding:0 12px;font:700 15px 'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;border:1px solid rgba(255,255,255,0.4);";
-  }
-  gear.id = "cfg-gear";
-  if (params.get("settings") === "0") gear.style.display = "none";
-  const panel = mk("div", "position:fixed;inset:0;z-index:10001;display:none;flex-wrap:wrap;align-content:flex-start;align-items:center;" +
-    "gap:8px 18px;padding:8px 12px;background:rgba(8,12,22,0.97);overflow:auto;box-sizing:border-box;" +
+  const panel = mk("div", "position:fixed;top:0;left:0;right:0;z-index:10001;display:flex;flex-wrap:wrap;align-content:flex-start;align-items:center;" +
+    "gap:8px 18px;padding:8px 12px;background:rgba(8,12,22,0.97);box-sizing:border-box;max-height:60vh;overflow:auto;" +
     "font:600 14px 'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;color:#F0F4FF;");
   panel.id = "cfg-panel";
   const painters = [];
@@ -1951,11 +1941,7 @@ function buildGear() {
     panel.appendChild(wrap);
   };
   const repaint = () => painters.forEach(f => f());
-  const close = () => { panel.style.display = "none"; };
-  const closeBtn = mk("button", BTN + "margin-left:auto;", "Close \u2715");
-  closeBtn.onclick = close;
   panel.appendChild(mk("span", "color:#FFD400;", "Channel " + SLOT + " settings"));
-  panel.appendChild(closeBtn);
   group("Shape", [["Wide (side by side)", "wide"], ["Tall (stacked)", "tall"]], () => space.shape,
     v => { space.shape = v; hideGfx(); applyTransform(); }, () => true);
   group("Scoreboard slides", [["Left", "left"], ["Right", "right"], ["Alternate", "alt"]], () => space.side,
@@ -1973,7 +1959,6 @@ function buildGear() {
     ["Winner", { card: { head: "Swiss Round 1 \u00b7 Match winner", big: "Leaf", bigColor: BD_P1, sub: "2\u20131 \u00b7 5 battles", sub2: "Swiss record 3\u20131", sub2Color: "#a4c9f9" } }]
   ];
   const fire = pick1 => {
-    close();
     gfxTesting = true;
     showGfx({ head: "Set 2 \u00b7 2\u20133", type: "Xtreme", pts: "+3", who: "Leaf scores", combo: "Shark Scale \u00b7 3-60 \u00b7 Narrow", idx: 0,
       info: pick1.info || null, card: pick1.card || null });
@@ -1988,6 +1973,21 @@ function buildGear() {
     tf.appendChild(b);
   }
   panel.appendChild(tf);
+  // The link that carries these choices into OBS (OBS cannot see this tab's saved choices).
+  const linkRow = mk("div", "display:flex;align-items:center;gap:8px;flex-basis:100%;text-transform:none;letter-spacing:0.02em;font-weight:500;");
+  const linkTxt = mk("span", "opacity:0.9;word-break:break-all;");
+  const copyBtn = mk("button", BTN + "background:#FFD400;color:#080C14;flex:none;", "Copy link for OBS");
+  const obsLink = () => location.origin + location.pathname + "?slot=" + SLOT + "&shape=" + space.shape +
+    (space.shape === "wide" ? "&side=" + space.side : "&board=" + space.board) + "&gfx=" + space.secs;
+  copyBtn.onclick = () => {
+    const t = obsLink();
+    const done = () => { copyBtn.textContent = "Copied \u2713"; setTimeout(() => { copyBtn.textContent = "Copy link for OBS"; }, 1500); };
+    try { navigator.clipboard.writeText(t).then(done, () => {}); } catch (e) {}
+  };
+  linkRow.appendChild(copyBtn);
+  linkRow.appendChild(linkTxt);
+  panel.appendChild(linkRow);
+  painters.push(() => { linkTxt.textContent = obsLink(); });
   // Sizes to type into the OBS source (Properties > Width / Height). 1.2 = scoreboard 40% of a 1920 screen.
   const rec = k => Math.round(SHAPES[k].w * 1.2) + "\u00d7" + Math.round(SHAPES[k].h * 1.2);
   const info = mk("div", "flex-basis:100%;font-weight:500;text-transform:none;letter-spacing:0.02em;opacity:0.9;");
@@ -1999,11 +1999,12 @@ function buildGear() {
       "   |   This source is " + w + "\u00d7" + h + (ok ? " \u2713 right shape for " : " \u2717 not the shape of ") + space.shape;
     info.style.color = ok ? "#7CE38B" : "#FFB020";
   });
-  window.addEventListener("resize", repaint);
-  gear.onclick = () => { panel.style.display = "flex"; repaint(); };
-  document.body.appendChild(gear);
+  const fit = () => { const t = panel.offsetHeight; if (t !== uiTop) { uiTop = t; applyTransform(); } };
+  painters.push(fit);
+  window.addEventListener("resize", () => { repaint(); fit(); });
   document.body.appendChild(panel);
   repaint();
+  setTimeout(fit, 400); setTimeout(fit, 1500);   // again once the fonts have loaded and the panel has its final height
 }
 if (FILL) {
   buildGear();
