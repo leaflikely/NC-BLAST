@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-03u | Final Battle without round line, new SET POINT 3-3 (no shaking) for 3-3 in earlier sets, winner set score green, round count only on Matches Pending / Winner / Upset Alert | previous: 2026-11-03t | winner graphic in the winner colour with white outlined text; Match point: (colon, no exclamation, no round line); NEXT BATTLE line larger, shrinks only if it does not fit | previous: 2026-11-03s | Matchup Stats: Battle Win and PPB on one row (green above 50% / above 0, red below), favorite shown as the blade name (full combo if both blades match), bigger NEXT BATTLE line | previous: 2026-11-03r | Matchup Stats redesigned: NEXT BATTLE: [P1 combo] vs [P2 combo], the combo with the higher PPB, Battle Win %, PPB with the sample size on the right | previous: 2026-11-03q | the graphic wipes its text once hidden behind the scoreboard and the next one is fully set up (finish layer on, no fade) before it slides out | previous: 2026-11-03p | flag 1026 fix: the general graphic is picked 3 s after the finish (when the lookups have arrived) instead of at the instant of the finish; Currently Playing also reads the other channels from the database Worker; &debug=1 shows why Currently Playing / Matchup were skipped | previous: 2026-11-03o | flag 1026: Matchup Stats graphic; Test fire builds from the real match (E-codes when data is missing); Clear graphic memory button | previous: 2026-11-03n | flag 1025: real battles also arrive through the database Worker (not delayed), duplicates and older late arrivals are ignored | previous: 2026-11-03m | &debug=1 on the link shows a timing readout | previous: 2026-11-03l | OBS no longer lags: waits run on a background-worker clock (browsers slow normal timers on pages they think are hidden) and a backup check every 4 s catches a stuck long-poll | previous: 2026-11-03k | flag 1024: Upset Alert + Currently Playing graphics, Test fire also plays in OBS (relayed by the Worker), Worker settings read every 3 s | previous: 2026-11-03j | settings live on the database Worker (/overlay-config) so the plain link ?slot=N works in OBS and the browser; settings panel needs the password once per device | previous: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-03v | Dynamic wide (graphic comes out on the battle winner side), Review mode for Test fire (skips the finish text, graphic stays until clicked again or replaced) | previous: 2026-11-03u | Final Battle without round line, new SET POINT 3-3 (no shaking) for 3-3 in earlier sets, winner set score green, round count only on Matches Pending / Winner / Upset Alert | previous: 2026-11-03t | winner graphic in the winner colour with white outlined text; Match point: (colon, no exclamation, no round line); NEXT BATTLE line larger, shrinks only if it does not fit | previous: 2026-11-03s | Matchup Stats: Battle Win and PPB on one row (green above 50% / above 0, red below), favorite shown as the blade name (full combo if both blades match), bigger NEXT BATTLE line | previous: 2026-11-03r | Matchup Stats redesigned: NEXT BATTLE: [P1 combo] vs [P2 combo], the combo with the higher PPB, Battle Win %, PPB with the sample size on the right | previous: 2026-11-03q | the graphic wipes its text once hidden behind the scoreboard and the next one is fully set up (finish layer on, no fade) before it slides out | previous: 2026-11-03p | flag 1026 fix: the general graphic is picked 3 s after the finish (when the lookups have arrived) instead of at the instant of the finish; Currently Playing also reads the other channels from the database Worker; &debug=1 shows why Currently Playing / Matchup were skipped | previous: 2026-11-03o | flag 1026: Matchup Stats graphic; Test fire builds from the real match (E-codes when data is missing); Clear graphic memory button | previous: 2026-11-03n | flag 1025: real battles also arrive through the database Worker (not delayed), duplicates and older late arrivals are ignored | previous: 2026-11-03m | &debug=1 on the link shows a timing readout | previous: 2026-11-03l | OBS no longer lags: waits run on a background-worker clock (browsers slow normal timers on pages they think are hidden) and a backup check every 4 s catches a stuck long-poll | previous: 2026-11-03k | flag 1024: Upset Alert + Currently Playing graphics, Test fire also plays in OBS (relayed by the Worker), Worker settings read every 3 s | previous: 2026-11-03j | settings live on the database Worker (/overlay-config) so the plain link ?slot=N works in OBS and the browser; settings panel needs the password once per device | previous: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -917,7 +917,7 @@ const space = {
   s: parseFloat(params.get("s")) > 0 ? parseFloat(params.get("s")) : 1.2,
   x: parseFloat(params.get("x")),
   y: parseFloat(params.get("y")),
-  side: ["left", "right", "alt"].includes(pick("side")) ? pick("side") : "left",
+  side: ["left", "right", "alt", "dynamic"].includes(pick("side")) ? pick("side") : "left",
   board: pick("board") === "top" ? "top" : "bottom",
   secs: Math.max(2, Math.min(30, parseFloat(pick("gfx")) || 5))
 };
@@ -1096,14 +1096,22 @@ function showGfx(c) {
   const second = c.info ? "info" : c.card ? "card" : null;   // which general graphic follows the finish text
   if (c.info) fillGfxInfo(c.info);
   if (c.card) fillGfxCard(c.card);
-  if (hidden) gfxInstant(() => setGfxPhase("finish"));
-  else setGfxPhase("finish");   // a new finish always starts with the finish text, even if the records were showing
+  const firstPhase = c.review && second ? second : "finish";   // Review mode skips the finish text
+  if (hidden) gfxInstant(() => setGfxPhase(firstPhase));
+  else setGfxPhase(firstPhase);   // a new finish always starts with the finish text, even if the records were showing
   if (!gfxOn) {
     if (space.side === "alt") { gfxSide = gfxAlt ? "right" : "left"; gfxAlt = !gfxAlt; }
+    else if (space.side === "dynamic") {
+      // Dynamic wide: the graphic comes out on the side of the battle winner (player 1 is on the left unless the stream
+      // position is flipped), so the scoreboard slides to the other side.
+      const p1Left = !(ff(1009) && lastState && lastState.swapped === true);
+      gfxSide = ((c.idx !== 1) === p1Left) ? "right" : "left";
+    }
     else gfxSide = space.side;
     gfxOn = true;
     placeSpace();
   }
+  if (c.review) { gfxTimer++; return; }   // Review mode: stays up until the same graphic is tested again, another is tested, or review mode is turned off
   if (c.later) {
     gfxLater(FINISH_SECS * 1000, () => {
       let g = null;
@@ -2377,13 +2385,19 @@ async function simGraphic(kind) {
   } catch (e) { return demo("E199"); }
   return null;
 }
+let testIdx = 1;   // which player "wins" the test fire; flips every time, so Dynamic wide shows both sides
 async function fireTest(kind) {
   if (kind === "resetMemory") { resetPoolMemory(); return; }
+  if (kind === "reviewOff") { hideGfx(); return; }   // review mode: the held graphic slides back
+  // "reviewUpset" etc.: review mode. No finish text, and the graphic stays up until it is cleared or replaced.
+  const review = /^review[A-Z]/.test(kind);
+  if (review) kind = kind.charAt(6).toLowerCase() + kind.slice(7);
   const g = await simGraphic(kind);
   if (!g) return;
   gfxTesting = true;
-  showGfx({ head: "Set 2 \u00b7 2\u20133", type: "Xtreme", pts: "+3", who: "Leaf scores", combo: "Shark Scale \u00b7 3-60 \u00b7 Narrow", idx: 0,
-    info: g.info || null, card: g.card || null });
+  testIdx = space.side === "dynamic" ? 1 - testIdx : 0;
+  showGfx({ head: "Set 2 \u00b7 2\u20133", type: "Xtreme", pts: "+3", who: "Leaf scores", combo: "Shark Scale \u00b7 3-60 \u00b7 Narrow", idx: testIdx,
+    info: g.info || null, card: g.card || null, review });
 }
 const SETTINGS_PASSWORD = "zm77132596";
 const UNLOCK_KEY = "ncblast-overlay-unlock-v1";
@@ -2461,7 +2475,7 @@ function buildPanel() {
   panel.appendChild(status);
   group("Shape", [["Wide (side by side)", "wide"], ["Tall (stacked)", "tall"]], () => space.shape,
     v => { space.shape = v; hideGfx(); applyTransform(); }, () => true);
-  group("Scoreboard slides", [["Left", "left"], ["Right", "right"], ["Alternate", "alt"]], () => space.side,
+  group("Scoreboard slides", [["Left", "left"], ["Right", "right"], ["Alternate", "alt"], ["Dynamic wide", "dynamic"]], () => space.side,
     v => { space.side = v; hideGfx(); }, () => space.shape === "wide");
   group("Scoreboard sits", [["Bottom", "bottom"], ["Top", "top"]], () => space.board,
     v => { space.board = v; hideGfx(); applyTransform(); }, () => space.shape === "tall");
@@ -2472,23 +2486,50 @@ function buildPanel() {
   const tf = mk("div", "display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex-basis:100%;");
   tf.appendChild(mk("span", "opacity:0.7;", "Test fire"));
   const tfBtns = ff(1023) ? TEST_KINDS : [["records", "Preview graphic"]];
+  // Review mode: test fires skip the finish text and stay up. Click the same button again (or turn review mode off) to slide it away;
+  // clicking another button swaps to that graphic. The tab decides what to show and tells OBS: "reviewX" shows X, "reviewOff" clears.
+  let reviewOn = false, reviewKind = null;
+  const tfButtons = [];
+  const paintReview = () => {
+    tfButtons.forEach(([b, k]) => { const held = reviewOn && reviewKind === k; b.style.background = "#FFD400"; b.style.color = "#080C14"; b.style.outline = held ? "3px solid #7CE38B" : "none"; b.style.outlineOffset = "1px"; });
+    reviewBtn.style.background = reviewOn ? "#7CE38B" : "transparent"; reviewBtn.style.color = reviewOn ? "#080C14" : "#F0F4FF";
+    reviewBtn.textContent = "Review mode: " + (reviewOn ? "ON" : "OFF");
+  };
+  const sendTest = (kind) => {
+    localFireAt = Date.now();
+    fireTest(kind);
+    status.style.color = "#cfd6e6"; status.textContent = "Test sent to OBS\u2026";
+    fetch(DB_WORKER + "/overlay-config?slot=" + SLOT, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: SETTINGS_PASSWORD, test: { kind } })
+    }).then(r => r.json().then(j => ({ r, j })).catch(() => ({ r, j: {} }))).then(({ r, j }) => {
+      if (r.ok && j.ok && j.test) { lastTestAt = Math.max(lastTestAt, Number(j.test.at) || 0); status.style.color = "#7CE38B"; status.textContent = "Test sent \u2713 (shows in OBS within a few seconds)"; }
+      else { status.style.color = "#FFB020"; status.textContent = "Shown here only: " + (j.error || ("error " + r.status)); }
+    }).catch(() => { status.style.color = "#FFB020"; status.textContent = "Shown here only: could not reach the server."; });
+  };
+  const reviewBtn = mk("button", BTN, "Review mode: OFF");
   tfBtns.forEach(([kind, name]) => {
     const b = mk("button", BTN + "background:#FFD400;color:#080C14;", name);
     b.onclick = () => {
-      localFireAt = Date.now();
-      fireTest(kind);
-      status.style.color = "#cfd6e6"; status.textContent = "Test sent to OBS\u2026";
-      fetch(DB_WORKER + "/overlay-config?slot=" + SLOT, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: SETTINGS_PASSWORD, test: { kind } })
-      }).then(r => r.json().then(j => ({ r, j })).catch(() => ({ r, j: {} }))).then(({ r, j }) => {
-        if (r.ok && j.ok && j.test) { lastTestAt = Math.max(lastTestAt, Number(j.test.at) || 0); status.style.color = "#7CE38B"; status.textContent = "Test sent \u2713 (shows in OBS within a few seconds)"; }
-        else { status.style.color = "#FFB020"; status.textContent = "Shown here only: " + (j.error || ("error " + r.status)); }
-      }).catch(() => { status.style.color = "#FFB020"; status.textContent = "Shown here only: could not reach the server."; });
+      if (!reviewOn) { sendTest(kind); return; }
+      if (reviewKind === kind) { reviewKind = null; sendTest("reviewOff"); }
+      else { reviewKind = kind; sendTest("review" + kind.charAt(0).toUpperCase() + kind.slice(1)); }
+      paintReview();
     };
+    tfButtons.push([b, kind]);
     tf.appendChild(b);
   });
   panel.appendChild(tf);
+  const rv = mk("div", "display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-basis:100%;");
+  reviewBtn.onclick = () => {
+    reviewOn = !reviewOn;
+    if (!reviewOn && reviewKind) { reviewKind = null; sendTest("reviewOff"); }
+    paintReview();
+  };
+  rv.appendChild(reviewBtn);
+  rv.appendChild(mk("span", "opacity:0.7;text-transform:none;letter-spacing:0.02em;font-weight:500;", "Skips the finish text; the graphic stays up until you click it again or test another one."));
+  panel.appendChild(rv);
+  paintReview();
   // Clear graphic memory: graphics shown once per match or per round (Match Context, Matchup Stats, Upset Alert) can appear again.
   // Goes to every OBS source / tab on this channel the same way a test fire does. Test fires never change this memory.
   const cm = mk("div", "display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-basis:100%;");
@@ -2545,7 +2586,7 @@ function applyRemoteCfg(c) {
   if (!c || typeof c !== "object" || !c.shape) return;
   const next = {
     shape: c.shape === "tall" ? "tall" : "wide",
-    side: ["left", "right", "alt"].includes(c.side) ? c.side : "left",
+    side: ["left", "right", "alt", "dynamic"].includes(c.side) ? c.side : "left",
     board: c.board === "top" ? "top" : "bottom",
     secs: [3, 5, 8, 12].includes(Number(c.gfx)) ? Number(c.gfx) : 5
   };
