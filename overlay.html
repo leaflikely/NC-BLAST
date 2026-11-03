@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -825,14 +825,23 @@ const el = id => document.getElementById(id);
 //   ?gfx=5                seconds the post-battle graphic stays                    (default 5)
 const SHAPES = { wide: { w: 1280, h: 162 }, tall: { w: 640, h: 324 } };
 const FIN_POINTS = { SPF: 1, OVR: 2, BST: 2, XTR: 3, OF2: 2, OF3: 3, LER: 1 };   // same values as the judge app
+// Settings picked with the gear (FILL mode) are remembered per channel in this OBS source.
+// A value written on the link still wins over the remembered one.
+const CFG_KEY = "ncblast-overlay-cfg-" + SLOT;
+let savedCfg = {};
+try { savedCfg = JSON.parse(localStorage.getItem(CFG_KEY) || "{}") || {}; } catch (e) { savedCfg = {}; }
+const pick = n => (params.has(n) ? params.get(n) : savedCfg[n]);
+// FILL mode: the plain channel link (no ?x= ?y= ?s=, no ?edit=1). The overlay fills whatever box
+// OBS gives the source, keeping the shape's proportions, so OBS decides position and size.
+const FILL = SPACE && !EDIT_MODE && !params.has("x") && !params.has("y") && !params.has("s");
 const space = {
-  shape: params.get("shape") === "tall" ? "tall" : "wide",
+  shape: pick("shape") === "tall" ? "tall" : "wide",
   s: parseFloat(params.get("s")) > 0 ? parseFloat(params.get("s")) : 1.2,
   x: parseFloat(params.get("x")),
   y: parseFloat(params.get("y")),
-  side: ["left", "right", "alt"].includes(params.get("side")) ? params.get("side") : "left",
-  board: params.get("board") === "top" ? "top" : "bottom",
-  secs: Math.max(2, Math.min(30, parseFloat(params.get("gfx")) || 5))
+  side: ["left", "right", "alt"].includes(pick("side")) ? pick("side") : "left",
+  board: pick("board") === "top" ? "top" : "bottom",
+  secs: Math.max(2, Math.min(30, parseFloat(pick("gfx")) || 5))
 };
 function spaceSize() {
   const sh = SHAPES[space.shape];
@@ -945,8 +954,14 @@ function postBattleContent(state, prevState) {
 
 function applyTransform() {
   if (SPACE) {
-    // Space layout: the widget IS the space. Position and size come from the link / the editor.
-    fitSpace();
+    // Space layout: the widget IS the space. Position and size come from the link / the editor,
+    // or (FILL mode) from the size of the OBS source: as big as fits, centered, resting on the bottom.
+    if (FILL) {
+      const fs = SHAPES[space.shape];
+      space.s = Math.max(0.05, Math.min(window.innerWidth / fs.w, window.innerHeight / fs.h));
+      space.x = (window.innerWidth - fs.w * space.s) / 2;
+      space.y = window.innerHeight - fs.h * space.s;
+    } else fitSpace();
     const sh = SHAPES[space.shape];
     widget.style.left   = Math.round(space.x) + "px";
     widget.style.top    = Math.round(space.y) + "px";
@@ -1788,6 +1803,71 @@ function buildSpaceEditor() {
   repaint();
 }
 if (SPACE && EDIT_MODE) buildSpaceEditor();
+
+// Gear (FILL mode): invisible until the mouse is over its corner, so it never shows on stream.
+// In OBS: right-click the source > Interact, move the mouse to the top-left corner, click the gear.
+// Choices are saved straight away for this channel in this OBS source.
+function buildGear() {
+  const st = document.createElement("style");
+  st.textContent = "#cfg-gear{opacity:0;transition:opacity .2s}#cfg-gear:hover{opacity:1}";
+  document.head.appendChild(st);
+  const mk = (tag, css, text) => { const n = document.createElement(tag); if (css) n.style.cssText = css; if (text) n.textContent = text; return n; };
+  const BTN = "font:inherit;letter-spacing:inherit;text-transform:inherit;padding:4px 10px;border:1px solid rgba(255,255,255,0.35);border-radius:6px;cursor:pointer;background:transparent;color:#F0F4FF;";
+  const gear = mk("button", "position:fixed;top:4px;left:4px;z-index:10000;width:34px;height:34px;border:none;border-radius:8px;" +
+    "background:rgba(8,12,22,0.9);color:#F0F4FF;font-size:20px;cursor:pointer;", "\u2699");
+  gear.id = "cfg-gear";
+  const panel = mk("div", "position:fixed;inset:0;z-index:10001;display:none;flex-wrap:wrap;align-content:flex-start;align-items:center;" +
+    "gap:8px 18px;padding:8px 12px;background:rgba(8,12,22,0.97);overflow:auto;box-sizing:border-box;" +
+    "font:600 14px 'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;color:#F0F4FF;");
+  panel.id = "cfg-panel";
+  const painters = [];
+  const save = () => {
+    try { localStorage.setItem(CFG_KEY, JSON.stringify({ shape: space.shape, side: space.side, board: space.board, gfx: space.secs })); } catch (e) {}
+  };
+  const group = (title, items, get, set, showWhen) => {
+    const wrap = mk("div", "display:flex;align-items:center;gap:6px;");
+    wrap.appendChild(mk("span", "opacity:0.7;", title));
+    const btns = items.map(([text, value]) => {
+      const b = mk("button", BTN, text);
+      b.onclick = () => { set(value); save(); repaint(); };
+      wrap.appendChild(b);
+      return [b, value];
+    });
+    painters.push(() => {
+      wrap.style.display = showWhen() ? "flex" : "none";
+      btns.forEach(([b, v]) => { const on = get() === v; b.style.background = on ? "#FFD400" : "transparent"; b.style.color = on ? "#080C14" : "#F0F4FF"; });
+    });
+    panel.appendChild(wrap);
+  };
+  const repaint = () => painters.forEach(f => f());
+  const close = () => { panel.style.display = "none"; };
+  const closeBtn = mk("button", BTN + "margin-left:auto;", "Close \u2715");
+  closeBtn.onclick = close;
+  panel.appendChild(mk("span", "color:#FFD400;", "Channel " + SLOT + " settings"));
+  panel.appendChild(closeBtn);
+  group("Shape", [["Wide (side by side)", "wide"], ["Tall (stacked)", "tall"]], () => space.shape,
+    v => { space.shape = v; hideGfx(); applyTransform(); }, () => true);
+  group("Scoreboard slides", [["Left", "left"], ["Right", "right"], ["Alternate", "alt"]], () => space.side,
+    v => { space.side = v; hideGfx(); }, () => space.shape === "wide");
+  group("Scoreboard sits", [["Bottom", "bottom"], ["Top", "top"]], () => space.board,
+    v => { space.board = v; hideGfx(); applyTransform(); }, () => space.shape === "tall");
+  group("Graphic shows for", [["3 s", 3], ["5 s", 5], ["8 s", 8], ["12 s", 12]], () => space.secs,
+    v => { space.secs = v; }, () => true);
+  const prev = mk("button", BTN + "background:#FFD400;color:#080C14;", "Preview graphic");
+  prev.onclick = () => {
+    close();
+    showGfx({ head: "Set 2 \u00b7 2\u20133", type: "Xtreme", pts: "+3", who: "Leaf scores", combo: "Shark Scale \u00b7 3-60 \u00b7 Narrow", idx: 0 });
+  };
+  panel.appendChild(prev);
+  gear.onclick = () => { panel.style.display = "flex"; repaint(); };
+  document.body.appendChild(gear);
+  document.body.appendChild(panel);
+  repaint();
+}
+if (FILL) {
+  buildGear();
+  window.addEventListener("resize", applyTransform);   // OBS source resized: re-fit
+}
 
 // Start polling
 renderState(null, null);

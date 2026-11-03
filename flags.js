@@ -53,7 +53,7 @@ window.FEATURE_FLAGS = new Set([
   // 1018, // Stream overlay stage layout (overlay only). Held OFF on purpose: it changes how every stream looks. Try it per OBS source with ?ff=1018 on the overlay link; to turn it on for everyone, remove the // at the start of this line.
   // 1019, // New stream-overlay scoreboard look from the Claude Design mock-up (overlay only; turns the stage layout 1018 on by itself). Held OFF while it is being tuned: try it per OBS source with ?ff=1019 on the overlay link.
   1020, // Judge app tells the stream overlay who won each finished set (for the overlay's set dots; only used by the new look, flag 1019).
-  // 1021, // Stream overlay space shapes (wide / tall) the organizer drags and scales in edit mode, plus the 5-second post-battle graphic (overlay only; turns 1018 and 1019 on by itself). Held OFF while it is being tuned: try ?ff=1021 on the overlay link, and add &edit=1 to place it.
+  1021, // Stream overlay space shapes (wide / tall) plus the 5-second post-battle graphic (overlay only; turns 1018 and 1019 on by itself). On by default: the plain link ncblast.pages.dev/overlay?slot=N fills its OBS source, settings live in a hover-only gear. To see the old look on one source add ?ff=-1021 to its link.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -160,7 +160,7 @@ window.FEATURE_FLAG_INFO = {
   },
   1021: {
     name: "Space shapes and post-battle graphic for the stream overlay (overlay)",
-    desc: "Stream overlay only. The overlay lives in a fixed-shape space the organizer drags and resizes on the 1920x1080 stage (add ?edit=1 to the overlay link, then Copy link into OBS). Wide shape: the scoreboard sits in the middle, then slides left, right or alternates while a graphic comes out on the other side. Tall shape: the scoreboard sits at the bottom (or top) and the graphic slides out above (or below) it. After every finish the graphic shows the finish, the points, who scored, the winning combo and the set score for 5 seconds (change with ?gfx=). Turns the new scoreboard look (flag 1019) on by itself.",
+    desc: "Stream overlay only. The overlay lives in a fixed-shape space (wide or tall) and fills whatever box OBS gives the source, so OBS decides position and size; the link stays the same per channel (overlay?slot=N) and the shape, side and timing are set in a gear that appears when the mouse is over the source's top-left corner (OBS: right-click the source, Interact). The old drag editor still works with ?edit=1. Wide shape: the scoreboard sits in the middle, then slides left, right or alternates while a graphic comes out on the other side. Tall shape: the scoreboard sits at the bottom (or top) and the graphic slides out above (or below) it. After every finish the graphic shows the finish, the points, who scored, the winning combo and the set score for 5 seconds (change with ?gfx=). Turns the new scoreboard look (flag 1019) on by itself.",
     off: "Old behaviour: the scoreboard sits where flags 1018 / 1019 put it, with a small banner above it after a finish."
   }
 };
