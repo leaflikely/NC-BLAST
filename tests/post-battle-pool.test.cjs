@@ -30,6 +30,7 @@ let upsetDisk = null;   // stands in for the OBS source's saved list of upsets a
 const upsetLoad = label => (upsetDisk && upsetDisk.label === label ? JSON.parse(JSON.stringify(upsetDisk)) : { label, ids: [] });
 const upsetSave = v => { upsetDisk = JSON.parse(JSON.stringify(v)); };
 const MU = { cache: new Map() };
+const comboTextT = c => c && c.blade ? [c.blade, c.ratchet, c.bit].filter(Boolean).join(" ") : "";
 const matchupKey = state => {
   const t = c => c && c.blade ? [c.blade, c.ratchet, c.bit].filter(Boolean).join(" ") : "";
   const a = t(state.p1ActiveCombo), b = t(state.p2ActiveCombo);
@@ -37,8 +38,8 @@ const matchupKey = state => {
 };
 function load(flags) {
   const ff = id => flags.includes(id);
-  return new Function("ff", "FIN_POINTS", "comboLine", "BD_P1", "BD_P2", "LIVE", "upsetLoad", "upsetSave", "MU", "MU_MIN", "matchupKey", "localStorage", "UPSET_KEY",
-    poolSrc + "; return { choosePoolGraphic, postBattleContent, POOL_BASIC, POOL_PRIORITY, poolUpset, poolCtx, matchupCard, resetPoolMemory, POOL_MEM };")(ff, FIN_POINTS, () => "", "#3d9bff", "#ff6a2b", LIVE, upsetLoad, upsetSave, MU, 10, matchupKey, { removeItem: () => { upsetDisk = null; } }, "k");
+  return new Function("ff", "FIN_POINTS", "comboLine", "BD_P1", "BD_P2", "LIVE", "upsetLoad", "upsetSave", "MU", "MU_MIN", "matchupKey", "comboText", "localStorage", "UPSET_KEY",
+    poolSrc + "; return { choosePoolGraphic, postBattleContent, POOL_BASIC, POOL_PRIORITY, poolUpset, poolCtx, matchupCard, resetPoolMemory, POOL_MEM };")(ff, FIN_POINTS, () => "", "#3d9bff", "#ff6a2b", LIVE, upsetLoad, upsetSave, MU, 10, matchupKey, comboTextT, { removeItem: () => { upsetDisk = null; } }, "k");
 }
 const P = load([1009, 1022, 1023]);
 const mem = () => ({ key: null, contextShown: false, lastBasic: null });
@@ -399,28 +400,43 @@ test("shown once per match, before the round records, after Match Point", () => 
   setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
   const m = mem();
   const g = pick6(st(combos), st(combos), m);
-  assert.strictEqual(g.card.head, "Matchup history");
+  assert.strictEqual(g.card.headRuns[0].t, "Next battle: ");
   assert.strictEqual(kindOf(pick6(st(combos), st(combos), m)), "context");   // second finish: not again
   const mp = pick6(st({ ...combos, sets: [1, 0], pts: [3, 1] }), st({ ...combos, sets: [1, 0], pts: [2, 1] }));
   assert.strictEqual(mp.card.big, "Match point");
 });
-test("favorite is the combo with more wins, with win percentage, points per battle and sample size", () => {
+test("NEXT BATTLE: line, the combo with the higher PPB, its win percentage, PPB and sample size on one line", () => {
   setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
-  const g = pick6(st(combos), st(combos));
-  assert.strictEqual(g.card.big, "Shark Scale");
-  assert.strictEqual(g.card.bigColor, "#3d9bff");
-  assert.strictEqual(g.card.sub, "Leaf favored \u00b7 70% wins");
-  assert.strictEqual(g.card.sub2, "+1.00 PPB \u00b7 20 battles");
+  const k = pick6(st(combos), st(combos)).card;
+  assert.strictEqual(k.headRuns.map(r => r.t).join(""), "Next battle: Shark Scale 3-60 Narrow vs Dran Sword 3-60 F");
+  assert.strictEqual(k.headRuns[0].color, "#fff");
+  assert.strictEqual(k.headRuns[1].color, "#3d9bff"); assert.strictEqual(k.headRuns[3].color, "#ff6a2b");
+  assert.strictEqual(k.big, "Shark Scale 3-60 Narrow");
+  assert.strictEqual(k.bigColor, "#3d9bff");
+  assert.strictEqual(k.sub, "Battle Win: 70%");
+  assert.strictEqual(k.sub2, "PPB: +1.00");
+  assert.strictEqual(k.sub2Right, "20 battles");
   setMu({ n: 20, aWins: 6, bWins: 14, aPts: 20, bPts: 40 });
-  const g2 = pick6(st(combos), st(combos));
-  assert.strictEqual(g2.card.big, "Dran Sword");
-  assert.strictEqual(g2.card.bigColor, "#ff6a2b");
-  assert.strictEqual(g2.card.sub, "Chan favored \u00b7 70% wins");
-  assert.strictEqual(g2.card.sub2, "+1.00 PPB \u00b7 20 battles");
+  const k2 = pick6(st(combos), st(combos)).card;
+  assert.strictEqual(k2.big, "Dran Sword 3-60 F");
+  assert.strictEqual(k2.bigColor, "#ff6a2b");
+  assert.strictEqual(k2.sub, "Battle Win: 70%");
+  assert.strictEqual(k2.sub2, "PPB: +1.00");
 });
-test("near 50/50 reads Even matchup", () => {
+test("higher PPB decides, even if the other combo has more wins", () => {
+  setMu({ n: 10, aWins: 4, bWins: 6, aPts: 30, bPts: 14 });   // B wins more battles, A has the better PPB (+1.60)
+  const k = pick6(st(combos), st(combos)).card;
+  assert.strictEqual(k.big, "Shark Scale 3-60 Narrow");
+  assert.strictEqual(k.sub, "Battle Win: 40%");
+  assert.strictEqual(k.sub2, "PPB: +1.60");
+  assert.strictEqual(k.sub2Right, "10 battles");
+});
+test("exactly even (same PPB and win rate) reads Even matchup", () => {
   setMu({ n: 20, aWins: 10, bWins: 10, aPts: 25, bPts: 25 });
   assert.strictEqual(pick6(st(combos), st(combos)).card.big, "Even matchup");
+  setMu({ n: 20, aWins: 9, bWins: 11, aPts: 25, bPts: 25 });   // same PPB: the better win rate breaks the tie
+  const k = pick6(st(combos), st(combos)).card;
+  assert.strictEqual(k.big, "Dran Sword 3-60 F"); assert.strictEqual(k.sub, "Battle Win: 55%");
 });
 test("skipped with fewer than 10 battles, a failed lookup, no lookup yet, missing combos, a finished match, or the flag off", () => {
   setMu({ n: 9, aWins: 9, bWins: 0, aPts: 20, bPts: 0 });
@@ -440,12 +456,12 @@ test("Clear graphic memory lets once-per-match graphics show again (same match)"
   P6.POOL_MEM.key = null;
   const s1 = st({ ...combos, upsets: [{ id: "4", w: "Cy", ws: 9, l: "Al", ls: 2 }] });
   const first = P6.choosePoolGraphic(s1, s1, P6.POOL_MEM);
-  assert.strictEqual(first.card.head, "Matchup history");
+  assert.strictEqual(first.card.headRuns[0].t, "Next battle: ");
   assert.strictEqual(kindOf(P6.choosePoolGraphic(s1, s1, P6.POOL_MEM)), "context");
   assert.strictEqual(P6.choosePoolGraphic(s1, s1, P6.POOL_MEM).card.big, "Upset!");
   assert.notStrictEqual(kindOf(P6.choosePoolGraphic(s1, s1, P6.POOL_MEM)), "Upset!");   // upset used up
   P6.resetPoolMemory();
-  assert.strictEqual(P6.choosePoolGraphic(s1, s1, P6.POOL_MEM).card.head, "Matchup history");
+  assert.strictEqual(P6.choosePoolGraphic(s1, s1, P6.POOL_MEM).card.headRuns[0].t, "Next battle: ");
   assert.strictEqual(kindOf(P6.choosePoolGraphic(s1, s1, P6.POOL_MEM)), "context");
   assert.strictEqual(P6.choosePoolGraphic(s1, s1, P6.POOL_MEM).card.big, "Upset!");   // shown again after the reset
 });
@@ -471,13 +487,13 @@ test("deferred pick (flag 1026): nothing is chosen or remembered until later() r
   assert.strictEqual(c.info, null); assert.strictEqual(c.card, null);
   assert.strictEqual(m.matchupShown, false); assert.strictEqual(m.key, null);   // nothing remembered yet
   const g = c.later();
-  assert.strictEqual(g.card.head, "Matchup history");
+  assert.strictEqual(g.card.headRuns[0].t, "Next battle: ");
   assert.strictEqual(m.matchupShown, true);
   // data that arrives between the finish and later() is used: nothing was cached at finish time
   P6.resetPoolMemory(); MU.cache.clear();
   const c2 = P6.postBattleContent(s1, s1, { defer: true });
   setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
-  assert.strictEqual(c2.later().card.head, "Matchup history");
+  assert.strictEqual(c2.later().card.headRuns[0].t, "Next battle: ");
   // not deferred (no option): same behaviour as before
   const c3 = P6.postBattleContent(st(), st());
   assert.strictEqual(c3.later, null);
