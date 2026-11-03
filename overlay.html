@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link for OBS" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -889,8 +889,7 @@ const CFG_KEY = "ncblast-overlay-cfg-" + SLOT;
 let savedCfg = {};
 try { savedCfg = JSON.parse(localStorage.getItem(CFG_KEY) || "{}") || {}; } catch (e) { savedCfg = {}; }
 const IN_OBS = !!window.obsstudio;   // OBS browser sources have this object: there the page shows ONLY the scoreboard/graphics, never any settings UI
-const pick = n => IN_OBS ? (params.get(n) !== null ? params.get(n) : savedCfg[n])   // in OBS the link decides
-                         : (savedCfg[n] !== undefined ? savedCfg[n] : params.get(n));   // in a normal tab the settings panel wins
+const pick = n => (params.get(n) !== null ? params.get(n) : savedCfg[n]);   // the link decides; the settings panel rewrites the link in the address bar, so tab and OBS use the very same link
 // FILL mode: the plain channel link (no ?x= ?y= ?s=, no ?edit=1). The overlay fills whatever box
 // OBS gives the source, keeping the shape's proportions, so OBS decides position and size.
 const FILL = SPACE;   // always: ?x= ?y= ?s= (from old copied links) and ?edit=1 no longer move or scale anything
@@ -1976,18 +1975,24 @@ function buildGear() {
   // The link that carries these choices into OBS (OBS cannot see this tab's saved choices).
   const linkRow = mk("div", "display:flex;align-items:center;gap:8px;flex-basis:100%;text-transform:none;letter-spacing:0.02em;font-weight:500;");
   const linkTxt = mk("span", "opacity:0.9;word-break:break-all;");
-  const copyBtn = mk("button", BTN + "background:#FFD400;color:#080C14;flex:none;", "Copy link for OBS");
-  const obsLink = () => location.origin + location.pathname + "?slot=" + SLOT + "&shape=" + space.shape +
-    (space.shape === "wide" ? "&side=" + space.side : "&board=" + space.board) + "&gfx=" + space.secs;
+  const copyBtn = mk("button", BTN + "background:#FFD400;color:#080C14;flex:none;", "Copy link");
+  // The page's own address, rewritten to carry the current choices. This is the link to paste into OBS.
+  const obsLink = () => {
+    const q = new URLSearchParams(location.search);
+    q.set("slot", SLOT); q.set("shape", space.shape);
+    if (space.shape === "wide") { q.set("side", space.side); q.delete("board"); } else { q.set("board", space.board); q.delete("side"); }
+    q.set("gfx", space.secs);
+    return location.origin + location.pathname + "?" + q.toString();
+  };
   copyBtn.onclick = () => {
     const t = obsLink();
-    const done = () => { copyBtn.textContent = "Copied \u2713"; setTimeout(() => { copyBtn.textContent = "Copy link for OBS"; }, 1500); };
+    const done = () => { copyBtn.textContent = "Copied \u2713"; setTimeout(() => { copyBtn.textContent = "Copy link"; }, 1500); };
     try { navigator.clipboard.writeText(t).then(done, () => {}); } catch (e) {}
   };
   linkRow.appendChild(copyBtn);
   linkRow.appendChild(linkTxt);
   panel.appendChild(linkRow);
-  painters.push(() => { linkTxt.textContent = obsLink(); });
+  painters.push(() => { const l = obsLink(); linkTxt.textContent = l; try { history.replaceState(null, "", l); } catch (e) {} });
   // Sizes to type into the OBS source (Properties > Width / Height). 1.2 = scoreboard 40% of a 1920 screen.
   const rec = k => Math.round(SHAPES[k].w * 1.2) + "\u00d7" + Math.round(SHAPES[k].h * 1.2);
   const info = mk("div", "flex-basis:100%;font-weight:500;text-transform:none;letter-spacing:0.02em;opacity:0.9;");
