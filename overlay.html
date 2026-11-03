@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-03j | settings live on the database Worker (/overlay-config) so the plain link ?slot=N works in OBS and the browser; settings panel needs the password once per device | previous: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -1911,9 +1911,46 @@ if (STAGE && EDIT_MODE && !SPACE) buildSizeSwitch();
 
 // Settings panel (normal browser tab only): always on screen at the top of the page, nothing to open or close.
 // Inside OBS nothing is built at all, so the stream only ever sees the scoreboard and graphics.
-// Choices are saved in this browser for this channel, and the "Link for OBS" line shows the link that carries them to OBS.
+// Choices are saved on the database Worker for this channel, and the OBS source reads them from there,
+// so the plain link https://ncblast.pages.dev/overlay?slot=N is the link everywhere.
+// The panel is locked behind a password (asked once per device). The password is written right here on purpose, so anyone who
+// inspects the page can find it; the Worker checks it again on every save.
+const DB_WORKER = "https://ncblast-db.danny61734.workers.dev";
+const SETTINGS_PASSWORD = "zm77132596";
+const UNLOCK_KEY = "ncblast-overlay-unlock-v1";
+let lastLocalChange = 0;   // time of the last change made in this tab, so a refresh from the Worker does not undo it
 function buildGear() {
   if (IN_OBS || params.get("settings") === "0") return;
+  let unlocked = false;
+  try { unlocked = localStorage.getItem(UNLOCK_KEY) === "1"; } catch (e) {}
+  if (unlocked) buildPanel(); else buildLock();
+}
+function buildLock() {
+  const bar = document.createElement("div");
+  bar.id = "cfg-lock";
+  bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:10001;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 12px;" +
+    "background:rgba(8,12,22,0.97);box-sizing:border-box;font:600 14px 'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;color:#F0F4FF;";
+  const t = document.createElement("span"); t.style.color = "#FFD400"; t.textContent = "Channel " + SLOT + " settings are locked";
+  const inp = document.createElement("input"); inp.type = "password"; inp.placeholder = "Password"; inp.autocomplete = "off";
+  inp.style.cssText = "font:inherit;letter-spacing:inherit;padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.35);background:#0b1220;color:#F0F4FF;width:170px;";
+  const go = document.createElement("button"); go.textContent = "Unlock";
+  go.style.cssText = "font:inherit;letter-spacing:inherit;text-transform:inherit;padding:4px 12px;border:none;border-radius:6px;cursor:pointer;background:#FFD400;color:#080C14;";
+  const msg = document.createElement("span"); msg.style.cssText = "color:#FF7A7A;text-transform:none;";
+  const tryIt = () => {
+    if (inp.value === SETTINGS_PASSWORD) {
+      try { localStorage.setItem(UNLOCK_KEY, "1"); } catch (e) {}
+      bar.remove(); uiTop = 0; buildPanel();
+    } else { msg.textContent = "Wrong password."; inp.value = ""; }
+  };
+  go.onclick = tryIt;
+  inp.addEventListener("keydown", e => { if (e.key === "Enter") tryIt(); });
+  bar.appendChild(t); bar.appendChild(inp); bar.appendChild(go); bar.appendChild(msg);
+  document.body.appendChild(bar);
+  const fitLock = () => { const h = bar.offsetHeight; if (bar.isConnected && h !== uiTop) { uiTop = h; applyTransform(); } };
+  fitLock(); setTimeout(fitLock, 400); setTimeout(fitLock, 1500);
+  window.addEventListener("resize", fitLock);
+}
+function buildPanel() {
   const mk = (tag, css, text) => { const n = document.createElement(tag); if (css) n.style.cssText = css; if (text) n.textContent = text; return n; };
   const BTN = "font:inherit;letter-spacing:inherit;text-transform:inherit;padding:4px 10px;border:1px solid rgba(255,255,255,0.35);border-radius:6px;cursor:pointer;background:transparent;color:#F0F4FF;";
   const panel = mk("div", "position:fixed;top:0;left:0;right:0;z-index:10001;display:flex;flex-wrap:wrap;align-content:flex-start;align-items:center;" +
@@ -1921,8 +1958,19 @@ function buildGear() {
     "font:600 14px 'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;color:#F0F4FF;");
   panel.id = "cfg-panel";
   const painters = [];
+  const status = mk("span", "text-transform:none;letter-spacing:0.02em;font-weight:500;opacity:0.9;margin-left:6px;");
   const save = () => {
-    try { localStorage.setItem(CFG_KEY, JSON.stringify({ shape: space.shape, side: space.side, board: space.board, gfx: space.secs })); } catch (e) {}
+    const cfg = { shape: space.shape, side: space.side, board: space.board, gfx: space.secs };
+    try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch (e) {}
+    lastLocalChange = Date.now();
+    status.style.color = "#cfd6e6"; status.textContent = "Saving\u2026";
+    fetch(DB_WORKER + "/overlay-config?slot=" + SLOT, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: SETTINGS_PASSWORD, config: cfg })
+    }).then(r => r.json().then(j => ({ r, j })).catch(() => ({ r, j: {} }))).then(({ r, j }) => {
+      if (r.ok && j.ok) { status.style.color = "#7CE38B"; status.textContent = "Saved \u2713 (OBS updates within about 10 seconds)"; }
+      else { status.style.color = "#FFB020"; status.textContent = "Not saved: " + (j.error || ("error " + r.status)); }
+    }).catch(() => { status.style.color = "#FFB020"; status.textContent = "Not saved: could not reach the server."; });
   };
   const group = (title, items, get, set, showWhen) => {
     const wrap = mk("div", "display:flex;align-items:center;gap:6px;");
@@ -1941,6 +1989,7 @@ function buildGear() {
   };
   const repaint = () => painters.forEach(f => f());
   panel.appendChild(mk("span", "color:#FFD400;", "Channel " + SLOT + " settings"));
+  panel.appendChild(status);
   group("Shape", [["Wide (side by side)", "wide"], ["Tall (stacked)", "tall"]], () => space.shape,
     v => { space.shape = v; hideGfx(); applyTransform(); }, () => true);
   group("Scoreboard slides", [["Left", "left"], ["Right", "right"], ["Alternate", "alt"]], () => space.side,
@@ -1972,27 +2021,18 @@ function buildGear() {
     tf.appendChild(b);
   }
   panel.appendChild(tf);
-  // The link that carries these choices into OBS (OBS cannot see this tab's saved choices).
+  // The one link for this channel: the same in the browser and in OBS. The settings above are stored on the Worker, not in the link.
   const linkRow = mk("div", "display:flex;align-items:center;gap:8px;flex-basis:100%;text-transform:none;letter-spacing:0.02em;font-weight:500;");
-  const linkTxt = mk("span", "opacity:0.9;word-break:break-all;");
+  const plain = location.origin + location.pathname + "?slot=" + SLOT;
   const copyBtn = mk("button", BTN + "background:#FFD400;color:#080C14;flex:none;", "Copy link");
-  // The page's own address, rewritten to carry the current choices. This is the link to paste into OBS.
-  const obsLink = () => {
-    const q = new URLSearchParams(location.search);
-    q.set("slot", SLOT); q.set("shape", space.shape);
-    if (space.shape === "wide") { q.set("side", space.side); q.delete("board"); } else { q.set("board", space.board); q.delete("side"); }
-    q.set("gfx", space.secs);
-    return location.origin + location.pathname + "?" + q.toString();
-  };
   copyBtn.onclick = () => {
-    const t = obsLink();
     const done = () => { copyBtn.textContent = "Copied \u2713"; setTimeout(() => { copyBtn.textContent = "Copy link"; }, 1500); };
-    try { navigator.clipboard.writeText(t).then(done, () => {}); } catch (e) {}
+    try { navigator.clipboard.writeText(plain).then(done, () => {}); } catch (e) {}
   };
+  linkRow.appendChild(mk("span", "opacity:0.7;text-transform:uppercase;", "Link for OBS (same everywhere)"));
   linkRow.appendChild(copyBtn);
-  linkRow.appendChild(linkTxt);
+  linkRow.appendChild(mk("span", "opacity:0.9;word-break:break-all;", plain));
   panel.appendChild(linkRow);
-  painters.push(() => { const l = obsLink(); linkTxt.textContent = l; try { history.replaceState(null, "", l); } catch (e) {} });
   // Sizes to type into the OBS source (Properties > Width / Height). 1.2 = scoreboard 40% of a 1920 screen.
   const rec = k => Math.round(SHAPES[k].w * 1.2) + "\u00d7" + Math.round(SHAPES[k].h * 1.2);
   const info = mk("div", "flex-basis:100%;font-weight:500;text-transform:none;letter-spacing:0.02em;opacity:0.9;");
@@ -2008,11 +2048,36 @@ function buildGear() {
   painters.push(fit);
   window.addEventListener("resize", () => { repaint(); fit(); });
   document.body.appendChild(panel);
+  window.__cfgRepaint = repaint;
   repaint();
   setTimeout(fit, 400); setTimeout(fit, 1500);   // again once the fonts have loaded and the panel has its final height
 }
+// Settings saved on the Worker (see buildPanel). Read when the page opens and every 10 seconds, in OBS and in tabs alike.
+// If the Worker has nothing saved or cannot be reached, the starting values (link / this browser's saved choice) stay.
+function applyRemoteCfg(c) {
+  if (!c || typeof c !== "object" || !c.shape) return;
+  const next = {
+    shape: c.shape === "tall" ? "tall" : "wide",
+    side: ["left", "right", "alt"].includes(c.side) ? c.side : "left",
+    board: c.board === "top" ? "top" : "bottom",
+    secs: [3, 5, 8, 12].includes(Number(c.gfx)) ? Number(c.gfx) : 5
+  };
+  if (next.shape === space.shape && next.side === space.side && next.board === space.board && next.secs === space.secs) return;
+  Object.assign(space, next);
+  hideGfx(); applyTransform();
+  if (window.__cfgRepaint) window.__cfgRepaint();
+}
+function loadRemoteCfg() {
+  if (Date.now() - lastLocalChange < 6000) return;
+  fetch(DB_WORKER + "/overlay-config?slot=" + SLOT, { cache: "no-store" })
+    .then(r => (r.ok ? r.json() : null))
+    .then(j => { if (j && j.config && Date.now() - lastLocalChange >= 6000) applyRemoteCfg(j.config); })
+    .catch(() => {});
+}
 if (FILL) {
   buildGear();
+  loadRemoteCfg();
+  setInterval(loadRemoteCfg, 10000);
   window.addEventListener("resize", applyTransform);   // OBS source resized: re-fit
   window.addEventListener("load", applyTransform);
   // Safety net: if OBS changes the source size without telling the page, re-fit within a second.
