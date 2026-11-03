@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-03s | Matchup Stats: Battle Win and PPB on one row (green above 50% / above 0, red below), favorite shown as the blade name (full combo if both blades match), bigger NEXT BATTLE line | previous: 2026-11-03r | Matchup Stats redesigned: NEXT BATTLE: [P1 combo] vs [P2 combo], the combo with the higher PPB, Battle Win %, PPB with the sample size on the right | previous: 2026-11-03q | the graphic wipes its text once hidden behind the scoreboard and the next one is fully set up (finish layer on, no fade) before it slides out | previous: 2026-11-03p | flag 1026 fix: the general graphic is picked 3 s after the finish (when the lookups have arrived) instead of at the instant of the finish; Currently Playing also reads the other channels from the database Worker; &debug=1 shows why Currently Playing / Matchup were skipped | previous: 2026-11-03o | flag 1026: Matchup Stats graphic; Test fire builds from the real match (E-codes when data is missing); Clear graphic memory button | previous: 2026-11-03n | flag 1025: real battles also arrive through the database Worker (not delayed), duplicates and older late arrivals are ignored | previous: 2026-11-03m | &debug=1 on the link shows a timing readout | previous: 2026-11-03l | OBS no longer lags: waits run on a background-worker clock (browsers slow normal timers on pages they think are hidden) and a backup check every 4 s catches a stuck long-poll | previous: 2026-11-03k | flag 1024: Upset Alert + Currently Playing graphics, Test fire also plays in OBS (relayed by the Worker), Worker settings read every 3 s | previous: 2026-11-03j | settings live on the database Worker (/overlay-config) so the plain link ?slot=N works in OBS and the browser; settings panel needs the password once per device | previous: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-03t | winner graphic in the winner colour with white outlined text; Match point: (colon, no exclamation, no round line); NEXT BATTLE line larger, shrinks only if it does not fit | previous: 2026-11-03s | Matchup Stats: Battle Win and PPB on one row (green above 50% / above 0, red below), favorite shown as the blade name (full combo if both blades match), bigger NEXT BATTLE line | previous: 2026-11-03r | Matchup Stats redesigned: NEXT BATTLE: [P1 combo] vs [P2 combo], the combo with the higher PPB, Battle Win %, PPB with the sample size on the right | previous: 2026-11-03q | the graphic wipes its text once hidden behind the scoreboard and the next one is fully set up (finish layer on, no fade) before it slides out | previous: 2026-11-03p | flag 1026 fix: the general graphic is picked 3 s after the finish (when the lookups have arrived) instead of at the instant of the finish; Currently Playing also reads the other channels from the database Worker; &debug=1 shows why Currently Playing / Matchup were skipped | previous: 2026-11-03o | flag 1026: Matchup Stats graphic; Test fire builds from the real match (E-codes when data is missing); Clear graphic memory button | previous: 2026-11-03n | flag 1025: real battles also arrive through the database Worker (not delayed), duplicates and older late arrivals are ignored | previous: 2026-11-03m | &debug=1 on the link shows a timing readout | previous: 2026-11-03l | OBS no longer lags: waits run on a background-worker clock (browsers slow normal timers on pages they think are hidden) and a backup check every 4 s catches a stuck long-poll | previous: 2026-11-03k | flag 1024: Upset Alert + Currently Playing graphics, Test fire also plays in OBS (relayed by the Worker), Worker settings read every 3 s | previous: 2026-11-03j | settings live on the database Worker (/overlay-config) so the plain link ?slot=N works in OBS and the browser; settings panel needs the password once per device | previous: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -638,6 +638,8 @@
   #gfx-card-sub2.stats { display: grid; grid-template-columns: 1fr auto 1fr; align-items: baseline; gap: 8px; width: 100%; color: #fff; letter-spacing: 0.02em; text-transform: uppercase; }
   #gfx-card-sub2.stats .mid { display: flex; gap: 16px; white-space: nowrap; }
   #gfx-card-sub2.stats .r { justify-self: end; font-size: 14px; opacity: 0.75; }
+  /* Winner graphic: the winner colour fills the graphic, text is white with a thin black outline */
+  #gfx-card.outlined > div { color: #fff !important; -webkit-text-stroke: 2px #000; paint-order: stroke fill; }
   #gfx-card-note { margin-top: 6px; max-width: 100%; padding: 0 20px; box-sizing: border-box; font: 700 14px/1 var(--bd-text-font); letter-spacing: 0.05em; text-transform: uppercase; color: #ffb020; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* Currently Playing: up to three rows, each  NAME  3-1  NAME  SETS 1-0 */
   #gfx-card-rows { width: 100%; margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
@@ -1012,7 +1014,11 @@ function fillGfxCard(k) {
   if (k.headRuns) {   // heading made of differently coloured pieces
     headEl.textContent = "";
     k.headRuns.forEach(r => { const sp = document.createElement("span"); sp.textContent = r.t; if (r.color) sp.style.color = r.color; headEl.appendChild(sp); });
-  }
+    headEl.style.whiteSpace = "nowrap"; headEl.style.maxWidth = "100%"; headEl.style.padding = "0 8px"; headEl.style.boxSizing = "border-box";
+    // as large as asked, but never wider than the graphic
+    let px = k.headPx || 16;
+    while (px > 11 && headEl.scrollWidth > headEl.clientWidth + 1) { px--; headEl.style.fontSize = px + "px"; }
+  } else { headEl.style.whiteSpace = ""; headEl.style.maxWidth = ""; headEl.style.padding = ""; headEl.style.boxSizing = ""; }
   put("gfx-card-big", k.big, k.bigColor);
   el("gfx-card-big").style.fontSize = k.bigPx ? k.bigPx + "px" : "";
   el("gfx-card-big").classList.toggle("shake", !!k.shake);
@@ -1045,6 +1051,8 @@ function fillGfxCard(k) {
     s2.style.display = "";
   }
   put("gfx-card-note", k.note);
+  el("gfx-card").style.background = k.bg || "";
+  el("gfx-card").classList.toggle("outlined", !!k.outline);
   el("gfx-card-sub").style.fontSize = k.subPx ? k.subPx + "px" : "";
   const rowsEl = el("gfx-card-rows");
   rowsEl.textContent = "";
@@ -1264,9 +1272,10 @@ function poolWinner(c) {
   }
   return { card: {
     head: (rec.label ? rec.label + " \u00b7 " : "") + "Match winner",
-    big: c.names[w], bigColor: w === 1 ? BD_P2 : BD_P1,
+    big: c.names[w],
     sub: parts.join(" \u00b7 "),
-    sub2, sub2Color: w === 1 ? "#f8bfa4" : "#a4c9f9"
+    sub2,
+    bg: w === 1 ? BD_P2 : BD_P1, outline: true   // the whole graphic takes the winner colour; white text with a thin black outline
   } };
 }
 // It becomes 3-3 (one point short of the limit each) in the deciding set. Shown once: not again while it stays 3-3.
@@ -1285,7 +1294,7 @@ function poolMatchPoint(c) {
   const hit = [0, 1].filter(i => c.pts[i] >= c.limit - 1 && c.sets[i] >= 1 && c.sets[i] === c.need - 1);
   if (hit.length !== 1) return null;
   const i = hit[0];
-  return { card: { head: poolHead(c), big: "Match point", bigColor: BD_GOLD, sub: c.names[i] + "!", subColor: i === 1 ? BD_P2 : BD_P1, subLg: true } };
+  return { card: { big: "Match point:", bigColor: BD_GOLD, sub: c.names[i], subColor: i === 1 ? BD_P2 : BD_P1, subLg: true } };
 }
 // Matchup Stats (flag 1026): how the two combos about to battle have done against each other, once per match.
 // Skipped with fewer than MU_MIN past battles or when the lookup failed. e = { n, aWins, bWins, aPts, bPts } (a = player 1's combo).
@@ -1298,7 +1307,7 @@ function matchupCard(c, e) {
   const aPpb = (e.aPts - e.bPts) / e.n;   // points won minus points lost, per battle (player 1's combo; player 2's is the opposite)
   // top line: NEXT BATTLE: in white, then the two combos in their player colours, as large as fits the width
   const headLen = 13 + aText.length + 4 + bText.length;
-  const headPx = Math.max(12, Math.min(30, Math.floor(600 / (headLen * 0.62))));
+  const headPx = 23;   // between the old size (about 16) and the stats row (30); fillGfxCard shrinks it only if the line would not fit
   const headRuns = [{ t: "Next battle: ", color: "#fff" }, { t: aText, color: BD_P1 }, { t: " vs ", color: "#fff" }, { t: bText, color: BD_P2 }];
   // the combo with the higher PPB (the better win rate breaks a tie)
   let fav;
@@ -2311,13 +2320,13 @@ function demoGraphic(kind) {
   switch (kind) {
     case "records": return { info: { label: head, p1: "Leaf", p2: "Player 2", r1: [2, 1], r2: [1, 2], swapped: false } };
     case "finalBattle": return { card: { head, big: "Final battle!", bigColor: BD_GOLD, shake: true } };
-    case "matchPoint": return { card: { head, big: "Match point", bigColor: BD_GOLD, sub: "Leaf!", subColor: BD_P1, subLg: true } };
+    case "matchPoint": return { card: { big: "Match point:", bigColor: BD_GOLD, sub: "Leaf", subColor: BD_P1, subLg: true } };
     case "pending": return { card: { head, big: "Matches pending: 4", bigColor: "#fff", bigPx: 46 } };
-    case "winner": return { card: { head: head + " \u00b7 Match winner", big: "Leaf", bigColor: BD_P1, sub: "2\u20131 \u00b7 5 battles", sub2: "Swiss record 3\u20131", sub2Color: "#a4c9f9" } };
+    case "winner": return { card: { head: head + " \u00b7 Match winner", big: "Leaf", sub: "2\u20131 \u00b7 5 battles", sub2: "Swiss record 3\u20131", bg: BD_P1, outline: true } };
     case "upset": return { card: { head, big: "Upset!", bigColor: BD_GOLD, sub: "Player 9 (Seed 9) beats Leaf (Seed 2)", subPx: 24 } };
     case "playing": return { card: { head: "Currently playing", rows: [
       { p1: "Alex", p2: "Sam", pts: [2, 1], sets: [1, 0] }, { p1: "Jordan", p2: "Riley", pts: [0, 3], sets: [0, 1] }, { p1: "Casey", p2: "Morgan", pts: [3, 3], sets: [1, 1] }] } };
-    case "matchup": return { card: { headRuns: [{ t: "Next battle: ", color: "#fff" }, { t: "Shark Scale 3-60 Narrow", color: BD_P1 }, { t: " vs ", color: "#fff" }, { t: "Dran Sword 3-60 F", color: BD_P2 }], headPx: 19, headSpacing: "0.03em",
+    case "matchup": return { card: { headRuns: [{ t: "Next battle: ", color: "#fff" }, { t: "Shark Scale 3-60 Narrow", color: BD_P1 }, { t: " vs ", color: "#fff" }, { t: "Dran Sword 3-60 F", color: BD_P2 }], headPx: 23, headSpacing: "0.03em",
       big: "Shark Scale", bigColor: BD_P1, bigPx: 46, statRow: { px: 30, right: "21 battles", items: [[{ t: "Battle Win: " }, { t: "62%", color: MU_GREEN }], [{ t: "PPB: " }, { t: "+0.85", color: MU_GREEN }]] } } };
   }
   return null;

@@ -68,20 +68,21 @@ test("not in a set that is not the deciding one, or at other scores", () => {
 console.log("match point");
 test("a player on 3 who has already won a set: MATCH POINT and their name", () => {
   const g = pick(st({ sets: [1, 0], pts: [3, 1] }), st({ sets: [1, 0], pts: [2, 1] }));
-  assert.strictEqual(g.card.big, "Match point");
-  assert.strictEqual(g.card.sub, "Leaf!");
+  assert.strictEqual(g.card.big, "Match point:");
+  assert.strictEqual(g.card.head, undefined);   // no round line on top
+  assert.strictEqual(g.card.sub, "Leaf");
   assert.strictEqual(g.card.subColor, "#3d9bff");
   const g2 = pick(st({ sets: [0, 1], pts: [1, 3] }), st({ sets: [0, 1], pts: [1, 2] }));
-  assert.strictEqual(g2.card.sub, "Chan!");
+  assert.strictEqual(g2.card.sub, "Chan");
   assert.strictEqual(g2.card.subColor, "#ff6a2b");
 });
 test("a player on 3 who has not won a set yet is not match point", () => {
-  assert.notStrictEqual(kindOf(pick(st({ sets: [0, 0], pts: [3, 1] }), st({ sets: [0, 0], pts: [2, 1] }))), "Match point");
+  assert.notStrictEqual(kindOf(pick(st({ sets: [0, 0], pts: [3, 1] }), st({ sets: [0, 0], pts: [2, 1] }))), "Match point:");
 });
 test("a finish that just won a set does not count (the loser can still show 3)", () => {
   const prev = st({ sets: [0, 1], curSet: 2, pts: [3, 3] });
   const now = st({ sets: [1, 1], curSet: 2, pts: [4, 3] });
-  assert.notStrictEqual(kindOf(pick(now, prev)), "Match point");
+  assert.notStrictEqual(kindOf(pick(now, prev)), "Match point:");
 });
 test("final battle comes before match point", () => {
   const g = pick(st({ sets: [1, 1], curSet: 3, pts: [3, 3] }), st({ sets: [1, 1], curSet: 3, pts: [3, 2] }));
@@ -92,7 +93,7 @@ console.log("order and the basic pool");
 test("round + records come once per match, and a special graphic does not use that turn up", () => {
   const m = mem();
   const plain = st({ pts: [1, 0] });
-  assert.strictEqual(kindOf(pick(st({ sets: [1, 0], pts: [3, 1] }), st({ sets: [1, 0], pts: [2, 1] }), m)), "Match point");   // special first
+  assert.strictEqual(kindOf(pick(st({ sets: [1, 0], pts: [3, 1] }), st({ sets: [1, 0], pts: [2, 1] }), m)), "Match point:");   // special first
   assert.strictEqual(m.contextShown, false);
   assert.strictEqual(kindOf(pick(plain, plain, m)), "context");                                  // then the records
   assert.strictEqual(m.contextShown, true);
@@ -237,7 +238,8 @@ const over = (o = {}) => st({ matchOver: true, sets: [2, 0], pts: [4, 1], battle
 test("winner's name in their colour, set score, battle count and Swiss record", () => {
   const c = pick(over(), st()).card;
   assert.strictEqual(c.big, "Leaf");
-  assert.strictEqual(c.bigColor, "#3d9bff");
+  assert.strictEqual(c.bg, "#3d9bff");   // the graphic is filled with the winner colour
+  assert.strictEqual(c.outline, true);
   assert.strictEqual(c.sub, "2–0 · 5 battles");
   assert.strictEqual(c.sub2, "Swiss record 3–1");   // was 2-1, plus this win
   assert.strictEqual(c.head, "Swiss Round 2 · Match winner");
@@ -245,7 +247,7 @@ test("winner's name in their colour, set score, battle count and Swiss record", 
 test("player 2 winning uses player 2's colour and record", () => {
   const c = pick(over({ sets: [1, 2] }), st()).card;
   assert.strictEqual(c.big, "Chan");
-  assert.strictEqual(c.bigColor, "#ff6a2b");
+  assert.strictEqual(c.bg, "#ff6a2b");
   assert.strictEqual(c.sub2, "Swiss record 2–2");   // was 1-2, plus this win
 });
 test("Top Cut or a failed lookup: no Swiss record line", () => {
@@ -265,7 +267,7 @@ test("the winner graphic does not use up the records turn", () => {
 console.log("wiring in the overlay");
 test("flag 1023: the finish content carries the picked graphic", () => {
   const c = P.postBattleContent(st({ sets: [1, 0], pts: [3, 1] }), st({ sets: [1, 0], pts: [2, 1] }));
-  assert.strictEqual(c.card.big, "Match point");
+  assert.strictEqual(c.card.big, "Match point:");
   assert.strictEqual(c.info, null);
   assert.strictEqual(c.finishOnly, false);
 });
@@ -403,7 +405,7 @@ test("shown once per match, before the round records, after Match Point", () => 
   assert.strictEqual(g.card.headRuns[0].t, "Next battle: ");
   assert.strictEqual(kindOf(pick6(st(combos), st(combos), m)), "context");   // second finish: not again
   const mp = pick6(st({ ...combos, sets: [1, 0], pts: [3, 1] }), st({ ...combos, sets: [1, 0], pts: [2, 1] }));
-  assert.strictEqual(mp.card.big, "Match point");
+  assert.strictEqual(mp.card.big, "Match point:");
 });
 const rowText = k => k.statRow.items.map(i => i.map(r => r.t).join("")).join(" | ") + " | " + k.statRow.right;
 const rowColors = k => k.statRow.items.map(i => i[1].color);
