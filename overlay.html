@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -1859,6 +1859,18 @@ function buildGear() {
     showGfx({ head: "Set 2 \u00b7 2\u20133", type: "Xtreme", pts: "+3", who: "Leaf scores", combo: "Shark Scale \u00b7 3-60 \u00b7 Narrow", idx: 0 });
   };
   panel.appendChild(prev);
+  // Sizes to type into the OBS source (Properties > Width / Height). 1.2 = scoreboard 40% of a 1920 screen.
+  const rec = k => Math.round(SHAPES[k].w * 1.2) + "\u00d7" + Math.round(SHAPES[k].h * 1.2);
+  const info = mk("div", "flex-basis:100%;font-weight:500;text-transform:none;letter-spacing:0.02em;opacity:0.9;");
+  panel.appendChild(info);
+  painters.push(() => {
+    const w = window.innerWidth, h = window.innerHeight, want = SHAPES[space.shape].w / SHAPES[space.shape].h;
+    const ok = Math.abs(w / h - want) / want < 0.03;
+    info.textContent = "OBS source size \u2014 Wide: " + rec("wide") + " \u00b7 Tall: " + rec("tall") +
+      "   |   This source is " + w + "\u00d7" + h + (ok ? " \u2713 right shape for " : " \u2717 not the shape of ") + space.shape;
+    info.style.color = ok ? "#7CE38B" : "#FFB020";
+  });
+  window.addEventListener("resize", repaint);
   gear.onclick = () => { panel.style.display = "flex"; repaint(); };
   document.body.appendChild(gear);
   document.body.appendChild(panel);
