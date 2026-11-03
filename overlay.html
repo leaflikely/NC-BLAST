@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-03o | flag 1026: Matchup Stats graphic; Test fire builds from the real match (E-codes when data is missing); Clear graphic memory button | previous: 2026-11-03n | flag 1025: real battles also arrive through the database Worker (not delayed), duplicates and older late arrivals are ignored | previous: 2026-11-03m | &debug=1 on the link shows a timing readout | previous: 2026-11-03l | OBS no longer lags: waits run on a background-worker clock (browsers slow normal timers on pages they think are hidden) and a backup check every 4 s catches a stuck long-poll | previous: 2026-11-03k | flag 1024: Upset Alert + Currently Playing graphics, Test fire also plays in OBS (relayed by the Worker), Worker settings read every 3 s | previous: 2026-11-03j | settings live on the database Worker (/overlay-config) so the plain link ?slot=N works in OBS and the browser; settings panel needs the password once per device | previous: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-03p | flag 1026 fix: the general graphic is picked 3 s after the finish (when the lookups have arrived) instead of at the instant of the finish; Currently Playing also reads the other channels from the database Worker; &debug=1 shows why Currently Playing / Matchup were skipped | previous: 2026-11-03o | flag 1026: Matchup Stats graphic; Test fire builds from the real match (E-codes when data is missing); Clear graphic memory button | previous: 2026-11-03n | flag 1025: real battles also arrive through the database Worker (not delayed), duplicates and older late arrivals are ignored | previous: 2026-11-03m | &debug=1 on the link shows a timing readout | previous: 2026-11-03l | OBS no longer lags: waits run on a background-worker clock (browsers slow normal timers on pages they think are hidden) and a backup check every 4 s catches a stuck long-poll | previous: 2026-11-03k | flag 1024: Upset Alert + Currently Playing graphics, Test fire also plays in OBS (relayed by the Worker), Worker settings read every 3 s | previous: 2026-11-03j | settings live on the database Worker (/overlay-config) so the plain link ?slot=N works in OBS and the browser; settings panel needs the password once per device | previous: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -1038,7 +1038,16 @@ function showGfx(c) {
     gfxOn = true;
     placeSpace();
   }
-  if (second) {
+  if (c.later) {
+    gfxLater(FINISH_SECS * 1000, () => {
+      let g = null;
+      try { g = c.later(); } catch (e) { g = null; }
+      if (g && g.info) { fillGfxInfo(g.info); setGfxPhase("info"); }
+      else if (g && g.card) { fillGfxCard(g.card); setGfxPhase("card"); }
+      else { hideGfx(); return; }   // nothing qualified: only the finish text showed
+      gfxLater(space.secs * 1000, hideGfx);
+    });
+  } else if (second) {
     gfxLater(FINISH_SECS * 1000, () => {
       setGfxPhase(second);
       gfxLater(space.secs * 1000, hideGfx);
@@ -1058,13 +1067,31 @@ function comboLine(c) {
 // Other matches being played right now come from the Worker's /overlay/all, read every 30 seconds. The Worker also keeps
 // the last state of finished matches, so a match is dropped when its own state says it is over or the bracket
 // (/pairings, via the tournament link the judge app sends) says it is complete.
-const LIVE = { states: [], complete: new Set(), slug: "", pairAt: 0 };
+const LIVE = { states: [], complete: new Set(), slug: "", pairAt: 0, okAt: 0, kvCount: 0, d1Count: 0 };
 async function liveRefresh() {
   if (!ff(1024)) return;
+  // The original route can be 10-30 s behind, so (flag 1025) the other channels are also read from the database Worker, which is
+  // not. For a channel the database Worker knows about, its copy replaces the original route's copy.
+  const d1 = [], d1Slots = new Set();
+  if (ff(1025)) {
+    await Promise.all([1, 2, 3, 4].filter(n => n !== SLOT).map(async n => {
+      try {
+        const r = await fetch(DB_WORKER + "/overlay-live?slot=" + n, { cache: "no-store", signal: AbortSignal.timeout(6000) });
+        const j = r.ok ? await r.json() : null;
+        if (j && j.ok && j.state && Date.now() - Number(j.at || 0) < 3 * 3600 * 1000) { d1.push(j.state); d1Slots.add(n); }
+      } catch (e) {}
+    }));
+  }
   try {
     const r = await fetch(WORKER + "/overlay/all", { cache: "no-store", signal: AbortSignal.timeout(8000) });
-    if (r.ok) { const j = await r.json(); LIVE.states = (j.slots || []).map(x => x && x.state).filter(Boolean); }
-  } catch (e) {}
+    if (r.ok) {
+      const j = await r.json();
+      const kv = (j.slots || []).filter(x => x && x.state && !d1Slots.has(Number(x.slot))).map(x => x.state);
+      LIVE.kvCount = kv.length; LIVE.d1Count = d1.length;
+      LIVE.states = d1.concat(kv);   // fresher copies first: the first copy of a match wins
+      LIVE.okAt = Date.now();
+    } else if (d1.length) { LIVE.states = d1; LIVE.d1Count = d1.length; LIVE.okAt = Date.now(); }
+  } catch (e) { if (d1.length) { LIVE.states = d1; LIVE.d1Count = d1.length; LIVE.okAt = Date.now(); } }
   const slug = lastState && lastState.slug;
   if (slug && (slug !== LIVE.slug || Date.now() - LIVE.pairAt > 30000)) {
     try {
@@ -1323,7 +1350,7 @@ function resetPoolMemory() {
 // Builds the card text for the finish that just happened. Uses only what the judge app already
 // sends: who scored, the finish type, the points, the sets, and the combo that was in play
 // (the previous state's combo, because the new state already holds the NEXT combo).
-function postBattleContent(state, prevState) {
+function postBattleContent(state, prevState, opts) {
   const f = state.lastFinish;
   const idx = f.scorerIdx === 1 ? 1 : 0;
   const name = (idx === 0 ? state.p1 : state.p2) || (idx === 0 ? "Player 1" : "Player 2");
@@ -1352,8 +1379,12 @@ function postBattleContent(state, prevState) {
   else if (setWon) head = "Set " + cur + " won · " + pts[0] + "–" + pts[1];
   else head = "Set " + cur + " · " + pts[0] + "–" + pts[1];
   // Flag 1023: one general graphic from the pool. Flag 1022 alone: the round + records graphic after every finish.
-  let info = null, card = null, finishOnly = false;
-  if (ff(1023)) {
+  let info = null, card = null, finishOnly = false, later = null;
+  if (ff(1023) && opts && opts.defer) {
+    // Picked when the finish text has finished (3 s later), not now: by then the lookups started at this finish (the other
+    // live matches, the matchup history of the next combos) have had time to arrive. Nothing is remembered until then.
+    later = () => choosePoolGraphic(state, prevState, POOL_MEM);
+  } else if (ff(1023)) {
     const g = choosePoolGraphic(state, prevState, POOL_MEM);
     if (g && g.info) info = g.info;
     else if (g && g.card) card = g.card;
@@ -1361,7 +1392,7 @@ function postBattleContent(state, prevState) {
   } else if (ff(1022)) {
     info = buildRecordsInfo(state, sets);
   }
-  return { head, type, pts: num, who, combo, idx, info, card, finishOnly };
+  return { head, type, pts: num, who, combo, idx, info, card, finishOnly, later };
 }
 
 // Size of the OBS source. Some browsers report 0 until the page has finished loading, so fall
@@ -1929,7 +1960,11 @@ function renderState(state, prevState) {
         state.p1, state.p2,
         p1Color, p2Color
       );
-      if (SPACE) showGfx(postBattleContent(state, prevState));
+      if (SPACE) {
+        // flag 1026: pick the general graphic 3 s later; start the lookups it may need right now
+        if (ff(1026)) { liveRefresh(); matchupPrefetch(state); }
+        showGfx(postBattleContent(state, prevState, { defer: ff(1026) }));
+      }
       else if (BOARD) showBoardFlash(state.lastFinish.type, state.lastFinish.scorerIdx, state.p1, state.p2);
     }
   }
@@ -2027,6 +2062,8 @@ function buildDebug() {
       "polling now for " + (((Date.now() - pollStartedAt) / 1000).toFixed(1)) + "s | last reply " + (last ? ((Date.now() - last.at) / 1000).toFixed(1) + "s ago" : "none yet"),
       "database feed (flag 1025): " + (ff(1025) ? (liveFeedAt ? "last answer " + ((Date.now() - liveFeedAt) / 1000).toFixed(1) + "s ago" : "no answer yet (Worker block not pasted?)") : "off"),
       "drawn by (newest last): " + (RENDER_LOG.length ? RENDER_LOG.map(e => e.src + " " + e.age.toFixed(1) + "s").join(" | ") : "-"),
+      "currently playing data: " + (LIVE.okAt ? "read " + ((Date.now() - LIVE.okAt) / 1000).toFixed(0) + "s ago, " + LIVE.states.length + " matches (" + LIVE.d1Count + " database, " + LIVE.kvCount + " original route), " + LIVE.complete.size + " finished per bracket" : "not read yet") + (lastState ? " | would show " + ((() => { try { const g = poolPlaying(poolCtx(lastState, null)); return g ? g.card.rows.length : 0; } catch (e) { return "?"; } })()) + " rows" : ""),
+      "matchup: " + (lastState ? ((() => { const k = matchupKey(lastState); if (!k) return "combos not both picked on the current state"; const e = MU.cache.get(k.key); return k.a + " vs " + k.b + " -> " + (!e ? "not looked up" : e.err ? "lookup failed " + e.err : e.n + " past battles" + (e.n < MU_MIN ? " (too few)" : "")); })()) : "no match"),
       "recent polls (how long each waited / new data? / protocol / from cache?):"
     ].concat(POLL_LOG.map(e => "  " + e.secs.toFixed(1) + "s  " + (e.fresh ? "NEW STATE" : "no change") + "  " + (e.proto || "?") + (e.cached ? "  CACHED" : "") + (e.age != null ? "  judge->screen " + e.age.toFixed(1) + "s" : "")));
     box.textContent = lines.join("\n");

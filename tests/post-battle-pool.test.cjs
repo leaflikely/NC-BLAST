@@ -462,6 +462,27 @@ test("a Test fire (sim) never reads or changes the real memory", () => {
   assert.strictEqual(P6.poolUpset(none, {}), null);   // nothing to build from: the Test fire falls back to a labelled sample
 });
 
+test("deferred pick (flag 1026): nothing is chosen or remembered until later() runs, then it matches a normal pick", () => {
+  setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
+  const m = P6.POOL_MEM; P6.resetPoolMemory();
+  const s1 = st(combos);
+  const c = P6.postBattleContent(s1, s1, { defer: true });
+  assert.strictEqual(typeof c.later, "function");
+  assert.strictEqual(c.info, null); assert.strictEqual(c.card, null);
+  assert.strictEqual(m.matchupShown, false); assert.strictEqual(m.key, null);   // nothing remembered yet
+  const g = c.later();
+  assert.strictEqual(g.card.head, "Matchup history");
+  assert.strictEqual(m.matchupShown, true);
+  // data that arrives between the finish and later() is used: nothing was cached at finish time
+  P6.resetPoolMemory(); MU.cache.clear();
+  const c2 = P6.postBattleContent(s1, s1, { defer: true });
+  setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
+  assert.strictEqual(c2.later().card.head, "Matchup history");
+  // not deferred (no option): same behaviour as before
+  const c3 = P6.postBattleContent(st(), st());
+  assert.strictEqual(c3.later, null);
+});
+
 console.log("flag registration");
 const flags = loadText("flags.js");
 test("1023 is on by default and has a menu description", () => {
