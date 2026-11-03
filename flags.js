@@ -54,6 +54,7 @@ window.FEATURE_FLAGS = new Set([
   // 1019, // New stream-overlay scoreboard look from the Claude Design mock-up (overlay only; turns the stage layout 1018 on by itself). Held OFF while it is being tuned: try it per OBS source with ?ff=1019 on the overlay link.
   1020, // Judge app tells the stream overlay who won each finished set (for the overlay's set dots; only used by the new look, flag 1019).
   1021, // Stream overlay space shapes (wide / tall) plus the 5-second post-battle graphic (overlay only; turns 1018 and 1019 on by itself). On by default: the plain link ncblast.pages.dev/overlay?slot=N fills its OBS source, settings live in a hover-only gear. To see the old look on one source add ?ff=-1021 to its link.
+  1022, // Post-battle graphic gets a second, general graphic: the finish text shows 3 seconds, fades away, then the round and each player's match record (W-L) show for the gear's "General graphic" seconds (default 5). The judge app adds the records to what it sends the overlay. Needs flag 1021. Turn it off to get the single graphic back.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -162,5 +163,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Space shapes and post-battle graphic for the stream overlay (overlay)",
     desc: "Stream overlay only. The overlay lives in a fixed-shape space (wide or tall) and fills whatever box OBS gives the source, so OBS decides position and size; the link stays the same per channel (overlay?slot=N) and the shape, side and timing are set in a gear that appears when the mouse is over the source's top-left corner (OBS: right-click the source, Interact). The old drag editor is gone: position and size come only from OBS (extra ?x= ?y= ?s= on an old link are ignored; ?edit=1 just shows a demo match). Wide shape: the scoreboard sits in the middle, then slides left, right or alternates while a graphic comes out on the other side. Tall shape: the scoreboard sits at the bottom (or top) and the graphic slides out above (or below) it. After every finish the graphic shows the finish, the points, who scored, the winning combo and the set score for 5 seconds (change with ?gfx=). Turns the new scoreboard look (flag 1019) on by itself.",
     off: "Old behaviour: the scoreboard sits where flags 1018 / 1019 put it, with a small banner above it after a finish."
+  },
+  1022: {
+    name: "Round and match records after each finish (overlay + judge)",
+    desc: "After a finish, the stream overlay shows the finish graphic for 3 seconds, then its text fades away and a second graphic shows the round (e.g. Swiss Round 1) and each player's match record (wins-losses in this tournament) for 5 seconds (the gear's General graphic setting changes the 5). The judge app looks up the finished matches when a match starts and adds the records to what it sends the overlay; if it cannot, the records show 0-0. When the match ends, that match is counted straight away. Needs flag 1021.",
+    off: "Old behaviour: one finish graphic that stays for the gear's time, no records graphic."
   }
 };
