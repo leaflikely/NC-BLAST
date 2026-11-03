@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-03k | flag 1024: Upset Alert + Currently Playing graphics, Test fire also plays in OBS (relayed by the Worker), Worker settings read every 3 s | previous: 2026-11-03j | settings live on the database Worker (/overlay-config) so the plain link ?slot=N works in OBS and the browser; settings panel needs the password once per device | previous: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-03l | OBS no longer lags: waits run on a background-worker clock (browsers slow normal timers on pages they think are hidden) and a backup check every 4 s catches a stuck long-poll | previous: 2026-11-03k | flag 1024: Upset Alert + Currently Playing graphics, Test fire also plays in OBS (relayed by the Worker), Worker settings read every 3 s | previous: 2026-11-03j | settings live on the database Worker (/overlay-config) so the plain link ?slot=N works in OBS and the browser; settings panel needs the password once per device | previous: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -934,7 +934,9 @@ const DEMO_STATE = {
   p2ActiveCombo: { blade: "Shark Scale", ratchet: "3-60", bit: "Narrow" }
 };
 
-let gfxOn = false, gfxSide = "left", gfxAlt = false, gfxTimer = null;
+let gfxOn = false, gfxSide = "left", gfxAlt = false, gfxTimer = 0;
+// The graphic's show/hide waits use the same clock that browsers cannot slow down (see sleepSafe). A newer wait cancels the older one.
+function gfxLater(ms, fn) { const t = ++gfxTimer; sleepSafe(ms).then(() => { if (t === gfxTimer) fn(); }); }
 
 // Puts the scoreboard and the graphic where they belong inside the space (design pixels).
 // Each is 640 x 162. With no graphic showing, the graphic is parked behind the scoreboard.
@@ -961,8 +963,7 @@ function placeSpace() {
 let gfxTesting = false;   // a test fire from the Settings panel must survive "no match data" refreshes
 function hideGfx() {
   gfxTesting = false;
-  clearTimeout(gfxTimer);
-  gfxTimer = null;
+  gfxTimer++;   // cancels any wait that is still running
   if (!gfxOn) return;
   gfxOn = false;
   placeSpace();
@@ -1034,16 +1035,15 @@ function showGfx(c) {
     gfxOn = true;
     placeSpace();
   }
-  clearTimeout(gfxTimer);
   if (second) {
-    gfxTimer = setTimeout(() => {
+    gfxLater(FINISH_SECS * 1000, () => {
       setGfxPhase(second);
-      gfxTimer = setTimeout(hideGfx, space.secs * 1000);
-    }, FINISH_SECS * 1000);
+      gfxLater(space.secs * 1000, hideGfx);
+    });
   } else if (c.finishOnly) {
-    gfxTimer = setTimeout(hideGfx, FINISH_SECS * 1000);   // flag 1023, nothing qualified: just the finish text
+    gfxLater(FINISH_SECS * 1000, hideGfx);   // flag 1023, nothing qualified: just the finish text
   } else {
-    gfxTimer = setTimeout(hideGfx, space.secs * 1000);
+    gfxLater(space.secs * 1000, hideGfx);
   }
 }
 
@@ -1857,9 +1857,45 @@ function renderState(state, prevState) {
   applyTransform();
 }
 
+// ── TIMERS THAT STAY ON TIME ─────────────────────────────────────
+// Browsers (OBS's included) slow down ordinary timers on a page they think is hidden, from once a second up to once a
+// minute. That made OBS lag 10-30 seconds behind a normal tab. The waits below are counted inside a small background
+// worker, which is not slowed down. If a worker cannot be made, they fall back to plain timers.
+let tickWorker = null, tickId = 0;
+const tickWaiters = {};
+try {
+  tickWorker = new Worker(URL.createObjectURL(new Blob(["onmessage=function(e){var d=e.data;setTimeout(function(){postMessage(d.id)},d.ms)}"], { type: "text/javascript" })));
+  tickWorker.onmessage = e => { const f = tickWaiters[e.data]; delete tickWaiters[e.data]; if (f) f(); };
+  tickWorker.onerror = () => { tickWorker = null; };
+} catch (e) { tickWorker = null; }
+function sleepSafe(ms) {
+  return new Promise(res => {
+    if (!tickWorker) { setTimeout(res, ms); return; }
+    const id = ++tickId;
+    tickWaiters[id] = res;
+    try { tickWorker.postMessage({ id, ms }); } catch (e) { delete tickWaiters[id]; setTimeout(res, ms); }
+  });
+}
+function everySafe(fn, ms) {
+  (async () => { for (;;) { await sleepSafe(ms); try { fn(); } catch (e) {} } })();
+}
+
 // ── POLLING LOOP ──────────────────────────────────────────────────
+// A new state from the Worker: draw it (once per etag).
+function takeOverlayData(data) {
+  if (data && data.etag && data.etag !== lastEtag) {
+    const prev = lastState;
+    lastState = data.state;
+    lastEtag = data.etag;
+    if (data.state && data.state.slug && data.state.slug !== LIVE.slug && ff(1024)) liveRefresh();   // learn which matches the bracket already shows as finished
+    renderState(data.state, prev);
+    return true;
+  }
+  return false;
+}
 async function poll() {
   while (true) {
+    const t0 = Date.now();
     try {
       const url = lastEtag
         ? `${WORKER}/overlay/poll?slot=${SLOT}&etag=${lastEtag}`
@@ -1869,25 +1905,31 @@ async function poll() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      if (data.etag && data.etag !== lastEtag) {
-        const prev = lastState;
-        lastState = data.state;
-        lastEtag = data.etag;
-        if (data.state && data.state.slug && data.state.slug !== LIVE.slug && ff(1024)) liveRefresh();   // learn which matches the bracket already shows as finished
-        renderState(data.state, prev);
-      } else if (!lastEtag) {
+      if (!takeOverlayData(data) && !lastEtag) {
         // First load with no data yet
         renderState(null, null);
       }
     } catch (e) {
       // Network error — show offline, retry in 3s
       renderState(null, null);
-      await new Promise(r => setTimeout(r, 3000));
+      await sleepSafe(3000);
     }
 
-    // Short pause between polls (long-poll already waited up to 25s server-side)
-    await new Promise(r => setTimeout(r, 200));
+    // The long-poll already waited server-side; only pause if it came back at once (so a fast answer cannot become a tight loop).
+    if (Date.now() - t0 < 1000) await sleepSafe(300);
   }
+}
+// Backup check: every 4 seconds ask for the current state outright. If the long-poll above is stuck on a dead
+// connection (it would only give up after 30 seconds), this still brings the overlay up to date within a few seconds.
+let backupBusy = false;
+async function backupCheck() {
+  if (backupBusy || !lastEtag) return;
+  backupBusy = true;
+  try {
+    const res = await fetch(`${WORKER}/overlay/state?slot=${SLOT}`, { cache: "no-store", signal: AbortSignal.timeout(6000) });
+    if (res.ok) takeOverlayData(await res.json());
+  } catch (e) {}
+  backupBusy = false;
 }
 
 // ── INIT ──────────────────────────────────────────────────────────
@@ -2199,9 +2241,10 @@ function loadRemoteCfg() {
 if (FILL) {
   buildGear();
   loadRemoteCfg();
-  setInterval(loadRemoteCfg, 3000);   // settings and test fires reach OBS within about 3 seconds
+  everySafe(loadRemoteCfg, 2000);   // settings and test fires reach OBS within about 2 seconds
   liveRefresh();
-  setInterval(liveRefresh, 30000);
+  everySafe(liveRefresh, 30000);
+  everySafe(backupCheck, 4000);
   window.addEventListener("resize", applyTransform);   // OBS source resized: re-fit
   window.addEventListener("load", applyTransform);
   // Safety net: if OBS changes the source size without telling the page, re-fit within a second.
