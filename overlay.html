@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -948,7 +948,9 @@ function placeSpace() {
   el("bd-gfx").classList.toggle("on", gfxOn);
 }
 
+let gfxTesting = false;   // a test fire from the Settings panel must survive "no match data" refreshes
 function hideGfx() {
+  gfxTesting = false;
   clearTimeout(gfxTimer);
   gfxTimer = null;
   if (!gfxOn) return;
@@ -1117,7 +1119,7 @@ function poolContext(c, mem) {
 function poolPending(c) {
   const n = c.rec ? c.rec.pending : null;
   if (typeof n !== "number" || !(n >= 0)) return null;
-  return { card: { head: poolHead(c), big: "Matches pending: " + n, bigPx: 46 } };
+  return { card: { head: poolHead(c), big: "Matches pending: " + n, bigColor: "#fff", bigPx: 46 } };
 }
 
 const POOL_PRIORITY = [
@@ -1675,7 +1677,7 @@ function renderState(state, prevState) {
   if (!state) {
     scoreboard.style.display = "none";
     offlineMsg.classList.add("visible");
-    if (BOARD) { el("board").classList.add("pending"); el("bd-flash").classList.remove("visible"); if (SPACE) hideGfx(); applyTransform(); }
+    if (BOARD) { el("board").classList.add("pending"); el("bd-flash").classList.remove("visible"); if (SPACE && !gfxTesting) hideGfx(); applyTransform(); }
     return;
   }
 
@@ -1851,7 +1853,7 @@ function resetOverlay() {
   el("sets-row").style.display = "none";
   scoreboard.style.display = "none";
   offlineMsg.classList.add("visible");
-  if (BOARD) { el("board").classList.add("pending"); el("bd-flash").classList.remove("visible"); if (SPACE) hideGfx(); }
+  if (BOARD) { el("board").classList.add("pending"); el("bd-flash").classList.remove("visible"); if (SPACE && !gfxTesting) hideGfx(); }
 }
 
 // Stage layout: the card changes height when combos or the set row appear. Re-pin it
@@ -1913,17 +1915,18 @@ function buildGear() {
   // OBS browser sources have a window.obsstudio object. There the gear hides until hovered (so it never
   // shows on stream); in an ordinary browser tab it is always visible, with a label.
   const IN_OBS = !!window.obsstudio;
-  st.textContent = IN_OBS ? "#cfg-gear{opacity:0;transition:opacity .2s}#cfg-gear:hover{opacity:1}" : "#cfg-gear{opacity:1}";
+  st.textContent = "#cfg-gear{opacity:1}";   // always visible; add ?settings=0 to a link to hide it
   document.head.appendChild(st);
   const mk = (tag, css, text) => { const n = document.createElement(tag); if (css) n.style.cssText = css; if (text) n.textContent = text; return n; };
   const BTN = "font:inherit;letter-spacing:inherit;text-transform:inherit;padding:4px 10px;border:1px solid rgba(255,255,255,0.35);border-radius:6px;cursor:pointer;background:transparent;color:#F0F4FF;";
   const gear = mk("button", "position:fixed;top:4px;left:4px;z-index:10000;width:34px;height:34px;border:none;border-radius:8px;" +
     "background:rgba(8,12,22,0.9);color:#F0F4FF;font-size:20px;cursor:pointer;", "\u2699");
-  if (!IN_OBS) {
+  {
     gear.textContent = "\u2699 Settings";
     gear.style.cssText += "width:auto;padding:0 12px;font:700 15px 'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;border:1px solid rgba(255,255,255,0.4);";
   }
   gear.id = "cfg-gear";
+  if (params.get("settings") === "0") gear.style.display = "none";
   const panel = mk("div", "position:fixed;inset:0;z-index:10001;display:none;flex-wrap:wrap;align-content:flex-start;align-items:center;" +
     "gap:8px 18px;padding:8px 12px;background:rgba(8,12,22,0.97);overflow:auto;box-sizing:border-box;" +
     "font:600 14px 'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;color:#F0F4FF;");
@@ -1961,23 +1964,30 @@ function buildGear() {
     v => { space.board = v; hideGfx(); applyTransform(); }, () => space.shape === "tall");
   group(ff(1022) ? "General graphic shows for" : "Graphic shows for", [["3 s", 3], ["5 s", 5], ["8 s", 8], ["12 s", 12]], () => space.secs,
     v => { space.secs = v; }, () => true);
-  let previewN = 0;
-  const prev = mk("button", BTN + "background:#FFD400;color:#080C14;", "Preview graphic");
-  prev.onclick = () => {
+  // Test fire: pick any graphic and it plays right now with demo data (it does not touch what the channel remembers).
+  const demo = [
+    ["Records", { info: { label: "Swiss Round 1", p1: "Leaf", p2: "Player 2", r1: [2, 1], r2: [1, 2], swapped: false } }],
+    ["Final Battle", { card: { head: "Swiss Round 1", big: "Final battle!", bigColor: BD_GOLD, shake: true } }],
+    ["Match Point", { card: { head: "Swiss Round 1", big: "Match point", bigColor: BD_GOLD, sub: "Leaf!", subColor: BD_P1, subLg: true } }],
+    ["Matches Pending", { card: { head: "Swiss Round 1", big: "Matches pending: 4", bigColor: "#fff", bigPx: 46 } }],
+    ["Winner", { card: { head: "Swiss Round 1 \u00b7 Match winner", big: "Leaf", bigColor: BD_P1, sub: "2\u20131 \u00b7 5 battles", sub2: "Swiss record 3\u20131", sub2Color: "#a4c9f9" } }]
+  ];
+  const fire = pick1 => {
     close();
-    // With flag 1023 each press shows the next graphic of the pool (demo data; it does not touch what the channel remembers).
-    const demo = [
-      { info: { label: "Swiss Round 1", p1: "Leaf", p2: "Player 2", r1: [2, 1], r2: [1, 2], swapped: false } },
-      { card: { head: "Swiss Round 1", big: "Final battle!", bigColor: BD_GOLD, shake: true } },
-      { card: { head: "Swiss Round 1", big: "Match point", bigColor: BD_GOLD, sub: "Leaf!", subColor: BD_P1, subLg: true } },
-      { card: { head: "Swiss Round 1", big: "Matches pending: 4", bigPx: 46 } },
-      { card: { head: "Swiss Round 1 \u00b7 Match winner", big: "Leaf", bigColor: BD_P1, sub: "2\u20131 \u00b7 5 battles", sub2: "Swiss record 3\u20131", sub2Color: "#a4c9f9" } }
-    ];
-    const pick1 = ff(1023) ? demo[previewN++ % demo.length] : { info: ff(1022) ? demo[0].info : null };
+    gfxTesting = true;
     showGfx({ head: "Set 2 \u00b7 2\u20133", type: "Xtreme", pts: "+3", who: "Leaf scores", combo: "Shark Scale \u00b7 3-60 \u00b7 Narrow", idx: 0,
       info: pick1.info || null, card: pick1.card || null });
   };
-  panel.appendChild(prev);
+  const tf = mk("div", "display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex-basis:100%;");
+  tf.appendChild(mk("span", "opacity:0.7;", "Test fire"));
+  if (ff(1023)) {
+    demo.forEach(([name, g]) => { const b = mk("button", BTN + "background:#FFD400;color:#080C14;", name); b.onclick = () => fire(g); tf.appendChild(b); });
+  } else {
+    const b = mk("button", BTN + "background:#FFD400;color:#080C14;", "Preview graphic");
+    b.onclick = () => fire({ info: ff(1022) ? demo[0][1].info : null });
+    tf.appendChild(b);
+  }
+  panel.appendChild(tf);
   // Sizes to type into the OBS source (Properties > Width / Height). 1.2 = scoreboard 40% of a 1920 screen.
   const rec = k => Math.round(SHAPES[k].w * 1.2) + "\u00d7" + Math.round(SHAPES[k].h * 1.2);
   const info = mk("div", "flex-basis:100%;font-weight:500;text-transform:none;letter-spacing:0.02em;opacity:0.9;");
