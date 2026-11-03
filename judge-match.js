@@ -1518,10 +1518,11 @@ function MatchScreen({
       // FLAG 1023: battles in this match so far (LER strikes are not battles). A scoring push passes its own
       // count (battleCount in the extra state wins), because the match log is one entry behind at that moment.
       ...(ff(1023) ? { battleCount: currentMatch.filter(e => e.type !== "LER-STRIKE").length } : {}),
+      // Time this update left the judge app: lets the overlay ignore an older copy that arrives late (flag 1025)
+      // and shows how long an update took in its optional &debug=1 readout.
+      sentAt: Date.now(),
       // FLAG 1024: the tournament link (so the overlay can tell which other live matches are still unfinished) and this
       // round's upsets (a lower seed beat a higher seed) for the Upset Alert graphic.
-      // Time this update left the judge app, so the overlay's optional &debug=1 readout can show how long it took to reach the screen.
-      sentAt: Date.now(),
       ...(ff(1024) ? { slug: challongeSlug || "", upsets: overlayRecords && Array.isArray(overlayRecords.upsets) ? overlayRecords.upsets : [] } : {}),
       // FLAG 1020: winner of each finished set, in order (see overlaySetWinners above).
       ...(ff(1020) ? { setWinners: overlaySetWinners(setScores, rest.sets || sets) } : {}),
@@ -1551,6 +1552,20 @@ function MatchScreen({
       p1,
       p2
     });
+    // FLAG 1025: the same update also goes through the database Worker, which the stream overlay reads without delay
+    // (the original route keeps the match list and everything else working, and stays the fallback).
+    if (overlaySlot && ff(1025)) {
+      fetch("https://ncblast-db.danny61734.workers.dev/overlay-live?slot=" + overlaySlot, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          password: "zm77132596",
+          state
+        })
+      }).catch(() => {});
+    }
     fetch(`${OVERLAY_WORKER}/overlay/push`, {
       method: "POST",
       headers: {

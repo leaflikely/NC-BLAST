@@ -57,6 +57,7 @@ window.FEATURE_FLAGS = new Set([
   1022, // Post-battle graphic gets a second, general graphic: the finish text shows 3 seconds, fades away, then the round and each player's match record (W-L) show for the gear's "General graphic" seconds (default 5). The judge app adds the records to what it sends the overlay. Needs flag 1021. Turn it off to get the single graphic back.
   1023, // Post-battle graphic pool: after the finish text one general graphic is picked from an ordered list (Match Winner at the end of a match, Final Battle, Match Point, Match Context once per match, then Matches Pending). The judge app adds the battle count, the Swiss/Top Cut flag and the pending-match count to what it sends the overlay. Needs flags 1021 and 1022. Turn it off to get the plain records graphic after every finish.
   1024, // Post-battle graphics Upset Alert and Currently Playing: the judge app also sends the tournament link and the round's upsets (from player seeds); the overlay lists the other live matches. Needs flag 1023.
+  1025, // Real battles reach the stream overlay through the database Worker too (the original route is sometimes 10-30 seconds behind); the overlay shows whichever copy arrives first.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -180,5 +181,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Upset Alert and Currently Playing graphics (overlay + judge)",
     desc: "Adds two graphics to the post-battle list. UPSET! shows when a match of this round (not shown on this channel yet) was won by the lower seed: \"Player A (Seed 9) beats Player B (Seed 2)\"; if several qualify, the one where the best-seeded player lost goes first. It comes after the round and records graphic. Currently Playing (basic pool, first pick of every match, then it takes turns with Matches Pending) lists up to 3 other matches being played right now with their point score in the set and their sets. The judge app adds the tournament link and the list of this round's upsets (it reads player seeds from the bracket) to what it sends the overlay; the overlay reads the other live matches from the Worker every 30 seconds. Needs flag 1023.",
     off: "Old behaviour: no Upset Alert or Currently Playing graphic."
+  },
+  1025: {
+    name: "Fast delivery of real battles to the stream overlay (judge + overlay)",
+    desc: "While a judge is assigned to a stream channel, every update is also sent through the database Worker (/overlay-live), and the overlay checks it once a second. It was added because the original route could deliver an update to OBS 10 to 30 seconds late. The overlay draws whichever copy arrives first and ignores the same update arriving again, or an older one arriving late. Needs the /overlay-live block pasted into the database Worker; until then nothing changes.",
+    off: "Old behaviour: the overlay only uses the original route."
   }
 };
