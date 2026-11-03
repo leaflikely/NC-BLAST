@@ -4255,6 +4255,134 @@ function MatchScreen({
       name: name
     }))))));
   }
+  // Stream channel picker window (cog menu on the battle screen, and the button on the Select Match screen). bp / bf scale sizes; the Select Match screen passes plain sizes.
+  const renderStreamModal = (bp, bf) => overlayModal && /*#__PURE__*/React.createElement("div", {
+    onClick: () => setOverlayModal(false),
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.5)",
+      zIndex: 300,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    style: {
+      background: "var(--surface)",
+      borderRadius: bp(16),
+      padding: `${bp(16)}px ${bp(20)}px`,
+      width: Math.min(300, window.innerWidth - 40),
+      boxShadow: "0 8px 32px rgba(0,0,0,0.3)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: bp(12)
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: bf(13),
+      fontWeight: 800,
+      color: "var(--text-primary)"
+    }
+  }, "\uD83D\uDCE1 Stream Overlay"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setOverlayModal(false),
+    style: {
+      background: "var(--surface3)",
+      border: "none",
+      borderRadius: bp(6),
+      width: bp(24),
+      height: bp(24),
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      cursor: "pointer",
+      color: "var(--text-muted)",
+      fontSize: bf(11),
+      fontWeight: 700
+    }
+  }, "\u2715")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: bf(8),
+      color: "var(--text-muted)",
+      marginBottom: bp(10)
+    }
+  }, "Pick a channel for this device. Each device must use a different channel."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: bp(6)
+    }
+  }, [0, 1, 2, 3, 4].map(slot => /*#__PURE__*/React.createElement("button", {
+    key: slot,
+    type: "button",
+    onClick: () => {
+      setOverlaySlot(slot);
+      setOverlayStatus(null);
+      try {
+        localStorage.setItem(KEYS.overlaySlot, String(slot));
+      } catch {}
+      ;
+      setOverlayModal(false);
+    },
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: bp(8),
+      padding: `${bp(8)}px ${bp(12)}px`,
+      borderRadius: bp(8),
+      border: `2px solid ${overlaySlot === slot ? "#1D4ED8" : "var(--border)"}`,
+      background: overlaySlot === slot ? "#EFF6FF" : "var(--surface2)",
+      cursor: "pointer",
+      fontFamily: "'Outfit',sans-serif"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: bf(14),
+      lineHeight: 1
+    }
+  }, slot === 0 ? "🔇" : "📡"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      textAlign: "left"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: bf(10),
+      fontWeight: 700,
+      color: overlaySlot === slot ? "#1D4ED8" : "var(--text-primary)"
+    }
+  }, slot === 0 ? "Off (no streaming)" : `Channel ${slot}`)), overlaySlot === slot && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: bf(8),
+      fontWeight: 700,
+      color: "#1D4ED8"
+    }
+  }, "\u2713 Active")))), overlaySlot > 0 && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => {
+      pushOverlay();
+      setOverlayModal(false);
+    },
+    style: {
+      marginTop: bp(12),
+      width: "100%",
+      padding: `${bp(8)}px`,
+      borderRadius: bp(8),
+      border: "none",
+      background: overlayStatus === "ok" ? "#15803D" : "#EA580C",
+      color: "#fff",
+      fontSize: bf(10),
+      fontWeight: 800,
+      fontFamily: "'Outfit',sans-serif",
+      cursor: "pointer"
+    }
+  }, overlayStatus === "ok" ? "🟢 Push Update" : "▶ Connect Channel " + overlaySlot)));
   if (phase === "pick") {
     // ── Shared tablet: who is judging this match? ──────────────────────────
     if (sharedJudges && config.tm && sharedJudgePicker) {
@@ -4540,7 +4668,31 @@ function MatchScreen({
       onClick: goBack
     }, IC.back, " Back"), /*#__PURE__*/React.createElement("h1", {
       style: S.title
-    }, "Select Match"), /*#__PURE__*/React.createElement("div", {
+    }, "Select Match"), ff(1027) && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => setOverlayModal(true),
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        width: "100%",
+        padding: "10px 14px",
+        marginBottom: 12,
+        borderRadius: 12,
+        border: `2px solid ${overlaySlot > 0 ? "#1D4ED8" : "var(--border)"}`,
+        background: overlaySlot > 0 ? "#EFF6FF" : "var(--surface2)",
+        color: overlaySlot > 0 ? "#1D4ED8" : "var(--text-primary)",
+        fontFamily: "'Outfit',sans-serif",
+        fontSize: 13,
+        fontWeight: 800,
+        cursor: "pointer"
+      }
+    }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCE1"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        flex: 1,
+        textAlign: "left"
+      }
+    }, "Stream channel"), /*#__PURE__*/React.createElement("span", null, overlaySlot > 0 ? `Channel ${overlaySlot}` : "Off")), renderStreamModal(n => n, n => n)), /*#__PURE__*/React.createElement("div", {
       style: {
         background: "var(--surface2)",
         borderRadius: 12,
@@ -8719,133 +8871,7 @@ function MatchScreen({
     },
     onPointerDown: e => e.stopPropagation(),
     onClick: e => e.stopPropagation()
-  }), renderTimingModal(), overlayModal && /*#__PURE__*/React.createElement("div", {
-    onClick: () => setOverlayModal(false),
-    style: {
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,0.5)",
-      zIndex: 300,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    onClick: e => e.stopPropagation(),
-    style: {
-      background: "var(--surface)",
-      borderRadius: bp(16),
-      padding: `${bp(16)}px ${bp(20)}px`,
-      width: Math.min(300, window.innerWidth - 40),
-      boxShadow: "0 8px 32px rgba(0,0,0,0.3)"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: bp(12)
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: bf(13),
-      fontWeight: 800,
-      color: "var(--text-primary)"
-    }
-  }, "\uD83D\uDCE1 Stream Overlay"), /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: () => setOverlayModal(false),
-    style: {
-      background: "var(--surface3)",
-      border: "none",
-      borderRadius: bp(6),
-      width: bp(24),
-      height: bp(24),
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      cursor: "pointer",
-      color: "var(--text-muted)",
-      fontSize: bf(11),
-      fontWeight: 700
-    }
-  }, "\u2715")), /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: bf(8),
-      color: "var(--text-muted)",
-      marginBottom: bp(10)
-    }
-  }, "Pick a channel for this device. Each device must use a different channel."), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      flexDirection: "column",
-      gap: bp(6)
-    }
-  }, [0, 1, 2, 3, 4].map(slot => /*#__PURE__*/React.createElement("button", {
-    key: slot,
-    type: "button",
-    onClick: () => {
-      setOverlaySlot(slot);
-      setOverlayStatus(null);
-      try {
-        localStorage.setItem(KEYS.overlaySlot, String(slot));
-      } catch {}
-      ;
-      setOverlayModal(false);
-    },
-    style: {
-      display: "flex",
-      alignItems: "center",
-      gap: bp(8),
-      padding: `${bp(8)}px ${bp(12)}px`,
-      borderRadius: bp(8),
-      border: `2px solid ${overlaySlot === slot ? "#1D4ED8" : "var(--border)"}`,
-      background: overlaySlot === slot ? "#EFF6FF" : "var(--surface2)",
-      cursor: "pointer",
-      fontFamily: "'Outfit',sans-serif"
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: bf(14),
-      lineHeight: 1
-    }
-  }, slot === 0 ? "🔇" : "📡"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      flex: 1,
-      textAlign: "left"
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: bf(10),
-      fontWeight: 700,
-      color: overlaySlot === slot ? "#1D4ED8" : "var(--text-primary)"
-    }
-  }, slot === 0 ? "Off (no streaming)" : `Channel ${slot}`)), overlaySlot === slot && /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: bf(8),
-      fontWeight: 700,
-      color: "#1D4ED8"
-    }
-  }, "\u2713 Active")))), overlaySlot > 0 && /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    onClick: () => {
-      pushOverlay();
-      setOverlayModal(false);
-    },
-    style: {
-      marginTop: bp(12),
-      width: "100%",
-      padding: `${bp(8)}px`,
-      borderRadius: bp(8),
-      border: "none",
-      background: overlayStatus === "ok" ? "#15803D" : "#EA580C",
-      color: "#fff",
-      fontSize: bf(10),
-      fontWeight: 800,
-      fontFamily: "'Outfit',sans-serif",
-      cursor: "pointer"
-    }
-  }, overlayStatus === "ok" ? "🟢 Push Update" : "▶ Connect Channel " + overlaySlot))), pingModal && (() => {
+  }), renderTimingModal(), renderStreamModal(bp, bf), pingModal && (() => {
     const closePing = () => {
       setPingModal(false);
       setPingComment("");

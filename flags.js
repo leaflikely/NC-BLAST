@@ -59,6 +59,7 @@ window.FEATURE_FLAGS = new Set([
   1024, // Post-battle graphics Upset Alert and Currently Playing: the judge app also sends the tournament link and the round's upsets (from player seeds); the overlay lists the other live matches. Needs flag 1023.
   1025, // Real battles reach the stream overlay through the database Worker too (the original route is sometimes 10-30 seconds behind); the overlay shows whichever copy arrives first.
   1026, // Post-battle graphic Matchup Stats (how the two combos about to battle did against each other before); Test fire uses the real match data.
+  1027, // Judge view: a Stream channel button on the Select Match screen, so a judge can pick the channel (and connect) before decks are recorded.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -192,5 +193,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Matchup Stats graphic and real-data Test fire (overlay)",
     desc: "Adds MATCHUP HISTORY to the post-battle list (after Match Point, before the round records), once per match: how the two combos about to battle have done against each other before (favorite, win percentage, points per battle, number of battles). Needs at least 10 past battles of that exact pairing; test events are left out. Read from the database Worker (/matchup-stats). Also: the Settings panel Test fire buttons for Records, Pending, Upset, Currently Playing and Matchup Stats now build the graphic from the real current match (a labelled sample with an error code shows if the data is missing), and a Clear graphic memory button lets once-per-match/round graphics show again. Needs flags 1023 and 1024.",
     off: "Old behaviour: no Matchup Stats graphic; Test fire shows fixed sample graphics."
+  },
+  1027: {
+    name: "Stream channel button on the Select Match screen (judge)",
+    desc: "Adds a Stream channel button to the judge's Select Match screen. It opens the same window as the cog menu's Stream overlay (pick Channel 1-4 or Off, then Connect Channel), so a judge can connect to a channel in round 1 before the decks are recorded and the first battle starts.",
+    off: "Old behaviour: the channel can only be picked from the cog menu on the battle screen."
   }
 };
