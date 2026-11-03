@@ -83,8 +83,8 @@ function scorePoint({ flagOn, setsBefore, scoringPi, setWon, ler = false }) {
   const { push, sent } = makePush({ flagOn, sets: setsBefore });
   const setsExtra = computeSetsExtra({ flagOn, setWon, sets: setsBefore, scoringPi, need: 2 });
   const call = ler ? lerCall : normalCall;
-  new Function("pushOverlay", "fin", "scoringPi", "np", "setWon", "nxR1", "nxR2", "setsExtra", call)(
-    push, { id: ler ? "LER" : "XTR" }, scoringPi, [4, 1], setWon, 0, 0, setsExtra);
+  new Function("pushOverlay", "fin", "scoringPi", "np", "setWon", "nxR1", "nxR2", "setsExtra", "battleExtra", call)(
+    push, { id: ler ? "LER" : "XTR" }, scoringPi, [4, 1], setWon, 0, 0, setsExtra, {});
   return sent[0];
 }
 

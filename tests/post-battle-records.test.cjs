@@ -100,11 +100,11 @@ test("flag off: nothing extra is sent", () => {
 });
 
 console.log("the overlay's graphic");
-const pbSrc = slice(overlay, "function postBattleContent(", "// Size of the OBS source.");
+const pbSrc = slice(overlay, "function buildRecordsInfo(", "// Size of the OBS source.");
 const FIN_POINTS = { SPF: 1, OVR: 2, BST: 2, XTR: 3, OF2: 2, OF3: 3, LER: 1 };
 function content(state, prev, on = true) {
   const ff = id => (id === 1022 && on) || id === 1009;
-  return new Function("ff", "FIN_POINTS", "comboLine", pbSrc + "; return postBattleContent;")(ff, FIN_POINTS, () => "")(state, prev);
+  return new Function("ff", "FIN_POINTS", "comboLine", "BD_P1", "BD_P2", pbSrc + "; return postBattleContent;")(ff, FIN_POINTS, () => "", "#3d9bff", "#ff6a2b")(state, prev);
 }
 const st = (o = {}) => ({ p1: "Leaf", p2: "Chan", pts: [3, 0], sets: [0, 0], curSet: 1, lastFinish: { type: "XTR", scorerIdx: 0 }, records: { label: "Swiss Round 2", p1: [1, 0], p2: [0, 1] }, ...o });
 test("records graphic content comes from what the judge app sent", () => {

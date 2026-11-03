@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-03c | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 // FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
 // stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
 // (the set that was just won: its score is saved a moment after the overlay push) is added at
@@ -48,6 +48,25 @@ function overlayRoundLabel(round) {
   const r = Number(round);
   if (round == null || round === "" || !Number.isFinite(r) || r === 0) return "";
   return r < 0 ? "Top Cut Round " + Math.abs(r) : "Swiss Round " + r;
+}
+// FLAG 1023: how many matches of this round have not started yet: not finished, not marked underway,
+// both players known, and not the match being played now. null = unknown (no round number).
+function overlayPendingFrom(pairings, round, currentMatchId) {
+  try {
+    const r = Number(round);
+    if (round == null || round === "" || !Number.isFinite(r) || r === 0) return null;
+    let n = 0;
+    (Array.isArray(pairings) ? pairings : []).forEach(m => {
+      if (!m || Number(m.round) !== r) return;
+      if (m.state === "complete" || m.underway_at) return;
+      if (currentMatchId != null && String(m.id) === String(currentMatchId)) return;
+      if (!m.player1_id || !m.player2_id) return;
+      n++;
+    });
+    return n;
+  } catch (e) {
+    return null;
+  }
 }
 function MatchScreen({
   config,
@@ -566,11 +585,14 @@ function MatchScreen({
   // FLAG 1022: look up both players' match records once when a match is set up (and again if the
   // pairing changes). The bracket's list already holds every finished match. A failed or slow lookup
   // only means the overlay shows 0-0; scoring is never held up by it.
+  // FLAG 1023: the same list also gives the number of matches still waiting in this round, which changes
+  // while the match is played, so it is read again every 30 seconds (the Worker keeps the list for 60
+  // seconds, so this adds almost no load).
   useEffect(() => {
     setOverlayRecords(null);
     if (!ff(1022) || !challongeSlug || !p1 || !p2) return;
     let stale = false;
-    (async () => {
+    const load = async () => {
       try {
         const res = await fetch(`${OVERLAY_WORKER}/pairings?slug=${encodeURIComponent(challongeSlug)}`, {
           signal: AbortSignal.timeout(8000)
@@ -578,13 +600,19 @@ function MatchScreen({
         if (!res.ok) return;
         const data = await res.json();
         if (stale) return;
-        setOverlayRecords(overlayRecordsFrom(data && data.pairings, challongeP1ParticipantId, challongeP2ParticipantId, p1, p2, challongeMatchId));
+        const recs = overlayRecordsFrom(data && data.pairings, challongeP1ParticipantId, challongeP2ParticipantId, p1, p2, challongeMatchId);
+        // WCB lists only open matches and never marks them underway, so a count would be wrong there.
+        recs.pending = ff(1023) && !String(challongeSlug).startsWith("wcb-") ? overlayPendingFrom(data && data.pairings, challongeRound, challongeMatchId) : null;
+        setOverlayRecords(recs);
       } catch (e) {}
-    })();
+    };
+    load();
+    const timer = ff(1023) ? setInterval(load, 30000) : null;
     return () => {
       stale = true;
+      if (timer) clearInterval(timer);
     };
-  }, [challongeSlug, p1, p2, challongeMatchId, challongeP1ParticipantId, challongeP2ParticipantId]);
+  }, [challongeSlug, p1, p2, challongeMatchId, challongeRound, challongeP1ParticipantId, challongeP2ParticipantId]);
   // Section heights in px — null = auto/flex
   const [sectionH, setSectionH] = useState({
     score: null,
@@ -856,6 +884,10 @@ function MatchScreen({
 
     // LER — 1-strike system: first LER adds a strike, second converts to a point
     // Combos do NOT advance on LER — push overlay now with unchanged r1/r2
+    // FLAG 1023: battles in the match including the one just scored (the match log is not updated yet).
+    const battleExtra = ff(1023) ? {
+      battleCount: currentMatch.filter(e => e.type !== "LER-STRIKE").length + (fin.id !== "LER-STRIKE" ? 1 : 0)
+    } : {};
     if (fin.id === "LER") {
       pushOverlay({
         lastFinish: {
@@ -863,7 +895,8 @@ function MatchScreen({
           scorerIdx: scoringPi
         },
         pts: np,
-        ...setsExtra
+        ...setsExtra,
+        ...battleExtra
       });
       if (setWon) {
         const ns = [sets[0], sets[1]];
@@ -923,7 +956,8 @@ function MatchScreen({
       pts: np,
       p1ComboIdx: setWon ? null : (nxR1 !== undefined ? nxR1 : null),
       p2ComboIdx: setWon ? null : (nxR2 !== undefined ? nxR2 : null),
-      ...setsExtra
+      ...setsExtra,
+      ...battleExtra
     });
     if (setWon) {
       const ns = [sets[0], sets[1]];
@@ -1409,9 +1443,19 @@ function MatchScreen({
         records: {
           label: overlayRoundLabel(challongeRound),
           p1: overlayRecords ? overlayRecords.p1 : [0, 0],
-          p2: overlayRecords ? overlayRecords.p2 : [0, 0]
+          p2: overlayRecords ? overlayRecords.p2 : [0, 0],
+          // FLAG 1023: known = the bracket lookup worked; swiss = group stage (Top Cut rounds are negative);
+          // pending = matches of this round not started yet (null = unknown)
+          ...(ff(1023) ? {
+            known: !!overlayRecords,
+            swiss: Number(challongeRound) > 0,
+            pending: overlayRecords && typeof overlayRecords.pending === "number" ? overlayRecords.pending : null
+          } : {})
         }
       } : {}),
+      // FLAG 1023: battles in this match so far (LER strikes are not battles). A scoring push passes its own
+      // count (battleCount in the extra state wins), because the match log is one entry behind at that moment.
+      ...(ff(1023) ? { battleCount: currentMatch.filter(e => e.type !== "LER-STRIKE").length } : {}),
       // FLAG 1020: winner of each finished set, in order (see overlaySetWinners above).
       ...(ff(1020) ? { setWinners: overlaySetWinners(setScores, rest.sets || sets) } : {}),
       ...rest

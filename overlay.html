@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -627,6 +627,26 @@
   #gfx-info.swapped .gfx-rec-p1 { order: 3; }
   #gfx-info.swapped .gfx-rec-div { order: 2; }
   #gfx-info.swapped .gfx-rec-p2 { order: 1; }
+  /* The general-purpose card (flag 1023): small heading, one big line, up to two smaller lines. */
+  #gfx-card-big { margin-top: 8px; max-width: 100%; padding: 0 20px; box-sizing: border-box; font: 700 54px/1 var(--bd-head-font); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #gfx-card-sub { margin-top: 8px; max-width: 100%; padding: 0 20px; box-sizing: border-box; font: 700 26px/1 var(--bd-text-font); letter-spacing: 0.04em; text-transform: uppercase; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #gfx-card-sub.lg { font-size: 40px; letter-spacing: 0.06em; }
+  #gfx-card-sub2 { margin-top: 7px; max-width: 100%; padding: 0 20px; box-sizing: border-box; font: 700 22px/1 var(--bd-text-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* shaking text for suspense (Final Battle) */
+  @keyframes gfx-shake {
+    0%   { transform: translate(0, 0) rotate(0deg); }
+    10%  { transform: translate(-4px, 2px) rotate(-1.2deg); }
+    20%  { transform: translate(4px, -3px) rotate(1.2deg); }
+    30%  { transform: translate(-5px, -1px) rotate(-0.8deg); }
+    40%  { transform: translate(3px, 3px) rotate(1deg); }
+    50%  { transform: translate(-3px, -3px) rotate(-1.4deg); }
+    60%  { transform: translate(5px, 1px) rotate(0.8deg); }
+    70%  { transform: translate(-4px, 3px) rotate(-1deg); }
+    80%  { transform: translate(3px, -2px) rotate(1.3deg); }
+    90%  { transform: translate(-2px, 2px) rotate(-0.6deg); }
+    100% { transform: translate(0, 0) rotate(0deg); }
+  }
+  #gfx-card-big.shake { animation: gfx-shake 0.38s linear infinite; }
 
 </style>
 </head>
@@ -752,6 +772,13 @@
           <div class="gfx-rec-div"></div>
           <div class="gfx-rec gfx-rec-p2"><div class="gfx-rec-name" id="gfx-i2-name"></div><div class="gfx-rec-num" id="gfx-i2-rec"></div></div>
         </div>
+      </div>
+      <!-- General card (flag 1023): winner, final battle, match point, matches pending... -->
+      <div class="gfx-layer off" id="gfx-card">
+        <div class="gfx-head" id="gfx-card-head"></div>
+        <div id="gfx-card-big"></div>
+        <div id="gfx-card-sub"></div>
+        <div id="gfx-card-sub2"></div>
       </div>
     </div>
   </div><!-- #scale-wrap -->
@@ -932,8 +959,25 @@ function hideGfx() {
 // Flag 1022: which of the graphic's two layers is visible. "finish" = the finish text, "info" = round + records.
 const FINISH_SECS = 3;   // how long the finish text stays before it fades into the general graphic
 function setGfxPhase(p) {
-  el("gfx-finish").classList.toggle("off", p === "info");
+  el("gfx-finish").classList.toggle("off", p !== "finish");
   el("gfx-info").classList.toggle("off", p !== "info");
+  el("gfx-card").classList.toggle("off", p !== "card");
+}
+// k = { head, big, bigColor, bigPx, sub, subColor, subLg, sub2, sub2Color, shake }
+function fillGfxCard(k) {
+  const put = (id, text, color) => {
+    const e = el(id);
+    e.textContent = text || "";
+    e.style.display = text ? "" : "none";
+    e.style.color = color || "";
+  };
+  put("gfx-card-head", k.head);
+  put("gfx-card-big", k.big, k.bigColor);
+  el("gfx-card-big").style.fontSize = k.bigPx ? k.bigPx + "px" : "";
+  el("gfx-card-big").classList.toggle("shake", !!k.shake);
+  put("gfx-card-sub", k.sub, k.subColor);
+  el("gfx-card-sub").classList.toggle("lg", !!k.subLg);
+  put("gfx-card-sub2", k.sub2, k.sub2Color);
 }
 // i = { label, p1, p2, r1: [w, l], r2: [w, l], swapped }
 function fillGfxInfo(i) {
@@ -945,7 +989,7 @@ function fillGfxInfo(i) {
   el("gfx-info").classList.toggle("swapped", !!i.swapped);
 }
 
-// c = { head, type, pts, who, combo, idx, info } (see postBattleContent). Shown for space.secs seconds;
+// c = { head, type, pts, who, combo, idx, info | card | finishOnly } (see postBattleContent). Shown for space.secs seconds;
 // a second finish while it is up just updates it and restarts the timer. With flag 1022 (c.info is set)
 // the finish text shows FINISH_SECS seconds, then fades into the general graphic, which shows space.secs seconds.
 function showGfx(c) {
@@ -958,8 +1002,9 @@ function showGfx(c) {
   el("gfx-combo").textContent = c.combo;
   el("gfx-combo").style.color = c.idx === 1 ? "#f8bfa4" : "#a4c9f9";
   el("gfx-combo").style.display = c.combo ? "" : "none";
-  const twoStep = !!c.info;
-  if (twoStep) fillGfxInfo(c.info);
+  const second = c.info ? "info" : c.card ? "card" : null;   // which general graphic follows the finish text
+  if (c.info) fillGfxInfo(c.info);
+  if (c.card) fillGfxCard(c.card);
   setGfxPhase("finish");   // a new finish always starts with the finish text, even if the records were showing
   if (!gfxOn) {
     if (space.side === "alt") { gfxSide = gfxAlt ? "right" : "left"; gfxAlt = !gfxAlt; }
@@ -968,11 +1013,13 @@ function showGfx(c) {
     placeSpace();
   }
   clearTimeout(gfxTimer);
-  if (twoStep) {
+  if (second) {
     gfxTimer = setTimeout(() => {
-      setGfxPhase("info");
+      setGfxPhase(second);
       gfxTimer = setTimeout(hideGfx, space.secs * 1000);
     }, FINISH_SECS * 1000);
+  } else if (c.finishOnly) {
+    gfxTimer = setTimeout(hideGfx, FINISH_SECS * 1000);   // flag 1023, nothing qualified: just the finish text
   } else {
     gfxTimer = setTimeout(hideGfx, space.secs * 1000);
   }
@@ -980,6 +1027,123 @@ function showGfx(c) {
 
 function comboLine(c) {
   return c && c.blade ? [c.blade, c.ratchet, c.bit].filter(Boolean).join(" · ") : "";
+}
+
+// The round + player records graphic content (flags 1022 / 1023). The judge app sends state.records
+// (0-0 when it has nothing). When the match has just ended, that match is not in the bracket's finished
+// list yet, so (flag 1022 alone) it is counted here: the player with more sets gets the win.
+function buildRecordsInfo(state, sets) {
+  const rec = state.records || {};
+  const r1 = Array.isArray(rec.p1) ? [rec.p1[0] || 0, rec.p1[1] || 0] : [0, 0];
+  const r2 = Array.isArray(rec.p2) ? [rec.p2[0] || 0, rec.p2[1] || 0] : [0, 0];
+  if (state.matchOver && sets[0] !== sets[1]) {
+    const w = sets[0] > sets[1] ? r1 : r2, l = sets[0] > sets[1] ? r2 : r1;
+    w[0]++; l[1]++;
+  }
+  return { label: rec.label || "", p1: state.p1 || "Player 1", p2: state.p2 || "Player 2", r1, r2, swapped: ff(1009) && state.swapped === true };
+}
+
+// ── POST-BATTLE GRAPHIC POOL (flag 1023) ──────────────────────────────────────────────
+// After the finish text, ONE general graphic is picked. Order of checking:
+//   1. match over            -> Match Winner
+//   2. POOL_PRIORITY, top to bottom: the first graphic whose condition is met is used
+//   3. the basic pool (POOL_BASIC): its graphics take turns. "playing" (Currently Playing) is always
+//      the first pick of a match, then the other one, and so on; a graphic that does not qualify is
+//      skipped in favour of the other one.
+// To add a graphic later: write a function (ctx, mem) that returns { card } / { info } or null, and add it
+// to POOL_PRIORITY at the right place, or to POOL_BASIC.
+const BD_GOLD = "#ffd400";
+const POOL_MEM = { key: null, contextShown: false, lastBasic: null };   // what this channel has already shown for the current match
+
+function poolCtx(state, prevState) {
+  const pts = state.pts || [0, 0], sets = state.sets || [0, 0];
+  const prevSets = prevState ? (prevState.sets || [0, 0]) : sets;
+  return {
+    state, prevState, pts, sets,
+    need: state.setsNeeded || 2,
+    limit: state.pointLimit || 0,
+    matchOver: !!state.matchOver,
+    setWon: sets[0] !== prevSets[0] || sets[1] !== prevSets[1],   // this finish won a set (its points are still on the board)
+    rec: state.records || null,
+    names: [state.p1 || "Player 1", state.p2 || "Player 2"]
+  };
+}
+function poolHead(c) { return c.rec && c.rec.label ? c.rec.label : ""; }
+
+// Match over: winner's name in their colour, the battle count, and (group stage) their Swiss record.
+function poolWinner(c) {
+  if (c.sets[0] === c.sets[1]) return null;
+  const w = c.sets[0] > c.sets[1] ? 0 : 1, l = 1 - w;
+  const rec = c.rec || {};
+  const parts = [c.sets[w] + "\u2013" + c.sets[l]];
+  const n = c.state.battleCount;
+  if (typeof n === "number" && n > 0) parts.push(n + (n === 1 ? " battle" : " battles"));
+  let sub2 = "";
+  if (rec.swiss && rec.known) {
+    const r = Array.isArray(rec[w === 0 ? "p1" : "p2"]) ? rec[w === 0 ? "p1" : "p2"] : [0, 0];
+    sub2 = "Swiss record " + ((r[0] || 0) + 1) + "\u2013" + (r[1] || 0);   // the bracket does not hold this match yet: add the win
+  }
+  return { card: {
+    head: (rec.label ? rec.label + " \u00b7 " : "") + "Match winner",
+    big: c.names[w], bigColor: w === 1 ? BD_P2 : BD_P1,
+    sub: parts.join(" \u00b7 "),
+    sub2, sub2Color: w === 1 ? "#f8bfa4" : "#a4c9f9"
+  } };
+}
+// It becomes 3-3 (one point short of the limit each) in the deciding set. Shown once: not again while it stays 3-3.
+function poolFinalBattle(c) {
+  if (!c.limit || c.need < 2 || c.matchOver || c.setWon) return null;
+  if (c.sets[0] !== c.need - 1 || c.sets[1] !== c.need - 1) return null;
+  if (c.pts[0] !== c.limit - 1 || c.pts[1] !== c.limit - 1) return null;
+  const pp = c.prevState;
+  if (pp && pp.curSet === c.state.curSet && pp.pts && pp.pts[0] === c.limit - 1 && pp.pts[1] === c.limit - 1) return null;
+  return { card: { head: poolHead(c), big: "Final battle!", bigColor: BD_GOLD, shake: true } };
+}
+// A player is one point short of the set limit and has already won a set (so the next point wins the match).
+// Not on a finish that just won a set (the loser may still show 3 on the board).
+function poolMatchPoint(c) {
+  if (!c.limit || c.matchOver || c.setWon) return null;
+  const hit = [0, 1].filter(i => c.pts[i] >= c.limit - 1 && c.sets[i] >= 1 && c.sets[i] === c.need - 1);
+  if (hit.length !== 1) return null;
+  const i = hit[0];
+  return { card: { head: poolHead(c), big: "Match point", bigColor: BD_GOLD, sub: c.names[i] + "!", subColor: i === 1 ? BD_P2 : BD_P1, subLg: true } };
+}
+// The round and both players' records, once per match.
+function poolContext(c, mem) {
+  if (mem.contextShown) return null;
+  return { info: buildRecordsInfo(c.state, c.sets) };
+}
+// How many matches of this round have not started yet (the judge app counts them; nothing sent = unknown = skipped).
+function poolPending(c) {
+  const n = c.rec ? c.rec.pending : null;
+  if (typeof n !== "number" || !(n >= 0)) return null;
+  return { card: { head: poolHead(c), big: "Matches pending: " + n, bigPx: 46 } };
+}
+
+const POOL_PRIORITY = [
+  { kind: "finalBattle", make: poolFinalBattle },
+  { kind: "matchPoint", make: poolMatchPoint },
+  { kind: "context", make: poolContext }
+];
+const POOL_BASIC = { pending: poolPending };
+
+// Picks the graphic for this finish. mem is POOL_MEM (a new match starts it over).
+function choosePoolGraphic(state, prevState, mem) {
+  const key = state.challongeMatchId != null ? "m" + state.challongeMatchId : "p" + (state.p1 || "") + "|" + (state.p2 || "");
+  if (mem.key !== key) { mem.key = key; mem.contextShown = false; mem.lastBasic = null; }
+  const c = poolCtx(state, prevState);
+  if (c.matchOver) { const w = poolWinner(c); if (w) return w; }
+  for (const g of POOL_PRIORITY) {
+    const r = g.make(c, mem);
+    if (r) { if (g.kind === "context") mem.contextShown = true; return r; }
+  }
+  const order = mem.lastBasic === "playing" ? ["pending", "playing"] : ["playing", "pending"];
+  for (const k of order) {
+    const fn = POOL_BASIC[k];
+    const r = fn ? fn(c, mem) : null;
+    if (r) { mem.lastBasic = k; return r; }
+  }
+  return null;
 }
 
 // Builds the card text for the finish that just happened. Uses only what the judge app already
@@ -1013,21 +1177,17 @@ function postBattleContent(state, prevState) {
   if (state.matchOver) head = "Match over · sets " + sets[0] + "–" + sets[1];
   else if (setWon) head = "Set " + cur + " won · " + pts[0] + "–" + pts[1];
   else head = "Set " + cur + " · " + pts[0] + "–" + pts[1];
-  // Flag 1022: the general graphic (round + match records). The judge app sends state.records (0-0 when it
-  // has nothing). When the match has just ended, that match is not in the bracket's finished list yet, so
-  // it is counted here: the player with more sets gets the win, the other the loss.
-  let info = null;
-  if (ff(1022)) {
-    const rec = state.records || {};
-    const r1 = Array.isArray(rec.p1) ? [rec.p1[0] || 0, rec.p1[1] || 0] : [0, 0];
-    const r2 = Array.isArray(rec.p2) ? [rec.p2[0] || 0, rec.p2[1] || 0] : [0, 0];
-    if (state.matchOver && sets[0] !== sets[1]) {
-      const w = sets[0] > sets[1] ? r1 : r2, l = sets[0] > sets[1] ? r2 : r1;
-      w[0]++; l[1]++;
-    }
-    info = { label: rec.label || "", p1: state.p1 || "Player 1", p2: state.p2 || "Player 2", r1, r2, swapped: ff(1009) && state.swapped === true };
+  // Flag 1023: one general graphic from the pool. Flag 1022 alone: the round + records graphic after every finish.
+  let info = null, card = null, finishOnly = false;
+  if (ff(1023)) {
+    const g = choosePoolGraphic(state, prevState, POOL_MEM);
+    if (g && g.info) info = g.info;
+    else if (g && g.card) card = g.card;
+    else finishOnly = true;   // nothing qualified: only the finish text
+  } else if (ff(1022)) {
+    info = buildRecordsInfo(state, sets);
   }
-  return { head, type, pts: num, who, combo, idx, info };
+  return { head, type, pts: num, who, combo, idx, info, card, finishOnly };
 }
 
 // Size of the OBS source. Some browsers report 0 until the page has finished loading, so fall
@@ -1801,11 +1961,21 @@ function buildGear() {
     v => { space.board = v; hideGfx(); applyTransform(); }, () => space.shape === "tall");
   group(ff(1022) ? "General graphic shows for" : "Graphic shows for", [["3 s", 3], ["5 s", 5], ["8 s", 8], ["12 s", 12]], () => space.secs,
     v => { space.secs = v; }, () => true);
+  let previewN = 0;
   const prev = mk("button", BTN + "background:#FFD400;color:#080C14;", "Preview graphic");
   prev.onclick = () => {
     close();
+    // With flag 1023 each press shows the next graphic of the pool (demo data; it does not touch what the channel remembers).
+    const demo = [
+      { info: { label: "Swiss Round 1", p1: "Leaf", p2: "Player 2", r1: [2, 1], r2: [1, 2], swapped: false } },
+      { card: { head: "Swiss Round 1", big: "Final battle!", bigColor: BD_GOLD, shake: true } },
+      { card: { head: "Swiss Round 1", big: "Match point", bigColor: BD_GOLD, sub: "Leaf!", subColor: BD_P1, subLg: true } },
+      { card: { head: "Swiss Round 1", big: "Matches pending: 4", bigPx: 46 } },
+      { card: { head: "Swiss Round 1 \u00b7 Match winner", big: "Leaf", bigColor: BD_P1, sub: "2\u20131 \u00b7 5 battles", sub2: "Swiss record 3\u20131", sub2Color: "#a4c9f9" } }
+    ];
+    const pick1 = ff(1023) ? demo[previewN++ % demo.length] : { info: ff(1022) ? demo[0].info : null };
     showGfx({ head: "Set 2 \u00b7 2\u20133", type: "Xtreme", pts: "+3", who: "Leaf scores", combo: "Shark Scale \u00b7 3-60 \u00b7 Narrow", idx: 0,
-      info: ff(1022) ? { label: "Swiss Round 1", p1: "Leaf", p2: "Player 2", r1: [2, 1], r2: [1, 2], swapped: false } : null });
+      info: pick1.info || null, card: pick1.card || null });
   };
   panel.appendChild(prev);
   // Sizes to type into the OBS source (Properties > Width / Height). 1.2 = scoreboard 40% of a 1920 screen.
