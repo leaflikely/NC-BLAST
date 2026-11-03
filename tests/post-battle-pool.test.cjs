@@ -60,8 +60,24 @@ test("not when it stays 3-3 (a strike after it became 3-3)", () => {
   const s = st({ sets: [1, 1], curSet: 3, pts: [3, 3] });
   assert.notStrictEqual(kindOf(pick(s, s)), "Final battle!");
 });
-test("not in a set that is not the deciding one, or at other scores", () => {
-  assert.notStrictEqual(kindOf(pick(st({ sets: [1, 0], pts: [3, 3] }), st({ sets: [1, 0], pts: [3, 2] }))), "Final battle!");
+test("no round line on top", () => {
+  const g = pick(st({ sets: [1, 1], curSet: 3, pts: [3, 3] }), st({ sets: [1, 1], curSet: 3, pts: [3, 2] }));
+  assert.strictEqual(g.card.head, undefined);
+});
+test("3-3 in the first or second set: SET POINT 3-3, same gold, no shaking, shown once", () => {
+  [[0, 0], [1, 0], [0, 1]].forEach(sets => {
+    const g = pick(st({ sets, curSet: sets[0] + sets[1] + 1, pts: [3, 3] }), st({ sets, curSet: sets[0] + sets[1] + 1, pts: [3, 2] }));
+    assert.strictEqual(g.card.big, "Set point 3-3", JSON.stringify(sets));
+    assert.strictEqual(g.card.shake, undefined);
+    assert.strictEqual(g.card.bigColor, "#ffd400");
+    assert.strictEqual(g.card.head, undefined);
+  });
+  const s = st({ sets: [0, 0], curSet: 1, pts: [3, 3] });
+  assert.notStrictEqual(kindOf(pick(s, s)), "Set point 3-3");   // not again while it stays 3-3
+  const sw = st({ sets: [1, 0], curSet: 2, pts: [3, 3] });
+  assert.notStrictEqual(kindOf(pick(st({ sets: [1, 1], pts: [0, 0], curSet: 3 }), sw)), "Set point 3-3");
+});
+test("not at other scores", () => {
   assert.notStrictEqual(kindOf(pick(st({ sets: [1, 1], curSet: 3, pts: [3, 2] }), st({ sets: [1, 1], curSet: 3, pts: [2, 2] }))), "Final battle!");
 });
 
@@ -241,6 +257,9 @@ test("winner's name in their colour, set score, battle count and Swiss record", 
   assert.strictEqual(c.bg, "#3d9bff");   // the graphic is filled with the winner colour
   assert.strictEqual(c.outline, true);
   assert.strictEqual(c.sub, "2–0 · 5 battles");
+  assert.deepStrictEqual(c.subRuns.map(r => r.t), ["2–0", " · 5 battles"]);
+  assert.strictEqual(c.subRuns[0].color, "#3ddc84");   // the set score is green
+  assert.strictEqual(c.subRuns[1].color, undefined);
   assert.strictEqual(c.sub2, "Swiss record 3–1");   // was 2-1, plus this win
   assert.strictEqual(c.head, "Swiss Round 2 · Match winner");
 });
