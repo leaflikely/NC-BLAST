@@ -56,6 +56,7 @@ window.FEATURE_FLAGS = new Set([
   1021, // Stream overlay space shapes (wide / tall) plus the 5-second post-battle graphic (overlay only; turns 1018 and 1019 on by itself). On by default: the plain link ncblast.pages.dev/overlay?slot=N fills its OBS source, settings live in a hover-only gear. To see the old look on one source add ?ff=-1021 to its link.
   1022, // Post-battle graphic gets a second, general graphic: the finish text shows 3 seconds, fades away, then the round and each player's match record (W-L) show for the gear's "General graphic" seconds (default 5). The judge app adds the records to what it sends the overlay. Needs flag 1021. Turn it off to get the single graphic back.
   1023, // Post-battle graphic pool: after the finish text one general graphic is picked from an ordered list (Match Winner at the end of a match, Final Battle, Match Point, Match Context once per match, then Matches Pending). The judge app adds the battle count, the Swiss/Top Cut flag and the pending-match count to what it sends the overlay. Needs flags 1021 and 1022. Turn it off to get the plain records graphic after every finish.
+  1024, // Post-battle graphics Upset Alert and Currently Playing: the judge app also sends the tournament link and the round's upsets (from player seeds); the overlay lists the other live matches. Needs flag 1023.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -174,5 +175,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Variety of post-battle graphics (overlay + judge)",
     desc: "After the finish text (3 seconds) the overlay picks ONE general graphic for the next 5 seconds, checking an ordered list from the top: at the end of a match a Winner graphic (winner's name in their colour, the battle count, and their Swiss record in the group stage); FINAL BATTLE! with shaking text when it becomes 3-3 in the deciding set; MATCH POINT [player]! when a player has 3 points in a set and has already won a set; the round and player records (once per match); and finally the basic pool, which takes turns between its graphics (Matches Pending: how many matches in this round have not started). More graphics are added to this list later. The judge app adds the battle count, whether the event is Swiss, and the pending-match count to what it sends the overlay, and refreshes the bracket every 30 seconds during a match. Needs flags 1021 and 1022.",
     off: "Old behaviour: the round and records graphic after every finish."
+  },
+  1024: {
+    name: "Upset Alert and Currently Playing graphics (overlay + judge)",
+    desc: "Adds two graphics to the post-battle list. UPSET! shows when a match of this round (not shown on this channel yet) was won by the lower seed: \"Player A (Seed 9) beats Player B (Seed 2)\"; if several qualify, the one where the best-seeded player lost goes first. It comes after the round and records graphic. Currently Playing (basic pool, first pick of every match, then it takes turns with Matches Pending) lists up to 3 other matches being played right now with their point score in the set and their sets. The judge app adds the tournament link and the list of this round's upsets (it reads player seeds from the bracket) to what it sends the overlay; the overlay reads the other live matches from the Worker every 30 seconds. Needs flag 1023.",
+    off: "Old behaviour: no Upset Alert or Currently Playing graphic."
   }
 };

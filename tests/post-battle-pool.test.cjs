@@ -25,10 +25,14 @@ function test(name, fn) {
 // ---------------- the overlay's picker ----------------
 const poolSrc = slice(overlay, "function buildRecordsInfo(", "// Size of the OBS source.");
 const FIN_POINTS = { SPF: 1, OVR: 2, BST: 2, XTR: 3, OF2: 2, OF3: 3, LER: 1 };
+const LIVE = { states: [], complete: new Set(), slug: "", pairAt: 0 };
+let upsetDisk = null;   // stands in for the OBS source's saved list of upsets already shown
+const upsetLoad = label => (upsetDisk && upsetDisk.label === label ? JSON.parse(JSON.stringify(upsetDisk)) : { label, ids: [] });
+const upsetSave = v => { upsetDisk = JSON.parse(JSON.stringify(v)); };
 function load(flags) {
   const ff = id => flags.includes(id);
-  return new Function("ff", "FIN_POINTS", "comboLine", "BD_P1", "BD_P2",
-    poolSrc + "; return { choosePoolGraphic, postBattleContent, POOL_BASIC, POOL_PRIORITY };")(ff, FIN_POINTS, () => "", "#3d9bff", "#ff6a2b");
+  return new Function("ff", "FIN_POINTS", "comboLine", "BD_P1", "BD_P2", "LIVE", "upsetLoad", "upsetSave",
+    poolSrc + "; return { choosePoolGraphic, postBattleContent, POOL_BASIC, POOL_PRIORITY };")(ff, FIN_POINTS, () => "", "#3d9bff", "#ff6a2b", LIVE, upsetLoad, upsetSave);
 }
 const P = load([1009, 1022, 1023]);
 const mem = () => ({ key: null, contextShown: false, lastBasic: null });
@@ -129,6 +133,98 @@ test("pending count shows even at 0, but is skipped when the judge app does not 
   assert.strictEqual(pick(st({ records: undefined }), null, m), null);
 });
 
+console.log("upset alert (flag 1024)");
+const P24 = load([1009, 1022, 1023, 1024]);
+const pick24 = (state, prev, m) => P24.choosePoolGraphic(state, prev, m);
+const up = (id, w, ws, l, ls) => ({ id, w, ws, l, ls });
+const withUps = (list, o = {}) => st({ upsets: list, ...o });
+test("shows UPSET! with the text, after the records graphic", () => {
+  upsetDisk = null;
+  const m = mem();
+  const s = withUps([up("5", "Sam", 9, "Alex", 2)]);
+  assert.strictEqual(kindOf(pick24(s, s, m)), "context");           // records first (once per match)
+  const g = pick24(s, s, m);
+  assert.strictEqual(g.card.big, "Upset!");
+  assert.strictEqual(g.card.sub, "Sam (Seed 9) beats Alex (Seed 2)");
+  assert.strictEqual(g.card.head, "Swiss Round 2");
+});
+test("the upset where the best-seeded player lost goes first; each is shown once; the next round starts fresh", () => {
+  upsetDisk = null;
+  const m = mem(); m.key = "m7"; m.contextShown = true;
+  const s = withUps([up("1", "A", 20, "B", 8), up("2", "C", 12, "D", 3), up("3", "E", 15, "F", 3)]);
+  assert.strictEqual(pick24(s, s, m).card.sub, "E (Seed 15) beats F (Seed 3)");   // same loser seed 3: the bigger gap first
+  assert.strictEqual(pick24(s, s, m).card.sub, "C (Seed 12) beats D (Seed 3)");
+  assert.strictEqual(pick24(s, s, m).card.sub, "A (Seed 20) beats B (Seed 8)");
+  assert.notStrictEqual(kindOf(pick24(s, s, m)), "Upset!");                         // all shown
+  const m2 = mem(); m2.key = "m7"; m2.contextShown = true;
+  assert.notStrictEqual(kindOf(pick24(s, s, m2)), "Upset!");                        // remembered on this channel across matches
+  const next = withUps([up("1", "A", 20, "B", 8)], { records: rec({ label: "Swiss Round 3" }) });
+  const m3 = mem(); m3.key = "m7"; m3.contextShown = true;
+  assert.strictEqual(kindOf(pick24(next, next, m3)), "Upset!");                    // new round: same id is fair game again
+});
+test("no upsets, bad rows, or the flag off: nothing", () => {
+  upsetDisk = null;
+  const m = mem(); m.key = "m7"; m.contextShown = true;
+  const bad = withUps([up("1", "A", 3, "B", 9), up("2", "A", 4, "B", 4), { id: "3" }, null]);
+  assert.notStrictEqual(kindOf(pick24(bad, bad, m)), "Upset!");
+  const off = withUps([up("5", "Sam", 9, "Alex", 2)]);
+  const m2 = mem(); m2.key = "m7"; m2.contextShown = true;
+  assert.notStrictEqual(kindOf(pick(off, off, m2)), "Upset!");   // P was loaded without 1024
+});
+test("order: final battle and match point beat the upset; the upset beats the basic pool", () => {
+  upsetDisk = null;
+  const m = mem(); m.key = "m7"; m.contextShown = true;
+  const fb = withUps([up("5", "Sam", 9, "Alex", 2)], { sets: [1, 1], curSet: 3, pts: [3, 3] });
+  assert.strictEqual(kindOf(pick24(fb, withUps([], { sets: [1, 1], curSet: 3, pts: [3, 2] }), m)), "Final battle!");
+  const m2 = mem(); m2.key = "m7"; m2.contextShown = true;
+  const plain = withUps([up("5", "Sam", 9, "Alex", 2)]);
+  assert.strictEqual(kindOf(pick24(plain, plain, m2)), "Upset!");
+});
+
+console.log("currently playing (flag 1024)");
+const live = (o = {}) => ({ p1: "Alex", p2: "Sam", pts: [2, 1], sets: [1, 0], challongeMatchId: 21, tournamentName: "Event", ...o });
+const setLive = (list, complete = []) => { LIVE.states = list; LIVE.complete = new Set(complete); };
+test("lists other live matches with the set score and the sets", () => {
+  setLive([live(), live({ p1: "Jo", p2: "Ri", pts: [0, 3], sets: [0, 1], challongeMatchId: 22 })]);
+  const m = mem(); m.key = "m7"; m.contextShown = true;
+  const g = pick24(st({ tournamentName: "Event" }), null, m);
+  assert.strictEqual(g.card.head, "Currently playing");
+  assert.deepStrictEqual(g.card.rows, [{ p1: "Alex", p2: "Sam", pts: [2, 1], sets: [1, 0] }, { p1: "Jo", p2: "Ri", pts: [0, 3], sets: [0, 1] }]);
+});
+test("leaves out this match, finished matches, other events, repeats and half-empty entries; at most 3", () => {
+  setLive([
+    live({ p1: "Leaf", p2: "Chan", challongeMatchId: 7 }),                 // this match (by id)
+    live({ p1: "chan", p2: "LEAF", challongeMatchId: undefined }),          // this match (same two names)
+    live({ p1: "A", p2: "B", matchOver: true, challongeMatchId: 31 }),      // over
+    live({ p1: "C", p2: "D", challongeMatchId: 32 }),                       // complete in the bracket
+    live({ p1: "E", p2: "F", tournamentName: "Other", challongeMatchId: 33 }),
+    live({ p1: "G", p2: "", challongeMatchId: 34 }),
+    live({ p1: "H", p2: "I", challongeMatchId: 35 }), live({ p1: "I", p2: "H", challongeMatchId: undefined }),   // same match twice
+    live({ p1: "J", p2: "K", challongeMatchId: 36 }), live({ p1: "L", p2: "M", challongeMatchId: 37 }), live({ p1: "N", p2: "O", challongeMatchId: 38 })
+  ], ["32"]);
+  const m = mem(); m.key = "m7"; m.contextShown = true;
+  const g = pick24(st({ tournamentName: "Event" }), null, m);
+  assert.deepStrictEqual(g.card.rows.map(r => r.p1 + r.p2), ["HI", "JK", "LM"]);
+});
+test("nobody else playing: the basic pool falls to Matches Pending", () => {
+  setLive([]);
+  const m = mem(); m.key = "m7"; m.contextShown = true;
+  assert.strictEqual(pick24(st(), null, m).card.big, "Matches pending: 4");
+});
+test("basic pool takes turns: Currently Playing, Matches Pending, Currently Playing", () => {
+  setLive([live()]);
+  const m = mem(); m.key = "m7"; m.contextShown = true;
+  const seq = [1, 2, 3].map(() => { const g = pick24(st({ tournamentName: "Event" }), null, m); return g.card.rows ? "playing" : g.card.big; });
+  assert.deepStrictEqual(seq, ["playing", "Matches pending: 4", "playing"]);
+  setLive([]);
+});
+test("the flag off: no Currently Playing", () => {
+  setLive([live()]);
+  const m = mem(); m.key = "m7"; m.contextShown = true;
+  assert.strictEqual(pick(st({ tournamentName: "Event" }), null, m).card.big, "Matches pending: 4");
+  setLive([]);
+});
+
 console.log("match over: winner graphic");
 const over = (o = {}) => st({ matchOver: true, sets: [2, 0], pts: [4, 1], battleCount: 5, ...o });
 test("winner's name in their colour, set score, battle count and Swiss record", () => {
@@ -197,6 +293,39 @@ test("Top Cut rounds count by their own number; no round = unknown; garbage neve
   assert.strictEqual(overlayPendingFrom([null, 5, {}], 2, 9), 0);
 });
 
+const seedSrc = slice(app, "function overlaySeedMap(", "function MatchScreen({");
+const { overlaySeedMap, overlayUpsetsFrom } = new Function(seedSrc + "; return { overlaySeedMap, overlayUpsetsFrom };")();
+const pl = (id, name, seed, extra = {}) => ({ participant: { id, name, seed, ...extra } });
+const seeds = overlaySeedMap([pl(1, "Alex", 1), pl(2, "Bo", 5), pl(3, "Cy", 9), pl(4, "Di", 12, { display_name: "Dee", group_player_ids: [104] }), pl(5, "NoSeed", null)]);
+const done = (id, round, p1, p2, winner) => ({ id, round, state: "complete", player1_id: p1[0], player1_name: p1[1], player2_id: p2[0], player2_name: p2[1], winner_id: winner });
+test("seeds are read by name (display name first, ignoring capitals) and by id, including group-stage ids", () => {
+  assert.strictEqual(seeds.names["alex"], 1);
+  assert.strictEqual(seeds.names["dee"], 12);
+  assert.strictEqual(seeds.ids["104"], 12);
+  assert.strictEqual(seeds.names["noseed"], undefined);
+  assert.deepStrictEqual(overlaySeedMap(null), { names: {}, ids: {} });
+});
+test("upsets: a bigger seed number beat a smaller one, this round only, best-seeded loser first", () => {
+  const list = [
+    done(10, 2, [3, "Cy"], [1, "Alex"], 3),     // seed 9 beat seed 1  -> upset
+    done(11, 2, [2, "Bo"], [4, "Di"], 2),        // seed 5 beat seed 12 -> normal
+    done(12, 2, [104, "Dee"], [2, "Bo"], 104),   // seed 12 beat seed 5 (group id) -> upset
+    done(13, 1, [3, "Cy"], [1, "Alex"], 3),     // other round
+    { ...done(14, 2, [3, "Cy"], [1, "Alex"], null) },   // no winner yet
+    { ...done(15, 2, [3, "Cy"], [1, "Alex"], 3), state: "open" }
+  ];
+  const u = overlayUpsetsFrom(list, 2, seeds, 99);
+  assert.deepStrictEqual(u, [{ id: "10", w: "Cy", ws: 9, l: "Alex", ls: 1 }, { id: "12", w: "Dee", ws: 12, l: "Bo", ls: 5 }]);
+});
+test("upsets: the current match, unknown seeds, unknown round and garbage are skipped, never throw", () => {
+  assert.deepStrictEqual(overlayUpsetsFrom([done(10, 2, [3, "Cy"], [1, "Alex"], 3)], 2, seeds, 10), []);
+  assert.deepStrictEqual(overlayUpsetsFrom([done(10, 2, [5, "NoSeed"], [1, "Alex"], 5)], 2, seeds, 99), []);
+  assert.deepStrictEqual(overlayUpsetsFrom([done(10, 2, [3, "Cy"], [1, "Alex"], 3)], null, seeds, 99), []);
+  assert.deepStrictEqual(overlayUpsetsFrom(null, 2, seeds, 99), []);
+  assert.deepStrictEqual(overlayUpsetsFrom([null, 5, {}], 2, seeds, 99), []);
+  assert.strictEqual(overlayUpsetsFrom(Array.from({ length: 40 }, (_, i) => done(100 + i, 2, [3, "Cy"], [1, "Alex"], 3)), 2, seeds, 99).length, 16);
+});
+
 const pushSrc = slice(app, "  const pushOverlay = (extraState = {}) => {", "\n  pushOverlayLatestRef.current = pushOverlay;");
 function sent({ flags, extra = {}, match = [], round = 3, overlayRecords = null }) {
   const out = [];
@@ -208,7 +337,7 @@ function sent({ flags, extra = {}, match = [], round = 3, overlayRecords = null 
     currentSides: {}, pts: [0, 0], sets: [0, 0], curSet: 1, need: 2,
     config: { pts: 4, tm: false, tournamentName: "T" }, judge: "J", challongeMatchId: 5, phase: "battle", overlaySlot: 1,
     OVERLAY_WORKER: "https://w", setOverlayStatus: () => {}, console: { log() {}, warn() {}, error() {} },
-    challongeRound: round, overlayRecords, overlayRoundLabel: r => "Swiss Round " + r, swapped: false, overlayFlip: false,
+    challongeRound: round, overlayRecords, overlayRoundLabel: r => "Swiss Round " + r, swapped: false, overlayFlip: false, challongeSlug: "my-event",
     fetch: (url, opts) => { out.push(JSON.parse(opts.body).state); return Promise.resolve({ status: 200 }); }
   };
   const names = Object.keys(env);
@@ -235,6 +364,16 @@ test("flag 1023 off: nothing new is sent", () => {
   assert.strictEqual("battleCount" in s, false);
   assert.deepStrictEqual(Object.keys(s.records).sort(), ["label", "p1", "p2"]);
 });
+test("flag 1024: the tournament link and this round's upsets are sent; flag off: neither", () => {
+  const ups = [{ id: "4", w: "Cy", ws: 9, l: "Alex", ls: 1 }];
+  const on = sent({ flags: [1022, 1023, 1024], overlayRecords: { p1: [0, 0], p2: [0, 0], pending: 1, upsets: ups } });
+  assert.strictEqual(on.slug, "my-event");
+  assert.deepStrictEqual(on.upsets, ups);
+  assert.deepStrictEqual(sent({ flags: [1022, 1023, 1024] }).upsets, []);
+  const off = sent({ flags: [1022, 1023], overlayRecords: { p1: [0, 0], p2: [0, 0], upsets: ups } });
+  assert.strictEqual("slug" in off, false);
+  assert.strictEqual("upsets" in off, false);
+});
 const battleSrc = slice(app, "    const battleExtra = ff(1023)", '    if (fin.id === "LER") {');
 const battleExtra = (flags, match, fin) => new Function("ff", "currentMatch", "fin", battleSrc + "; return battleExtra;")(id => flags.includes(id), match, fin);
 test("scoring push: the battle just scored is counted (the log is one behind), a strike is not", () => {
@@ -249,6 +388,10 @@ const flags = loadText("flags.js");
 test("1023 is on by default and has a menu description", () => {
   assert(/^\s*1023,/m.test(flags));
   assert(/1023:\s*\{\s*name:/.test(flags));
+});
+test("1024 is on by default and has a menu description", () => {
+  assert(/^\s*1024,/m.test(flags));
+  assert(/1024:\s*\{\s*name:/.test(flags));
 });
 
 console.log("\n" + passed + " passed");
