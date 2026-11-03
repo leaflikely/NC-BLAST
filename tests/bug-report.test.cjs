@@ -102,10 +102,16 @@ const test = (name, fn) => { const r = fn(); return Promise.resolve(r).then(() =
     }
   });
 
-  await test("battle header shows the ? before the cog", () => {
-    const i = app.indexOf("ff(1005) && /*#__PURE__*/React.createElement(BugReportInlineButton, null)");
+  await test("battle screen: ? lives in the cog menu, floating ? stays hidden", () => {
+    // The inline component is still mounted (hidden) so the floating ? hides itself on this screen.
+    const mounted = app.indexOf("ff(1005) && /*#__PURE__*/React.createElement(BugReportInlineButton, {\n      hidden: true\n    })");
+    assert(mounted > 0, "hidden BugReportInlineButton must stay mounted on the battle screen");
+    // The ? row is in the cog menu, after the cog button, and only with flag 1005.
     const cog = app.indexOf("onClick: () => setSettingsMenuOpen(o => !o)");
-    assert(i > 0 && cog > i && cog - i < 1500, "? must sit just before the cog button");
+    const row = app.indexOf('ff(1005) && menuRow("report", "?", "Report a problem"');
+    assert(cog > 0 && row > cog, "the ? row must be inside the cog menu");
+    // And the component draws nothing when hidden.
+    assert(/if \(props && props\.hidden\) return null;/.test(app), "hidden inline button must render nothing");
   });
 
   await test("flag off: no listeners, fetch untouched, nothing recorded", () => {

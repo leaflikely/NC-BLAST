@@ -1,4 +1,4 @@
-// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-10-29a | quick-combos-update (new Top 10 quick combos, Glory Valkyrie Kick has no ratchet) | previous: 2026-10-22b split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
+// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-11-03a | overlay-flip-key (new saved setting name for the stream overlay left/right flip) | previous: 2026-10-29a | quick-combos-update (new Top 10 quick combos, Glory Valkyrie Kick has no ratchet) | previous: 2026-10-22b split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
 const {
   useState,
   useEffect,
@@ -300,6 +300,8 @@ const KEYS = {
   matchStart: "bx-matchstart-v1",
   challongeMap: "bx-challonge-map-v1",
   overlaySlot: "bx-overlay-slot-v1",
+  // Stream overlay left/right flip (cog menu "Swap Stream Position"). Overlay only; the judge screen is never flipped by it.
+  overlayFlip: "bx-overlay-flip-v1",
   lastJudge: "ncblast-last-judge-v1",
   matchResume: "ncblast-match-resume-v1",
   // FLAG 1014: the per-match timing notebook. localStorage (not session) so it survives a crash.

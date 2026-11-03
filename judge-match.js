@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 // FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
 // stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
 // (the set that was just won: its score is saved a moment after the overlay push) is added at
@@ -352,6 +352,15 @@ function MatchScreen({
       return 0;
     }
   }); // 0 = disabled, 1-4 = slot number
+  // Stream overlay only: true = the overlay shows the two players left/right flipped. Set from the cog
+  // menu ("Swap Stream Position"); the judge's own Swap button never touches it, and it never flips the judge view.
+  const [overlayFlip, setOverlayFlip] = useState(() => {
+    try {
+      return localStorage.getItem(KEYS.overlayFlip) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [workerCombos, setWorkerCombos] = useState({}); // { playerName: [combo,...] } loaded from Worker KV
   const workerCombosRef = useRef({}); // mirrors workerCombos — always current, avoids stale closure in saveCombosToStorage
   const p1Ref = useRef(null); // mirrors p1 state — always current inside async/closure callbacks
@@ -1332,10 +1341,11 @@ function MatchScreen({
       comboHistory,
       p1ActiveCombo: activeComboOf(d1, r1eff),
       p2ActiveCombo: activeComboOf(d2, r2eff),
-      // FLAG 1008: tells the overlay to mirror left/right when the judge has
-      // swapped. Not sent at all with the flag off, so the overlay never flips.
+      // FLAG 1008: tells the overlay to mirror left/right. This now follows the
+      // cog menu's "Swap Stream Position" (overlayFlip), NOT the judge's own Swap
+      // button. Not sent at all with the flag off, so the overlay never flips.
       // --espiiii
-      ...(ff(1008) ? { swapped: !!swapped } : {}),
+      ...(ff(1008) ? { swapped: !!overlayFlip } : {}),
       // FLAG 1020: winner of each finished set, in order (see overlaySetWinners above).
       ...(ff(1020) ? { setWinners: overlaySetWinners(setScores, rest.sets || sets) } : {}),
       ...rest
@@ -7506,14 +7516,9 @@ function MatchScreen({
           p1Side: a.p2Side || "",
           p2Side: a.p1Side || ""
         } : a);
-        // FLAG 1008: Swap used to reach the overlay only on the next point.
-        // Push now with the post-swap values (the setters above are async).
-        // --espiiii
-        if (ff(1008)) pushOverlay({
-          swapped: !swapped,
-          p1Side: currentSides.p2Side || "",
-          p2Side: currentSides.p1Side || ""
-        });
+        // This Swap only flips the judge's own view. It used to push to the
+        // overlay (FLAG 1008); the overlay now flips only from the cog menu's
+        // "Swap Stream Position", so nothing is sent from here.
       },
       style: {
         ...btnBase,
@@ -7555,9 +7560,10 @@ function MatchScreen({
     })), /*#__PURE__*/React.createElement("span", {
       style: {
         ...lbl,
+        textTransform: "none",
         color: config.tm ? "#FCA5A5" : "var(--text-secondary)"
       }
-    }, "Reset")));
+    }, "Set")));
   })()), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -7645,7 +7651,11 @@ function MatchScreen({
     // FLAG 1005: the "?" report button lives here on the battle screen. While it
     // is mounted the floating "?" hides, so it never covers the cog or the
     // dark-mode toggle in this corner. --espiiii
-    return /*#__PURE__*/React.createElement(React.Fragment, null, ff(1005) && /*#__PURE__*/React.createElement(BugReportInlineButton, null), /*#__PURE__*/React.createElement("div", {
+    // The "?" and the dark mode toggle now live inside the cog menu. BugReportInlineButton is
+    // still mounted (hidden) so the floating "?" stays out of the way on this screen.
+    return /*#__PURE__*/React.createElement(React.Fragment, null, ff(1005) && /*#__PURE__*/React.createElement(BugReportInlineButton, {
+      hidden: true
+    }), /*#__PURE__*/React.createElement("div", {
       style: {
         position: "relative",
         flexShrink: 0,
@@ -7689,6 +7699,8 @@ function MatchScreen({
         right: 0,
         zIndex: 300,
         minWidth: bp(200),
+        maxHeight: "calc(100vh - 70px)",
+        overflowY: "auto",
         padding: bp(4),
         display: "flex",
         flexDirection: "column",
@@ -7704,6 +7716,19 @@ function MatchScreen({
       disabled: !canUndoMenu
     }), menuRow("log", IC.history, "Log", () => setHistoryOpen(true)), menuRow("stream", "\uD83D\uDCE1", "Stream overlay", () => setOverlayModal(true), {
       hint: overlaySlot > 0 ? `Slot ${overlaySlot}` : "Off"
+    }), menuRow("streamflip", "\u21C4", "Swap Stream Position", () => {
+      // Flips left/right on the stream overlay only. The judge view is not changed.
+      const next = !overlayFlip;
+      setOverlayFlip(next);
+      try {
+        localStorage.setItem(KEYS.overlayFlip, next ? "1" : "0");
+      } catch {}
+      if (ff(1008)) pushOverlay({
+        swapped: next
+      });
+    }, {
+      disabled: overlaySlot <= 0,
+      hint: overlaySlot > 0 ? overlayFlip ? "Flipped" : "Normal" : undefined
     }), config.tm && challongeMatchId && menuRow("handoff", "\uD83D\uDD00", "Hand off match", () => {
       if (sharedJudges) {
         setHandoffMethodPicker(true);
@@ -7712,15 +7737,9 @@ function MatchScreen({
       }
     }), ff(1014) && menuRow("timing", "\u23F1", "Match timing", () => setTimingOpen(true)), menuRow("layout", "\u283F", layoutEditMode ? "Exit layout edit" : "Adjust layout", () => setLayoutEditMode(m => !m), {
       color: layoutEditMode ? "#7C3AED" : undefined
-    })))), /*#__PURE__*/React.createElement("button", {
-      onClick: toggleDark,
-      style: {
-        ...sq,
-        background: "none",
-        border: "none",
-        fontSize: bf(14)
-      }
-    }, dark ? "☀️" : "🌙"));
+    }), ff(1005) && menuRow("report", "?", "Report a problem", () => {
+      if (window.__ncbOpenBugReport) window.__ncbOpenBugReport();
+    }), menuRow("dark", dark ? "\u2600\uFE0F" : "\uD83C\uDF19", dark ? "Light mode" : "Dark mode", toggleDark)))));
   })())), /*#__PURE__*/React.createElement("div", {
     ref: scoreBlockCbRef,
     style: {
