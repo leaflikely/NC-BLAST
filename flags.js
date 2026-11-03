@@ -58,6 +58,7 @@ window.FEATURE_FLAGS = new Set([
   1023, // Post-battle graphic pool: after the finish text one general graphic is picked from an ordered list (Match Winner at the end of a match, Final Battle, Match Point, Match Context once per match, then Matches Pending). The judge app adds the battle count, the Swiss/Top Cut flag and the pending-match count to what it sends the overlay. Needs flags 1021 and 1022. Turn it off to get the plain records graphic after every finish.
   1024, // Post-battle graphics Upset Alert and Currently Playing: the judge app also sends the tournament link and the round's upsets (from player seeds); the overlay lists the other live matches. Needs flag 1023.
   1025, // Real battles reach the stream overlay through the database Worker too (the original route is sometimes 10-30 seconds behind); the overlay shows whichever copy arrives first.
+  1026, // Post-battle graphic Matchup Stats (how the two combos about to battle did against each other before); Test fire uses the real match data.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -186,5 +187,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Fast delivery of real battles to the stream overlay (judge + overlay)",
     desc: "While a judge is assigned to a stream channel, every update is also sent through the database Worker (/overlay-live), and the overlay checks it once a second. It was added because the original route could deliver an update to OBS 10 to 30 seconds late. The overlay draws whichever copy arrives first and ignores the same update arriving again, or an older one arriving late. Needs the /overlay-live block pasted into the database Worker; until then nothing changes.",
     off: "Old behaviour: the overlay only uses the original route."
+  },
+  1026: {
+    name: "Matchup Stats graphic and real-data Test fire (overlay)",
+    desc: "Adds MATCHUP HISTORY to the post-battle list (after Match Point, before the round records), once per match: how the two combos about to battle have done against each other before (favorite, win percentage, points per battle, number of battles). Needs at least 10 past battles of that exact pairing; test events are left out. Read from the database Worker (/matchup-stats). Also: the Settings panel Test fire buttons for Records, Pending, Upset, Currently Playing and Matchup Stats now build the graphic from the real current match (a labelled sample with an error code shows if the data is missing), and a Clear graphic memory button lets once-per-match/round graphics show again. Needs flags 1023 and 1024.",
+    off: "Old behaviour: no Matchup Stats graphic; Test fire shows fixed sample graphics."
   }
 };

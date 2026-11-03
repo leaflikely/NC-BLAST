@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-03n | flag 1025: real battles also arrive through the database Worker (not delayed), duplicates and older late arrivals are ignored | previous: 2026-11-03m | &debug=1 on the link shows a timing readout | previous: 2026-11-03l | OBS no longer lags: waits run on a background-worker clock (browsers slow normal timers on pages they think are hidden) and a backup check every 4 s catches a stuck long-poll | previous: 2026-11-03k | flag 1024: Upset Alert + Currently Playing graphics, Test fire also plays in OBS (relayed by the Worker), Worker settings read every 3 s | previous: 2026-11-03j | settings live on the database Worker (/overlay-config) so the plain link ?slot=N works in OBS and the browser; settings panel needs the password once per device | previous: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-03o | flag 1026: Matchup Stats graphic; Test fire builds from the real match (E-codes when data is missing); Clear graphic memory button | previous: 2026-11-03n | flag 1025: real battles also arrive through the database Worker (not delayed), duplicates and older late arrivals are ignored | previous: 2026-11-03m | &debug=1 on the link shows a timing readout | previous: 2026-11-03l | OBS no longer lags: waits run on a background-worker clock (browsers slow normal timers on pages they think are hidden) and a backup check every 4 s catches a stuck long-poll | previous: 2026-11-03k | flag 1024: Upset Alert + Currently Playing graphics, Test fire also plays in OBS (relayed by the Worker), Worker settings read every 3 s | previous: 2026-11-03j | settings live on the database Worker (/overlay-config) so the plain link ?slot=N works in OBS and the browser; settings panel needs the password once per device | previous: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -632,6 +632,7 @@
   #gfx-card-sub { margin-top: 8px; max-width: 100%; padding: 0 20px; box-sizing: border-box; font: 700 26px/1 var(--bd-text-font); letter-spacing: 0.04em; text-transform: uppercase; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #gfx-card-sub.lg { font-size: 40px; letter-spacing: 0.06em; }
   #gfx-card-sub2 { margin-top: 7px; max-width: 100%; padding: 0 20px; box-sizing: border-box; font: 700 22px/1 var(--bd-text-font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #gfx-card-note { margin-top: 6px; max-width: 100%; padding: 0 20px; box-sizing: border-box; font: 700 14px/1 var(--bd-text-font); letter-spacing: 0.05em; text-transform: uppercase; color: #ffb020; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* Currently Playing: up to three rows, each  NAME  3-1  NAME  SETS 1-0 */
   #gfx-card-rows { width: 100%; margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
   .gfx-row { display: grid; grid-template-columns: 1fr auto 1fr 84px; column-gap: 12px; align-items: center; padding: 0 20px; box-sizing: border-box; font: 700 26px/1.1 var(--bd-head-font); text-transform: uppercase; }
@@ -788,6 +789,7 @@
         <div id="gfx-card-sub"></div>
         <div id="gfx-card-sub2"></div>
         <div id="gfx-card-rows"></div>
+        <div id="gfx-card-note"></div>
       </div>
     </div>
   </div><!-- #scale-wrap -->
@@ -991,6 +993,7 @@ function fillGfxCard(k) {
   put("gfx-card-sub", k.sub, k.subColor);
   el("gfx-card-sub").classList.toggle("lg", !!k.subLg);
   put("gfx-card-sub2", k.sub2, k.sub2Color);
+  put("gfx-card-note", k.note);
   el("gfx-card-sub").style.fontSize = k.subPx ? k.subPx + "px" : "";
   const rowsEl = el("gfx-card-rows");
   rowsEl.textContent = "";
@@ -1004,7 +1007,7 @@ function fillGfxCard(k) {
 }
 // i = { label, p1, p2, r1: [w, l], r2: [w, l], swapped }
 function fillGfxInfo(i) {
-  el("gfx-info-head").textContent = (i.label ? i.label + " \u00b7 " : "") + "Match record";
+  el("gfx-info-head").textContent = (i.label ? i.label + " \u00b7 " : "") + "Match record" + (i.note ? " \u00b7 " + i.note : "");
   el("gfx-i1-name").textContent = i.p1;
   el("gfx-i2-name").textContent = i.p2;
   el("gfx-i1-rec").textContent = i.r1[0] + "\u2013" + i.r1[1];
@@ -1085,6 +1088,46 @@ function upsetLoad(label) {
 }
 function upsetSave(v) { try { localStorage.setItem(UPSET_KEY, JSON.stringify(v)); } catch (e) {} }
 
+// ── Matchup Stats (flag 1026) ───────────────────────────────────────────────
+// How the two combos about to battle have done against each other before, read from the database Worker
+// (/matchup-stats: exact combo against exact combo, test events left out). It is fetched in the background the moment
+// a state with both combos arrives, so the graphic can be picked instantly when the finish happens.
+const MU_MIN = 10;   // fewer past battles than this and the graphic is skipped
+const MU = { cache: new Map() };
+const MU_NO_RATCHET = ["Bullet Griffon", "Cutter Shinobi", "Rampart Aegis", "Valor Bison", "Glory Valkyrie", "Hells Nether"];
+// Same text the judge app saves in the database for a combo (blade, ratchet, bit; some blades have no ratchet).
+function comboText(c) {
+  if (!c || !c.blade) return "";
+  if (MU_NO_RATCHET.indexOf(c.blade) !== -1) return c.bit ? c.blade + " " + c.bit : "";
+  if (!c.ratchet) return "";
+  if (c.ratchet === "Turbo" || c.ratchet === "Operate") return c.blade + " " + c.ratchet;
+  return c.bit ? c.blade + " " + c.ratchet + " " + c.bit : "";
+}
+function matchupKey(state) {
+  const a = comboText(state && state.p1ActiveCombo), b = comboText(state && state.p2ActiveCombo);
+  return a && b ? { a, b, key: a.toLowerCase() + "|" + b.toLowerCase() } : null;
+}
+// Resolves to { n, aWins, bWins, aPts, bPts } (a = player 1's combo, b = player 2's) or { err: "E10x" }.
+async function matchupFetch(state) {
+  const k = matchupKey(state);
+  if (!k) return { err: "E105" };   // combos not both picked yet
+  const hit = MU.cache.get(k.key);
+  if (hit && Date.now() - hit.at < (hit.err ? 30000 : 600000)) return hit;
+  let out;
+  try {
+    const r = await fetch(DB_WORKER + "/matchup-stats?a=" + encodeURIComponent(k.a) + "&b=" + encodeURIComponent(k.b), { cache: "no-store", signal: AbortSignal.timeout(8000) });
+    const j = r.ok ? await r.json() : null;
+    out = j && j.ok && typeof j.n === "number" ? { n: j.n, aWins: j.aWins || 0, bWins: j.bWins || 0, aPts: j.aPts || 0, bPts: j.bPts || 0 } : { err: "E106" };   // route missing or database unreachable
+  } catch (e) { out = { err: "E106" }; }
+  out.at = Date.now();
+  MU.cache.set(k.key, out);
+  return out;
+}
+function matchupPrefetch(state) {
+  if (!ff(1026) || !state || state.matchOver || !matchupKey(state)) return;
+  matchupFetch(state).catch(() => {});
+}
+
 // The round + player records graphic content (flags 1022 / 1023). The judge app sends state.records
 // (0-0 when it has nothing). When the match has just ended, that match is not in the bracket's finished
 // list yet, so (flag 1022 alone) it is counted here: the player with more sets gets the win.
@@ -1109,7 +1152,7 @@ function buildRecordsInfo(state, sets) {
 // To add a graphic later: write a function (ctx, mem) that returns { card } / { info } or null, and add it
 // to POOL_PRIORITY at the right place, or to POOL_BASIC.
 const BD_GOLD = "#ffd400";
-const POOL_MEM = { key: null, contextShown: false, lastBasic: null };   // what this channel has already shown for the current match
+const POOL_MEM = { key: null, contextShown: false, matchupShown: false, lastBasic: null };   // what this channel has already shown for the current match
 
 function poolCtx(state, prevState) {
   const pts = state.pts || [0, 0], sets = state.sets || [0, 0];
@@ -1164,6 +1207,32 @@ function poolMatchPoint(c) {
   const i = hit[0];
   return { card: { head: poolHead(c), big: "Match point", bigColor: BD_GOLD, sub: c.names[i] + "!", subColor: i === 1 ? BD_P2 : BD_P1, subLg: true } };
 }
+// Matchup Stats (flag 1026): how the two combos about to battle have done against each other, once per match.
+// Skipped with fewer than MU_MIN past battles or when the lookup failed. e = { n, aWins, bWins, aPts, bPts } (a = player 1's combo).
+function matchupCard(c, e) {
+  const st = c.state;
+  const aRate = e.aWins / e.n, bRate = e.bWins / e.n;
+  const aPpb = (e.aPts - e.bPts) / e.n;   // points won minus points lost, per battle (player 1's combo)
+  const head = "Matchup history";
+  const n = e.n + (e.n === 1 ? " battle" : " battles");
+  if (Math.abs(aRate - bRate) < 0.1) {
+    return { head, big: "Even matchup", bigColor: BD_GOLD, sub: e.aWins + "\u2013" + e.bWins + " in " + n, sub2: "Past results of these exact combos" };
+  }
+  const fav = aRate > bRate ? 0 : 1;
+  const combo = fav === 0 ? st.p1ActiveCombo : st.p2ActiveCombo;
+  const name = c.names[fav];
+  const pct = Math.round((fav === 0 ? aRate : bRate) * 100);
+  const ppb = fav === 0 ? aPpb : -aPpb;
+  return { head, big: (combo && combo.blade) || name, bigColor: fav === 1 ? BD_P2 : BD_P1,
+    sub: name + " favored \u00b7 " + pct + "% wins", sub2: (ppb >= 0 ? "+" : "\u2212") + Math.abs(ppb).toFixed(2) + " PPB \u00b7 " + n, sub2Color: "#fff" };
+}
+function poolMatchup(c, mem) {
+  if (!ff(1026) || mem.matchupShown || c.matchOver) return null;
+  const k = matchupKey(c.state);
+  const e = k ? MU.cache.get(k.key) : null;
+  if (!e || e.err || !(e.n >= MU_MIN)) return null;
+  return { card: matchupCard(c, e) };
+}
 // The round and both players' records, once per match.
 function poolContext(c, mem) {
   if (mem.contextShown) return null;
@@ -1182,13 +1251,16 @@ function poolUpset(c, mem) {
   if (!ff(1024)) return null;
   const list = Array.isArray(c.state.upsets) ? c.state.upsets : [];
   const label = poolHead(c);
-  if (!mem.upsets || mem.upsets.label !== label) mem.upsets = upsetLoad(label);
-  const cands = list.filter(u => u && u.id != null && u.w && u.l && u.ws > u.ls && u.ls >= 1 && mem.upsets.ids.indexOf(String(u.id)) === -1);
+  // c.sim (Test fire): ignore what was already shown and remember nothing, so a test never changes the real graphics.
+  if (!c.sim && (!mem.upsets || mem.upsets.label !== label)) mem.upsets = upsetLoad(label);
+  const cands = list.filter(u => u && u.id != null && u.w && u.l && u.ws > u.ls && u.ls >= 1 && (c.sim || mem.upsets.ids.indexOf(String(u.id)) === -1));
   if (!cands.length) return null;
   cands.sort((a, b) => a.ls - b.ls || (b.ws - b.ls) - (a.ws - a.ls));
   const u = cands[0];
-  mem.upsets.ids.push(String(u.id));
-  upsetSave(mem.upsets);
+  if (!c.sim) {
+    mem.upsets.ids.push(String(u.id));
+    upsetSave(mem.upsets);
+  }
   const text = u.w + " (Seed " + u.ws + ") beats " + u.l + " (Seed " + u.ls + ")";
   return { card: { head: label, big: "Upset!", bigColor: BD_GOLD, sub: text, subPx: Math.max(16, Math.min(28, Math.floor(600 / (text.length * 0.6)))) } };
 }
@@ -1215,6 +1287,7 @@ function poolPlaying(c) {
 const POOL_PRIORITY = [
   { kind: "finalBattle", make: poolFinalBattle },
   { kind: "matchPoint", make: poolMatchPoint },
+  { kind: "matchup", make: poolMatchup },
   { kind: "context", make: poolContext },
   { kind: "upset", make: poolUpset }
 ];
@@ -1223,12 +1296,12 @@ const POOL_BASIC = { playing: poolPlaying, pending: poolPending };
 // Picks the graphic for this finish. mem is POOL_MEM (a new match starts it over).
 function choosePoolGraphic(state, prevState, mem) {
   const key = state.challongeMatchId != null ? "m" + state.challongeMatchId : "p" + (state.p1 || "") + "|" + (state.p2 || "");
-  if (mem.key !== key) { mem.key = key; mem.contextShown = false; mem.lastBasic = null; }
+  if (mem.key !== key) { mem.key = key; mem.contextShown = false; mem.matchupShown = false; mem.lastBasic = null; }
   const c = poolCtx(state, prevState);
   if (c.matchOver) { const w = poolWinner(c); if (w) return w; }
   for (const g of POOL_PRIORITY) {
     const r = g.make(c, mem);
-    if (r) { if (g.kind === "context") mem.contextShown = true; return r; }
+    if (r) { if (g.kind === "context") mem.contextShown = true; if (g.kind === "matchup") mem.matchupShown = true; return r; }
   }
   const order = mem.lastBasic === "playing" ? ["pending", "playing"] : ["playing", "pending"];
   for (const k of order) {
@@ -1237,6 +1310,14 @@ function choosePoolGraphic(state, prevState, mem) {
     if (r) { mem.lastBasic = k; return r; }
   }
   return null;
+}
+
+// "Clear graphic memory" (Settings panel): forget what this channel has already shown, so the once-per-match and
+// once-per-round graphics (Match Context, Matchup Stats, Upset Alert) can appear again.
+function resetPoolMemory() {
+  POOL_MEM.key = null; POOL_MEM.contextShown = false; POOL_MEM.matchupShown = false; POOL_MEM.lastBasic = null;
+  delete POOL_MEM.upsets;
+  try { localStorage.removeItem(UPSET_KEY); } catch (e) {}
 }
 
 // Builds the card text for the finish that just happened. Uses only what the judge app already
@@ -1905,6 +1986,7 @@ function takeOverlayData(data, src) {
   lastSource = src || "kv";
   if (DEBUG && ts) { RENDER_LOG.push({ src: lastSource, age: (Date.now() - ts) / 1000 }); if (RENDER_LOG.length > 5) RENDER_LOG.shift(); }
   if (st && st.slug && st.slug !== LIVE.slug && ff(1024)) liveRefresh();   // learn which matches the bracket already shows as finished
+  matchupPrefetch(st);   // flag 1026: look up how these two combos have done before
   renderState(st, prev);
   return true;
 }
@@ -2121,7 +2203,7 @@ const DB_WORKER = "https://ncblast-db.danny61734.workers.dev";
 let lastTestAt = 0, localFireAt = 0;   // time (Worker clock) of the last test fire this page has played, so each is played once
 // Demo graphics for the Settings panel's Test fire buttons (they also play in OBS: see loadRemoteCfg).
 const TEST_KINDS = [["records", "Records"], ["finalBattle", "Final Battle"], ["matchPoint", "Match Point"], ["pending", "Matches Pending"],
-  ["winner", "Winner"], ["upset", "Upset Alert"], ["playing", "Currently Playing"]];
+  ["winner", "Winner"], ["upset", "Upset Alert"], ["playing", "Currently Playing"], ["matchup", "Matchup Stats"]];
 function demoGraphic(kind) {
   const head = "Swiss Round 1";
   switch (kind) {
@@ -2133,11 +2215,51 @@ function demoGraphic(kind) {
     case "upset": return { card: { head, big: "Upset!", bigColor: BD_GOLD, sub: "Player 9 (Seed 9) beats Leaf (Seed 2)", subPx: 24 } };
     case "playing": return { card: { head: "Currently playing", rows: [
       { p1: "Alex", p2: "Sam", pts: [2, 1], sets: [1, 0] }, { p1: "Jordan", p2: "Riley", pts: [0, 3], sets: [0, 1] }, { p1: "Casey", p2: "Morgan", pts: [3, 3], sets: [1, 1] }] } };
+    case "matchup": return { card: { head: "Matchup history", big: "Shark Scale", bigColor: BD_P1, sub: "Leaf favored \u00b7 62% wins", sub2: "+0.85 PPB \u00b7 21 battles", sub2Color: "#fff" } };
   }
   return null;
 }
-function fireTest(kind) {
-  const g = demoGraphic(kind);
+// Test fire graphic. Final Battle, Match Point and Winner are always demo text. The others are built the way a real match would
+// build them, from the channel's current match (this page's own copy of it, so OBS and the tab each use their own).
+// If that data is missing, the generic demo shows with a small note and an error code:
+//   E101 no match is on this channel   E102 pending count not sent   E103 no upset in this round   E104 no other live matches
+//   E105 combos not both picked        E106 stats lookup failed       E107 fewer than 10 past battles   E199 unexpected error
+// Nothing here reads or changes the channel's "already shown" memory.
+async function simGraphic(kind) {
+  const demo = (code) => {
+    const g = demoGraphic(kind);
+    if (!g) return null;
+    const note = "Sample \u00b7 data unavailable (" + code + ")";
+    if (g.card) g.card.note = note;
+    if (g.info) g.info.note = note;
+    return g;
+  };
+  if (["records", "pending", "upset", "playing", "matchup"].indexOf(kind) === -1) return demoGraphic(kind);
+  const s = lastState;
+  if (!s) return demo("E101");
+  try {
+    const c = poolCtx(s, null);
+    c.sim = true;
+    if (kind === "records") return { info: buildRecordsInfo(s, c.sets) };
+    if (kind === "pending") return poolPending(c) || demo("E102");
+    if (kind === "upset") return poolUpset(c, {}) || demo("E103");
+    if (kind === "playing") {
+      if (ff(1024) && !(LIVE.states && LIVE.states.length)) { try { await liveRefresh(); } catch (e) {} }
+      return poolPlaying(c) || demo("E104");
+    }
+    if (kind === "matchup") {
+      if (!matchupKey(s)) return demo("E105");
+      const e = await matchupFetch(s);
+      if (e.err) return demo(e.err);
+      if (!(e.n >= MU_MIN)) return demo("E107");
+      return { card: matchupCard(c, e) };
+    }
+  } catch (e) { return demo("E199"); }
+  return null;
+}
+async function fireTest(kind) {
+  if (kind === "resetMemory") { resetPoolMemory(); return; }
+  const g = await simGraphic(kind);
   if (!g) return;
   gfxTesting = true;
   showGfx({ head: "Set 2 \u00b7 2\u20133", type: "Xtreme", pts: "+3", who: "Leaf scores", combo: "Shark Scale \u00b7 3-60 \u00b7 Narrow", idx: 0,
@@ -2247,6 +2369,25 @@ function buildPanel() {
     tf.appendChild(b);
   });
   panel.appendChild(tf);
+  // Clear graphic memory: graphics shown once per match or per round (Match Context, Matchup Stats, Upset Alert) can appear again.
+  // Goes to every OBS source / tab on this channel the same way a test fire does. Test fires never change this memory.
+  const cm = mk("div", "display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-basis:100%;");
+  const clr = mk("button", BTN + "background:#ff7a7a;color:#080C14;", "Clear graphic memory");
+  clr.onclick = () => {
+    resetPoolMemory();
+    localFireAt = Date.now();
+    status.style.color = "#cfd6e6"; status.textContent = "Clearing memory in OBS\u2026";
+    fetch(DB_WORKER + "/overlay-config?slot=" + SLOT, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: SETTINGS_PASSWORD, test: { kind: "resetMemory" } })
+    }).then(r => r.json().then(j => ({ r, j })).catch(() => ({ r, j: {} }))).then(({ r, j }) => {
+      if (r.ok && j.ok && j.test) { lastTestAt = Math.max(lastTestAt, Number(j.test.at) || 0); status.style.color = "#7CE38B"; status.textContent = "Memory cleared \u2713 (OBS within a few seconds)"; }
+      else { status.style.color = "#FFB020"; status.textContent = "Cleared here only: " + (j.error || ("error " + r.status)); }
+    }).catch(() => { status.style.color = "#FFB020"; status.textContent = "Cleared here only: could not reach the server."; });
+  };
+  cm.appendChild(clr);
+  cm.appendChild(mk("span", "opacity:0.7;text-transform:none;letter-spacing:0.02em;font-weight:500;", "Lets once-per-match and once-per-round graphics show again (this channel only)."));
+  panel.appendChild(cm);
   // The one link for this channel: the same in the browser and in OBS. The settings above are stored on the Worker, not in the link.
   const linkRow = mk("div", "display:flex;align-items:center;gap:8px;flex-basis:100%;text-transform:none;letter-spacing:0.02em;font-weight:500;");
   const plain = location.origin + location.pathname + "?slot=" + SLOT;

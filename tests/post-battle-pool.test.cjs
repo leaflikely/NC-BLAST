@@ -29,10 +29,16 @@ const LIVE = { states: [], complete: new Set(), slug: "", pairAt: 0 };
 let upsetDisk = null;   // stands in for the OBS source's saved list of upsets already shown
 const upsetLoad = label => (upsetDisk && upsetDisk.label === label ? JSON.parse(JSON.stringify(upsetDisk)) : { label, ids: [] });
 const upsetSave = v => { upsetDisk = JSON.parse(JSON.stringify(v)); };
+const MU = { cache: new Map() };
+const matchupKey = state => {
+  const t = c => c && c.blade ? [c.blade, c.ratchet, c.bit].filter(Boolean).join(" ") : "";
+  const a = t(state.p1ActiveCombo), b = t(state.p2ActiveCombo);
+  return a && b ? { a, b, key: a.toLowerCase() + "|" + b.toLowerCase() } : null;
+};
 function load(flags) {
   const ff = id => flags.includes(id);
-  return new Function("ff", "FIN_POINTS", "comboLine", "BD_P1", "BD_P2", "LIVE", "upsetLoad", "upsetSave",
-    poolSrc + "; return { choosePoolGraphic, postBattleContent, POOL_BASIC, POOL_PRIORITY };")(ff, FIN_POINTS, () => "", "#3d9bff", "#ff6a2b", LIVE, upsetLoad, upsetSave);
+  return new Function("ff", "FIN_POINTS", "comboLine", "BD_P1", "BD_P2", "LIVE", "upsetLoad", "upsetSave", "MU", "MU_MIN", "matchupKey", "localStorage", "UPSET_KEY",
+    poolSrc + "; return { choosePoolGraphic, postBattleContent, POOL_BASIC, POOL_PRIORITY, poolUpset, poolCtx, matchupCard, resetPoolMemory, POOL_MEM };")(ff, FIN_POINTS, () => "", "#3d9bff", "#ff6a2b", LIVE, upsetLoad, upsetSave, MU, 10, matchupKey, { removeItem: () => { upsetDisk = null; } }, "k");
 }
 const P = load([1009, 1022, 1023]);
 const mem = () => ({ key: null, contextShown: false, lastBasic: null });
@@ -383,6 +389,79 @@ test("scoring push: the battle just scored is counted (the log is one behind), a
   assert.deepStrictEqual(battleExtra([], log3, { id: "OVR" }), {});
 });
 
+console.log("matchup stats (flag 1026) and graphic memory");
+const P6 = load([1009, 1022, 1023, 1024, 1026]);
+const combos = { p1ActiveCombo: { blade: "Shark Scale", ratchet: "3-60", bit: "Narrow" }, p2ActiveCombo: { blade: "Dran Sword", ratchet: "3-60", bit: "F" } };
+const muKey = "shark scale 3-60 narrow|dran sword 3-60 f";
+const setMu = e => MU.cache.set(muKey, Object.assign({ at: Date.now() }, e));
+const pick6 = (state, prev, m = mem()) => P6.choosePoolGraphic(state, prev, m);
+test("shown once per match, before the round records, after Match Point", () => {
+  setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
+  const m = mem();
+  const g = pick6(st(combos), st(combos), m);
+  assert.strictEqual(g.card.head, "Matchup history");
+  assert.strictEqual(kindOf(pick6(st(combos), st(combos), m)), "context");   // second finish: not again
+  const mp = pick6(st({ ...combos, sets: [1, 0], pts: [3, 1] }), st({ ...combos, sets: [1, 0], pts: [2, 1] }));
+  assert.strictEqual(mp.card.big, "Match point");
+});
+test("favorite is the combo with more wins, with win percentage, points per battle and sample size", () => {
+  setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
+  const g = pick6(st(combos), st(combos));
+  assert.strictEqual(g.card.big, "Shark Scale");
+  assert.strictEqual(g.card.bigColor, "#3d9bff");
+  assert.strictEqual(g.card.sub, "Leaf favored \u00b7 70% wins");
+  assert.strictEqual(g.card.sub2, "+1.00 PPB \u00b7 20 battles");
+  setMu({ n: 20, aWins: 6, bWins: 14, aPts: 20, bPts: 40 });
+  const g2 = pick6(st(combos), st(combos));
+  assert.strictEqual(g2.card.big, "Dran Sword");
+  assert.strictEqual(g2.card.bigColor, "#ff6a2b");
+  assert.strictEqual(g2.card.sub, "Chan favored \u00b7 70% wins");
+  assert.strictEqual(g2.card.sub2, "+1.00 PPB \u00b7 20 battles");
+});
+test("near 50/50 reads Even matchup", () => {
+  setMu({ n: 20, aWins: 10, bWins: 10, aPts: 25, bPts: 25 });
+  assert.strictEqual(pick6(st(combos), st(combos)).card.big, "Even matchup");
+});
+test("skipped with fewer than 10 battles, a failed lookup, no lookup yet, missing combos, a finished match, or the flag off", () => {
+  setMu({ n: 9, aWins: 9, bWins: 0, aPts: 20, bPts: 0 });
+  assert.strictEqual(kindOf(pick6(st(combos), st(combos))), "context");
+  setMu({ err: "E106" });
+  assert.strictEqual(kindOf(pick6(st(combos), st(combos))), "context");
+  MU.cache.clear();
+  assert.strictEqual(kindOf(pick6(st(combos), st(combos))), "context");
+  setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
+  assert.strictEqual(kindOf(pick6(st(), st())), "context");
+  assert.strictEqual(pick6(st({ ...combos, matchOver: true, sets: [2, 1] }), st(combos)).card.head.indexOf("Match winner") > -1, true);
+  assert.strictEqual(kindOf(pick(st(combos), st(combos))), "context");   // flag 1026 off
+});
+test("Clear graphic memory lets once-per-match graphics show again (same match)", () => {
+  setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
+  upsetDisk = null;
+  P6.POOL_MEM.key = null;
+  const s1 = st({ ...combos, upsets: [{ id: "4", w: "Cy", ws: 9, l: "Al", ls: 2 }] });
+  const first = P6.choosePoolGraphic(s1, s1, P6.POOL_MEM);
+  assert.strictEqual(first.card.head, "Matchup history");
+  assert.strictEqual(kindOf(P6.choosePoolGraphic(s1, s1, P6.POOL_MEM)), "context");
+  assert.strictEqual(P6.choosePoolGraphic(s1, s1, P6.POOL_MEM).card.big, "Upset!");
+  assert.notStrictEqual(kindOf(P6.choosePoolGraphic(s1, s1, P6.POOL_MEM)), "Upset!");   // upset used up
+  P6.resetPoolMemory();
+  assert.strictEqual(P6.choosePoolGraphic(s1, s1, P6.POOL_MEM).card.head, "Matchup history");
+  assert.strictEqual(kindOf(P6.choosePoolGraphic(s1, s1, P6.POOL_MEM)), "context");
+  assert.strictEqual(P6.choosePoolGraphic(s1, s1, P6.POOL_MEM).card.big, "Upset!");   // shown again after the reset
+});
+test("a Test fire (sim) never reads or changes the real memory", () => {
+  upsetDisk = null;
+  const s1 = st({ upsets: [{ id: "4", w: "Cy", ws: 9, l: "Al", ls: 2 }] });
+  const c = P6.poolCtx(s1, null); c.sim = true;
+  const memBefore = JSON.stringify(P6.POOL_MEM);
+  assert.strictEqual(P6.poolUpset(c, {}).card.big, "Upset!");
+  assert.strictEqual(P6.poolUpset(c, {}).card.big, "Upset!");   // again: not used up
+  assert.strictEqual(upsetDisk, null);
+  assert.strictEqual(JSON.stringify(P6.POOL_MEM), memBefore);
+  const none = P6.poolCtx(st({ upsets: [] }), null); none.sim = true;
+  assert.strictEqual(P6.poolUpset(none, {}), null);   // nothing to build from: the Test fire falls back to a labelled sample
+});
+
 console.log("flag registration");
 const flags = loadText("flags.js");
 test("1023 is on by default and has a menu description", () => {
@@ -392,6 +471,11 @@ test("1023 is on by default and has a menu description", () => {
 test("1024 is on by default and has a menu description", () => {
   assert(/^\s*1024,/m.test(flags));
   assert(/1024:\s*\{\s*name:/.test(flags));
+});
+
+test("1026 is on by default and has a menu description", () => {
+  assert(/^\s*1026,/m.test(flags));
+  assert(/1026:\s*\{\s*name:/.test(flags));
 });
 
 console.log("\n" + passed + " passed");
