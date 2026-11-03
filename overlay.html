@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -827,14 +827,14 @@ const el = id => document.getElementById(id);
 const SHAPES = { wide: { w: 1280, h: 162 }, tall: { w: 640, h: 324 } };
 const FIN_POINTS = { SPF: 1, OVR: 2, BST: 2, XTR: 3, OF2: 2, OF3: 3, LER: 1 };   // same values as the judge app
 // Settings picked with the gear (FILL mode) are remembered per channel in this OBS source.
-// A value written on the link still wins over the remembered one.
+// A value written on the link (?shape= ?side= ?board= ?gfx=) is only the starting value until the gear is used.
 const CFG_KEY = "ncblast-overlay-cfg-" + SLOT;
 let savedCfg = {};
 try { savedCfg = JSON.parse(localStorage.getItem(CFG_KEY) || "{}") || {}; } catch (e) { savedCfg = {}; }
-const pick = n => (params.has(n) ? params.get(n) : savedCfg[n]);
+const pick = n => (savedCfg[n] !== undefined ? savedCfg[n] : params.get(n));   // the gear wins; the link only sets the starting values
 // FILL mode: the plain channel link (no ?x= ?y= ?s=, no ?edit=1). The overlay fills whatever box
 // OBS gives the source, keeping the shape's proportions, so OBS decides position and size.
-const FILL = SPACE && !EDIT_MODE && !params.has("x") && !params.has("y") && !params.has("s");
+const FILL = SPACE;   // always: ?x= ?y= ?s= (from old copied links) and ?edit=1 no longer move or scale anything
 const space = {
   shape: pick("shape") === "tall" ? "tall" : "wide",
   s: parseFloat(params.get("s")) > 0 ? parseFloat(params.get("s")) : 1.2,
@@ -1434,7 +1434,7 @@ function showBoardFlash(type, scorerIdx, p1Name, p2Name) {
 
 // ── RENDER STATE ──────────────────────────────────────────────────
 function renderState(state, prevState) {
-  if (!state && SPACE && EDIT_MODE) state = DEMO_STATE;   // edit mode with no real match: show a demo so there is something to place
+  if (!state && SPACE && EDIT_MODE) state = DEMO_STATE;   // edit mode with no real match: show a demo so there is something to look at
   if (!state) {
     scoreboard.style.display = "none";
     offlineMsg.classList.add("visible");
@@ -1667,152 +1667,6 @@ function buildSizeSwitch() {
 }
 if (STAGE && EDIT_MODE && !SPACE) buildSizeSwitch();
 
-// Space editor (flag 1021): with ?edit=1 on the link, the page shows the whole 1920x1080 stage
-// shrunk to fit the window. Drag the dashed space to move it, drag the yellow corner to resize it
-// (its shape never changes), pick the options in the bar, then press Copy link and paste the link
-// into the OBS browser source. The bar and preview are never shown without ?edit=1.
-function buildSpaceEditor() {
-  document.documentElement.style.background = "#14171d";
-  document.body.style.background = "#262b34";
-  let editScale = 1;
-  const BTN = "font:inherit;letter-spacing:inherit;text-transform:inherit;padding:4px 10px;border:1px solid rgba(255,255,255,0.35);" +
-    "border-radius:6px;cursor:pointer;background:transparent;color:#F0F4FF;";
-  const mk = (tag, css, text) => {
-    const n = document.createElement(tag);
-    if (css) n.style.cssText = css;
-    if (text) n.textContent = text;
-    return n;
-  };
-  const bar = mk("div", "position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;flex-wrap:wrap;align-items:center;" +
-    "gap:8px 18px;padding:10px 14px;background:rgba(8,12,22,0.96);border-bottom:1px solid rgba(255,255,255,0.2);" +
-    "font:600 14px 'Barlow Condensed',sans-serif;letter-spacing:0.06em;text-transform:uppercase;color:#F0F4FF;");
-  const painters = [];
-  const group = (title, items, get, set, showWhen) => {
-    const wrap = mk("div", "display:flex;align-items:center;gap:6px;");
-    wrap.appendChild(mk("span", "opacity:0.7;", title));
-    const btns = items.map(([text, value]) => {
-      const b = mk("button", BTN, text);
-      b.onclick = () => { set(value); repaint(); };
-      wrap.appendChild(b);
-      return [b, value];
-    });
-    painters.push(() => {
-      wrap.style.display = showWhen() ? "flex" : "none";
-      btns.forEach(([b, v]) => {
-        const on = get() === v;
-        b.style.background = on ? "#FFD400" : "transparent";
-        b.style.color = on ? "#080C14" : "#F0F4FF";
-      });
-    });
-    bar.appendChild(wrap);
-  };
-  function switchShape(v) {
-    if (v === space.shape) return;
-    const old = spaceSize(), cx = space.x + old.w / 2, bottom = space.y + old.h;
-    space.shape = v;
-    const nz = spaceSize();
-    space.x = cx - nz.w / 2;
-    space.y = bottom - nz.h;
-    hideGfx();
-    applyTransform();
-  }
-  group("Shape", [["Wide (side by side)", "wide"], ["Tall (stacked)", "tall"]], () => space.shape, switchShape, () => true);
-  group("Scoreboard slides", [["Left", "left"], ["Right", "right"], ["Alternate", "alt"]], () => space.side,
-    v => { space.side = v; hideGfx(); }, () => space.shape === "wide");
-  group("Scoreboard sits", [["Bottom", "bottom"], ["Top", "top"]], () => space.board,
-    v => { space.board = v; hideGfx(); applyTransform(); }, () => space.shape === "tall");
-
-  const preview = mk("button", BTN, "Preview graphic");
-  preview.onclick = () => {
-    const base = lastState || DEMO_STATE, p = base.pts || [0, 0];
-    showGfx(postBattleContent({ ...base, pts: [p[0] + 3, p[1]], lastFinish: { type: "XTR", scorerIdx: 0 } }, base));
-  };
-  bar.appendChild(preview);
-  const copy = mk("button", BTN, "Copy link");
-  const input = mk("input", "width:340px;max-width:40vw;font:inherit;letter-spacing:0;text-transform:none;padding:4px 8px;" +
-    "background:#0a0e14;color:#F0F4FF;border:1px solid rgba(255,255,255,0.3);border-radius:6px;");
-  input.readOnly = true;
-  const status = mk("span", "color:#FFD400;");
-  copy.onclick = async () => {
-    const link = buildLink();
-    input.value = link;
-    try { await navigator.clipboard.writeText(link); status.textContent = "Copied. Paste it into the OBS source URL."; }
-    catch (e) {
-      input.focus(); input.select();
-      try { document.execCommand("copy"); status.textContent = "Copied. Paste it into the OBS source URL."; }
-      catch (e2) { status.textContent = "Select the link and copy it yourself."; }
-    }
-  };
-  bar.appendChild(copy); bar.appendChild(input); bar.appendChild(status);
-  const info = mk("span", "opacity:0.85;");
-  bar.appendChild(info);
-  bar.appendChild(mk("div", "flex-basis:100%;opacity:0.65;text-transform:none;letter-spacing:0;font-size:15px;",
-    "Drag the dashed box to move it. Drag the yellow corner to resize it (the shape stays the same). " +
-    "Press Preview graphic to see the slide. When it looks right, press Copy link and paste the link into your OBS browser source."));
-  document.documentElement.appendChild(bar);
-
-  function buildLink() {
-    const p = new URLSearchParams(location.search);
-    p.delete("edit"); p.delete("w"); p.delete("bottom");
-    p.set("shape", space.shape);
-    p.set("x", String(Math.round(space.x)));
-    p.set("y", String(Math.round(space.y)));
-    p.set("s", String(Math.round(space.s * 1000) / 1000));
-    p.set("side", space.side);
-    p.set("board", space.board);
-    return location.origin + location.pathname + "?" + p.toString();
-  }
-  function repaint() {
-    painters.forEach(f => f());
-    const shp = SHAPES[space.shape];
-    info.textContent = "OBS source size " + Math.round(shp.w * space.s) + "\u00d7" + Math.round(shp.h * space.s) +
-      " (scoreboard " + Math.round(640 * space.s / 19.2) + "% of the screen)";
-    input.value = buildLink();
-  }
-
-  // The dashed frame and the corner handle live inside the space, so they move and scale with it.
-  const frame = mk("div", "position:absolute;left:0;top:0;right:0;bottom:0;z-index:5;border:3px dashed #FFD400;" +
-    "box-sizing:border-box;cursor:move;touch-action:none;");
-  const handle = mk("div", "position:absolute;right:0;bottom:0;width:48px;height:48px;background:#FFD400;cursor:nwse-resize;" +
-    "clip-path:polygon(100% 0,100% 100%,0 100%);touch-action:none;");
-  frame.appendChild(handle);
-  scaleWrap.appendChild(frame);
-  let drag = null;
-  frame.addEventListener("pointerdown", e => {
-    drag = { mode: e.target === handle ? "size" : "move", sx: e.clientX, sy: e.clientY, x: space.x, y: space.y, s: space.s };
-    try { frame.setPointerCapture(e.pointerId); } catch (err) {}
-    e.preventDefault();
-  });
-  window.addEventListener("pointermove", e => {
-    if (!drag) return;
-    const dx = (e.clientX - drag.sx) / editScale, dy = (e.clientY - drag.sy) / editScale;
-    const sh = SHAPES[space.shape];
-    if (drag.mode === "move") {
-      space.x = drag.x + dx; space.y = drag.y + dy;
-    } else {
-      const a = dx / sh.w, b = dy / sh.h;                    // follow whichever way the pointer moved more
-      const newS = drag.s + (Math.abs(a) > Math.abs(b) ? a : b);
-      space.s = Math.max(0.25, Math.min(newS, (1920 - space.x) / sh.w, (1080 - space.y) / sh.h));
-      space.s = Math.round(space.s * 1000) / 1000;           // same precision as the copied link, so OBS matches the preview exactly
-    }
-    applyTransform();
-    repaint();
-  });
-  const end = () => { drag = null; };
-  window.addEventListener("pointerup", end);
-  window.addEventListener("pointercancel", end);
-
-  function fitStage() {
-    const barH = bar.offsetHeight;
-    editScale = Math.max(0.1, Math.min((window.innerWidth - 24) / 1920, (window.innerHeight - barH - 24) / 1080));
-    document.body.style.transformOrigin = "0 0";
-    document.body.style.transform = `translate(12px, ${barH + 12}px) scale(${editScale})`;
-  }
-  window.addEventListener("resize", fitStage);
-  fitStage();
-  repaint();
-}
-if (SPACE && EDIT_MODE) buildSpaceEditor();
 
 // Gear (FILL mode): invisible until the mouse is over its corner, so it never shows on stream.
 // In OBS: right-click the source > Interact, move the mouse to the top-left corner, click the gear.
