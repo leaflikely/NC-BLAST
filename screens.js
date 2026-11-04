@@ -3495,9 +3495,16 @@ function ShuffleOrderScreen({
   const canStart = topDone && botDone;
   const confirm = () => {
     if (!canStart) return;
-    topSet(topOrder.map(i => topDeck[i]));
-    botSet(botOrder.map(i => botDeck[i]));
-    onConfirm();
+    const topNew = topOrder.map(i => topDeck[i]);
+    const botNew = botOrder.map(i => botDeck[i]);
+    topSet(topNew);
+    botSet(botNew);
+    // Flag 1028: also hand back the locked order (player 1's deck, player 2's deck), because d1/d2 still hold the old order
+    // until the next render. The overlay deck order graphic and the scoreboard's first combo are built from this.
+    onConfirm({
+      p1Deck: swapped ? botNew : topNew,
+      p2Deck: swapped ? topNew : botNew
+    });
   };
 
   // ── Score summary ──────────────────────────────────────────────────────────

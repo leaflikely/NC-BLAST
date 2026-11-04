@@ -670,6 +670,22 @@
     100% { transform: translate(0, 0) rotate(0deg); }
   }
   #gfx-card-big.shake { animation: gfx-shake 0.38s linear infinite; }
+  /* Deck order graphic (flag 1028): one column per player, three rows, combo 1 on top. It stays up until the first battle is scored. */
+  #gfx-deck { justify-content: flex-start; padding: 8px 0 6px; box-sizing: border-box; }
+  .gfx-deck-cols { display: flex; align-items: stretch; width: 100%; flex: 1; min-height: 0; box-sizing: border-box; padding: 0 16px; margin-top: 6px; }
+  .gfx-deck-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .gfx-deck-div { flex: none; width: 2px; margin: 2px 12px; background: rgba(240, 244, 255, 0.18); }
+  .gfx-deck-name { padding-bottom: 4px; text-align: center; font: 700 20px/1 var(--bd-head-font); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gfx-deck-rows { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .gfx-deck-row { flex: 1; min-height: 0; min-width: 0; display: flex; align-items: center; gap: 8px; }
+  .gfx-deck-n { flex: none; width: 20px; font: 700 22px/1 var(--bd-head-font); }
+  .gfx-deck-c { flex: 1; min-width: 0; text-align: left; font: 700 20px/1 var(--bd-text-font); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gfx-deck-col-p1 .gfx-deck-name, .gfx-deck-col-p1 .gfx-deck-n { color: var(--bd-p1); }
+  .gfx-deck-col-p2 .gfx-deck-name, .gfx-deck-col-p2 .gfx-deck-n { color: var(--bd-p2); }
+  /* stream position flipped: the scoreboard shows player 2 on the left, so the columns flip too */
+  #gfx-deck.swapped .gfx-deck-col-p1 { order: 3; }
+  #gfx-deck.swapped .gfx-deck-div { order: 2; }
+  #gfx-deck.swapped .gfx-deck-col-p2 { order: 1; }
 
 </style>
 </head>
@@ -804,6 +820,15 @@
         <div id="gfx-card-sub2"></div>
         <div id="gfx-card-rows"></div>
         <div id="gfx-card-note"></div>
+      </div>
+      <!-- Deck order (flag 1028): shown when the judge locks the deck order, stays until the first battle is scored. -->
+      <div class="gfx-layer off" id="gfx-deck">
+        <div class="gfx-head" id="gfx-deck-head"></div>
+        <div class="gfx-deck-cols">
+          <div class="gfx-deck-col gfx-deck-col-p1"><div class="gfx-deck-name" id="gfx-d1-name"></div><div class="gfx-deck-rows" id="gfx-d1-rows"></div></div>
+          <div class="gfx-deck-div"></div>
+          <div class="gfx-deck-col gfx-deck-col-p2"><div class="gfx-deck-name" id="gfx-d2-name"></div><div class="gfx-deck-rows" id="gfx-d2-rows"></div></div>
+        </div>
       </div>
     </div>
   </div><!-- #scale-wrap -->
@@ -1008,6 +1033,7 @@ function setGfxPhase(p) {
   el("gfx-finish").classList.toggle("off", p !== "finish");
   el("gfx-info").classList.toggle("off", p !== "info");
   el("gfx-card").classList.toggle("off", p !== "card");
+  el("gfx-deck").classList.toggle("off", p !== "deck");
 }
 // k = { head, big, bigColor, bigPx, sub, subColor, subLg, subPx, sub2, sub2Color, shake, rows: [{ p1, p2, pts, sets }] }
 function fillGfxCard(k) {
@@ -1147,6 +1173,50 @@ function showGfx(c) {
   } else {
     gfxLater(space.secs * 1000, hideGfx);
   }
+}
+
+// ── Deck order graphic (flag 1028) ──────────────────────────────────────────
+// The judge app sends state.deckOrder = { id, p1: [3 combos], p2: [3 combos] } when the judge locks the deck order, and keeps
+// sending it until the first battle is scored. It is drawn once per id. There is no timer: it stays up until the first finish
+// arrives, and showGfx() then swaps it for the finish text and runs its normal timers.
+let lastDeckId = 0;
+function fillGfxDeck(d, state) {
+  const need = state.setsNeeded || 1;
+  el("gfx-deck-head").textContent = (need > 1 ? "Set " + (state.curSet || 1) + " · " : "") + "Deck order";
+  [["1", "p1", "Player 1"], ["2", "p2", "Player 2"]].forEach(([n, k, fallback]) => {
+    el("gfx-d" + n + "-name").textContent = state[k] || fallback;
+    const box = el("gfx-d" + n + "-rows");
+    box.textContent = "";
+    for (let i = 0; i < 3; i++) {
+      const c = (Array.isArray(d[k]) && d[k][i]) || {};
+      const row = document.createElement("div"); row.className = "gfx-deck-row";
+      const num = document.createElement("span"); num.className = "gfx-deck-n"; num.textContent = String(i + 1);
+      const txt = document.createElement("span"); txt.className = "gfx-deck-c"; txt.textContent = [c.blade, c.ratchet, c.bit].filter(Boolean).join(" ");
+      row.appendChild(num); row.appendChild(txt); box.appendChild(row);
+    }
+  });
+  el("gfx-deck").classList.toggle("swapped", ff(1009) && state.swapped === true);
+  // a long combo name gets a slightly smaller font instead of being cut off
+  document.querySelectorAll("#gfx-deck .gfx-deck-c").forEach(t => {
+    let px = 20; t.style.fontSize = "";
+    while (px > 12 && t.scrollWidth > t.clientWidth + 1) { px--; t.style.fontSize = px + "px"; }
+  });
+}
+function showDeckGfx(state) {
+  const d = state.deckOrder;
+  if (!gfxOn) {
+    // starting from behind the scoreboard: set everything up now, without fades, before it slides out
+    gfxInstant(() => { fillGfxDeck(d, state); setGfxPhase("deck"); });
+    if (space.side === "alt") { gfxSide = gfxAlt ? "right" : "left"; gfxAlt = !gfxAlt; }
+    else if (space.side === "dynamic") { gfxSide = gfxAlt ? "right" : "left"; gfxAlt = !gfxAlt; }   // no winner yet, so Dynamic alternates
+    else gfxSide = space.side;
+    gfxOn = true;
+    placeSpace();
+  } else {
+    fillGfxDeck(d, state);   // another graphic is still showing: it fades into the deck order
+    setGfxPhase("deck");
+  }
+  gfxTimer++;   // no hide timer: cancels any wait still running from an earlier graphic
 }
 
 function comboLine(c) {
@@ -2072,6 +2142,12 @@ function renderState(state, prevState) {
       }
       else if (BOARD) showBoardFlash(state.lastFinish.type, state.lastFinish.scorerIdx, state.p1, state.p2);
     }
+  }
+
+  // FLAG 1028: the judge locked a deck order: slide the graphic out and keep it up until the first battle is scored
+  if (SPACE && ff(1028) && state.deckOrder && state.deckOrder.id && state.deckOrder.id !== lastDeckId && !state.matchOver) {
+    lastDeckId = state.deckOrder.id;
+    showDeckGfx(state);
   }
 
   if (BOARD) renderBoard(state, prevState);

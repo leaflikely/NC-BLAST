@@ -693,6 +693,9 @@ function MatchScreen({
   const pushOverlayTrailExtraRef = useRef(null);
   const pushOverlayTrailTimerRef = useRef(null);
   const pushOverlayLatestRef = useRef(null);
+  // FLAG 1028: the deck order the judge last locked ({ id, names, p1: [3 combos], p2: [3 combos] }). It rides along on every overlay
+  // push until the first battle of that order is scored, so a push that is dropped or replaced cannot lose it.
+  const deckOrderRef = useRef(null);
   useEffect(() => () => {
     if (pushOverlayTrailTimerRef.current) clearTimeout(pushOverlayTrailTimerRef.current);
   }, []);
@@ -1529,6 +1532,16 @@ function MatchScreen({
       ...rest
     };
 
+    // FLAG 1028: the locked deck order stays on the push until a battle (or launch error strike) is scored, or the match ends or changes.
+    if (ff(1028)) {
+      const dk = deckOrderRef.current;
+      if ("lastFinish" in extraState) deckOrderRef.current = null;
+      else if (dk && dk.names === p1 + "\u0000" + p2 && phase !== "over" && !state.matchOver) state.deckOrder = {
+        id: dk.id,
+        p1: dk.p1,
+        p2: dk.p2
+      };
+    }
     // Always push via matchId for overlay/live tracking (no channel required)
     // Also push via slot number if OBS streaming is enabled
     const body = {
@@ -6102,15 +6115,42 @@ function MatchScreen({
     const displayShuf = shuffleTimer === "active" ? shuf + 1 : shuf;
     return /*#__PURE__*/React.createElement(ShuffleOrderScreen, {
       showTimer: !!shuffleTimer,
-      onConfirm: () => {
+      onConfirm: locked => {
         stampTiming("shuffle", curSet + ":" + displayShuf); // FLAG 1014: Shuffle marker (set:shuffle-in-set)
+        // FLAG 1028: the order just locked goes to the overlay, which shows it as a three-row graphic until the first battle is scored.
+        // d1/d2 still hold the OLD order inside this click (setD1/setD2 only land on the next render), so the new order comes from
+        // the screen itself. The first combos go out with it, so the scoreboard matches row 1 of the graphic.
+        let deckExtra = null;
+        if (ff(1028) && locked && locked.p1Deck && locked.p2Deck) {
+          const plain = c => ({
+            blade: c && c.blade || "",
+            ratchet: c && c.ratchet || "",
+            bit: c && c.bit || ""
+          });
+          const firstOf = c => c && c.blade ? {
+            blade: c.blade,
+            ratchet: c.ratchet,
+            bit: c.bit
+          } : null;
+          deckOrderRef.current = {
+            id: Date.now(),
+            names: p1 + "\u0000" + p2,
+            p1: locked.p1Deck.map(plain),
+            p2: locked.p2Deck.map(plain)
+          };
+          deckExtra = {
+            p1ActiveCombo: firstOf(locked.p1Deck[0]),
+            p2ActiveCombo: firstOf(locked.p2Deck[0])
+          };
+        }
         if (shuffleTimer) {
           // Pass combo index 0 — deck order may have changed on this screen,
           // but the first bey to play is always slot 0 after a shuffle.
           pushOverlay({
             shuffling: false,
             p1ComboIdx: 0,
-            p2ComboIdx: 0
+            p2ComboIdx: 0,
+            ...(deckExtra || {})
           });
           if (shuffleTimer === "active") {
             setUsed1([]);
@@ -6118,6 +6158,13 @@ function MatchScreen({
             setShuf(s => s + 1);
           }
           setShuffleTimer(null);
+        } else if (deckExtra) {
+          // First order of a set (no shuffle timer): nothing was sent here before, so send the deck order now.
+          pushOverlay({
+            p1ComboIdx: 0,
+            p2ComboIdx: 0,
+            ...deckExtra
+          });
         }
         setOrderPreset(false);
         setPhase("battle");

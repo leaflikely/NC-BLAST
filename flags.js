@@ -60,6 +60,7 @@ window.FEATURE_FLAGS = new Set([
   1025, // Real battles reach the stream overlay through the database Worker too (the original route is sometimes 10-30 seconds behind); the overlay shows whichever copy arrives first.
   1026, // Post-battle graphic Matchup Stats (how the two combos about to battle did against each other before); Test fire uses the real match data.
   1027, // Judge view: a Stream channel button on the Select Match screen, so a judge can pick the channel (and connect) before decks are recorded.
+  1028, // Overlay deck order graphic: when the judge locks the deck order (Start Match on the Set Deck Order screen), the overlay shows both players' three combos in order until the first battle is scored. Needs flag 1021.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -198,5 +199,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Stream channel button on the Select Match screen (judge)",
     desc: "Adds a Stream channel button to the judge's Select Match screen. It opens the same window as the cog menu's Stream overlay (pick Channel 1-4 or Off, then Connect Channel), so a judge can connect to a channel in round 1 before the decks are recorded and the first battle starts.",
     off: "Old behaviour: the channel can only be picked from the cog menu on the battle screen."
+  },
+  1028: {
+    name: "Deck order graphic on the stream overlay (judge + overlay)",
+    desc: "When the judge taps Start Match on the Set Deck Order screen, the overlay's slide-out graphic shows both players' three combos in the order they were locked (player on the scoreboard's left in the left column, combo 1 on top). It stays up until the first battle of that order is scored, then the normal post-battle graphic takes over. It shows every time an order is locked: the start of each set and after each shuffle. The judge app also sends the new first combos with it, so the scoreboard matches row 1. Needs flag 1021 (space shapes).",
+    off: "Old behaviour: no deck order graphic."
   }
 };
