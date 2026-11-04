@@ -1474,12 +1474,21 @@ function poolUpset(c, mem) {
     upsetSave(mem.upsets);
   }
   const text = u.w + " (Seed " + u.ws + ") beats " + u.l + " (Seed " + u.ls + ")";
-  return { card: upsetCard(label, text) };
+  return { card: upsetCard(label, text, upsetLastLine(u)) };
+}
+// Last line of the card: where / who judged it (flag 1029 data rides on the upset). Falls back step by step to the old wording.
+function upsetLastLine(u) {
+  const sc = u && u.sc ? String(u.sc) : "";
+  if (!sc) return "";
+  const st = u.st ? String(u.st).trim() : "", j = u.j ? String(u.j).trim() : "";
+  if (st) return "Wins " + sc + " on Stadium " + st;
+  if (j) return "Wins " + sc + " judged by " + j;
+  return "Wins " + sc;
 }
 // The card says outright that this match was played somewhere else (viewers took it for the match on screen).
-function upsetCard(label, text) {
+function upsetCard(label, text, last) {
   return { head: label ? "Upset alert \u00b7 " + label : "Upset alert", big: "Upset!", bigColor: BD_GOLD, bigPx: 48, sub: text,
-    subPx: Math.max(16, Math.min(26, Math.floor(600 / (text.length * 0.6)))), sub2: "Final result from another stadium", sub2Color: BD_GOLD };
+    subPx: Math.max(16, Math.min(26, Math.floor(600 / (text.length * 0.6)))), sub2: last || "Final result from another stadium", sub2Color: BD_GOLD };
 }
 // Currently Playing (flag 1024): up to three OTHER matches of this tournament being played right now.
 function poolPlaying(c) {
@@ -2446,7 +2455,7 @@ function demoGraphic(kind) {
     case "matchPoint": return { card: { big: "Match point:", bigColor: BD_GOLD, sub: "Leaf", subColor: BD_P1, subLg: true } };
     case "pending": return { card: { head, big: "Matches pending: 4", bigColor: "#fff", bigPx: 46 } };
     case "winner": return { card: { head: head + " \u00b7 Match winner", big: "Leaf", subRuns: [{ t: "2\u20131", color: MU_GREEN }, { t: " \u00b7 5 battles" }], sub: "2\u20131 \u00b7 5 battles", sub2: "Swiss record 3\u20131", bg: BD_P1, outline: true } };
-    case "upset": return { card: upsetCard(head, "Player 9 (Seed 9) beats Leaf (Seed 2)") };
+    case "upset": return { card: upsetCard(head, "Player 9 (Seed 9) beats Leaf (Seed 2)", "Wins 2-1 on Stadium B") };
     case "playing": return { card: { head: "Currently playing", rows: [
       { p1: "Alex", p2: "Sam", pts: [2, 1], sets: [1, 0] }, { p1: "Jordan", p2: "Riley", pts: [0, 3], sets: [0, 1] }, { p1: "Casey", p2: "Morgan", pts: [3, 3], sets: [1, 1] }] } };
     case "matchup": return { card: { headRuns: [{ t: "Next battle: ", color: "#fff" }, { t: "Shark Scale 3-60 Narrow", color: BD_P1 }, { t: " vs ", color: "#fff" }, { t: "Dran Sword 3-60 F", color: BD_P2 }], headPx: 23, headSpacing: "0.03em",

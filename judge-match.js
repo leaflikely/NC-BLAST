@@ -110,13 +110,65 @@ function overlayUpsetsFrom(pairings, round, seeds, currentMatchId) {
       const wName = p1Won ? m.player1_name : m.player2_name, lName = p1Won ? m.player2_name : m.player1_name;
       const ws = seedOf(p1Won ? m.player1_id : m.player2_id, wName), ls = seedOf(p1Won ? m.player2_id : m.player1_id, lName);
       if (!wName || !lName || !ws || !ls || ws <= ls) return;
-      out.push({ id: String(m.id), w: String(wName), ws, l: String(lName), ls });
+      const up = { id: String(m.id), w: String(wName), ws, l: String(lName), ls };
+      const sc = setScoreText(m.scores_csv, p1Won); // FLAG 1029: "2-1" (sets), or points for a one-set match
+      if (sc) up.sc = sc;
+      out.push(up);
     });
     out.sort((a, b) => a.ls - b.ls || (b.ws - b.ls) - (a.ws - a.ls));
   } catch (e) {
     return [];
   }
   return out.slice(0, 16);
+}
+// FLAG 1029: the winner's score line for the Upset Alert, winner first. Sets won ("2-1") when the match had several sets,
+// the points of the one set when it had only one. scores_csv is "p1-p2,p1-p2" (player 1 first). Returns "" when unreadable.
+function setScoreText(scoresCsv, p1Won) {
+  try {
+    const sets = String(scoresCsv == null ? "" : scoresCsv).split(",").map(x => /^\s*(\d+)\s*-\s*(\d+)\s*$/.exec(x)).filter(Boolean).map(m => [parseInt(m[1], 10), parseInt(m[2], 10)]);
+    if (!sets.length) return "";
+    if (sets.length === 1) return p1Won ? sets[0][0] + "-" + sets[0][1] : sets[0][1] + "-" + sets[0][0];
+    let a = 0, b = 0;
+    sets.forEach(x => { if (x[0] > x[1]) a++; else if (x[1] > x[0]) b++; });
+    return p1Won ? a + "-" + b : b + "-" + a;
+  } catch (e) {
+    return "";
+  }
+}
+// FLAG 1029: which stadium letter a judge was assigned to. assign = { judgeName: "A" }, nameMap = { username: display name }.
+// Same three-step lookup the Station Matches tab uses. Returns "" when not found.
+function stadiumLetterFor(assign, nameMap, who) {
+  try {
+    const me = String(who || "").toLowerCase().trim();
+    if (!me || !assign) return "";
+    const nm = {};
+    Object.entries(nameMap || {}).forEach(([k, v]) => { nm[k.toLowerCase()] = String(v || "").toLowerCase(); });
+    const entries = Object.entries(assign);
+    for (const [k, letter] of entries) if (k.toLowerCase() === me) return String(letter || "");
+    for (const [k, letter] of entries) { const mapped = nm[k.toLowerCase()] || ""; if (mapped && mapped === me) return String(letter || ""); }
+    const disp = nm[me] || "";
+    if (disp) for (const [k, letter] of entries) {
+      if (k.toLowerCase() === disp) return String(letter || "");
+      const mapped = nm[k.toLowerCase()] || "";
+      if (mapped && mapped === disp) return String(letter || "");
+    }
+  } catch (e) {}
+  return "";
+}
+// FLAG 1029: adds who judged each finished match (j) and its stadium letter (st) to the upset list. notes = { matchId: { j, s } }.
+function overlayUpsetsWithNotes(upsets, notes) {
+  try {
+    return (Array.isArray(upsets) ? upsets : []).map(u => {
+      const n = notes && u && notes[String(u.id)];
+      if (!n) return u;
+      const o = Object.assign({}, u);
+      if (n.s) o.st = String(n.s).slice(0, 2);
+      if (n.j) o.j = String(n.j).slice(0, 40);
+      return o;
+    });
+  } catch (e) {
+    return upsets;
+  }
 }
 function MatchScreen({
   config,
@@ -663,6 +715,13 @@ function MatchScreen({
             } catch (e) {}
           }
           recs.upsets = seeds ? overlayUpsetsFrom(data && data.pairings, challongeRound, seeds, challongeMatchId) : [];
+          // FLAG 1029: who judged each of those matches and on which stadium (saved by the judge app when the result was sent)
+          if (ff(1029) && recs.upsets.length) {
+            try {
+              const nr = await fetch("https://ncblast-db.danny61734.workers.dev/match-notes?slug=" + encodeURIComponent(challongeSlug), { signal: AbortSignal.timeout(6000) });
+              if (nr.ok) { const nd = await nr.json(); recs.upsets = overlayUpsetsWithNotes(recs.upsets, nd && nd.notes); }
+            } catch (e) {}
+          }
         }
         if (stale) return;
         setOverlayRecords(recs);
@@ -1297,6 +1356,27 @@ function MatchScreen({
     }
   };
 
+  // FLAG 1029: after a result is sent, remember who judged it and (if stadiums were set up) which stadium, for the Upset Alert.
+  // Best-effort and in the background: it can never hold up or break sending a result.
+  const saveMatchNote = async matchId => {
+    try {
+      if (!ff(1029) || !challongeSlug || matchId == null || String(challongeSlug).startsWith("wcb-")) return;
+      let stadium = "";
+      try {
+        const ar = await fetch(`${OVERLAY_WORKER}/stadium-assign?slug=${encodeURIComponent(challongeSlug)}`, { signal: AbortSignal.timeout(8000) });
+        const ad = ar.ok ? await ar.json() : {};
+        let nameMap = {};
+        try { nameMap = JSON.parse(localStorage.getItem("ncblast-judge-namemap") || "{}") || {}; } catch (_) {}
+        const who = sessionStorage.getItem("ncblast-auth-user") || "";
+        stadium = stadiumLetterFor(ad && ad.data && ad.data.assign, nameMap, who) || stadiumLetterFor(ad && ad.data && ad.data.assign, nameMap, judge);
+      } catch (_) {}
+      await fetch("https://ncblast-db.danny61734.workers.dev/match-notes?slug=" + encodeURIComponent(challongeSlug), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: "zm77132596", matchId: String(matchId), judge: judge || "", stadium })
+      });
+    } catch (_) {}
+  };
   // Fetch station matches for the Station Matches tab.
   // overrideLetter: if set, skip identity detection and load this station directly
   // (used when the judge manually picks a station from the picker).
@@ -1861,6 +1941,7 @@ function MatchScreen({
         notifyBracket("sent", matchId, p1Score, p2Score, winnerChallongeId, "");
       }
       fetchActiveMatches();
+      saveMatchNote(matchId);
       // Push to judge accountability log in Worker KV (fire-and-forget, never blocks submit)
       const winnerIsP1 = String(winnerChallongeId) === String(challongeP1ParticipantId);
       fetch(`${OVERLAY_WORKER}/scorelog/push`, {

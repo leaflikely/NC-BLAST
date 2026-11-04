@@ -61,6 +61,7 @@ window.FEATURE_FLAGS = new Set([
   1026, // Post-battle graphic Matchup Stats (how the two combos about to battle did against each other before); Test fire uses the real match data.
   1027, // Judge view: a Stream channel button on the Select Match screen, so a judge can pick the channel (and connect) before decks are recorded.
   1028, // Overlay deck order graphic: when the judge locks the deck order (Start Match on the Set Deck Order screen), the overlay shows both players' three combos in order until the first battle is scored. Needs flag 1021.
+  1029, // Upset Alert last line: "Wins 2-1 on Stadium B" (or "judged by <name>"). The judge app saves who judged each result and their stadium (needs the /match-notes block pasted into the database Worker).
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -204,5 +205,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Deck order graphic on the stream overlay (judge + overlay)",
     desc: "When the judge taps Start Match on the Set Deck Order screen, the overlay's slide-out graphic shows both players' three combos in the order they were locked (player on the scoreboard's left in the left column, combo 1 on top). It stays up until the first battle of that order is scored, then the normal post-battle graphic takes over. It shows every time an order is locked: the start of each set and after each shuffle. The judge app also sends the new first combos with it, so the scoreboard matches row 1. Needs flag 1021 (space shapes).",
     off: "Old behaviour: no deck order graphic."
+  },
+  1029: {
+    name: "Upset Alert last line: score and stadium or judge (judge + overlay)",
+    desc: "The Upset Alert's last line becomes 'Wins 2-1 on Stadium B' (the stadium the judge was assigned to), or 'Wins 2-1 judged by Name' when no stadium was set up. The judge app saves the judge and stadium when a result is sent, and reads them back for the overlay. Needs the /match-notes block pasted into the database Worker; until then the line just shows 'Wins 2-1'.",
+    off: "Old behaviour: the last line says 'Final result from another stadium'."
   }
 };
