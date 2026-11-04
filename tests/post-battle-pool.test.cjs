@@ -170,7 +170,8 @@ test("shows UPSET! with the text, after the records graphic", () => {
   const g = pick24(s, s, m);
   assert.strictEqual(g.card.big, "Upset!");
   assert.strictEqual(g.card.sub, "Sam (Seed 9) beats Alex (Seed 2)");
-  assert.strictEqual(g.card.head, "Swiss Round 2");
+  assert.strictEqual(g.card.head, "Upset alert \u00b7 Swiss Round 2");
+  assert.strictEqual(g.card.sub2, "Final result from another stadium");   // says outright it was played elsewhere
 });
 test("the upset where the best-seeded player lost goes first; each is shown once; the next round starts fresh", () => {
   upsetDisk = null;
