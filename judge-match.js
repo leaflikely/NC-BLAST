@@ -1538,6 +1538,7 @@ function MatchScreen({
       if ("lastFinish" in extraState) deckOrderRef.current = null;
       else if (dk && dk.names === p1 + "\u0000" + p2 && phase !== "over" && !state.matchOver) state.deckOrder = {
         id: dk.id,
+        shuf: dk.shuf,
         p1: dk.p1,
         p2: dk.p2
       };
@@ -6134,6 +6135,7 @@ function MatchScreen({
           } : null;
           deckOrderRef.current = {
             id: Date.now(),
+            shuf: displayShuf, // which shuffle of the set this is (1 = first order); the overlay numbers combos 1-3, 4-6, ... from it
             names: p1 + "\u0000" + p2,
             p1: locked.p1Deck.map(plain),
             p2: locked.p2Deck.map(plain)

@@ -670,21 +670,27 @@
     100% { transform: translate(0, 0) rotate(0deg); }
   }
   #gfx-card-big.shake { animation: gfx-shake 0.38s linear infinite; }
-  /* Deck order graphic (flag 1028): one column per player, three rows, combo 1 on top. It stays up until the first battle is scored. */
+  /* Deck order graphic (flag 1028): player 1's combos | VS | player 2's combos, three rows, combo 1 on top. It stays up until the first battle is scored. */
   #gfx-deck { justify-content: flex-start; padding: 8px 0 6px; box-sizing: border-box; }
   .gfx-deck-cols { display: flex; align-items: stretch; width: 100%; flex: 1; min-height: 0; box-sizing: border-box; padding: 0 16px; margin-top: 6px; }
   .gfx-deck-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .gfx-deck-div { flex: none; width: 2px; margin: 2px 12px; background: rgba(240, 244, 255, 0.18); }
+  .gfx-deck-mid { flex: none; width: 56px; display: flex; flex-direction: column; }
   .gfx-deck-name { padding-bottom: 4px; text-align: center; font: 700 20px/1 var(--bd-head-font); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .gfx-deck-rows { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .gfx-deck-row { flex: 1; min-height: 0; min-width: 0; display: flex; align-items: center; gap: 8px; }
   .gfx-deck-n { flex: none; width: 20px; font: 700 22px/1 var(--bd-head-font); }
-  .gfx-deck-c { flex: 1; min-width: 0; text-align: left; font: 700 20px/1 var(--bd-text-font); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gfx-deck-c { flex: 1; min-width: 0; font: 700 20px/1 var(--bd-text-font); color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gfx-deck-vs { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; font: 700 20px/1 var(--bd-head-font); letter-spacing: 0.08em; color: rgba(240, 244, 255, 0.55); }
+  /* the column on the scoreboard's left (class l) pushes its combos toward the VS; the right one (class r) mirrors it */
+  .gfx-deck-col.l .gfx-deck-c { text-align: right; }
+  .gfx-deck-col.r .gfx-deck-row { flex-direction: row-reverse; }
+  .gfx-deck-col.r .gfx-deck-c { text-align: left; }
+  .gfx-deck-col.r .gfx-deck-n { text-align: right; }
   .gfx-deck-col-p1 .gfx-deck-name, .gfx-deck-col-p1 .gfx-deck-n { color: var(--bd-p1); }
   .gfx-deck-col-p2 .gfx-deck-name, .gfx-deck-col-p2 .gfx-deck-n { color: var(--bd-p2); }
   /* stream position flipped: the scoreboard shows player 2 on the left, so the columns flip too */
   #gfx-deck.swapped .gfx-deck-col-p1 { order: 3; }
-  #gfx-deck.swapped .gfx-deck-div { order: 2; }
+  #gfx-deck.swapped .gfx-deck-mid { order: 2; }
   #gfx-deck.swapped .gfx-deck-col-p2 { order: 1; }
 
 </style>
@@ -825,9 +831,9 @@
       <div class="gfx-layer off" id="gfx-deck">
         <div class="gfx-head" id="gfx-deck-head"></div>
         <div class="gfx-deck-cols">
-          <div class="gfx-deck-col gfx-deck-col-p1"><div class="gfx-deck-name" id="gfx-d1-name"></div><div class="gfx-deck-rows" id="gfx-d1-rows"></div></div>
-          <div class="gfx-deck-div"></div>
-          <div class="gfx-deck-col gfx-deck-col-p2"><div class="gfx-deck-name" id="gfx-d2-name"></div><div class="gfx-deck-rows" id="gfx-d2-rows"></div></div>
+          <div class="gfx-deck-col gfx-deck-col-p1 l" id="gfx-d1-col"><div class="gfx-deck-name" id="gfx-d1-name"></div><div class="gfx-deck-rows" id="gfx-d1-rows"></div></div>
+          <div class="gfx-deck-mid"><div class="gfx-deck-name">&nbsp;</div><div class="gfx-deck-rows"><div class="gfx-deck-vs">VS</div><div class="gfx-deck-vs">VS</div><div class="gfx-deck-vs">VS</div></div></div>
+          <div class="gfx-deck-col gfx-deck-col-p2 r" id="gfx-d2-col"><div class="gfx-deck-name" id="gfx-d2-name"></div><div class="gfx-deck-rows" id="gfx-d2-rows"></div></div>
         </div>
       </div>
     </div>
@@ -1182,6 +1188,7 @@ function showGfx(c) {
 let lastDeckId = 0;
 function fillGfxDeck(d, state) {
   const need = state.setsNeeded || 1;
+  const base = ((Math.max(1, Math.floor(Number(d.shuf)) || 1)) - 1) * 3;   // shuffle 1 = 1 2 3, shuffle 2 = 4 5 6, ... (the judge app restarts the count when a set is won)
   el("gfx-deck-head").textContent = (need > 1 ? "Set " + (state.curSet || 1) + " · " : "") + "Deck order";
   [["1", "p1", "Player 1"], ["2", "p2", "Player 2"]].forEach(([n, k, fallback]) => {
     el("gfx-d" + n + "-name").textContent = state[k] || fallback;
@@ -1190,12 +1197,15 @@ function fillGfxDeck(d, state) {
     for (let i = 0; i < 3; i++) {
       const c = (Array.isArray(d[k]) && d[k][i]) || {};
       const row = document.createElement("div"); row.className = "gfx-deck-row";
-      const num = document.createElement("span"); num.className = "gfx-deck-n"; num.textContent = String(i + 1);
+      const num = document.createElement("span"); num.className = "gfx-deck-n"; num.textContent = String(base + i + 1);
       const txt = document.createElement("span"); txt.className = "gfx-deck-c"; txt.textContent = [c.blade, c.ratchet, c.bit].filter(Boolean).join(" ");
       row.appendChild(num); row.appendChild(txt); box.appendChild(row);
     }
   });
-  el("gfx-deck").classList.toggle("swapped", ff(1009) && state.swapped === true);
+  const flip = ff(1009) && state.swapped === true;
+  el("gfx-deck").classList.toggle("swapped", flip);
+  el("gfx-d1-col").className = "gfx-deck-col gfx-deck-col-p1 " + (flip ? "r" : "l");   // l = the column on the scoreboard's left
+  el("gfx-d2-col").className = "gfx-deck-col gfx-deck-col-p2 " + (flip ? "l" : "r");
   // a long combo name gets a slightly smaller font instead of being cut off
   document.querySelectorAll("#gfx-deck .gfx-deck-c").forEach(t => {
     let px = 20; t.style.fontSize = "";

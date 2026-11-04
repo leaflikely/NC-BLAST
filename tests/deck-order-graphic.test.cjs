@@ -36,10 +36,10 @@ function runConfirm({ swapped, topOrder, botOrder }) {
 }
 
 // The real lock step in the judge app's onConfirm.
-function runLock({ flagOn, locked, p1 = "Leaf", p2 = "Danny" }) {
+function runLock({ flagOn, locked, p1 = "Leaf", p2 = "Danny", displayShuf = 1 }) {
   const deckOrderRef = { current: null };
-  const deckExtra = new Function("ff", "locked", "deckOrderRef", "p1", "p2", "Date", lockSrc + "; return deckExtra;")(
-    id => id === 1028 && flagOn, locked, deckOrderRef, p1, p2, { now: () => 4242 });
+  const deckExtra = new Function("ff", "locked", "deckOrderRef", "p1", "p2", "Date", "displayShuf", lockSrc + "; return deckExtra;")(
+    id => id === 1028 && flagOn, locked, deckOrderRef, p1, p2, { now: () => 4242 }, displayShuf);
   return { deckExtra, ref: deckOrderRef };
 }
 
@@ -102,6 +102,13 @@ test("lock step stores plain combos in order and the first combos for the scoreb
   assert.deepStrictEqual(deckExtra.p2ActiveCombo, { blade: "Phoenix Wing", ratchet: "9-60", bit: "GP" });
 });
 
+test("the shuffle number of the set goes out with the order (second shuffle = 2)", () => {
+  const { ref } = runLock({ flagOn: true, locked, displayShuf: 2 });
+  const { push, sent } = makePush({ flagOn: true, ref });
+  push({});
+  assert.strictEqual(sent[0].deckOrder.shuf, 2);
+});
+
 test("flag OFF: nothing stored, nothing extra sent", () => {
   const { deckExtra, ref } = runLock({ flagOn: false, locked });
   assert.strictEqual(deckExtra, null);
@@ -119,7 +126,7 @@ test("the push after the lock carries deckOrder and the new first combos (not th
   const { push, sent } = makePush({ flagOn: true, ref });
   push({ shuffling: false, p1ComboIdx: 0, p2ComboIdx: 0, ...deckExtra });
   assert.strictEqual(sent.length, 1);
-  assert.deepStrictEqual(sent[0].deckOrder, { id: 4242, p1: ref.current.p1, p2: ref.current.p2 });
+  assert.deepStrictEqual(sent[0].deckOrder, { id: 4242, shuf: 1, p1: ref.current.p1, p2: ref.current.p2 });
   assert.strictEqual(sent[0].p1ActiveCombo.blade, "Hells Scythe");
   assert.strictEqual(sent[0].p2ActiveCombo.blade, "Phoenix Wing");
 });
