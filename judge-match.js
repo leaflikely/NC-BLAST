@@ -1493,7 +1493,10 @@ function MatchScreen({
         get(DB + "/deck-log?slug=" + encodeURIComponent(ctx.slug))
       ]);
       if (!standbyRef.current) return;
-      const state = { standby: standbyDataFrom(pr && pr.pairings, ctx.round, st, dk && dk.decks), sentAt: Date.now(), slug: ctx.slug, tournamentName: ctx.tName || "", judge: ctx.judge || "", p1: "", p2: "" };
+      const standbyData = standbyDataFrom(pr && pr.pairings, ctx.round, st, dk && dk.decks);
+      // Standings are not sent for now: they must come from Challonge itself, not from our own win/loss count (the slide is skipped when empty).
+      standbyData.standings = [];
+      const state = { standby: standbyData, sentAt: Date.now(), slug: ctx.slug, tournamentName: ctx.tName || "", judge: ctx.judge || "", p1: "", p2: "" };
       if (ff(1025)) {
         fetch(DB + "/overlay-live?slot=" + ctx.slot, {
           method: "POST",
