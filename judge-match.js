@@ -170,6 +170,83 @@ function overlayUpsetsWithNotes(upsets, notes) {
     return upsets;
   }
 }
+// FLAG 1030 (standby slides): what to do when a judge taps New Match after finishing a match.
+//   "stay"    - their station still has an open match queued: nothing special
+//   "standby" - nothing is left in this round on any station: go to standby without asking
+//   "ask"     - their queue is empty but other stations still have matches: ask "Are there no more matches at this stadium?"
+//   "none"    - the bracket list could not be read: do nothing special
+// queueIds = the match ids queued for this judge's station. A match counts as open when the bracket says it is not complete.
+function standbyNeedsAsk({ queueIds, pairings, round, currentMatchId }) {
+  try {
+    if (!Array.isArray(pairings)) return "none";
+    const r = Number(round);
+    const anyRound = round == null || round === "" || !Number.isFinite(r) || r === 0;
+    const open = pairings.filter(m => m && m.state !== "complete" && m.player1_id && m.player2_id && (anyRound || Number(m.round) === r) && String(m.id) !== String(currentMatchId));
+    const openIds = new Set(open.map(m => String(m.id)));
+    const queued = (Array.isArray(queueIds) ? queueIds : []).map(String).filter(id => id !== String(currentMatchId) && openIds.has(id));
+    if (queued.length) return "stay";
+    return open.length === 0 ? "standby" : "ask";
+  } catch (e) {
+    return "none";
+  }
+}
+// FLAG 1030: everything the three standby slides show, worked out from data the app already has.
+//   pairings = the bracket's match list; stats = /event-stats answer { players, combos }; decks = /deck-log decks.
+//   standings: match wins and losses of every player with a finished match, best first (wins, then PPB = points won minus lost per battle).
+//   results:   finished matches of the round, newest first, winner first with the set score ("2-1").
+//   combos:    combos in decks, counted once per locked deck (not per battle), with the event's PPB for that combo.
+// Each list holds at most 8 entries. Never throws; a list that cannot be built is empty (the overlay skips an empty slide).
+function standbyDataFrom(pairings, round, stats, decks) {
+  const out = { round: null, standings: [], results: [], combos: [] };
+  try {
+    const r = Number(round);
+    if (Number.isFinite(r) && r > 0) out.round = r;
+    const playerStats = stats && stats.players || {};
+    const comboStats = stats && stats.combos || {};
+    const ppbOf = (map, key) => {
+      const e = map[String(key || "").trim().toLowerCase()];
+      return e && e.n > 0 ? Math.round((e.pf - e.pa) / e.n * 100) / 100 : null;
+    };
+    const done = (Array.isArray(pairings) ? pairings : []).filter(m => m && m.state === "complete" && m.winner_id != null && m.winner_id !== "");
+    const rec = {};
+    const sides = m => {
+      const p1Won = String(m.winner_id) === String(m.player1_id);
+      const p2Won = !p1Won && String(m.winner_id) === String(m.player2_id);
+      if (!p1Won && !p2Won) return null;
+      const w = p1Won ? m.player1_name : m.player2_name, l = p1Won ? m.player2_name : m.player1_name;
+      if (!w || !l) return null;
+      return { w: String(w), l: String(l), p1Won };
+    };
+    done.forEach(m => {
+      const sd = sides(m);
+      if (!sd) return;
+      const a = rec[sd.w.toLowerCase()] || (rec[sd.w.toLowerCase()] = { n: sd.w, w: 0, l: 0 });
+      const b = rec[sd.l.toLowerCase()] || (rec[sd.l.toLowerCase()] = { n: sd.l, w: 0, l: 0 });
+      a.w++;
+      b.l++;
+    });
+    out.standings = Object.keys(rec).map(k => ({ n: rec[k].n, w: rec[k].w, l: rec[k].l, p: ppbOf(playerStats, k) })).sort((a, b) => b.w - a.w || a.l - b.l || (b.p == null ? -99 : b.p) - (a.p == null ? -99 : a.p) || a.n.localeCompare(b.n)).slice(0, 8);
+    let resRound = out.round;
+    if (resRound == null) done.forEach(m => { if (Number(m.round) > (resRound || 0)) resRound = Number(m.round); });
+    out.results = done.filter(m => resRound == null || Number(m.round) === resRound).sort((a, b) => Number(b.id) - Number(a.id)).map(m => {
+      const sd = sides(m);
+      if (!sd) return null;
+      const sc = setScoreText(m.scores_csv, sd.p1Won);
+      return sc ? { w: sd.w, l: sd.l, sc } : { w: sd.w, l: sd.l };
+    }).filter(Boolean).slice(0, 8);
+    const count = {};
+    (Array.isArray(decks) ? decks : []).forEach(d => {
+      [d && d.d1, d && d.d2].forEach(list => (Array.isArray(list) ? list : []).forEach(t => {
+        const text = String(t || "").trim();
+        if (!text) return;
+        const k = text.toLowerCase();
+        (count[k] || (count[k] = { c: text, n: 0 })).n++;
+      }));
+    });
+    out.combos = Object.keys(count).map(k => ({ c: count[k].c, n: count[k].n, p: ppbOf(comboStats, k), b: comboStats[k] ? comboStats[k].n : 0 })).sort((a, b) => b.n - a.n || (b.p == null ? -99 : b.p) - (a.p == null ? -99 : a.p) || a.c.localeCompare(b.c)).slice(0, 8);
+  } catch (e) {}
+  return out;
+}
 function MatchScreen({
   config,
   parts,
@@ -755,6 +832,13 @@ function MatchScreen({
   // FLAG 1028: the deck order the judge last locked ({ id, names, p1: [3 combos], p2: [3 combos] }). It rides along on every overlay
   // push until the first battle of that order is scored, so a push that is dropped or replaced cannot lose it.
   const deckOrderRef = useRef(null);
+  // FLAG 1030: standby mode for the stream overlay (between rounds). standbyAsk shows the "no more matches here?" question;
+  // standbyRef is true from "yes" until the next real overlay update; standbyCtxRef keeps what the minute refresh needs.
+  const [standbyAsk, setStandbyAsk] = useState(false);
+  const [standbyActive, setStandbyActive] = useState(false);
+  const standbyRef = useRef(false);
+  const standbyCtxRef = useRef(null);
+  const standbyBusyRef = useRef(false);
   useEffect(() => () => {
     if (pushOverlayTrailTimerRef.current) clearTimeout(pushOverlayTrailTimerRef.current);
   }, []);
@@ -1377,6 +1461,117 @@ function MatchScreen({
       });
     } catch (_) {}
   };
+  // FLAG 1030: save both players' locked decks for this match (database Worker /deck-log). Best-effort, in the background.
+  const saveDeckLog = locked => {
+    try {
+      if (!ff(1030) || !challongeSlug || !challongeMatchId || String(challongeSlug).startsWith("wcb-")) return;
+      const texts = list => (Array.isArray(list) ? list : []).map(c => comboStr(c)).filter(t => t && t !== "\u2014");
+      fetch("https://ncblast-db.danny61734.workers.dev/deck-log?slug=" + encodeURIComponent(challongeSlug), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: "zm77132596", matchId: String(challongeMatchId), round: challongeRound ?? null, p1: p1 || "", p2: p2 || "", d1: texts(locked.p1Deck), d2: texts(locked.p2Deck) })
+      }).catch(() => {});
+    } catch (_) {}
+  };
+  // FLAG 1030: send the standby slides' data to this judge's stream channel. ctx = { slug, tName, slot, judge, round }.
+  // Skipped when standby has already ended (a real match update went out first). Never throws.
+  const pushStandby = async ctx => {
+    try {
+      if (!ctx || !ctx.slot || !ctx.slug) return;
+      const get = async u => {
+        try {
+          const r = await fetch(u, { signal: AbortSignal.timeout(8000) });
+          return r.ok ? await r.json() : null;
+        } catch (_) {
+          return null;
+        }
+      };
+      const DB = "https://ncblast-db.danny61734.workers.dev";
+      const [pr, st, dk] = await Promise.all([
+        get(`${OVERLAY_WORKER}/pairings?slug=${encodeURIComponent(ctx.slug)}`),
+        ctx.tName ? get(DB + "/event-stats?tournament=" + encodeURIComponent(ctx.tName)) : null,
+        get(DB + "/deck-log?slug=" + encodeURIComponent(ctx.slug))
+      ]);
+      if (!standbyRef.current) return;
+      const state = { standby: standbyDataFrom(pr && pr.pairings, ctx.round, st, dk && dk.decks), sentAt: Date.now(), slug: ctx.slug, tournamentName: ctx.tName || "", judge: ctx.judge || "", p1: "", p2: "" };
+      if (ff(1025)) {
+        fetch(DB + "/overlay-live?slot=" + ctx.slot, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: "zm77132596", state })
+        }).catch(() => {});
+      }
+      fetch(`${OVERLAY_WORKER}/overlay/push`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state, slot: ctx.slot })
+      }).catch(() => {});
+    } catch (_) {}
+  };
+  const goStandby = () => {
+    const ctx = { slug: challongeSlug, tName: config.tournamentName || "", slot: overlaySlot, judge: judge || "", round: challongeRound ?? null };
+    standbyCtxRef.current = ctx;
+    standbyRef.current = true;
+    setStandbyActive(true);
+    pushStandby(ctx);
+  };
+  // Keeps the slides fresh while in standby (other stadiums keep finishing matches).
+  useEffect(() => {
+    if (!standbyActive) return;
+    const t = setInterval(() => { if (standbyRef.current) pushStandby(standbyCtxRef.current); }, 60000);
+    return () => clearInterval(t);
+  }, [standbyActive]);
+  // The decision when a judge taps New Match: see standbyNeedsAsk. Returns "ask" | "standby" | "stay" | "none".
+  const standbyDecision = async () => {
+    const get = async u => {
+      try {
+        const r = await fetch(u, { signal: AbortSignal.timeout(8000) });
+        return r.ok ? await r.json() : null;
+      } catch (_) {
+        return null;
+      }
+    };
+    const ad = await get(`${OVERLAY_WORKER}/stadium-assign?slug=${encodeURIComponent(challongeSlug)}`);
+    let nameMap = {};
+    try { nameMap = JSON.parse(localStorage.getItem("ncblast-judge-namemap") || "{}") || {}; } catch (_) {}
+    const assign = ad && ad.data && ad.data.assign || {};
+    const letter = stadiumLetterFor(assign, nameMap, sessionStorage.getItem("ncblast-auth-user") || "") || stadiumLetterFor(assign, nameMap, judge);
+    if (!letter) return "none";
+    const [qd, pd] = await Promise.all([
+      get(`${OVERLAY_WORKER}/station-queues?slug=${encodeURIComponent(challongeSlug)}`),
+      get(`${OVERLAY_WORKER}/pairings?slug=${encodeURIComponent(challongeSlug)}`)
+    ]);
+    const queueIds = ((qd && qd.data || {})[letter] || []).map(String);
+    return standbyNeedsAsk({ queueIds, pairings: pd && pd.pairings, round: challongeRound, currentMatchId: challongeMatchId });
+  };
+  // New Match button (all over screens). With flag 1030 on and a stream channel connected, it first checks whether this
+  // judge's station is out of matches; any failure just carries on to the normal New Match.
+  const newMatchTap = async () => {
+    const proceed = () => { setSheetsStatus(null); resetAndRestoreJudge(); };
+    if (!ff(1030) || !overlaySlot || !challongeSlug || String(challongeSlug).startsWith("wcb-") || standbyBusyRef.current) {
+      proceed();
+      return;
+    }
+    standbyBusyRef.current = true;
+    let decision = "none";
+    try {
+      decision = await standbyDecision();
+    } catch (_) {
+      decision = "none";
+    }
+    standbyBusyRef.current = false;
+    if (decision === "ask") {
+      setStandbyAsk(true);
+      return;
+    }
+    if (decision === "standby") goStandby();
+    proceed();
+  };
+  const answerStandby = yes => {
+    setStandbyAsk(false);
+    if (yes) goStandby();
+    setSheetsStatus(null); resetAndRestoreJudge();
+  };
   // Fetch station matches for the Station Matches tab.
   // overrideLetter: if set, skip identity detection and load this station directly
   // (used when the judge manually picks a station from the picker).
@@ -1622,6 +1817,11 @@ function MatchScreen({
         p1: dk.p1,
         p2: dk.p2
       };
+    }
+    // FLAG 1030: any real update ends standby mode.
+    if (ff(1030)) {
+      standbyRef.current = false;
+      setStandbyActive(false);
     }
     // Always push via matchId for overlay/live tracking (no channel required)
     // Also push via slot number if OBS streaming is enabled
@@ -6226,6 +6426,8 @@ function MatchScreen({
             p2ActiveCombo: firstOf(locked.p2Deck[0])
           };
         }
+        // FLAG 1030: remember the locked decks (one record per match; locking again replaces it) for the standby "most used combos" slide.
+        if (ff(1030) && locked && locked.p1Deck && locked.p2Deck) saveDeckLog(locked);
         if (shuffleTimer) {
           // Pass combo index 0 — deck order may have changed on this screen,
           // but the first bey to play is always slot 0 after a shuffle.
@@ -6518,7 +6720,40 @@ function MatchScreen({
     }, !submitted && /*#__PURE__*/React.createElement("button", {
       style: S.back,
       onClick: () => setOverBackConfirm(true)
-    }, IC.back, " Back"), overBackConfirm && /*#__PURE__*/React.createElement("div", {
+    }, IC.back, " Back"), standbyAsk && /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.6)",
+        zIndex: 510,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "0 24px"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: "var(--surface)",
+        borderRadius: 16,
+        padding: "22px 20px",
+        maxWidth: 360,
+        width: "100%",
+        textAlign: "center",
+        fontFamily: "'Outfit',sans-serif"
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: { fontSize: 17, fontWeight: 800, color: "var(--text)", marginBottom: 6 }
+    }, "Are there no more matches at this stadium?"), /*#__PURE__*/React.createElement("p", {
+      style: { fontSize: 13, color: "var(--text-secondary)", marginBottom: 16 }
+    }, "Yes puts the stream into standby (standings, results and combos) until the next match starts."), /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      style: S.pri,
+      onClick: () => answerStandby(true)
+    }, "Yes, no more matches here"), /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      style: { ...S.pri, background: "var(--surface2)", color: "var(--text)", marginTop: 8 },
+      onClick: () => answerStandby(false)
+    }, "No, more are coming"))), overBackConfirm && /*#__PURE__*/React.createElement("div", {
       style: {
         position: "fixed",
         inset: 0,
@@ -7580,8 +7815,7 @@ function MatchScreen({
       disabled: newMatchLocked,
       onClick: () => {
         if (newMatchLocked) return;
-        setSheetsStatus(null);
-        resetAndRestoreJudge();
+        newMatchTap();
       }
     }, newMatchLocked ? "New Match (waiting for " + ((challongeSlug || "").startsWith("wcb-") ? "WCB" : "Challonge") + ")" : "New Match"), config.tm && !eventRanked && (() => {
       // ── Unranked over screen: simple bracket submit + New Match ──
@@ -7636,8 +7870,7 @@ function MatchScreen({
           disabled: newMatchLocked,
           onClick: () => {
             if (newMatchLocked) return;
-            setSheetsStatus(null);
-            resetAndRestoreJudge();
+            newMatchTap();
           }
         }, "New Match")
       );
@@ -7679,8 +7912,7 @@ function MatchScreen({
     })(), /*#__PURE__*/React.createElement("button", {
       style: S.pri,
       onClick: () => {
-        setSheetsStatus(null);
-        resetAndRestoreJudge();
+        newMatchTap();
       }
     }, "New Match")), eventRanked && /*#__PURE__*/React.createElement("button", {
       style: {

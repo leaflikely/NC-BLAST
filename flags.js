@@ -61,6 +61,7 @@ window.FEATURE_FLAGS = new Set([
   1026, // Post-battle graphic Matchup Stats (how the two combos about to battle did against each other before); Test fire uses the real match data.
   1027, // Judge view: a Stream channel button on the Select Match screen, so a judge can pick the channel (and connect) before decks are recorded.
   1028, // Overlay deck order graphic: when the judge locks the deck order (Start Match on the Set Deck Order screen), the overlay shows both players' three combos in order until the first battle is scored. Needs flag 1021.
+  1030, // Standby slides on the stream between rounds: after a judge's last match at a stadium, the overlay shows standings, round results and the event's most used combos (needs 1021 and the /deck-log + /event-stats routes in the database Worker; the question 'no more matches here?' appears on the judge's New Match button).
   1029, // Upset Alert last line: "Wins 2-1 on Stadium B" (or "judged by <name>"). The judge app saves who judged each result and their stadium (needs the /match-notes block pasted into the database Worker).
 ]);
 
@@ -210,5 +211,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Upset Alert last line: score and stadium or judge (judge + overlay)",
     desc: "The Upset Alert's last line becomes 'Wins 2-1 on Stadium B' (the stadium the judge was assigned to), or 'Wins 2-1 judged by Name' when no stadium was set up. The judge app saves the judge and stadium when a result is sent, and reads them back for the overlay. Needs the /match-notes block pasted into the database Worker; until then the line just shows 'Wins 2-1'.",
     off: "Old behaviour: the last line says 'Final result from another stadium'."
+  },
+  1030: {
+    name: "Standby slides between rounds (judge + overlay)",
+    desc: "When a judge finishes their station's last match and taps New Match, the app asks 'Are there no more matches at this stadium?' (skipped when no matches are left anywhere in the round). Yes puts that stream channel into standby: the scoreboard is replaced by one larger panel that cycles, every 10 seconds, through the standings, the round's match results and the event's most used combos (counted once per deck per round, with their PPB). A new match starts the scoreboard again. Needs the new /deck-log and /event-stats routes in the database Worker; without them the combos slide is simply skipped.",
+    off: "Old behaviour: the stream keeps showing the last finished match until the next one starts."
   }
 };

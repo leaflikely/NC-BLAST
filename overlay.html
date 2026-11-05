@@ -482,7 +482,7 @@
   body.ff-1019 #main-card { display: none; }
   body.ff-1019 #board { display: block; }
   body.ff-1019 #scale-wrap { width: 640px; }   /* keep equal to CARD_W in the script */
-  #board, #bd-gfx {
+  #board, #bd-gfx, #bd-standby {
     --bd-bg: #0a0e14;
     --bd-gold: #ffd400;
     --bd-p1: #3d9bff;
@@ -693,6 +693,39 @@
   #gfx-deck.swapped .gfx-deck-mid { order: 2; }
   #gfx-deck.swapped .gfx-deck-col-p2 { order: 1; }
 
+  /* ── STANDBY PANEL (flag 1030) ───────────────
+     Between rounds the scoreboard and the graphic are replaced by ONE larger panel the size of the whole space
+     (wide 1280 x 162, tall 640 x 324, design pixels), cycling through standings / results / combos. */
+  #bd-standby { display: none; }
+  body.ff-1021 #bd-standby {
+    display: flex; flex-direction: column; position: absolute; left: 0; top: 0; z-index: 6; box-sizing: border-box;
+    background: var(--bd-bg); overflow: hidden; opacity: 0; visibility: hidden;
+    transition: opacity 0.45s, visibility 0s linear 0.45s;
+  }
+  body.ff-1021 #bd-standby.on { opacity: 1; visibility: visible; transition: opacity 0.45s; }
+  #bd-standby::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 30; box-shadow: inset 0 0 0 2px var(--bd-gold); }
+  #bd-standby .sb-head { display: flex; align-items: baseline; justify-content: center; gap: 14px; padding: 8px 20px 0; flex: none; }
+  #bd-standby .sb-title { font: 700 22px/1 var(--bd-head-font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--bd-gold); }
+  #bd-standby .sb-sub { font: 700 16px/1 var(--bd-text-font); letter-spacing: 0.16em; text-transform: uppercase; color: rgba(240, 244, 255, 0.55); }
+  #bd-standby .sb-body { flex: 1; min-height: 0; padding: 4px 26px 8px; display: grid; column-gap: 44px; opacity: 1; transition: opacity 0.22s; }
+  #bd-standby .sb-body.fade { opacity: 0; }
+  #bd-standby.wide .sb-body { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(4, 1fr); grid-auto-flow: column; }
+  #bd-standby.tall .sb-body { grid-template-columns: 1fr; grid-template-rows: repeat(8, 1fr); padding-top: 8px; }
+  #bd-standby .sb-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto auto; align-items: center; column-gap: 12px; min-width: 0; font: 700 22px/1 var(--bd-text-font); color: #fff; }
+  #bd-standby.tall .sb-row { font-size: 22px; }
+  #bd-standby .sb-n { color: var(--bd-gold); text-align: right; }
+  #bd-standby .sb-a { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.03em; }
+  #bd-standby .sb-a .win { color: #fff; }
+  #bd-standby .sb-a .def { color: rgba(240, 244, 255, 0.5); font-size: 0.8em; letter-spacing: 0.1em; text-transform: uppercase; margin: 0 6px; }
+  #bd-standby .sb-a .los { color: rgba(240, 244, 255, 0.72); }
+  #bd-standby .sb-b { color: var(--bd-p1-sub); white-space: nowrap; }
+  #bd-standby .sb-c { white-space: nowrap; min-width: 92px; text-align: right; }
+  #bd-standby .sb-c.pos { color: #4ade80; }
+  #bd-standby .sb-c.neg { color: #f87171; }
+  #bd-standby .sb-c.nil { color: rgba(240, 244, 255, 0.4); }
+  #bd-standby .sb-wait { grid-column: 1 / -1; grid-row: 1 / -1; align-self: center; justify-self: center; font: 700 34px/1 var(--bd-head-font); letter-spacing: 0.06em; text-transform: uppercase; color: #fff; text-align: center; }
+  body.sb-on #board, body.sb-on #bd-gfx { opacity: 0; visibility: hidden; }
+
 </style>
 </head>
 <body>
@@ -837,6 +870,8 @@
         </div>
       </div>
     </div>
+    <!-- Standby panel (flag 1030): replaces the scoreboard and graphic between rounds. -->
+    <div id="bd-standby"><div class="sb-head"><span class="sb-title" id="sb-title"></span><span class="sb-sub" id="sb-sub"></span></div><div class="sb-body" id="sb-body"></div></div>
   </div><!-- #scale-wrap -->
   <div class="resize-handle" id="rh-corner"></div>
   <div class="resize-handle" id="rh-right"></div>
@@ -1009,6 +1044,96 @@ function placeSpace() {
   el("board").style.transform = `translate(${bx}px, ${by}px)`;
   el("bd-gfx").style.transform = `translate(${gx}px, ${gy}px)`;
   el("bd-gfx").classList.toggle("on", gfxOn);
+}
+
+// ── Standby panel (flag 1030) ───────────────────────────────────────────
+// The judge app sends state.standby = { round, standings: [{ n, w, l, p }], results: [{ w, l, sc }], combos: [{ c, n, p, b }] } when a stadium
+// has no more matches. The panel replaces the scoreboard + graphic, cycles the slides (an empty list is skipped) and ends with the next
+// ordinary match update. Seconds per slide: ?standby=N on the link (10 by default).
+const STANDBY_SECS = Math.max(3, Math.min(60, parseFloat(params.get("standby")) || 10));
+let sbOn = false, sbTok = 0, sbSig = "", sbSlides = [], sbTest = false, sbTestTok = 0;
+function sbPpb(v) { return v == null ? "" : (v >= 0 ? "+" : "\u2212") + Math.abs(v).toFixed(2); }
+function sbSlidesFrom(d) {
+  const out = [];
+  const rd = d && d.round ? d.round : null;
+  const list = x => (d && Array.isArray(d[x]) ? d[x] : []);
+  if (list("standings").length) out.push({ title: "Standings", sub: rd ? "After round " + rd : "", rows: list("standings").map((r, i) => ({ n: String(i + 1), a: r.n, b: r.w + "-" + r.l, c: r.p == null ? "\u2014" : "PPB " + sbPpb(r.p), cc: r.p == null ? "nil" : r.p < 0 ? "neg" : "pos" })) });
+  if (list("results").length) out.push({ title: rd ? "Round " + rd + " results" : "Match results", sub: "", rows: list("results").map(r => ({ n: "", win: r.w, los: r.l, b: r.sc || "", c: "" })) });
+  if (list("combos").length) out.push({ title: "Most used combos", sub: "Decks this event", rows: list("combos").map((r, i) => ({ n: String(i + 1), a: r.c, b: r.n + (r.n === 1 ? " deck" : " decks"), c: r.p == null ? "\u2014" : "PPB " + sbPpb(r.p), cc: r.p == null ? "nil" : r.p < 0 ? "neg" : "pos" })) });
+  if (!out.length) out.push({ title: "Standby", sub: "", wait: "Next match coming up" });
+  return out;
+}
+function sbFill(slide) {
+  const body = el("sb-body");
+  el("sb-title").textContent = slide.title;
+  el("sb-sub").textContent = slide.sub || "";
+  body.textContent = "";
+  if (slide.wait) { const w = document.createElement("div"); w.className = "sb-wait"; w.textContent = slide.wait; body.appendChild(w); return; }
+  slide.rows.slice(0, space.shape === "tall" ? 8 : 8).forEach(r => {
+    const row = document.createElement("div"); row.className = "sb-row";
+    const n = document.createElement("span"); n.className = "sb-n"; n.textContent = r.n; row.appendChild(n);
+    const a = document.createElement("span"); a.className = "sb-a";
+    if (r.win != null) {
+      const w = document.createElement("span"); w.className = "win"; w.textContent = r.win;
+      const d = document.createElement("span"); d.className = "def"; d.textContent = "def.";
+      const l = document.createElement("span"); l.className = "los"; l.textContent = r.los;
+      a.appendChild(w); a.appendChild(d); a.appendChild(l);
+    } else a.textContent = r.a;
+    row.appendChild(a);
+    const b = document.createElement("span"); b.className = "sb-b"; b.textContent = r.b || ""; row.appendChild(b);
+    const c = document.createElement("span"); c.className = "sb-c" + (r.cc ? " " + r.cc : ""); c.textContent = r.c || ""; row.appendChild(c);
+    body.appendChild(row);
+  });
+}
+async function sbLoop(tok) {
+  let i = 0;
+  while (tok === sbTok) {
+    const slide = sbSlides[i % sbSlides.length];
+    const body = el("sb-body");
+    body.classList.add("fade");
+    await sleepSafe(i === 0 ? 0 : 230);
+    if (tok !== sbTok) return;
+    sbFill(slide);
+    body.classList.remove("fade");
+    await sleepSafe(STANDBY_SECS * 1000);
+    i++;
+  }
+}
+function showStandby(state, isTest) {
+  const d = state.standby || {};
+  const sig = JSON.stringify(d);
+  if (sbOn && sig === sbSig) return;   // same data again: the cycle just keeps running
+  sbSig = sig;
+  sbSlides = sbSlidesFrom(d);
+  if (sbOn) return;                     // already showing: new data is used from the next slide on
+  sbOn = true; sbTest = !!isTest;
+  hideGfx();
+  const sh = SHAPES[space.shape], box = el("bd-standby");
+  box.style.width = sh.w + "px"; box.style.height = sh.h + "px";
+  box.classList.toggle("wide", space.shape !== "tall"); box.classList.toggle("tall", space.shape === "tall");
+  document.body.classList.add("sb-on");
+  box.classList.add("on");
+  sbLoop(++sbTok);
+}
+function hideStandby() {
+  if (!sbOn) return;
+  sbOn = false; sbTest = false; sbSig = ""; sbTok++; sbTestTok++;
+  el("bd-standby").classList.remove("on");
+  document.body.classList.remove("sb-on");
+}
+// Test fire for the Settings panel: plays the panel with sample data for 32 seconds (three slides), unless real standby data arrives.
+function standbyDemo() {
+  return { standby: { round: 3,
+    standings: [["Leaf", 3, 0, 1.4], ["Danny", 2, 1, 0.8], ["Player 9", 2, 1, 0.25], ["Sam", 2, 1, -0.1], ["Alex", 1, 2, 0.5], ["Jordan", 1, 2, -0.4], ["Riley", 0, 3, -0.9], ["Casey", 0, 3, null]].map(x => ({ n: x[0], w: x[1], l: x[2], p: x[3] })),
+    results: [["Leaf", "Riley", "2-0"], ["Danny", "Casey", "2-1"], ["Player 9", "Alex", "2-1"], ["Sam", "Jordan", "2-0"]].map(x => ({ w: x[0], l: x[1], sc: x[2] })),
+    combos: [["Shark Scale 3-60 Narrow", 7, 0.8], ["Dran Sword 3-60 F", 6, 0.35], ["Wizard Rod 5-70 DB", 5, -0.2], ["Hells Scythe 4-60 T", 4, 1.1], ["Phoenix Wing 9-60 GP", 3, null], ["Cobalt Dragoon 2-60 Elevate", 3, 0.1]].map(x => ({ c: x[0], n: x[1], p: x[2], b: 4 })) } };
+}
+function fireStandbyTest() {
+  if (!SPACE) return;
+  hideStandby();
+  showStandby(standbyDemo(), true);
+  const t = ++sbTestTok;
+  sleepSafe(32000).then(() => { if (t === sbTestTok && sbTest) { hideStandby(); renderState(lastState, lastState); } });
 }
 
 let gfxTesting = false;   // a test fire from the Settings panel must survive "no match data" refreshes
@@ -2077,6 +2202,9 @@ function showBoardFlash(type, scorerIdx, p1Name, p2Name) {
 // ── RENDER STATE ──────────────────────────────────────────────────
 function renderState(state, prevState) {
   if (!state && SPACE && EDIT_MODE) state = DEMO_STATE;   // edit mode with no real match: show a demo so there is something to look at
+  // FLAG 1030: standby panel (between rounds) takes over the whole space; any ordinary state ends it (a test fire is left alone).
+  if (SPACE && ff(1030) && ff(1021) && state && state.standby && typeof state.standby === "object") { showStandby(state); return; }
+  if (sbOn && !sbTest) hideStandby();
   if (!state) {
     scoreboard.style.display = "none";
     offlineMsg.classList.add("visible");
@@ -2445,7 +2573,7 @@ const DB_WORKER = "https://ncblast-db.danny61734.workers.dev";
 let lastTestAt = 0, localFireAt = 0;   // time (Worker clock) of the last test fire this page has played, so each is played once
 // Demo graphics for the Settings panel's Test fire buttons (they also play in OBS: see loadRemoteCfg).
 const TEST_KINDS = [["records", "Records"], ["finalBattle", "Final Battle"], ["setPoint", "Set Point"], ["matchPoint", "Match Point"], ["pending", "Matches Pending"],
-  ["winner", "Winner"], ["upset", "Upset Alert"], ["playing", "Currently Playing"], ["matchup", "Matchup Stats"]];
+  ["winner", "Winner"], ["upset", "Upset Alert"], ["playing", "Currently Playing"], ["matchup", "Matchup Stats"], ["standby", "Standby Slides"]];
 function demoGraphic(kind) {
   const head = "Swiss Round 1";
   switch (kind) {
@@ -2505,6 +2633,7 @@ let testIdx = 1;   // which player "wins" the test fire; flips every time, so Dy
 async function fireTest(kind) {
   if (kind === "resetMemory") { resetPoolMemory(); return; }
   if (kind === "reviewOff") { hideGfx(); return; }   // review mode: the held graphic slides back
+  if (kind === "standby") { if (ff(1030)) fireStandbyTest(); return; }   // flag 1030: the standby panel with sample data
   // "reviewUpset" etc.: review mode. No finish text, and the graphic stays up until it is cleared or replaced.
   const review = /^review[A-Z]/.test(kind);
   if (review) kind = kind.charAt(6).toLowerCase() + kind.slice(7);
