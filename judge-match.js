@@ -190,9 +190,30 @@ function standbyNeedsAsk({ queueIds, pairings, round, currentMatchId }) {
     return "none";
   }
 }
+// FLAG 1030: the standings slide, copied from Challonge's own standings table (database Worker /standings -> { groups: [ { name, rows: [ { r, n, rec, d } ] } ] }).
+// Shows the group that the two players of the match just finished belong to (the first group when they are not found).
+// Each row: r = Challonge's rank, n = name, d = Pts Diff (Challonge's number), p = PPB from this event's battles (supplementary; null when unknown).
+// PPB = points won minus points lost, per battle (stats.players from /event-stats). Returns { group, rows } with at most 8 rows.
+function standbyStandingsFrom(groups, names, stats) {
+  const out = { group: "", rows: [] };
+  try {
+    if (!Array.isArray(groups) || !groups.length) return out;
+    const want = (Array.isArray(names) ? names : []).map(x => String(x || "").trim().toLowerCase()).filter(Boolean);
+    const found = groups.find(g => g && Array.isArray(g.rows) && g.rows.some(r => want.indexOf(String(r.n || "").trim().toLowerCase()) !== -1));
+    const g = found || groups.find(x => x && Array.isArray(x.rows) && x.rows.length);
+    if (!g) return out;
+    const ps = stats && stats.players || {};
+    out.group = String(g.name || "");
+    out.rows = g.rows.slice(0, 8).map(r => {
+      const e = ps[String(r.n || "").trim().toLowerCase()];
+      return { r: r.r, n: String(r.n || ""), d: typeof r.d === "number" ? r.d : null, p: e && e.n > 0 ? Math.round((e.pf - e.pa) / e.n * 100) / 100 : null };
+    });
+  } catch (e) {}
+  return out;
+}
 // FLAG 1030: everything the three standby slides show, worked out from data the app already has.
 //   pairings = the bracket's match list; stats = /event-stats answer { players, combos }; decks = /deck-log decks.
-//   standings: match wins and losses of every player with a finished match, best first (wins, then PPB = points won minus lost per battle).
+//   standings: NOT worked out here. They are Challonge's own table (see standbyStandingsFrom), so rank and tie-breaks are always Challonge's.
 //   results:   finished matches of the round, newest first, winner first with the set score ("2-1").
 //   combos:    combos in decks, counted once per locked deck (not per battle), with the event's PPB for that combo.
 // Each list holds at most 8 entries. Never throws; a list that cannot be built is empty (the overlay skips an empty slide).
@@ -201,14 +222,12 @@ function standbyDataFrom(pairings, round, stats, decks) {
   try {
     const r = Number(round);
     if (Number.isFinite(r) && r > 0) out.round = r;
-    const playerStats = stats && stats.players || {};
     const comboStats = stats && stats.combos || {};
     const ppbOf = (map, key) => {
       const e = map[String(key || "").trim().toLowerCase()];
       return e && e.n > 0 ? Math.round((e.pf - e.pa) / e.n * 100) / 100 : null;
     };
     const done = (Array.isArray(pairings) ? pairings : []).filter(m => m && m.state === "complete" && m.winner_id != null && m.winner_id !== "");
-    const rec = {};
     const sides = m => {
       const p1Won = String(m.winner_id) === String(m.player1_id);
       const p2Won = !p1Won && String(m.winner_id) === String(m.player2_id);
@@ -217,15 +236,6 @@ function standbyDataFrom(pairings, round, stats, decks) {
       if (!w || !l) return null;
       return { w: String(w), l: String(l), p1Won };
     };
-    done.forEach(m => {
-      const sd = sides(m);
-      if (!sd) return;
-      const a = rec[sd.w.toLowerCase()] || (rec[sd.w.toLowerCase()] = { n: sd.w, w: 0, l: 0 });
-      const b = rec[sd.l.toLowerCase()] || (rec[sd.l.toLowerCase()] = { n: sd.l, w: 0, l: 0 });
-      a.w++;
-      b.l++;
-    });
-    out.standings = Object.keys(rec).map(k => ({ n: rec[k].n, w: rec[k].w, l: rec[k].l, p: ppbOf(playerStats, k) })).sort((a, b) => b.w - a.w || a.l - b.l || (b.p == null ? -99 : b.p) - (a.p == null ? -99 : a.p) || a.n.localeCompare(b.n)).slice(0, 8);
     let resRound = out.round;
     if (resRound == null) done.forEach(m => { if (Number(m.round) > (resRound || 0)) resRound = Number(m.round); });
     out.results = done.filter(m => resRound == null || Number(m.round) === resRound).sort((a, b) => Number(b.id) - Number(a.id)).map(m => {
@@ -1487,15 +1497,18 @@ function MatchScreen({
         }
       };
       const DB = "https://ncblast-db.danny61734.workers.dev";
-      const [pr, st, dk] = await Promise.all([
+      const [pr, st, dk, sd] = await Promise.all([
         get(`${OVERLAY_WORKER}/pairings?slug=${encodeURIComponent(ctx.slug)}`),
         ctx.tName ? get(DB + "/event-stats?tournament=" + encodeURIComponent(ctx.tName)) : null,
-        get(DB + "/deck-log?slug=" + encodeURIComponent(ctx.slug))
+        get(DB + "/deck-log?slug=" + encodeURIComponent(ctx.slug)),
+        get(DB + "/standings?slug=" + encodeURIComponent(ctx.slug))
       ]);
       if (!standbyRef.current) return;
       const standbyData = standbyDataFrom(pr && pr.pairings, ctx.round, st, dk && dk.decks);
-      // Standings are not sent for now: they must come from Challonge itself, not from our own win/loss count (the slide is skipped when empty).
-      standbyData.standings = [];
+      // Standings are Challonge's own table (read once a minute and shared by the database Worker), never our own count.
+      const standing = standbyStandingsFrom(sd && sd.groups, ctx.names, st);
+      standbyData.standings = standing.rows;
+      standbyData.group = standing.group;
       const state = { standby: standbyData, sentAt: Date.now(), slug: ctx.slug, tournamentName: ctx.tName || "", judge: ctx.judge || "", p1: "", p2: "" };
       if (ff(1025)) {
         fetch(DB + "/overlay-live?slot=" + ctx.slot, {
@@ -1512,7 +1525,7 @@ function MatchScreen({
     } catch (_) {}
   };
   const goStandby = () => {
-    const ctx = { slug: challongeSlug, tName: config.tournamentName || "", slot: overlaySlot, judge: judge || "", round: challongeRound ?? null };
+    const ctx = { slug: challongeSlug, tName: config.tournamentName || "", slot: overlaySlot, judge: judge || "", round: challongeRound ?? null, names: [p1, p2] };
     standbyCtxRef.current = ctx;
     standbyRef.current = true;
     setStandbyActive(true);

@@ -214,7 +214,7 @@ window.FEATURE_FLAG_INFO = {
   },
   1030: {
     name: "Standby slides between rounds (judge + overlay)",
-    desc: "When a judge finishes their station's last match and taps New Match, the app asks 'Are there no more matches at this stadium?' (skipped when no matches are left anywhere in the round). Yes puts that stream channel into standby: the scoreboard is replaced by one larger panel that cycles, every 10 seconds, through the standings, the round's match results and the event's most used combos (counted once per deck per round, with their PPB). A new match starts the scoreboard again. Needs the new /deck-log and /event-stats routes in the database Worker; without them the combos slide is simply skipped.",
+    desc: "When a judge finishes their station's last match and taps New Match, the app asks 'Are there no more matches at this stadium?' (skipped when no matches are left anywhere in the round). Yes puts that stream channel into standby: the scoreboard is replaced by one larger panel that cycles, every 10 seconds, through the standings (read from Challonge's own standings page, never calculated by us), the round's match results and the event's most used combos (counted once per deck per round, with their PPB). A new match starts the scoreboard again. Needs the new /deck-log, /event-stats and /standings routes in the database Worker; without them that slide is simply skipped.",
     off: "Old behaviour: the stream keeps showing the last finished match until the next one starts."
   }
 };

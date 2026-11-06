@@ -1057,7 +1057,8 @@ function sbSlidesFrom(d) {
   const out = [];
   const rd = d && d.round ? d.round : null;
   const list = x => (d && Array.isArray(d[x]) ? d[x] : []);
-  if (list("standings").length) out.push({ title: "Standings", sub: rd ? "After round " + rd : "", rows: list("standings").map((r, i) => ({ n: String(i + 1), a: r.n, b: r.w + "-" + r.l, c: r.p == null ? "\u2014" : "PPB " + sbPpb(r.p), cc: r.p == null ? "nil" : r.p < 0 ? "neg" : "pos" })) });
+  // Standings are Challonge's own table: r = its rank, d = its Pts Diff. PPB is a supplementary stat from this event's battles.
+  if (list("standings").length) out.push({ title: "Standings", sub: d.group ? String(d.group) : (rd ? "After round " + rd : ""), rows: list("standings").map((r, i) => ({ n: String(r.r != null ? r.r : i + 1), a: r.n, b: r.d == null ? "" : "Diff " + (r.d > 0 ? "+" : r.d < 0 ? "\u2212" : "") + Math.abs(r.d), c: r.p == null ? "" : "PPB " + sbPpb(r.p), cc: r.p == null ? "nil" : r.p < 0 ? "neg" : "pos" })) });
   if (list("results").length) out.push({ title: rd ? "Round " + rd + " results" : "Match results", sub: "", rows: list("results").map(r => ({ n: "", win: r.w, los: r.l, b: r.sc || "", c: "" })) });
   if (list("combos").length) out.push({ title: "Most used combos", sub: "Decks this event", rows: list("combos").map((r, i) => ({ n: String(i + 1), a: r.c, b: r.n + (r.n === 1 ? " deck" : " decks"), c: r.p == null ? "\u2014" : "PPB " + sbPpb(r.p), cc: r.p == null ? "nil" : r.p < 0 ? "neg" : "pos" })) });
   if (!out.length) out.push({ title: "Standby", sub: "", wait: "Next match coming up" });
@@ -1124,7 +1125,8 @@ function hideStandby() {
 // Test fire for the Settings panel: plays the panel with sample data for 32 seconds (three slides), unless real standby data arrives.
 function standbyDemo() {
   return { standby: { round: 3,
-    standings: [["Leaf", 3, 0, 1.4], ["Danny", 2, 1, 0.8], ["Player 9", 2, 1, 0.25], ["Sam", 2, 1, -0.1], ["Alex", 1, 2, 0.5], ["Jordan", 1, 2, -0.4], ["Riley", 0, 3, -0.9], ["Casey", 0, 3, null]].map(x => ({ n: x[0], w: x[1], l: x[2], p: x[3] })),
+    group: "Group A",
+    standings: [["Leaf", 15, 1.4], ["Danny", 10, 0.8], ["Player 9", 9, 0.25], ["Sam", 4, -0.1], ["Alex", 0, 0.5], ["Jordan", -3, -0.4], ["Riley", -8, -0.9], ["Casey", -12, null]].map((x, i) => ({ r: i + 1, n: x[0], d: x[1], p: x[2] })),
     results: [["Leaf", "Riley", "2-0"], ["Danny", "Casey", "2-1"], ["Player 9", "Alex", "2-1"], ["Sam", "Jordan", "2-0"]].map(x => ({ w: x[0], l: x[1], sc: x[2] })),
     combos: [["Shark Scale 3-60 Narrow", 7, 0.8], ["Dran Sword 3-60 F", 6, 0.35], ["Wizard Rod 5-70 DB", 5, -0.2], ["Hells Scythe 4-60 T", 4, 1.1], ["Phoenix Wing 9-60 GP", 3, null], ["Cobalt Dragoon 2-60 Elevate", 3, 0.1]].map(x => ({ c: x[0], n: x[1], p: x[2], b: 4 })) } };
 }

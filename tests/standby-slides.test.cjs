@@ -10,7 +10,7 @@ function slice(src, start, endMarker) {
   const j = src.indexOf(endMarker, i); assert(j > i, "end not found: " + endMarker);
   return src.slice(i, j);
 }
-const H = new Function(slice(app, "function setScoreText(", "function stadiumLetterFor(") + slice(app, "function standbyNeedsAsk(", "function MatchScreen(") + "; return { standbyNeedsAsk, standbyDataFrom };")();
+const H = new Function(slice(app, "function setScoreText(", "function stadiumLetterFor(") + slice(app, "function standbyNeedsAsk(", "function MatchScreen(") + "; return { standbyNeedsAsk, standbyDataFrom, standbyStandingsFrom };")();
 const OV = new Function("el", "space", "SHAPES", slice(overlay, "function sbPpb(", "async function sbLoop(") + "; return { sbSlidesFrom, sbPpb };")(() => ({}), { shape: "wide" }, {});
 
 let n = 0; const test = (name, fn) => { fn(); n++; console.log("  ok  " + name); };
@@ -60,19 +60,40 @@ const decks = [
 ];
 const data = H.standbyDataFrom(pairs, 2, stats, decks);
 
-test("standings: wins first, then fewer losses, then PPB; PPB is points won minus lost per battle", () => {
-  assert.deepStrictEqual(data.standings.map(r => r.n + " " + r.w + "-" + r.l), ["Leaf 2-0", "Sam 1-1", "Danny 1-1", "Alex 0-2"]);
-  assert.strictEqual(data.standings[0].p, 2.33);
-  assert.strictEqual(data.standings[2].p, -0.25);   // Danny: 12 won, 14 lost over 8 battles; Sam's -0.22 puts him one place higher
+const table = [
+  { name: "Group A", rows: [{ r: 1, n: "Leaf", rec: "2-0-0", d: 15 }, { r: 2, n: "Danny", rec: "1-1-0", d: -2 }, { r: 3, n: "Sam", rec: "1-1-0", d: -4 }, { r: 4, n: "Alex", rec: "0-2-0", d: -9 }] },
+  { name: "Group B", rows: [{ r: 1, n: "Riley", rec: "1-0-0", d: 3 }, { r: 2, n: "Casey", rec: "0-1-0", d: null }] }
+];
+test("standings: Challonge's own rank, name and Pts Diff are copied as they are (nothing recalculated)", () => {
+  const st = H.standbyStandingsFrom(table, ["Danny", "Sam"], stats);
+  assert.strictEqual(st.group, "Group A");
+  assert.deepStrictEqual(st.rows.map(r => r.r + " " + r.n + " " + r.d), ["1 Leaf 15", "2 Danny -2", "3 Sam -4", "4 Alex -9"]);
 });
-test("standings: a tie on wins and losses is split by PPB (higher first)", () => {
-  const d = H.standbyDataFrom(pairs, 2, { players: { danny: { n: 8, pf: 12, pa: 14 }, sam: { n: 9, pf: 18, pa: 16 } } }, []);
-  assert.deepStrictEqual(d.standings.map(r => r.n).slice(1, 3), ["Sam", "Danny"]);
+test("standings: shows the group of the match just finished", () => {
+  const st = H.standbyStandingsFrom(table, ["casey", "RILEY"], null);
+  assert.strictEqual(st.group, "Group B");
+  assert.deepStrictEqual(st.rows.map(r => r.n), ["Riley", "Casey"]);
+  assert.strictEqual(st.rows[1].d, null);
 });
-test("standings: no stats yet -> still listed, PPB empty", () => {
-  const d = H.standbyDataFrom(pairs, 2, null, []);
-  assert.strictEqual(d.standings[0].p, null);
-  assert.strictEqual(d.standings.length, 4);
+test("standings: PPB is supplementary, from this event's battles (points won minus lost per battle); empty when unknown", () => {
+  const st = H.standbyStandingsFrom(table, ["Leaf"], stats);
+  assert.strictEqual(st.rows[0].p, 2.33);
+  assert.strictEqual(st.rows[1].p, -0.25);
+  assert.strictEqual(st.rows[3].p, -0.75);
+  assert.strictEqual(H.standbyStandingsFrom(table, ["Leaf"], null).rows[0].p, null);
+});
+test("standings: players not found in any group -> first group; bad or empty data -> nothing, never throws", () => {
+  assert.strictEqual(H.standbyStandingsFrom(table, ["Nobody"], null).group, "Group A");
+  assert.deepStrictEqual(H.standbyStandingsFrom(null, ["Leaf"], null), { group: "", rows: [] });
+  assert.deepStrictEqual(H.standbyStandingsFrom([], [], null), { group: "", rows: [] });
+  assert.doesNotThrow(() => H.standbyStandingsFrom([null, { rows: null }], ["x"], {}));
+});
+test("standings: at most 8 rows", () => {
+  const big = [{ name: "G", rows: Array.from({ length: 12 }, (_, i) => ({ r: i + 1, n: "P" + i, d: 0 })) }];
+  assert.strictEqual(H.standbyStandingsFrom(big, [], null).rows.length, 8);
+});
+test("standings are never worked out from the bracket by our own code", () => {
+  assert.deepStrictEqual(H.standbyDataFrom(pairs, 2, stats, decks).standings, []);
 });
 test("results: this round's finished matches, newest first, winner first with the set score", () => {
   assert.deepStrictEqual(data.results, [{ w: "Danny", l: "Alex", sc: "2-1" }, { w: "Leaf", l: "Sam", sc: "2-0" }]);
@@ -101,15 +122,15 @@ test("lists hold at most 8 entries and bad input never throws", () => {
 });
 
 test("overlay slides: standings, results, combos in order; empty lists are skipped", () => {
-  const s = OV.sbSlidesFrom(data);
+  const withStandings = { ...data, group: "Group A", standings: H.standbyStandingsFrom(table, ["Danny"], stats).rows };
+  const s = OV.sbSlidesFrom(withStandings);
   assert.deepStrictEqual(s.map(x => x.title), ["Standings", "Round 2 results", "Most used combos"]);
-  assert.strictEqual(s[0].rows[0].b, "2-0");
-  assert.strictEqual(s[0].rows[0].c, "PPB +2.33");
+  assert.strictEqual(s[0].sub, "Group A");
+  assert.deepStrictEqual([s[0].rows[0].n, s[0].rows[0].a, s[0].rows[0].b, s[0].rows[0].c], ["1", "Leaf", "Diff +15", "PPB +2.33"]);
+  assert.strictEqual(s[0].rows[1].b, "Diff \u22122");
   assert.strictEqual(s[2].rows[0].b, "3 decks");
-  assert.strictEqual(s[2].rows[2].c, "—");
-  const noCombos = OV.sbSlidesFrom({ round: 2, standings: data.standings, results: [], combos: [] });
-  assert.deepStrictEqual(noCombos.map(x => x.title), ["Standings"]);
-  assert.strictEqual(OV.sbSlidesFrom({}).length, 1);
+  assert.strictEqual(s[2].rows[2].c, "\u2014");
+  assert.deepStrictEqual(OV.sbSlidesFrom(data).map(x => x.title), ["Round 2 results", "Most used combos"]);
   assert.strictEqual(OV.sbSlidesFrom({})[0].wait, "Next match coming up");
 });
 test("overlay: PPB is written with a sign (minus sign for negatives)", () => {
