@@ -284,8 +284,13 @@ function MatchScreen({
   challongeSlug,
   challongeParticipants,
   onParticipantsRefresh,
-  eventRanked = true
+  eventRanked = true,
+  eventFast = false
 }) {
+  // Fast Blast (flag 1031): only the blade counts as a finished combo, and combos print as just the blade.
+  // For normal events these are the same functions as before.
+  const comboReady = eventFast ? comboReadyBladeOnly : comboReadyStandard;
+  const comboStr = eventFast ? comboStrBladeOnly : comboStrStandard;
   // Resume snapshot — if a match was mid-flight (past the initial player pick) when the
   // page refreshed, restore it. Computed once on mount; sessionStorage clears itself when
   // the tab actually closes, so there's no risk of resuming something stale days later.
@@ -1387,6 +1392,7 @@ function MatchScreen({
   // The Worker merges per-player so parallel calls from different stations don't race.
   const pushDeckToRegistry = (d1override, d2override) => {
     if (!challongeSlug) return;
+    if (eventFast) return; // Fast Blast: blade-only decks are not worth sharing between judges
     const deck1 = d1override || d1;
     const deck2 = d2override || d2;
     // Use refs instead of state so this always gets the current player names,
@@ -2324,7 +2330,9 @@ function MatchScreen({
       // Blade → skip ratchet for NO_RATCHET blades, otherwise go to ratchet
       // Ratchet → skip bit for NO_BIT ratchets (they have a built-in bit), otherwise go to bit
       let nextCat;
-      if (cat === "blade" && NO_RATCHET_BLADES.includes(name)) {
+      if (eventFast && cat === "blade") {
+        nextCat = null; // Fast Blast: the blade is the whole combo, move on to the next one
+      } else if (cat === "blade" && NO_RATCHET_BLADES.includes(name)) {
         nextCat = "bit";
       } else if (cat === "ratchet" && NO_BIT_RATCHETS.includes(name)) {
         nextCat = null; // combo is complete — fall through to slot/player advance below
@@ -2366,7 +2374,7 @@ function MatchScreen({
       setPicker(null);
       setDeckReview(true);
     }
-  }, [openPicker]);
+  }, [openPicker, eventFast]);
   const makeHandoffToken = () => {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
     let t = "";
@@ -3567,8 +3575,8 @@ function MatchScreen({
       bit: "Bit"
     };
     // Progress: 0-5 for P1 combos, 6-11 for P2
-    const stepNum = (who === 1 ? 0 : 9) + slot * 3 + ["blade", "ratchet", "bit"].indexOf(cat);
-    const totalSteps = 18;
+    const stepNum = eventFast ? (who === 1 ? 0 : 3) + slot : (who === 1 ? 0 : 9) + slot * 3 + ["blade", "ratchet", "bit"].indexOf(cat);
+    const totalSteps = eventFast ? 6 : 18;
     const pct = Math.round(stepNum / totalSteps * 100);
 
     // Ratchet and bit pickers use a viewport-filling fixed layout
@@ -4028,7 +4036,7 @@ function MatchScreen({
           return n;
         });
         // Push empty array to the tournament registry to clear this player's entry
-        if (challongeSlug) pushCombosForTournament(challongeSlug, playerName, []);
+        if (challongeSlug && !eventFast) pushCombosForTournament(challongeSlug, playerName, []);
       };
       return /*#__PURE__*/React.createElement("div", {
         style: {
@@ -5671,7 +5679,7 @@ function MatchScreen({
             setPhase("deck");
           }
         }
-      }, deckLoadingCombos ? "Loading\u2026" : eventRanked ? "Build Decks \u2192" : "Start Match \u2192")));
+      }, deckLoadingCombos ? "Loading\u2026" : eventRanked ? (eventFast ? "Pick Blades \u2192" : "Build Decks \u2192") : "Start Match \u2192")));
     })(), pickTab === "active" && !(challongeSlug || "").startsWith("wcb-") && (() => {
       // canProceed: match selected only (judge is handled by sharedJudgePicker per match)
       const activeCanProceed = challongeMatchId && p1 && p2;
@@ -5932,7 +5940,7 @@ function MatchScreen({
             setPhase("deck");
           }
         }
-      }, deckLoadingCombos ? "Loading\u2026" : eventRanked ? "Build Decks \u2192" : "Start Match \u2192")));
+      }, deckLoadingCombos ? "Loading\u2026" : eventRanked ? (eventFast ? "Pick Blades \u2192" : "Build Decks \u2192") : "Start Match \u2192")));
     })(), pickTab === "station" && (() => {
       // ── Station Matches tab ─────────────────────────────────────────────
       // Shows the matches queued for this judge's assigned stadium, in the
@@ -6111,7 +6119,7 @@ function MatchScreen({
           },
           disabled: deckLoadingCombos,
           style: { ...S.pri, opacity: deckLoadingCombos ? 0.4 : 1 }
-        }, deckLoadingCombos ? "Loading\u2026" : eventRanked ? "Build Decks \u2192" : "Start Match \u2192")
+        }, deckLoadingCombos ? "Loading\u2026" : eventRanked ? (eventFast ? "Pick Blades \u2192" : "Build Decks \u2192") : "Start Match \u2192")
       );
     })(), pickTab === "roster" && /*#__PURE__*/React.createElement("button", {
       style: {
@@ -6140,7 +6148,7 @@ function MatchScreen({
           setPhase("deck");
         }
       }
-    }, deckLoadingCombos ? "Loading\u2026" : eventRanked ? "Build Decks \u2192" : "Start Match \u2192"), pickTab === "roster" && config.tm && playersSelected && !judge.trim() && /*#__PURE__*/React.createElement("p", {
+    }, deckLoadingCombos ? "Loading\u2026" : eventRanked ? (eventFast ? "Pick Blades \u2192" : "Build Decks \u2192") : "Start Match \u2192"), pickTab === "roster" && config.tm && playersSelected && !judge.trim() && /*#__PURE__*/React.createElement("p", {
       style: {
         ...S.hint,
         color: "#D97706"
@@ -6187,7 +6195,7 @@ function MatchScreen({
       onClick: goBack
     }, IC.back, " Back"), /*#__PURE__*/React.createElement("h1", {
       style: S.title
-    }, "Deck Review"), /*#__PURE__*/React.createElement("p", {
+    }, eventFast ? "Blade Review" : "Deck Review"), /*#__PURE__*/React.createElement("p", {
       style: S.sub
     }, "Tap any part to change it"), [{
       who: 1,
@@ -6283,7 +6291,7 @@ function MatchScreen({
           display: "flex",
           gap: 6
         }
-      }, ["blade", "ratchet", "bit"].map(cat => {
+      }, (eventFast ? ["blade"] : ["blade", "ratchet", "bit"]).map(cat => {
         const cc = {
           blade: "#EA580C",
           ratchet: "#1D4ED8",

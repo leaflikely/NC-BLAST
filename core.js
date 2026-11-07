@@ -1950,6 +1950,12 @@ const comboReady = c => {
   if (NO_BIT_RATCHETS.includes(c.ratchet)) return true;
   return !!c.bit;
 };
+// Fast Blast (flag 1031): only the blade of a combo is recorded. The judge screen swaps these in
+// for comboReady / comboStr when the event is Fast Blast; normal events keep using the full versions.
+const comboReadyStandard = comboReady;
+const comboStrStandard = comboStr;
+const comboReadyBladeOnly = c => !!c?.blade;
+const comboStrBladeOnly = c => c?.blade ? c.blade : "\u2014";
 // Normalize a combo loaded from storage: replace dashes in bit names with spaces
 // Ratchets like "1-60" are intentionally excluded (they contain only digits around the dash)
 const normalizeBit = bit => bit ? bit.replace(/-(?![0-9])/g, " ") : bit;
