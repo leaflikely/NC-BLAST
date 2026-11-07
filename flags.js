@@ -63,6 +63,7 @@ window.FEATURE_FLAGS = new Set([
   1028, // Overlay deck order graphic: when the judge locks the deck order (Start Match on the Set Deck Order screen), the overlay shows both players' three combos in order until the first battle is scored. Needs flag 1021.
   1030, // Standby slides on the stream between rounds: after a judge's last match at a stadium, the overlay shows standings, round results and the event's most used combos (needs 1021 and the /deck-log + /event-stats routes in the database Worker; the question 'no more matches here?' appears on the judge's New Match button).
   1029, // Upset Alert last line: "Wins 2-1 on Stadium B" (or "judged by <name>"). The judge app saves who judged each result and their stadium (needs the /match-notes block pasted into the database Worker).
+  1031, // Fast Blast event mode: the org can switch Fast Blast on when creating an event (blade-only combos, no deck building). This flag covers the toggle on the name screen and the Fast Blast badge on the event list. Turn it off to hide both.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -216,5 +217,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Standby slides between rounds (judge + overlay)",
     desc: "When a judge finishes their station's last match and taps New Match, the app asks 'Are there no more matches at this stadium?' (skipped when no matches are left anywhere in the round). Yes puts that stream channel into standby: the scoreboard is replaced by one larger panel that cycles, every 10 seconds, through the standings (read from Challonge's own standings page, never calculated by us), the round's match results and the event's most used combos (counted once per deck per round, with their PPB). A new match starts the scoreboard again. Needs the new /deck-log, /event-stats and /standings routes in the database Worker; without them that slide is simply skipped.",
     off: "Old behaviour: the stream keeps showing the last finished match until the next one starts."
+  },
+  1031: {
+    name: "Fast Blast event mode (organizer + judge)",
+    desc: "The organizer can switch Fast Blast on when creating an event. Fast Blast events are the quick format: judges pick just the blade for each combo instead of building full decks. This flag shows the Fast Blast switch on the Name This Tournament screen and the Fast Blast label on the event list.",
+    off: "Old behaviour: no Fast Blast switch, every event is created as a normal event."
   }
 };

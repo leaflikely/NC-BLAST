@@ -4817,6 +4817,7 @@ function OrgTournamentSelect({
   const [wcbStep, setWcbStep] = useState(null); // null | "confirm" | "adding"
   const [wcbPendingId, setWcbPendingId] = useState(null);
   const [pendingRanked, setPendingRanked] = useState(true); // true = RANKED, false = UNRANKED
+  const [pendingFast, setPendingFast] = useState(false); // Fast Blast switch on the name screen (flag 1031)
   const [pendingSlug, setPendingSlug] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // slug | null
   const [deleting, setDeleting] = useState(false);
@@ -4871,6 +4872,7 @@ function OrgTournamentSelect({
     }
     setPendingSlug(slug);
     setDisplayName("");
+    setPendingFast(false);
     setAddStep("name");
   };
   const handleConfirmName = () => {
@@ -4900,10 +4902,32 @@ function OrgTournamentSelect({
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      // Fast Blast (flag 1031): the add route above always creates a normal event; this second call
+      // switches it to Fast Blast. If the event already existed as Fast Blast and the switch is off,
+      // it is switched back. Normal events make no extra call.
+      if (ff(1031)) {
+        const wasFast = (cachedList.find(t => t.slug === pendingSlug) || {}).fast === true;
+        if (pendingFast || wasFast) {
+          const fres = await fetch(`${OVERLAY_WORKER}/org/tournament/set-fast`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              slug: pendingSlug,
+              fast: !!pendingFast,
+              token,
+              username: sessionStorage.getItem("ncblast-auth-user") || ""
+            }),
+            signal: AbortSignal.timeout(15000)
+          });
+          const fdata = await fres.json().catch(() => ({}));
+          if (!fres.ok || !fdata.ok) throw new Error("the Fast Blast setting was not saved (" + (fdata.error || `HTTP ${fres.status}`) + "). Tap Add Tournament to try again.");
+        }
+      }
       setAddStep(null);
       setLinkInput("");
       setPendingSlug(null);
       setDisplayName("");
+      setPendingFast(false);
       await refreshList();
       onSelect(pendingSlug, name);
     } catch (e) {
@@ -5507,7 +5531,53 @@ function OrgTournamentSelect({
         marginBottom: 8,
         boxSizing: "border-box"
       }
-    }), linkError && /*#__PURE__*/React.createElement("p", {
+    }), ff(1031) && /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => setPendingFast(f => !f),
+      disabled: addStep === "adding",
+      role: "switch",
+      "aria-checked": pendingFast,
+      style: {
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: `2px solid ${pendingFast ? "#EA580C" : "var(--border2)"}`,
+        background: pendingFast ? "#EA580C14" : "var(--surface2)",
+        textAlign: "left",
+        fontFamily: "'Outfit',sans-serif",
+        cursor: addStep === "adding" ? "not-allowed" : "pointer",
+        marginBottom: 12,
+        boxSizing: "border-box"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        position: "relative",
+        flexShrink: 0,
+        width: 40,
+        height: 22,
+        borderRadius: 11,
+        background: pendingFast ? "#EA580C" : "var(--surface3)",
+        transition: "background 0.15s"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        position: "absolute",
+        top: 2,
+        left: pendingFast ? 20 : 2,
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        background: "#fff",
+        transition: "left 0.15s"
+      }
+    })), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
+      style: { display: "block", fontSize: 13, fontWeight: 800, color: "var(--text-primary)" }
+    }, "Fast Blast"), /*#__PURE__*/React.createElement("span", {
+      style: { display: "block", fontSize: 11, color: "var(--text-muted)", lineHeight: 1.4, marginTop: 2 }
+    }, "Quick mode: judges pick just the blade for each combo. No deck building."))), linkError && /*#__PURE__*/React.createElement("p", {
       style: { fontSize: 11, color: "#EF4444", marginBottom: 8 }
     }, linkError), /*#__PURE__*/React.createElement("button", {
       onClick: handleConfirmName,

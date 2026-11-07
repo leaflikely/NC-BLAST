@@ -994,7 +994,8 @@ function CachedEventPicker({
   challongeSlug,
   onChallongeImport,
   onJudgeVerified,
-  onRankedChange
+  onRankedChange,
+  onFastChange
 }) {
   const [cachedList, setCachedList] = useState(null);
   const [selectedSlug, setSelectedSlug] = useState(null);
@@ -1181,6 +1182,7 @@ function CachedEventPicker({
     setSelectedSlug(t.slug);
     setSelectedName(t.name || t.slug);
     if (onRankedChange) onRankedChange(t.ranked !== false); // false only when org explicitly marked UNRANKED
+    if (onFastChange) onFastChange(ff(1031) && t.fast === true); // Fast Blast event (flag 1031)
     setAuthError(null);
     setDeviceMode(null);
     resetDuoState();
@@ -2320,11 +2322,11 @@ function CachedEventPicker({
         fontWeight: 800,
         letterSpacing: 0.5,
         textTransform: "uppercase",
-        background: t.ranked !== false ? "#2563EB22" : "#64748B18",
-        color: t.ranked !== false ? "#2563EB" : "#64748B",
+        background: ff(1031) && t.fast === true ? "#EA580C22" : t.ranked !== false ? "#2563EB22" : "#64748B18",
+        color: ff(1031) && t.fast === true ? "#EA580C" : t.ranked !== false ? "#2563EB" : "#64748B",
         verticalAlign: "middle"
       }
-    }, t.ranked !== false ? "Ranked" : "Unranked"))), !config.tournamentName?.trim() && /*#__PURE__*/React.createElement("p", {
+    }, ff(1031) && t.fast === true ? "Fast Blast" : t.ranked !== false ? "Ranked" : "Unranked"))), !config.tournamentName?.trim() && /*#__PURE__*/React.createElement("p", {
     style: {
       ...S.hint,
       color: "#7C3AED",
@@ -2347,7 +2349,8 @@ function FormatScreen({
   challongeSlug,
   onChallongeImport,
   onJudgeVerified,
-  onRankedChange
+  onRankedChange,
+  onFastChange
 }) {
   const [showGuide, setShowGuide] = useState(false);
   const total = parts.blades.length + parts.ratchets.length + parts.bits.length;
@@ -2573,7 +2576,8 @@ function FormatScreen({
     challongeSlug: challongeSlug,
     onChallongeImport: onChallongeImport,
     onJudgeVerified: onJudgeVerified,
-    onRankedChange: onRankedChange
+    onRankedChange: onRankedChange,
+    onFastChange: onFastChange
   })), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
