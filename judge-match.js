@@ -8754,7 +8754,7 @@ function MatchScreen({
       marginBottom: 0,
       flexShrink: 0,
       fontSize: bf(12),
-      color: tmTop ? "#E9D5FF" : undefined
+      color: tmTop ? "#E9D5FF" : ff(1033) ? ncbPadTheme(dark).text2 : undefined
     },
     onClick: goBack
   }, IC.back), /*#__PURE__*/React.createElement("div", {
@@ -8841,7 +8841,9 @@ function MatchScreen({
       style: {
         ...btnBase,
         flex: "0 0 auto",
-        width: bp(30),
+        width: ff(1033) ? "auto" : bp(30),
+        minWidth: bp(30),
+        padding: ff(1033) ? "0 10px" : undefined,
         color: tmTop ? "#FCA5A5" : "var(--text-secondary)"
       }
     }, /*#__PURE__*/React.createElement("svg", {
