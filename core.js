@@ -1,4 +1,4 @@
-// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-11-03a | overlay-flip-key (new saved setting name for the stream overlay left/right flip) | previous: 2026-10-29a | quick-combos-update (new Top 10 quick combos, Glory Valkyrie Kick has no ratchet) | previous: 2026-10-22b split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
+// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-11-08a | staff-flag-defaults (flags the staff menu turned on/off for everyone are read here; cached copy used at load, fresh copy fetched in the background) | previous: 2026-11-03a | overlay-flip-key (new saved setting name for the stream overlay left/right flip) | previous: 2026-10-29a | quick-combos-update (new Top 10 quick combos, Glory Valkyrie Kick has no ratchet) | previous: 2026-10-22b split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
 const {
   useState,
   useEffect,
@@ -15,7 +15,7 @@ const {
    once here at load, so saving + reloading applies them. localStorage is never
    cached, unlike flags.js itself, so a reload always picks up the change.
 
-   Resolution order: device override -> flags.js default -> off.
+   Resolution order: staff "off" -> device override -> staff default -> flags.js default -> off.
    Anything missing or malformed falls through to off, i.e. the old code path.
 
    Note: hooks cannot be called conditionally, so for flagged changes that
@@ -46,16 +46,84 @@ function readFlagOverrides() {
 // flipping mid-session would break React (hook order) and confuse judges.
 const FLAG_OVERRIDES = readFlagOverrides();
 
+// ── Staff defaults (pushed from the staff menu) ─────────────────────
+// A small list { "1001": true|false } kept on the server (Worker route /flags).
+// This device keeps a copy in localStorage, so loading never waits on the network:
+// the copy saved last time is used now, and a fresh copy is fetched in the
+// background and used from the next reload. If the server has no such route, or
+// is unreachable, nothing changes: the shipped defaults in flags.js are used.
+// Overlay-only flags are never taken from here (they go out through flags.js).
+const STAFF_FLAGS_KEY = "ncblast-staff-flags-v1";
+const STAFF_FLAG_EXCLUDED = [1007, 1010, 1018, 1019, 1021, 1026];
+
+function cleanStaffFlags(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  Object.keys(raw).forEach(k => {
+    const n = Number(k);
+    if (!/^\d+$/.test(k) || STAFF_FLAG_EXCLUDED.indexOf(n) !== -1) return;
+    if (typeof raw[k] === "boolean") out[k] = raw[k];
+  });
+  return out;
+}
+
+function readStaffFlags() {
+  try {
+    const raw = localStorage.getItem(STAFF_FLAGS_KEY);
+    return cleanStaffFlags(raw ? JSON.parse(raw) : null);
+  } catch {
+    return {};
+  }
+}
+
+const STAFF_FLAGS = readStaffFlags();
+
+function saveStaffFlagsCache(map) {
+  try {
+    localStorage.setItem(STAFF_FLAGS_KEY, JSON.stringify(cleanStaffFlags(map)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Background refresh. Runs after the file has finished loading (the server
+// address is defined further down), never blocks anything, and fails quietly.
+setTimeout(() => {
+  try {
+    if (typeof fetch !== "function") return;
+    const ctl = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = setTimeout(() => { try { ctl && ctl.abort(); } catch {} }, 6000);
+    fetch(`${OVERLAY_WORKER}/flags`, ctl ? { signal: ctl.signal } : undefined)
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        clearTimeout(timer);
+        if (!data || !data.ok || !data.flags) return;
+        const fresh = cleanStaffFlags(data.flags);
+        if (JSON.stringify(fresh) !== JSON.stringify(STAFF_FLAGS)) saveStaffFlagsCache(fresh);
+      })
+      .catch(() => { clearTimeout(timer); });
+  } catch {}
+}, 0);
+
 function flagDefault(id) {
   try {
+    const key = String(id);
+    if (Object.prototype.hasOwnProperty.call(STAFF_FLAGS, key)) return STAFF_FLAGS[key];
     return FLAG_DEFAULTS.has(id);
   } catch {
     return false;
   }
 }
 
+// True when staff have switched this flag off for everyone (a judge cannot turn it back on).
+function flagStaffLockedOff(id) {
+  return STAFF_FLAGS[String(id)] === false;
+}
+
 function ff(id) {
   const key = String(id);
+  if (STAFF_FLAGS[key] === false) return false;
   if (Object.prototype.hasOwnProperty.call(FLAG_OVERRIDES, key)) {
     return FLAG_OVERRIDES[key];
   }
