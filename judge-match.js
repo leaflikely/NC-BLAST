@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-08b | score-pad-buttons (flag 1033, scoring buttons new look, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 // FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
 // stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
 // (the set that was just won: its score is saved a moment after the overlay push) is added at
@@ -574,6 +574,45 @@ function ncbPadConfirm(o) {
   }, ncbPadIcon(18, NCB_PAD_ICONS.back, { sw: 2.25 }), "Back to result") : h("span", null), h("div", {
     style: { display: "flex", alignItems: "center", gap: 10, font: "600 14px " + UI, color: P.cBarText }
   }, h("span", { "aria-hidden": "true", style: { display: "flex", gap: 6 } }, dot(!!cs.p1ok), dot(!!cs.p2ok)), h("span", null, done + " of 2 confirmed"))), half(1));
+}
+
+// FLAG 1033 (score pad redesign, scoring buttons): colours for one scoring button.
+// Finish buttons fill stronger with more points (+1 light, +2 medium, +3 solid). Own finish
+// buttons keep a calm look, but their "+N" is drawn in the OPPONENT's colour, because the
+// opponent is who gets the points. Works in light and dark mode.
+function ncbPadTile(o) {
+  const dark = !!o.dark;
+  const cl = o.cl, opp = o.oppCl;
+  const txt = c => dark ? (c === "#2563EB" ? "#6B95F1" : "#E76B6B") : c;
+  const ring = dark ? "#FFFFFF" : "#141B2D";
+  const ringGap = dark ? "#0F172A" : "#F2F4F9";
+  const sel = o.sel ? { boxShadow: "0 0 0 2px " + ringGap + ", 0 0 0 4px " + ring } : {};
+  if (o.penalty) {
+    return Object.assign({
+      border: "2px solid " + (o.sel ? cl : cl + "61"),
+      background: o.sel ? cl + "24" : (dark ? "#141C31" : "#FFFFFF"),
+      label: dark ? "#DCE3F0" : "#141B2D",
+      chipBg: "transparent",
+      chip: txt(opp)
+    }, sel);
+  }
+  if (o.p >= 3) {
+    return Object.assign({
+      border: "2px solid " + cl, background: cl, label: "#FFFFFF",
+      chipBg: "rgba(255,255,255,0.22)", chip: "#FFFFFF",
+      boxShadow: "0 6px 18px " + cl + "61"
+    }, o.sel ? { boxShadow: sel.boxShadow + ", 0 6px 18px " + cl + "61" } : {});
+  }
+  if (o.p === 2) {
+    return Object.assign({
+      border: "2px solid " + cl + "9E", background: cl + "4D", label: dark ? "#F4F7FC" : "#141B2D",
+      chipBg: "transparent", chip: dark ? "#FFFFFF" : cl
+    }, sel);
+  }
+  return Object.assign({
+    border: "2px solid " + cl + "6B", background: cl + "24", label: dark ? "#F4F7FC" : "#141B2D",
+    chipBg: "transparent", chip: txt(cl)
+  }, sel);
 }
 
 function MatchScreen({
@@ -9340,6 +9379,14 @@ function MatchScreen({
       const isFinish = !f.penalty;
       const label = f.id === "OF2" ? "Own ×2" : f.id === "OF3" ? "Own ×3" : f.name;
       const active = bothCombosSelected && !layoutEditMode;
+      const pad33 = ff(1033) && active ? ncbPadTile({
+        dark,
+        p: f.p,
+        penalty: !!f.penalty,
+        cl: side.cl,
+        oppCl: (side === dA ? dB : dA).cl,
+        sel: isSel
+      }) : null;
       return /*#__PURE__*/React.createElement(ScaledBtn, {
         key: f.id,
         disabled: layoutEditMode || !bothCombosSelected,
@@ -9353,16 +9400,17 @@ function MatchScreen({
           flex: 1,
           minHeight: 0,
           borderRadius: bp(7),
-          border: `2px solid ${!active ? "var(--border)" : isSel ? side.cl : isFinish ? `${side.cl}50` : "var(--border2)"}`,
-          background: !active ? "var(--surface2)" : isSel ? side.cl : isFinish ? `${side.cl}10` : "var(--surface2)",
-          color: !active ? "var(--text-disabled)" : isSel ? "#fff" : "var(--text-primary)",
+          border: pad33 ? pad33.border : `2px solid ${!active ? "var(--border)" : isSel ? side.cl : isFinish ? `${side.cl}50` : "var(--border2)"}`,
+          background: pad33 ? pad33.background : !active ? "var(--surface2)" : isSel ? side.cl : isFinish ? `${side.cl}10` : "var(--surface2)",
+          color: pad33 ? pad33.label : !active ? "var(--text-disabled)" : isSel ? "#fff" : "var(--text-primary)",
+          boxShadow: pad33 && pad33.boxShadow ? pad33.boxShadow : undefined,
           fontFamily: "'Outfit',sans-serif",
           cursor: active ? "pointer" : "not-allowed",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           padding: `0 ${bp(4)}px`,
-          opacity: active ? 1 : 0.45,
+          opacity: active ? (pad33 && pendingFinish && !isSel ? 0.55 : 1) : 0.45,
           overflow: "hidden",
           boxSizing: "border-box"
         },
@@ -9389,7 +9437,7 @@ function MatchScreen({
             height: "60%",
             width: "24%",
             marginLeft: Math.round(bp(2) * frac),
-            background: !active ? "var(--border2)" : isSel ? "rgba(255,255,255,0.3)" : side.cl,
+            background: pad33 ? pad33.chipBg : !active ? "var(--border2)" : isSel ? "rgba(255,255,255,0.3)" : side.cl,
             borderRadius: bp(3),
             display: "flex",
             alignItems: "center",
@@ -9399,7 +9447,7 @@ function MatchScreen({
         }, /*#__PURE__*/React.createElement(FitText, {
           ratio: 0.55,
           style: {
-            color: "#fff",
+            color: pad33 ? pad33.chip : "#fff",
             fontWeight: 900
           }
         }, "+", f.p)))
@@ -9491,7 +9539,7 @@ function MatchScreen({
           padding: `0 ${bp(4)}px`,
           borderRadius: bp(7),
           border: hasStrike ? `2px solid #F59E0B` : "2px dashed var(--border2)",
-          background: hasStrike ? "#FEF9C3" : "var(--surface2)",
+          background: hasStrike ? (ff(1033) && dark ? "#3A2E0B" : "#FEF9C3") : ff(1033) ? "transparent" : "var(--surface2)",
           color: lerLocked ? "var(--text-disabled)" : "var(--text-primary)",
           fontFamily: "'Outfit',sans-serif",
           cursor: lerLocked ? "not-allowed" : "pointer",
@@ -9568,6 +9616,7 @@ function MatchScreen({
           border: "2px solid transparent",
           background: canConfirm ? side.cl : "var(--surface3)",
           color: canConfirm ? "#fff" : "var(--text-disabled)",
+          boxShadow: ff(1033) && canConfirm ? "0 6px 18px " + side.cl + "61" : undefined,
           fontFamily: "'Outfit',sans-serif",
           cursor: canConfirm ? "pointer" : "not-allowed",
           boxSizing: "border-box",
