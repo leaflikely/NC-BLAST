@@ -1,4 +1,4 @@
-// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-11-08a | staff-flag-defaults (flags the staff menu turned on/off for everyone are read here; cached copy used at load, fresh copy fetched in the background) | previous: 2026-11-03a | overlay-flip-key (new saved setting name for the stream overlay left/right flip) | previous: 2026-10-29a | quick-combos-update (new Top 10 quick combos, Glory Valkyrie Kick has no ratchet) | previous: 2026-10-22b split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
+// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-11-08b | staff-flags-apply-on-first-load (a device that started with an older or empty list reloads once to apply the new one, unless a match is in progress) | previous: 2026-11-08a | staff-flag-defaults (flags the staff menu turned on/off for everyone are read here; cached copy used at load, fresh copy fetched in the background) | previous: 2026-11-03a | overlay-flip-key (new saved setting name for the stream overlay left/right flip) | previous: 2026-10-29a | quick-combos-update (new Top 10 quick combos, Glory Valkyrie Kick has no ratchet) | previous: 2026-10-22b split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
 const {
   useState,
   useEffect,
@@ -100,7 +100,21 @@ setTimeout(() => {
         clearTimeout(timer);
         if (!data || !data.ok || !data.flags) return;
         const fresh = cleanStaffFlags(data.flags);
-        if (JSON.stringify(fresh) !== JSON.stringify(STAFF_FLAGS)) saveStaffFlagsCache(fresh);
+        if (JSON.stringify(fresh) === JSON.stringify(STAFF_FLAGS)) return;
+        saveStaffFlagsCache(fresh);
+        // This load started with an older list (or none, e.g. a new device or a private tab).
+        // Apply the new one right away with a single reload, but only when nothing is in
+        // progress: no match being scored and nobody typing. Otherwise it applies next load.
+        try {
+          const busy = !!sessionStorage.getItem(KEYS.matchResume);
+          const el = document.activeElement;
+          const typing = !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+          const mark = "ncblast-staff-flags-applied";
+          const stamp = JSON.stringify(fresh);
+          if (busy || typing || sessionStorage.getItem(mark) === stamp) return;
+          sessionStorage.setItem(mark, stamp);
+          window.location.reload();
+        } catch {}
       })
       .catch(() => { clearTimeout(timer); });
   } catch {}
