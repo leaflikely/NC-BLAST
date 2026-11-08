@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 // FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
 // stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
 // (the set that was just won: its score is saved a moment after the overlay push) is added at
@@ -257,6 +257,325 @@ function standbyDataFrom(pairings, round, stats, decks) {
   } catch (e) {}
   return out;
 }
+// ── FLAG 1032: score pad redesign - Match result screen + player tap-to-confirm screen ──────────
+// These two functions only DRAW. They hold no scoring, undo, submit or send logic: MatchScreen hands
+// them what to show and what to call when something is tapped, and the old screens stay in
+// MatchScreen as the "flag off" branch. Colours and sizes come from the Claude Design mock-up
+// ("NC BLAST - Match Confirm Redesign"). The mock has no red "confirmed" half, no p2-wins case and
+// no red log rows, so those mirror the blue ones. --espiiii
+const NCB_PAD_UI = "Inter, system-ui, -apple-system, 'Segoe UI', sans-serif";
+const NCB_PAD_NUM = "'Outfit', sans-serif";
+const NCB_PAD_LIGHT = {
+  bg: "#F2F4F9", text: "#141B2D", sub: "#5B6478", card: "#FFFFFF", cardBorder: "none",
+  shadow: "0 1px 2px rgba(20,27,45,0.06), 0 4px 16px rgba(20,27,45,0.05)", detailsCard: "#FFFFFF",
+  hair: "#EDF0F5", rowHair: "#F0F2F6", setChip: "#F4F6FB", setChipBorder: "none", groupBar: "#F7F8FB",
+  countBg: "#EEF0F5", countText: "#3A4458", toggleOff: "#CBD1DD", knob: "#FFFFFF", knobShadow: "0 1px 2px rgba(20,27,45,0.25)",
+  blue: "#2F55D4", blueDeep: "#2346B8", blueTint: "#E6ECFC", blueChip: "#2F55D4",
+  red: "#C8322A", redDeep: "#A8281F", redTint: "#FBE7E5", redChip: "#C8322A",
+  loserNum: "#8A93A6", dash: "#C3C9D6", setNum: "#141B2D",
+  backText: "#3A4458", helpBg: "#FFFFFF", helpBorder: "#D5DAE6", helpText: "#2F55D4",
+  footerBg: "#FFFFFF", footerBorder: "#E3E7EF", footerShadow: "0 -4px 16px rgba(20,27,45,0.04)",
+  confirmBtn: "#6234D8", confirmShadow: "0 6px 16px rgba(98,52,216,0.28)",
+  secBorder: "#D5DAE6", secBg: "#FFFFFF", secText: "#3A4458",
+  // player confirm screen
+  cBg: "#141B2D", cBarBorder: "rgba(255,255,255,0.08)", cBarBg: "#141B2D",
+  cBackBorder: "1.5px solid rgba(255,255,255,0.35)", cBackBg: "transparent", cBackText: "#FFFFFF", cBarText: "#FFFFFF",
+  cDotOn: "#7FA0FF", cDotOnRed: "#FF9A94", cDotOff: "2px solid rgba(255,255,255,0.5)",
+  cBluePending: "#2F55D4", cBlueDone: "#1F3E9E", cRedPending: "#C8322A", cRedDone: "#84211C",
+  cBlueBtnText: "#2F55D4", cRedBtnText: "#B02A23", cPill: "#FFFFFF", cPillRing: "rgba(255,255,255,0.18)", cPillRingRed: "rgba(255,255,255,0.2)",
+  cBadgeBg: "rgba(255,255,255,0.18)", cScoreBox: "rgba(0,0,0,0.16)", cCheckRing: "rgba(255,255,255,0.14)",
+  cSub: "rgba(255,255,255,0.92)", cSub2: "rgba(255,255,255,0.9)"
+};
+const NCB_PAD_DARK = {
+  bg: "#0F172A", text: "#F1F5F9", sub: "#94A3B8", card: "#1E293B", cardBorder: "1px solid #2A3650",
+  shadow: "0 4px 20px rgba(0,0,0,0.35)", detailsCard: "#131C2F",
+  hair: "#2A3650", rowHair: "#263248", setChip: "#0F172A", setChipBorder: "1px solid #2A3650", groupBar: "#172033",
+  countBg: "#0F172A", countText: "#CBD5E1", toggleOff: "#334155", knob: "#CBD5E1", knobShadow: "0 1px 2px rgba(0,0,0,0.4)",
+  blue: "#5B8BFF", blueDeep: "#8FB0FF", blueTint: "rgba(91,139,255,0.16)", blueChip: "#3463E8",
+  red: "#FF6B6B", redDeep: "#FFA3A3", redTint: "rgba(255,107,107,0.16)", redChip: "#D93F3F",
+  loserNum: "#64748B", dash: "#475569", setNum: "#94A3B8",
+  backText: "#CBD5E1", helpBg: "#1E293B", helpBorder: "#334155", helpText: "#8FB0FF",
+  footerBg: "#131C2F", footerBorder: "#2A3650", footerShadow: "none",
+  confirmBtn: "#7C3AED", confirmShadow: "0 6px 20px rgba(124,58,237,0.35)",
+  secBorder: "#334155", secBg: "#1E293B", secText: "#CBD5E1",
+  cBg: "#0B1120", cBarBorder: "#2A3650", cBarBg: "#0B1120",
+  cBackBorder: "1.5px solid #334155", cBackBg: "#1E293B", cBackText: "#E2E8F0", cBarText: "#CBD5E1",
+  cDotOn: "#1FA65A", cDotOnRed: "#1FA65A", cDotOff: "2px solid #64748B",
+  cBluePending: "#1F3FB0", cBlueDone: "#16286A", cRedPending: "#9E2620", cRedDone: "#6F1A16",
+  cBlueBtnText: "#1F3FB0", cRedBtnText: "#9E2620", cPill: "#F1F5F9", cPillRing: "rgba(255,255,255,0.12)", cPillRingRed: "rgba(255,255,255,0.12)",
+  cBadgeBg: "rgba(255,255,255,0.16)", cScoreBox: "rgba(0,0,0,0.22)", cCheckRing: "rgba(31,166,90,0.22)",
+  cSub: "rgba(255,255,255,0.9)", cSub2: "rgba(255,255,255,0.88)"
+};
+function ncbPadIcon(size, d, o) {
+  o = o || {};
+  return React.createElement("svg", {
+    width: size, height: size, viewBox: "0 0 24 24",
+    fill: o.fill || "none", stroke: "currentColor", strokeWidth: o.sw || 2,
+    strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true"
+  }, (Array.isArray(d) ? d : [d]).map((p, i) => React.createElement("path", { key: i, d: p })));
+}
+const NCB_PAD_ICONS = {
+  crown: "M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8z",
+  back: "M15 18l-6-6 6-6",
+  arrow: ["M5 12h14", "M13 6l6 6-6 6"],
+  scale: ["M12 3v18", "M7 21h10", "M4 7h16", "M7 7l-3 7a3 3 0 0 0 6 0L7 7z", "M17 7l-3 7a3 3 0 0 0 6 0l-3-7z"],
+  download: ["M12 4v11", "M7 10l5 5 5-5", "M5 20h14"],
+  check: "M5 12.5l4.5 4.5L19 7.5",
+  tap: ["M9 11V5a2 2 0 0 1 4 0v6", "M13 10a2 2 0 0 1 4 0v1", "M17 11a2 2 0 0 1 4 0v4a7 7 0 0 1-7 7h-1a7 7 0 0 1-5.6-2.8L4 15.5a2 2 0 0 1 3-2.6L9 15"]
+};
+
+// Page frame. fixed = pre-submit ranked screen that must fit one phone screen (the log scrolls inside).
+function ncbPadFrameStyle(dark, fixed) {
+  const P = dark ? NCB_PAD_DARK : NCB_PAD_LIGHT;
+  return {
+    width: "100%", maxWidth: 480, margin: "0 auto", boxSizing: "border-box",
+    display: "flex", flexDirection: "column",
+    background: P.bg, color: P.text, fontFamily: NCB_PAD_UI,
+    minHeight: "100dvh",
+    ...(fixed ? { height: "100dvh", overflow: "hidden" } : {})
+  };
+}
+
+// Match result screen: header + main (+ footer when `showFooter`).
+function ncbPadResult(o) {
+  const h = React.createElement;
+  const P = o.dark ? NCB_PAD_DARK : NCB_PAD_LIGHT;
+  const UI = NCB_PAD_UI, NUM = NCB_PAD_NUM;
+  const fixed = !!o.showFooter;
+  const p1Won = o.winner === o.p1;
+  const sets = o.sets || [0, 0];
+  const setScores = o.setScores || [];
+  const sectionBase = {
+    background: P.card, border: P.cardBorder, boxShadow: P.shadow
+  };
+  // single-set matches show the points of that set as the big score
+  const big = o.bo > 1 || !setScores.length ? [sets[0], sets[1]] : [setScores[0].p1, setScores[0].p2];
+
+  const header = h("header", {
+    style: { height: 56, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px" }
+  }, h("div", { style: { width: 84, display: "flex" } }, !o.submitted && h("button", {
+    type: "button", onClick: o.onBack,
+    style: { height: 44, padding: "0 10px 0 4px", display: "flex", alignItems: "center", gap: 2, border: "none", background: "transparent", color: P.backText, font: "600 15px " + UI, cursor: "pointer" }
+  }, ncbPadIcon(22, NCB_PAD_ICONS.back, { sw: 2.25 }), "Back")), h("div", {
+    style: { textAlign: "center", minWidth: 0 }
+  }, o.tournamentName ? h("div", {
+    style: { font: "700 11px " + UI, letterSpacing: "0.14em", color: P.sub, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 190 }
+  }, o.tournamentName) : null, h("div", {
+    style: { font: "700 17px " + NUM, color: P.text }
+  }, "Match result")), h("div", {
+    style: { width: 84, display: "flex", justifyContent: "flex-end" }
+  }, o.onHelp && h("button", {
+    type: "button", "aria-label": "Help", onClick: o.onHelp,
+    style: { width: 44, height: 44, borderRadius: 22, border: "1.5px solid " + P.helpBorder, background: P.helpBg, color: P.helpText, font: "700 18px " + NUM, cursor: "pointer" }
+  }, "?")));
+
+  // winner / loser columns of the score card
+  const col = idx => {
+    const won = (idx === 0) === p1Won;
+    const name = idx === 0 ? o.p1 : o.p2;
+    const blue = idx === 0;
+    return h("div", {
+      key: idx,
+      style: won ? { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 0 } : { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", alignSelf: "stretch", gap: 6, minWidth: 0 }
+    }, won && h("span", {
+      style: { display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px", borderRadius: 999, background: blue ? P.blueTint : P.redTint, color: blue ? P.blueDeep : P.redDeep, font: "800 11px " + UI, letterSpacing: "0.08em" }
+    }, ncbPadIcon(13, NCB_PAD_ICONS.crown, { fill: "currentColor", sw: 1.5 }), "WINNER"), h("div", {
+      style: { maxWidth: "100%", font: "800 22px " + NUM, color: blue ? P.blue : P.red, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }
+    }, name));
+  };
+  const scoreCard = h("section", {
+    "aria-label": "Final score",
+    style: { ...sectionBase, flexShrink: 0, borderRadius: 20, padding: 16, display: "flex", flexDirection: "column", gap: 14 }
+  }, h("div", {
+    style: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)", alignItems: "center", gap: 8 }
+  }, col(0), h("div", {
+    style: { display: "flex", alignItems: "center", gap: 10, font: "800 56px/1 " + NUM, fontVariantNumeric: "tabular-nums" }
+  }, h("span", { style: { color: p1Won ? P.blue : P.loserNum } }, big[0]), h("span", { style: { color: P.dash, fontSize: 32 } }, "–"), h("span", { style: { color: p1Won ? P.loserNum : P.red } }, big[1])), col(1)), o.bo > 1 && setScores.length > 0 && h("div", {
+    style: { display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 8, paddingTop: 12, borderTop: "1px solid " + P.hair }
+  }, setScores.map((ss, i) => {
+    const w1 = ss.p1 > ss.p2;
+    return h("div", {
+      key: i,
+      style: { display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 10, background: P.setChip, border: P.setChipBorder }
+    }, h("span", { style: { font: "700 11px " + UI, letterSpacing: "0.1em", color: P.sub } }, "SET " + (i + 1)), h("span", {
+      style: { font: "800 16px " + NUM, color: P.setNum }
+    }, h("span", { style: w1 ? { color: P.blue } : undefined }, ss.p1), "–", h("span", { style: !w1 ? { color: P.red } : undefined }, ss.p2)));
+  })));
+
+  // Battles / Shuffles / Judge (ranked events only, like the old screen)
+  const stat = (label, val, first) => h("div", {
+    key: label,
+    style: { padding: "10px 8px", textAlign: "center", ...(first ? {} : { borderLeft: "1px solid " + P.hair }) }
+  }, h("div", { style: { font: "700 11px " + UI, letterSpacing: "0.1em", color: P.sub } }, label), h("div", {
+    style: { marginTop: 2, font: "700 20px " + NUM }
+  }, val));
+  const judgeCell = h("div", {
+    key: "JUDGE",
+    style: { padding: "10px 8px", textAlign: "center", borderLeft: "1px solid " + P.hair, minWidth: 0 }
+  }, h("div", { style: { font: "700 11px " + UI, letterSpacing: "0.1em", color: P.sub } }, "JUDGE"), o.judgeEditMode ? h("div", {
+    style: { display: "flex", gap: 4, width: "100%", marginTop: 4 }
+  }, h(JudgeInput, {
+    style: { ...S.inp, flex: 1, fontSize: 12, padding: "3px 6px", borderRadius: 6, minWidth: 0 },
+    value: o.judge,
+    onCommit: o.onJudgeCommit,
+    onClear: () => o.onJudgeEdit(false)
+  }), h("button", {
+    type: "button", onClick: () => o.onJudgeEdit(false),
+    style: { padding: "3px 8px", borderRadius: 6, border: "none", background: P.blueChip, color: "#fff", fontSize: 11, fontWeight: 700, fontFamily: NUM, cursor: "pointer" }
+  }, "✓")) : h("button", {
+    type: "button", onClick: () => !o.submitted && o.onJudgeEdit(true),
+    style: { display: "block", width: "100%", marginTop: 4, padding: 0, border: "none", background: "none", color: P.text, font: "700 16px " + NUM, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", cursor: o.submitted ? "default" : "pointer", textDecoration: o.submitted ? "none" : "underline dotted" }
+  }, o.judge || "—"));
+  const detailsCard = o.eventRanked && h("section", {
+    "aria-label": "Match details",
+    style: { ...sectionBase, background: P.detailsCard, flexShrink: 0, borderRadius: 16, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }
+  }, stat("BATTLES", o.battleCount, true), stat("SHUFFLES", o.shuffles, false), judgeCell);
+
+  // Battle log, grouped by set
+  const rows = [];
+  const log = o.currentMatch || [];
+  let lastSet = null;
+  log.forEach((e, i) => {
+    if (e.set !== lastSet) {
+      lastSet = e.set;
+      const ss = setScores[e.set - 1];
+      const setWinner = ss ? (ss.p1 > ss.p2 ? o.p1 : o.p2) : null;
+      rows.push(h("div", {
+        key: "g" + i,
+        style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "8px 16px", background: P.groupBar, font: "700 11px " + UI, letterSpacing: "0.1em", color: P.sub, textTransform: "uppercase" }
+      }, h("span", null, "SET " + e.set + (e.p1Side ? " · " + e.p1Side + "/" + e.p2Side : "")), ss && h("span", {
+        style: { minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }
+      }, setWinner + " " + Math.max(ss.p1, ss.p2) + "–" + Math.min(ss.p1, ss.p2))));
+    }
+    const blue = e.scorerIdx === 0;
+    const lastRow = i === log.length - 1;
+    const combo = c => c ? (c.blade || "?") + (c.ratchet ? " " + c.ratchet : "") + (c.bit ? " · " + c.bit : "") : "";
+    rows.push(h("div", {
+      key: "r" + i,
+      style: { display: "grid", gridTemplateColumns: "36px minmax(0, 1fr) auto", alignItems: "center", gap: 12, padding: "10px 16px", ...(lastRow ? {} : { borderBottom: "1px solid " + P.rowHair }) }
+    }, h("span", {
+      style: { width: 36, height: 36, borderRadius: 10, background: blue ? P.blueTint : P.redTint, color: blue ? P.blueDeep : P.redDeep, display: "flex", alignItems: "center", justifyContent: "center", font: "700 13px " + NUM }
+    }, "S" + e.slot), h("div", { style: { minWidth: 0 } }, h("div", {
+      style: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 }
+    }, h("span", {
+      style: { font: "700 15px " + UI, color: blue ? P.blue : P.red, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }
+    }, e.scorer), h("span", {
+      style: { flexShrink: 0, padding: "2px 7px", borderRadius: 6, background: blue ? P.blueChip : P.redChip, color: "#FFFFFF", font: "700 12px " + NUM }
+    }, "+" + e.points), e.penalty && h("span", {
+      style: { flexShrink: 0, font: "700 11px " + UI, letterSpacing: "0.06em", color: P.sub }
+    }, "PEN")), o.fullStats && h("div", {
+      style: { marginTop: 3, font: "600 12px " + UI, color: P.sub, wordBreak: "break-word" }
+    }, e.typeName + (e.p1Combo && e.p2Combo ? " · " + combo(e.p1Combo) + " vs " + combo(e.p2Combo) : ""))), h("span", {
+      style: { font: "800 17px " + NUM, fontVariantNumeric: "tabular-nums" }
+    }, e.p1Score + "–" + e.p2Score)));
+  });
+  const logCard = h("section", {
+    "aria-label": "Battle log",
+    style: { ...sectionBase, position: "relative", borderRadius: 20, display: "flex", flexDirection: "column", overflow: "hidden", ...(fixed ? { flex: 1, minHeight: 0 } : { flexShrink: 0 }) }
+  }, h("div", {
+    style: { flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 6px 6px 16px", borderBottom: "1px solid " + P.hair }
+  }, h("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, h("h2", {
+    style: { margin: 0, font: "700 17px " + NUM }
+  }, "Battle log"), h("span", {
+    style: { padding: "2px 8px", borderRadius: 999, background: P.countBg, font: "700 12px " + UI, color: P.countText }
+  }, log.length)), h("button", {
+    type: "button", "aria-pressed": !!o.fullStats, onClick: o.onToggleStats,
+    style: { height: 44, display: "flex", alignItems: "center", gap: 8, padding: "0 10px", border: "none", background: "transparent", font: "600 14px " + UI, color: P.countText, cursor: "pointer" }
+  }, h("span", {
+    "aria-hidden": "true",
+    style: { position: "relative", display: "inline-block", width: 34, height: 20, borderRadius: 10, background: o.fullStats ? "#16A34A" : P.toggleOff }
+  }, h("span", {
+    style: { position: "absolute", top: 2, left: o.fullStats ? 16 : 2, width: 16, height: 16, borderRadius: 8, background: o.fullStats ? "#FFFFFF" : P.knob, boxShadow: P.knobShadow }
+  })), "Full stats")), h("div", {
+    style: fixed ? { flex: 1, minHeight: 0, overflowY: "auto" } : {}
+  }, rows));
+
+  const main = h("main", {
+    style: { display: "flex", flexDirection: "column", gap: 12, padding: "4px 16px 12px", ...(fixed ? { flex: 1, minHeight: 0 } : { flexShrink: 0 }) }
+  }, scoreCard, detailsCard || null, logCard);
+
+  const footer = fixed && h("footer", {
+    style: { flexShrink: 0, background: P.footerBg, borderTop: "1px solid " + P.footerBorder, padding: "12px 16px 20px", display: "flex", flexDirection: "column", gap: 10, boxShadow: P.footerShadow }
+  }, h("button", {
+    type: "button", onClick: o.onConfirm,
+    style: { height: 56, border: "none", borderRadius: 16, background: P.confirmBtn, color: "#FFFFFF", font: "700 18px " + NUM, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, boxShadow: P.confirmShadow, cursor: "pointer" }
+  }, ncbPadIcon(22, NCB_PAD_ICONS.scale), "Judge: confirm result", ncbPadIcon(20, NCB_PAD_ICONS.arrow, { sw: 2.25 })), h("button", {
+    type: "button", onClick: o.onCsv,
+    style: { height: 44, border: "1px solid " + P.secBorder, borderRadius: 12, background: P.secBg, color: P.secText, font: "600 14px " + UI, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer" }
+  }, ncbPadIcon(18, NCB_PAD_ICONS.download), "Download CSV"));
+
+  return h(React.Fragment, null, o.onHelp ? h(BugReportInlineButton, { hidden: true }) : null, header, main, footer || null);
+}
+
+// Player tap-to-confirm screen: top half = player 1 (turned upside down for the player across the table),
+// bottom half = player 2, middle bar = Back to result + how many have confirmed.
+function ncbPadConfirm(o) {
+  const h = React.createElement;
+  const P = o.dark ? NCB_PAD_DARK : NCB_PAD_LIGHT;
+  const UI = NCB_PAD_UI, NUM = NCB_PAD_NUM;
+  const sets = o.sets || [0, 0];
+  const setScores = o.setScores || [];
+  const cs = o.cs || {};
+  const done = (cs.p1ok ? 1 : 0) + (cs.p2ok ? 1 : 0);
+  const setLine = setScores.map((ss, i) => "Set " + (i + 1) + ": " + ss.p1 + "–" + ss.p2).join("  ·  ");
+  const half = idx => {
+    const blue = idx === 0;
+    const who = blue ? "p1ok" : "p2ok";
+    const name = blue ? o.p1 : o.p2;
+    const other = blue ? o.p2 : o.p1;
+    const won = blue ? !!o.p1Won : !o.p1Won;
+    const mine = sets[blue ? 0 : 1], theirs = sets[blue ? 1 : 0];
+    const turn = blue ? { transform: "rotate(180deg)" } : {};
+    if (cs[who]) {
+      return h("section", {
+        key: idx, "aria-label": name + " has confirmed",
+        style: { flex: 1, minHeight: 0, ...turn, background: blue ? P.cBlueDone : P.cRedDone, color: "#FFFFFF", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 24, textAlign: "center" }
+      }, h("span", {
+        style: { width: 76, height: 76, borderRadius: 38, background: "#1FA65A", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 0 10px " + P.cCheckRing }
+      }, ncbPadIcon(40, NCB_PAD_ICONS.check, { sw: 3 })), h("div", {
+        style: { font: "800 34px/1.1 " + NUM, wordBreak: "break-word" }
+      }, name), h("span", {
+        style: { padding: "5px 14px", borderRadius: 999, background: P.cBadgeBg, font: "800 13px " + UI, letterSpacing: "0.12em" }
+      }, "CONFIRMED"), h("div", {
+        style: { font: "500 15px " + UI, color: P.cSub2 }
+      }, (won ? "Won " : "Lost ") + mine + "–" + theirs + " · " + (done >= 2 ? "Everyone has confirmed" : "Waiting for " + other)));
+    }
+    return h("button", {
+      key: idx, type: "button", onClick: () => o.onTap(who),
+      style: { flex: 1, minHeight: 0, width: "100%", ...turn, margin: 0, border: "none", background: blue ? P.cBluePending : P.cRedPending, color: "#FFFFFF", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24, fontFamily: UI, cursor: "pointer" }
+    }, won && h("span", {
+      style: { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", borderRadius: 999, background: P.cBadgeBg, font: "800 12px " + UI, letterSpacing: "0.12em" }
+    }, ncbPadIcon(14, NCB_PAD_ICONS.crown, { fill: "currentColor", sw: 1.5 }), "YOU WON"), h("span", {
+      style: { font: "800 34px/1.1 " + NUM, wordBreak: "break-word", textAlign: "center" }
+    }, name), h("span", {
+      style: { font: "500 15px " + UI, color: P.cSub }
+    }, "Check the score, then tap anywhere here"), h("span", {
+      style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "12px 20px", borderRadius: 16, background: P.cScoreBox, maxWidth: "100%" }
+    }, h("span", {
+      style: { display: "flex", alignItems: "center", gap: 10, font: "700 16px " + UI, whiteSpace: "nowrap" }
+    }, o.p1, h("span", {
+      style: { font: "800 30px/1 " + NUM, fontVariantNumeric: "tabular-nums" }
+    }, sets[0] + " – " + sets[1]), o.p2), setLine && h("span", {
+      style: { font: "600 13px " + UI, color: P.cSub2 }
+    }, setLine)), h("span", {
+      style: { display: "inline-flex", alignItems: "center", gap: 10, height: 56, padding: "0 28px", borderRadius: 28, background: P.cPill, color: blue ? P.cBlueBtnText : P.cRedBtnText, font: "800 18px " + NUM, letterSpacing: "0.04em", boxShadow: "0 0 0 8px " + (blue ? P.cPillRing : P.cPillRingRed) }
+    }, ncbPadIcon(22, NCB_PAD_ICONS.tap), "TAP TO CONFIRM"));
+  };
+  const dot = on => h("span", {
+    style: on ? { display: "block", width: 10, height: 10, borderRadius: 5, background: P.cDotOn } : { display: "block", width: 10, height: 10, borderRadius: 5, border: P.cDotOff, boxSizing: "border-box" }
+  });
+  return h("div", {
+    style: { position: "fixed", inset: 0, zIndex: 99995, display: "flex", flexDirection: "column", boxSizing: "border-box", background: P.cBg, fontFamily: UI, color: "#FFFFFF" }
+  }, half(0), h("div", {
+    style: { height: 64, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px", background: P.cBarBg, borderTop: "1px solid " + P.cBarBorder, borderBottom: "1px solid " + P.cBarBorder }
+  }, done < 2 ? h("button", {
+    type: "button", onClick: o.onBack,
+    style: { height: 44, padding: "0 16px 0 10px", borderRadius: 22, border: P.cBackBorder, background: P.cBackBg, color: P.cBackText, font: "600 14px " + UI, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }
+  }, ncbPadIcon(18, NCB_PAD_ICONS.back, { sw: 2.25 }), "Back to result") : h("span", null), h("div", {
+    style: { display: "flex", alignItems: "center", gap: 10, font: "600 14px " + UI, color: P.cBarText }
+  }, h("span", { "aria-hidden": "true", style: { display: "flex", gap: 6 } }, dot(!!cs.p1ok), dot(!!cs.p2ok)), h("span", null, done + " of 2 confirmed"))), half(1));
+}
+
 function MatchScreen({
   config,
   parts,
@@ -6699,6 +7018,8 @@ function MatchScreen({
     };
     const allPlayersDone = cs.p1ok && cs.p2ok;
     const submitted = cs.judgeok;
+    // FLAG 1032: the new result screen must fit one phone screen while the judge is still confirming (ranked tournament match).
+    const padFixed = ff(1032) && config.tm && eventRanked && !submitted;
 
     // Undo the deciding battle and return to active play
     const undoMatchEnd = () => {
@@ -6737,11 +7058,11 @@ function MatchScreen({
       }
     };
     return /*#__PURE__*/React.createElement("div", {
-      style: {
+      style: ff(1032) ? ncbPadFrameStyle(dark, padFixed) : {
         ...S.page,
         paddingBottom: 80
       }
-    }, !submitted && /*#__PURE__*/React.createElement("button", {
+    }, !ff(1032) && !submitted && /*#__PURE__*/React.createElement("button", {
       style: S.back,
       onClick: () => setOverBackConfirm(true)
     }, IC.back, " Back"), standbyAsk && /*#__PURE__*/React.createElement("div", {
@@ -6854,7 +7175,45 @@ function MatchScreen({
         fontFamily: "'Outfit',sans-serif",
         cursor: "pointer"
       }
-    }, "Undo & Go Back")))), (() => {
+    }, "Undo & Go Back")))), ff(1032) ? ncbPadResult({
+      dark,
+      p1,
+      p2,
+      winner,
+      sets,
+      setScores,
+      bo: config.bo,
+      currentMatch,
+      battleCount: currentMatch.length,
+      shuffles: shuf,
+      judge,
+      judgeEditMode,
+      onJudgeEdit: setJudgeEditMode,
+      onJudgeCommit: v => {
+        setJudge(v);
+        setJudgeEditMode(false);
+      },
+      fullStats,
+      onToggleStats: () => setFullStats(v => !v),
+      eventRanked,
+      submitted,
+      showFooter: padFixed,
+      tournamentName: config.tm && config.tournamentName ? config.tournamentName : "",
+      onBack: () => setOverBackConfirm(true),
+      onHelp: ff(1005) ? () => {
+        if (window.__ncbOpenBugReport) window.__ncbOpenBugReport();
+      } : null,
+      onConfirm: () => allPlayersDone ? setJudgeSubmitModal(true) : setConfirmOverlay(true),
+      onCsv: () => onDownloadCSV(currentMatch, {
+        p1,
+        p2,
+        sets,
+        config,
+        winner,
+        shuffles: shuf,
+        set1PriorityName
+      })
+    }) : /*#__PURE__*/React.createElement(React.Fragment, null, (() => {
       const winnerIsP1 = winner === p1;
       const winnerColor = winnerIsP1 ? {
         g: "linear-gradient(135deg,#1D4ED8 0%,#2563EB 100%)",
@@ -7328,7 +7687,7 @@ function MatchScreen({
         fontFamily: "'Outfit',sans-serif",
         cursor: "pointer"
       }
-    }, "⚖️ Judge Confirm →")), confirmOverlay && (() => {
+    }, "⚖️ Judge Confirm →"))), confirmOverlay && (() => {
       // Full-screen confirmation: top half = Player 1, bottom half = Player 2.
       // Big targets so a tap lands easily on a phone. When both have tapped, this
       // screen closes by itself and the Submit Results window opens.
@@ -7346,6 +7705,26 @@ function MatchScreen({
           }, 400);
         }
       };
+      // FLAG 1032: new split confirm screen. Same taps, same Back (clears the taps), same hand-off to the Submit window.
+      if (ff(1032)) return ncbPadConfirm({
+        dark,
+        p1,
+        p2,
+        p1Won: winner === p1,
+        winner,
+        sets,
+        setScores,
+        cs,
+        onTap: tapConfirm,
+        onBack: () => {
+          setConfirmState({
+            ...cs,
+            p1ok: false,
+            p2ok: false
+          });
+          setConfirmOverlay(false);
+        }
+      });
       return /*#__PURE__*/React.createElement("div", {
         style: {
           position: "fixed",
@@ -7769,7 +8148,19 @@ function MatchScreen({
           marginTop: 4
         }
       }, challongeSubmitStatus === "loading" ? "Submitting…" : "Submit")));
-    })(), config.tm && eventRanked && submitted && challongeSlug && challongeMatchId && (() => {
+    })(), /*#__PURE__*/React.createElement("div", {
+      // FLAG 1032: the old status lines, New Match, Download CSV and Main Menu are untouched; this box only
+      // places them. Flag off: it does not exist for layout (display: contents). Flag on: it sits below the new
+      // result screen, and stays hidden while the judge is still confirming (the footer has Download CSV).
+      style: ff(1032) ? padFixed ? {
+        display: "none"
+      } : {
+        padding: "0 16px 28px",
+        flexShrink: 0
+      } : {
+        display: "contents"
+      }
+    }, config.tm && eventRanked && submitted && challongeSlug && challongeMatchId && (() => {
       // The Submit window closes the moment Submit is pressed, so show the Challonge
       // result here too - a failed send must never go unnoticed.
       const winnerIsP1 = sets[0] >= need;
@@ -8077,7 +8468,7 @@ function MatchScreen({
         userSelect: "text",
         WebkitUserSelect: "text"
       }
-    }, "Reason: " + timingSendError)));
+    }, "Reason: " + timingSendError))));
   }
 
   // Battle screen (merged: combo pick + scoring in one view)

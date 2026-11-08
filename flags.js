@@ -64,6 +64,7 @@ window.FEATURE_FLAGS = new Set([
   1030, // Standby slides on the stream between rounds: after a judge's last match at a stadium, the overlay shows standings, round results and the event's most used combos (needs 1021 and the /deck-log + /event-stats routes in the database Worker; the question 'no more matches here?' appears on the judge's New Match button).
   1029, // Upset Alert last line: "Wins 2-1 on Stadium B" (or "judged by <name>"). The judge app saves who judged each result and their stadium (needs the /match-notes block pasted into the database Worker).
   1031, // Fast Blast event mode: the org can switch Fast Blast on when creating an event (blade-only combos, no deck building). This flag covers the toggle on the name screen and the Fast Blast badge on the event list. Turn it off to hide both.
+  // 1032, // Score pad redesign, first two screens (judge): the Match result screen and the player tap-to-confirm screen use the new look from the Claude Design mock-up. Drawing only, scoring and submitting are untouched. Held OFF on purpose (a tournament is coming): a judge can try it on their own device from the gear menu > Feature Flags, or remove the // at the start of this line to turn it on for everyone.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -222,5 +223,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Fast Blast event mode (organizer + judge)",
     desc: "The organizer can switch Fast Blast on when creating an event. Fast Blast events are the quick format: judges pick just the blade for each combo instead of building full decks. This flag shows the Fast Blast switch on the Name This Tournament screen and the Fast Blast label on the event list.",
     off: "Old behaviour: no Fast Blast switch, every event is created as a normal event."
+  },
+  1032: {
+    name: "Score pad redesign: Match result and player confirm screens (judge)",
+    desc: "Gives the two end-of-match screens the new look from the Claude Design mock-up. The Match result screen becomes one tidy screen (winner and final score on top, Battles / Shuffles / Judge, the battle log with a Full stats switch, then Judge: confirm result and Download CSV at the bottom). The player confirm screen keeps the split screen (Player 1 on the top half, turned upside down for the player across the table, Player 2 on the bottom half) with a middle bar that shows Back to result and how many players have confirmed. Looks the same in light and dark mode. Only drawing changes: scoring, undo, submit and everything that is sent are exactly as before. After the judge submits, the status lines, New Match and Main Menu are the old ones in the new frame.",
+    off: "Old behaviour: the original Match result screen (winner card, Match Score, Match History, CONFIRM RESULT card) and the original player confirm screen."
   }
 };
