@@ -65,7 +65,7 @@ window.FEATURE_FLAGS = new Set([
   1029, // Upset Alert last line: "Wins 2-1 on Stadium B" (or "judged by <name>"). The judge app saves who judged each result and their stadium (needs the /match-notes block pasted into the database Worker).
   1031, // Fast Blast event mode: the org can switch Fast Blast on when creating an event (blade-only combos, no deck building). This flag covers the toggle on the name screen and the Fast Blast badge on the event list. Turn it off to hide both.
   // 1032, // Score pad redesign, first two screens (judge): the Match result screen and the player tap-to-confirm screen use the new look from the Claude Design mock-up. Drawing only, scoring and submitting are untouched. Held OFF on purpose (a tournament is coming): a judge can try it on their own device from the gear menu > Feature Flags, or remove the // at the start of this line to turn it on for everyone.
-  // 1033, // Score pad redesign, scoring buttons (judge): the finish, Own and Launch Error buttons on the battle screen get the new look (stronger fill for more points, Own plus text in the opponent's colour). Drawing only; scoring unchanged. Held OFF: a tournament is coming.
+  // 1033, // Score pad redesign, battle screen (judge): the whole scoring screen gets the new look from the Claude Design mock-up (Own plus text in the opponent's colour, one shared confirm bar). Drawing only; scoring unchanged. Held OFF: a tournament is coming.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -231,8 +231,8 @@ window.FEATURE_FLAG_INFO = {
     off: "Old behaviour: the original Match result screen (winner card, Match Score, Match History, CONFIRM RESULT card) and the original player confirm screen."
   },
   1033: {
-    name: "Score pad redesign: scoring buttons (judge)",
-    desc: "Gives the finish buttons, the Own x2 / Own x3 buttons and Launch Error on the battle screen the new look from the Claude Design mock-up: the more points a finish is worth, the stronger its fill. On the Own buttons the plus number is in the OPPONENT's colour, because the opponent gets those points. Works in light and dark mode. Only the look changes; scoring, the combo picker and layout editing are untouched.",
-    off: "Old behaviour: the original scoring button colours."
+    name: "Score pad redesign: battle screen (judge)",
+    desc: "Gives the whole scoring screen the new look from the Claude Design mock-up: the top bar, the score card, one column per player with their combo, the finish buttons (the more points, the stronger the fill), Own x2 / Own x3 with the plus number in the OPPONENT's colour (they get those points), Launch Error with two dots, and one confirm bar at the bottom (\"Give Player +3\") instead of a confirm button under each player. Works in light and dark mode. Scoring itself is unchanged. The Adjust layout option is hidden while this is on, and the purple tournament bar is not used.",
+    off: "Old behaviour: the original battle screen."
   }
 };

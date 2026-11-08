@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-08b | score-pad-buttons (flag 1033, scoring buttons new look, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 // FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
 // stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
 // (the set that was just won: its score is saved a moment after the overlay push) is added at
@@ -613,6 +613,144 @@ function ncbPadTile(o) {
     border: "2px solid " + cl + "6B", background: cl + "24", label: dark ? "#F4F7FC" : "#141B2D",
     chipBg: "transparent", chip: txt(cl)
   }, sel);
+}
+
+// FLAG 1033 (score pad redesign, battle screen): the whole scoring screen in the new layout.
+// Colours for light and dark. Player colours stay with the player (p1 blue, p2 red).
+function ncbPadTheme(dark) {
+  return dark ? {
+    page: "#0B1020", chrome: "#0E1426", card: "#121A2E", cardLine: "#1F2946", line: "#1C2540", btn: "#151D33", btnLine: "#26314F",
+    text: "#F2F5FA", text2: "#C9D2E3", muted: "#9AA6BF", label: "#8A96B0", own: "#141C31", dash: "#3F4A6B", dotOff: "#56627F",
+    amber: "#F5B83D", cardShadow: "none", dockBtn: "#151D33", dockLine: "#2C3756", hint: "#9AA6BF"
+  } : {
+    page: "#F2F4F9", chrome: "#FFFFFF", card: "#FFFFFF", cardLine: "#E3E7EF", line: "#E3E7EF", btn: "#FFFFFF", btnLine: "#D5DAE6",
+    text: "#141B2D", text2: "#3A4458", muted: "#5B6478", label: "#6B7488", own: "#FFFFFF", dash: "#B5BDCE", dotOff: "#B5BDCE",
+    amber: "#D98A0B", cardShadow: "0 1px 2px rgba(20,27,45,0.06), 0 4px 16px rgba(20,27,45,0.05)", dockBtn: "#FFFFFF", dockLine: "#D5DAE6", hint: "#5B6478"
+  };
+}
+function ncbPadTxt(dark, cl) {
+  return dark ? (cl === "#2563EB" ? "#6B95F1" : "#E76B6B") : (cl === "#2563EB" ? "#1D4ED8" : "#B91C1C");
+}
+const NCB_PAD_FIN_ICON = {
+  SPF: ["M12 3a9 9 0 0 1 9 9", "M12 21a9 9 0 0 1-9-9", "M12 10.5a1.5 1.5 0 1 0 0.01 0"],
+  OVR: ["M4 20h16", "M7 15L17 5", "M9 5h8v8"],
+  BST: ["M12 2v5", "M12 17v5", "M2 12h5", "M17 12h5", "M4.9 4.9l3.5 3.5", "M15.6 15.6l3.5 3.5", "M4.9 19.1l3.5-3.5", "M15.6 8.4l3.5-3.5"],
+  XTR: ["M13 2L4 14h7l-1 8 9-12h-7l1-8z"],
+  LER: ["M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z", "M12 9v4", "M12 17h.01"]
+};
+function ncbPadScoreCard(o) {
+  const T = ncbPadTheme(o.dark);
+  const side = (d, align) => React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", minWidth: 0 } },
+    React.createElement("div", { style: { maxWidth: "100%", fontSize: 17, fontWeight: 800, color: ncbPadTxt(o.dark, d.cl), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, d.name),
+    React.createElement("div", { style: { fontFamily: NCB_PAD_NUM, fontSize: "clamp(56px, 18vw, 76px)", lineHeight: 0.95, fontWeight: 800, color: ncbPadTxt(o.dark, d.cl), fontVariantNumeric: "tabular-nums" } }, d.pts));
+  return React.createElement("div", {
+    style: { flexShrink: 0, margin: "12px 12px 0", padding: "12px 14px 14px", borderRadius: 18, background: T.card, border: "1px solid " + T.cardLine, boxShadow: T.cardShadow,
+      display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", alignItems: "center", columnGap: 10, fontFamily: NCB_PAD_UI }
+  },
+    side(o.dA),
+    React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 64 } },
+      o.bo > 1 && React.createElement("div", { style: { padding: "2px 10px", borderRadius: 999, background: o.dark ? "#1E2844" : "#EEF0F5", fontSize: 14, fontWeight: 700, color: T.text2, fontVariantNumeric: "tabular-nums" } }, o.dA.sets + "–" + o.dB.sets),
+      (o.sides.p1Side || o.sides.p2Side) && React.createElement("div", { style: { fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: T.muted } }, (o.sides.p1Side || "—") + " · " + (o.sides.p2Side || "—")),
+      React.createElement("div", { style: { width: 18, height: 2, margin: "2px 0", borderRadius: 2, background: o.dark ? "#34405F" : "#CBD1DD" } }),
+      o.target > 0 && React.createElement("div", { style: { fontSize: 13, fontWeight: 800, letterSpacing: "0.14em", color: T.text } }, "TO " + o.target),
+      React.createElement("div", { style: { fontSize: 12, fontWeight: 500, color: T.muted, whiteSpace: "nowrap" } }, o.setName)),
+    side(o.dB));
+}
+// The scrolling pad (one column per player) plus the confirm bar at the bottom.
+function ncbPadBattleBody(o) {
+  const T = ncbPadTheme(o.dark);
+  const pend = o.pendingFinish;
+  const tile = (side, opp, f) => {
+    const active = o.bothCombosSelected;
+    const isSel = side.pending?.id === f.id;
+    const pt = ncbPadTile({ dark: o.dark, p: f.p, penalty: false, cl: side.cl, oppCl: opp.cl, sel: isSel });
+    const icoColor = f.p >= 3 ? "#FFFFFF" : ncbPadTxt(o.dark, side.cl);
+    return React.createElement("button", {
+      key: f.id, type: "button", disabled: !active, "aria-pressed": isSel,
+      onClick: () => { if (active) o.setPendingFinish(isSel ? null : { pi: side.ci, fin: f }); },
+      style: Object.assign({
+        width: "100%", height: "clamp(48px, 7dvh, 72px)", display: "flex", alignItems: "center", gap: 10, padding: "0 14px 0 12px",
+        borderRadius: 14, border: pt.border, background: pt.background, color: pt.label, textAlign: "left", cursor: active ? "pointer" : "not-allowed",
+        opacity: !active ? 0.4 : (pend && !isSel ? 0.55 : 1), fontFamily: NCB_PAD_UI, touchAction: "manipulation", flexShrink: 0
+      }, pt.boxShadow ? { boxShadow: pt.boxShadow } : {})
+    },
+      React.createElement("span", { style: { color: icoColor, display: "flex", flex: "none" } }, ncbPadIcon(20, NCB_PAD_FIN_ICON[f.id])),
+      React.createElement("span", { style: { flex: "1 1 auto", minWidth: 0, fontSize: "clamp(14px, 4.1vw, 20px)", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, f.name.replace(/ Finish$/, "")),
+      React.createElement("span", { style: { flex: "none", fontFamily: NCB_PAD_NUM, fontSize: "clamp(26px, 8vw, 32px)", lineHeight: 1, fontWeight: 800, color: pt.chip } }, "+" + f.p));
+  };
+  const ownTile = (side, opp, f) => {
+    const active = o.bothCombosSelected;
+    const isSel = side.pending?.id === f.id;
+    const pt = ncbPadTile({ dark: o.dark, p: f.p, penalty: true, cl: side.cl, oppCl: opp.cl, sel: isSel });
+    return React.createElement("button", {
+      key: f.id, type: "button", disabled: !active, "aria-pressed": isSel,
+      onClick: () => { if (active) o.setPendingFinish(isSel ? null : { pi: side.ci, fin: f }); },
+      style: Object.assign({
+        flex: "1 1 0", minWidth: 0, height: 56, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 2, padding: "0 6px",
+        borderRadius: 12, border: pt.border, background: pt.background, color: pt.label, cursor: active ? "pointer" : "not-allowed", fontFamily: NCB_PAD_UI,
+        opacity: !active ? 0.4 : (pend && !isSel ? 0.55 : 1), touchAction: "manipulation"
+      }, pt.boxShadow ? { boxShadow: pt.boxShadow } : {})
+    },
+      React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, f.id === "OF2" ? "Own ×2" : "Own ×3"),
+      React.createElement("span", { style: { fontFamily: NCB_PAD_NUM, fontSize: 22, lineHeight: 1, fontWeight: 800, color: pt.chip } }, "+" + f.p));
+  };
+  const column = (side, opp) => {
+    const c = side.ri !== null ? (side.deck[side.ri] || {}) : null;
+    const bey = c ? [c.blade, c.ratchet, c.bit].filter(Boolean).join(" ") : "Pick combos first";
+    const api = o.lerApi[side.ci] || { locked: true, has: false, click: () => {} };
+    const n = o.lerStrikes[side.ci] || 0;
+    const col = ncbPadTxt(o.dark, side.cl);
+    return React.createElement("section", { key: side.ci, style: { flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column" } },
+      React.createElement("div", { style: { height: 50, minWidth: 0, padding: "0 10px", display: "flex", flexDirection: "column", justifyContent: "center", gap: 1, borderRadius: 12, background: side.cl + "1A", border: "1px solid " + side.cl + "61" } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minWidth: 0, fontSize: 15, fontWeight: 700, color: col } },
+          React.createElement("span", { style: { width: 8, height: 8, flex: "none", borderRadius: "50%", background: side.cl } }),
+          React.createElement("span", { style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, side.name)),
+        React.createElement("div", { style: { fontSize: 12, fontWeight: 500, color: T.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, bey)),
+      React.createElement("div", { style: { margin: "12px 2px 6px", fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", color: T.label } }, "FINISH"),
+      React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, o.FINISH.map(f => tile(side, opp, f))),
+      React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } }, o.PENALTY.filter(f => f.id !== "LER").map(f => ownTile(side, opp, f))),
+      React.createElement("button", {
+        type: "button", disabled: api.locked, onClick: api.click,
+        style: { marginTop: 12, height: 46, display: "flex", alignItems: "center", gap: 8, padding: "0 12px", borderRadius: 12, width: "100%",
+          background: api.has ? (o.dark ? "#3A2E0B" : "#FEF9C3") : "transparent", border: api.has ? "1.5px solid #F59E0B" : "1.5px dashed " + T.dash,
+          color: T.text2, cursor: api.locked ? "not-allowed" : "pointer", opacity: api.locked ? 0.4 : 1, fontFamily: NCB_PAD_UI, textAlign: "left", touchAction: "manipulation" }
+      },
+        React.createElement("span", { style: { color: T.amber, display: "flex", flex: "none" } }, ncbPadIcon(16, NCB_PAD_FIN_ICON.LER, { sw: 2.2 })),
+        React.createElement("span", { style: { flex: "1 1 auto", fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, "Launch error"),
+        React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 4, flex: "none" } },
+          [0, 1].map(i => React.createElement("i", { key: i, style: { width: 9, height: 9, borderRadius: "50%", border: "1.5px solid " + (n > i ? T.amber : T.dotOff), background: n > i ? T.amber : "transparent" } })))));
+  };
+  // confirm bar
+  let dock;
+  if (pend) {
+    const fin = pend.fin;
+    const scorer = fin.penalty ? 1 - pend.pi : pend.pi;
+    const scorerD = o.dA.ci === scorer ? o.dA : o.dB;
+    const from = o.pts[scorer];
+    const to = from + fin.p;
+    const ends = o.target > 0 && to >= o.target;
+    const finName = fin.penalty ? "Own finish" : fin.name.replace(/ Finish$/, "") + " finish";
+    const canConfirm = o.bothCombosSelected;
+    dock = React.createElement("div", { style: { height: 64, display: "flex", gap: 10 } },
+      React.createElement("button", { type: "button", "aria-label": "Cancel", onClick: () => o.setPendingFinish(null),
+        style: { width: 64, flex: "none", display: "grid", placeItems: "center", padding: 0, borderRadius: 14, border: "1px solid " + T.dockLine, background: T.dockBtn, color: T.text2, cursor: "pointer" } }, ncbPadIcon(22, ["M18 6L6 18", "M6 6l12 12"], { sw: 2.2 })),
+      React.createElement("button", { type: "button", disabled: !canConfirm, onClick: o.onConfirm,
+        style: { flex: "1 1 auto", minWidth: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "0 18px", border: 0, borderRadius: 14,
+          background: scorerD.cl, color: "#fff", boxShadow: (ends ? "inset 0 0 0 2px rgba(255,255,255,0.65), " : "") + "0 8px 24px " + scorerD.cl + "73", textAlign: "left", cursor: "pointer", fontFamily: NCB_PAD_UI, touchAction: "manipulation" } },
+        React.createElement("span", { style: { display: "flex", flexDirection: "column", minWidth: 0 } },
+          React.createElement("span", { style: { fontSize: 19, lineHeight: 1.2, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, "Give " + scorerD.name + " +" + fin.p),
+          React.createElement("span", { style: { fontSize: 13, lineHeight: 1.3, fontWeight: 500, color: "rgba(255,255,255,0.92)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, finName + " · " + from + " → " + to + (ends ? " · ends set" : ""))),
+        React.createElement("span", { style: { flex: "none", display: "flex" } }, ends ? ncbPadIcon(24, ["M8 21h8", "M12 17v4", "M7 4h10v5a5 5 0 0 1-10 0V4z", "M17 5h3v2a3 3 0 0 1-3 3", "M7 5H4v2a3 3 0 0 0 3 3"], { sw: 2.2 }) : ncbPadIcon(24, NCB_PAD_ICONS.check, { sw: 2.6 }))));
+  } else {
+    dock = React.createElement("p", { style: { height: 64, margin: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: T.hint, fontSize: 15, fontWeight: 600, fontFamily: NCB_PAD_UI } },
+      ncbPadIcon(18, ["M12 19V5", "M5 12l7-7 7 7"], { sw: 2.2 }), o.bothCombosSelected ? "Tap a result, then confirm it here" : "Waiting for both combos");
+  }
+  return React.createElement(React.Fragment, null,
+    React.createElement("div", { style: { flex: "1 1 auto", minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", padding: "12px 12px 4px", display: "flex", gap: 8, alignItems: "flex-start", fontFamily: NCB_PAD_UI } },
+      column(o.dA, o.dB),
+      React.createElement("div", { "aria-hidden": "true", style: { width: 1, alignSelf: "stretch", flex: "none", background: T.line } }),
+      column(o.dB, o.dA)),
+    React.createElement("div", { style: { flex: "none", marginTop: 8, padding: "12px 12px calc(12px + env(safe-area-inset-bottom))", background: T.chrome, borderTop: "1px solid " + T.line } }, dock));
 }
 
 function MatchScreen({
@@ -8585,6 +8723,8 @@ function MatchScreen({
   const pending2 = pendingFinish?.pi === 1 ? pendingFinish.fin : null;
 
   // Battle screen: position:fixed full viewport
+  const lerApi = {}; // FLAG 1033: the Launch Error handlers, filled in below so the new layout can reuse them
+  const tmTop = config.tm && !ff(1033); // FLAG 1033: the new look has no purple tournament bar
   const COMBO_ROW_H = bp(54); // fixed height for combo picker row
   const STRIP_H = bp(36); // top strip height
   return /*#__PURE__*/React.createElement(ErrorBoundary, null, /*#__PURE__*/React.createElement("div", {
@@ -8593,7 +8733,7 @@ function MatchScreen({
       inset: 0,
       display: "flex",
       flexDirection: "column",
-      background: "var(--bg-solid)",
+      background: ff(1033) ? ncbPadTheme(dark).page : "var(--bg-solid)",
       boxSizing: "border-box",
       overflow: "hidden"
     }
@@ -8605,8 +8745,8 @@ function MatchScreen({
       gap: bp(4),
       padding: `0 ${bp(8)}px`,
       flexShrink: 0,
-      borderBottom: "1px solid var(--border)",
-      background: config.tm ? "#6D28D9" : "var(--surface)"
+      borderBottom: "1px solid " + (ff(1033) ? ncbPadTheme(dark).line : "var(--border)"),
+      background: tmTop ? "#6D28D9" : ff(1033) ? ncbPadTheme(dark).chrome : "var(--surface)"
     }
   }, /*#__PURE__*/React.createElement("button", {
     style: {
@@ -8614,7 +8754,7 @@ function MatchScreen({
       marginBottom: 0,
       flexShrink: 0,
       fontSize: bf(12),
-      color: config.tm ? "#E9D5FF" : undefined
+      color: tmTop ? "#E9D5FF" : undefined
     },
     onClick: goBack
   }, IC.back), /*#__PURE__*/React.createElement("div", {
@@ -8629,39 +8769,39 @@ function MatchScreen({
     const canUndo = hasCurrentBattles || log[log.length - 1]?.type === "LER-STRIKE";
     const btnBase = {
       display: "flex",
-      flexDirection: "column",
+      flexDirection: ff(1033) ? "row" : "column",
       alignItems: "center",
       justifyContent: "center",
-      gap: 1,
+      gap: ff(1033) ? 6 : 1,
       flex: 1,
-      height: bp(30),
-      borderRadius: bp(6),
-      border: `1px solid ${config.tm ? "rgba(255,255,255,0.25)" : "var(--border2)"}`,
-      background: config.tm ? "rgba(255,255,255,0.1)" : "var(--surface2)",
+      height: ff(1033) ? bp(34) : bp(30),
+      borderRadius: ff(1033) ? 10 : bp(6),
+      border: `1px solid ${tmTop ? "rgba(255,255,255,0.25)" : ff(1033) ? ncbPadTheme(dark).btnLine : "var(--border2)"}`,
+      background: tmTop ? "rgba(255,255,255,0.1)" : ff(1033) ? ncbPadTheme(dark).btn : "var(--surface2)",
       fontFamily: "'Outfit',sans-serif",
       cursor: "pointer"
     };
     const lbl = {
-      fontSize: Math.max(6, bf(8)),
-      fontWeight: 700,
-      letterSpacing: 0.4,
+      fontSize: ff(1033) ? Math.max(11, bf(13)) : Math.max(6, bf(8)),
+      fontWeight: ff(1033) ? 600 : 700,
+      letterSpacing: ff(1033) ? 0 : 0.4,
       lineHeight: 1,
-      textTransform: "uppercase",
-      marginTop: 1
+      textTransform: ff(1033) ? "none" : "uppercase",
+      marginTop: ff(1033) ? 0 : 1
     };
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
       onClick: undo,
       disabled: !canUndo,
       style: {
         ...btnBase,
-        color: canUndo ? config.tm ? "#C4B5FD" : "var(--text-muted)" : "var(--text-disabled)",
+        color: canUndo ? tmTop ? "#C4B5FD" : "var(--text-muted)" : "var(--text-disabled)",
         opacity: canUndo ? 1 : 0.3,
         cursor: canUndo ? "pointer" : "default"
       }
     }, IC.undo, /*#__PURE__*/React.createElement("span", {
       style: {
         ...lbl,
-        color: canUndo ? config.tm ? "#C4B5FD" : "var(--text-muted)" : "var(--text-disabled)"
+        color: canUndo ? tmTop ? "#C4B5FD" : "var(--text-muted)" : "var(--text-disabled)"
       }
     }, "Undo")), currentSides.p1Side && /*#__PURE__*/React.createElement("button", {
       type: "button",
@@ -8682,7 +8822,7 @@ function MatchScreen({
       },
       style: {
         ...btnBase,
-        color: config.tm ? "#E9D5FF" : "var(--text-secondary)"
+        color: tmTop ? "#E9D5FF" : "var(--text-secondary)"
       }
     }, /*#__PURE__*/React.createElement("span", {
       style: {
@@ -8692,7 +8832,7 @@ function MatchScreen({
     }, "\u21C4"), /*#__PURE__*/React.createElement("span", {
       style: {
         ...lbl,
-        color: config.tm ? "#E9D5FF" : "var(--text-secondary)"
+        color: tmTop ? "#E9D5FF" : "var(--text-secondary)"
       }
     }, "Swap")), hasCurrentBattles && currentMatch.some(e => e.set === curSet) && /*#__PURE__*/React.createElement("button", {
       type: "button",
@@ -8702,7 +8842,7 @@ function MatchScreen({
         ...btnBase,
         flex: "0 0 auto",
         width: bp(30),
-        color: config.tm ? "#FCA5A5" : "var(--text-secondary)"
+        color: tmTop ? "#FCA5A5" : "var(--text-secondary)"
       }
     }, /*#__PURE__*/React.createElement("svg", {
       width: bf(14),
@@ -8721,7 +8861,7 @@ function MatchScreen({
       style: {
         ...lbl,
         textTransform: "none",
-        color: config.tm ? "#FCA5A5" : "var(--text-secondary)"
+        color: tmTop ? "#FCA5A5" : "var(--text-secondary)"
       }
     }, "Set")));
   })()), /*#__PURE__*/React.createElement("div", {
@@ -8827,9 +8967,9 @@ function MatchScreen({
       style: {
         ...sq,
         position: "relative",
-        background: layoutEditMode ? "#7C3AED" : settingsMenuOpen ? config.tm ? "rgba(255,255,255,0.2)" : "var(--surface2)" : "none",
-        border: layoutEditMode ? "none" : `1px solid ${config.tm ? "rgba(255,255,255,0.3)" : "var(--border2)"}`,
-        color: layoutEditMode ? "#fff" : config.tm ? "#E9D5FF" : "var(--text-muted)"
+        background: layoutEditMode ? "#7C3AED" : settingsMenuOpen ? tmTop ? "rgba(255,255,255,0.2)" : "var(--surface2)" : "none",
+        border: layoutEditMode ? "none" : `1px solid ${tmTop ? "rgba(255,255,255,0.3)" : "var(--border2)"}`,
+        color: layoutEditMode ? "#fff" : tmTop ? "#E9D5FF" : "var(--text-muted)"
       },
       title: "Settings"
     }, cogIcon, overlaySlot > 0 && /*#__PURE__*/React.createElement("span", {
@@ -8895,12 +9035,20 @@ function MatchScreen({
       } else {
         startHandoff();
       }
-    }), ff(1014) && menuRow("timing", "\u23F1", "Match timing", () => setTimingOpen(true)), menuRow("layout", "\u283F", layoutEditMode ? "Exit layout edit" : "Adjust layout", () => setLayoutEditMode(m => !m), {
+    }), ff(1014) && menuRow("timing", "\u23F1", "Match timing", () => setTimingOpen(true)), !ff(1033) && menuRow("layout", "\u283F", layoutEditMode ? "Exit layout edit" : "Adjust layout", () => setLayoutEditMode(m => !m), {
       color: layoutEditMode ? "#7C3AED" : undefined
     }), ff(1005) && menuRow("report", "?", "Report a problem", () => {
       if (window.__ncbOpenBugReport) window.__ncbOpenBugReport();
     }), menuRow("dark", dark ? "\u2600\uFE0F" : "\uD83C\uDF19", dark ? "Light mode" : "Dark mode", toggleDark)))));
-  })())), /*#__PURE__*/React.createElement("div", {
+  })())), ff(1033) && ncbPadScoreCard({
+    dark,
+    dA,
+    dB,
+    bo: config.bo,
+    target: config.pts,
+    sides: currentSides,
+    setName: ["First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh"][curSet - 1] ? ["First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh"][curSet - 1] + " set" : "Set " + curSet
+  }), /*#__PURE__*/React.createElement("div", {
     ref: scoreBlockCbRef,
     style: {
       background: "var(--surface)",
@@ -8911,7 +9059,7 @@ function MatchScreen({
       border: "1px solid var(--border)",
       flexShrink: 0,
       overflow: "hidden",
-      display: "flex",
+      display: ff(1033) ? "none" : "flex",
       flexDirection: "column",
       justifyContent: "center",
       ...(sectionH.score ? {
@@ -9135,7 +9283,7 @@ function MatchScreen({
   }), /*#__PURE__*/React.createElement("div", {
     ref: comboDisplaySectionRef,
     style: {
-      display: "flex",
+      display: ff(1033) ? "none" : "flex",
       gap: bp(6),
       marginBottom: 0,
       flexShrink: 0,
@@ -9352,7 +9500,7 @@ function MatchScreen({
   }), /*#__PURE__*/React.createElement("div", {
     ref: finishSectionRef,
     style: {
-      display: "flex",
+      display: ff(1033) ? "none" : "flex",
       gap: bp(6),
       padding: `0 ${bp(10)}px 0`,
       ...(sectionH.finish ? {
@@ -9528,6 +9676,11 @@ function MatchScreen({
           run: lerDo
         });
       };
+      lerApi[side.ci] = {
+        locked: lerLocked,
+        has: hasStrike,
+        click: lerClick
+      };
       return /*#__PURE__*/React.createElement(ScaledBtn, {
         key: "ler",
         disabled: lerLocked,
@@ -9666,7 +9819,32 @@ function MatchScreen({
         }, `Confirm ${(side.pending?.name || "").replace(/ Finish$/, "").replace(/ Error$/, "")}`)))
       });
     })());
-  })), layoutEditMode && /*#__PURE__*/React.createElement("div", {
+  })), ff(1033) && ncbPadBattleBody({
+    dark,
+    dA,
+    dB,
+    FINISH,
+    PENALTY,
+    pts,
+    lerApi,
+    lerStrikes,
+    pendingFinish,
+    setPendingFinish,
+    bothCombosSelected,
+    target: config.pts,
+    onConfirm: () => {
+      if (!pendingFinish || !bothCombosSelected) return;
+      if (pendingFinish.fin.penalty) {
+        setOwnConfirm({
+          pi: pendingFinish.pi,
+          fin: pendingFinish.fin
+        });
+        return;
+      }
+      doScore(pendingFinish.pi, pendingFinish.fin);
+      setPendingFinish(null);
+    }
+  }), layoutEditMode && /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
       bottom: 0,
