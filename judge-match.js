@@ -8834,12 +8834,14 @@ function MatchScreen({
         ...lbl,
         color: tmTop ? "#E9D5FF" : "var(--text-secondary)"
       }
-    }, "Swap")), hasCurrentBattles && currentMatch.some(e => e.set === curSet) && /*#__PURE__*/React.createElement("button", {
+    }, "Swap")), (ff(1033) || hasCurrentBattles && currentMatch.some(e => e.set === curSet)) && /*#__PURE__*/React.createElement("button", {
       type: "button",
       title: "Restart this set at 0-0",
+      disabled: !(hasCurrentBattles && currentMatch.some(e => e.set === curSet)),
       onClick: () => setResetSetConfirm(true),
       style: {
         ...btnBase,
+        opacity: hasCurrentBattles && currentMatch.some(e => e.set === curSet) ? 1 : 0.45,
         flex: "0 0 auto",
         width: ff(1033) ? "auto" : bp(30),
         minWidth: bp(30),
