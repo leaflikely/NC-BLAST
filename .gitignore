@@ -198,3 +198,7 @@ dist
 .dev.vars*
 !.dev.vars.example
 .DS_Store
+
+### BLAST simulator ###
+# run reports (screenshots, json) stay on the computer that ran them
+sim/reports/
