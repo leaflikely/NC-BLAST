@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-10c | deck-builder-redesign (flag 1034, on by default: new Record decks screen from the teammate mock-up - deck always on screen, whole-combo search, ratchet grid, CX steps - then each player checks and confirms their own deck, with a hidden screen between them; Fast Blast uses it too; the old deck review and pickers stay as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 // FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
 // stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
 // (the set that was just won: its score is saved a moment after the overlay push) is added at
@@ -753,6 +753,1362 @@ function ncbPadBattleBody(o) {
     React.createElement("div", { style: { flex: "none", marginTop: 8, padding: "12px 12px calc(12px + env(safe-area-inset-bottom))", background: T.chrome, borderTop: "1px solid " + T.line } }, dock));
 }
 
+// ── FLAG 1034: deck builder redesign (Record decks + each player checks their own deck) ──────────
+// Ported from a teammate's mock-up (record-decks-redesign.html). The look and the tapping flow are
+// the mock's; the data is the app's: decks are MatchScreen's d1/d2 (empty part = null, as before),
+// parts come from the parts library (parts / parts.cx), previous combos from the combo registry,
+// popular lists / colours / quick combos from core.js. Nothing here sends anything: when both
+// players have confirmed, onStart() runs the same steps as the old "Start Match" button.
+// The screen's own state (current part, check stage, undo list, search, CX steps) is kept in
+// MatchScreen (st / setSt), so it survives the CX Picture Guide opening over it.
+// Fast Blast events use it too: only the blade column is shown and checked.
+const NCBDB_CSS = `
+  .ncbdb-wrap {
+    --page: #E6EAF1; --bg: #F4F6FA; --card: #FFFFFF; --ink: #0F172A; --ink-2: #334155; --ink-3: #475569; --muted: #5B6578;
+    --line: #E3E8F0; --line-2: #D5DCE7; --track: #E7EBF2; --used-bg: #EEF1F6; --used-line: #E2E7EF; --used-ink: #7A8496;
+    --clash: #9A3412; --night: #0F172A; --edge: #DCE2EC; --dash: #C3CCDA; --field: #CBD3E0; --off: #F1F3F7; --hover: #AEB9CB;
+    --ready-bg: #DCFCE7; --ready-ink: #166534; --danger: #B91C1C;
+    --font: 'Outfit', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    position: fixed; inset: 0; z-index: 20; overflow: hidden; background: var(--page); color: var(--ink); font-family: var(--font);
+    -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overscroll-behavior: none;
+  }
+  body.dark .ncbdb-wrap {
+    --page: #0B1120; --bg: #0F172A; --card: #1E293B; --ink: #F1F5F9; --ink-2: #CBD5E1; --ink-3: #B4C0D3; --muted: #94A3B8;
+    --line: #2A3650; --line-2: #3A4762; --track: #0B1120; --used-bg: #172033; --used-line: #263248; --used-ink: #6B7891;
+    --clash: #FDBA74; --night: #020617; --edge: #334155; --dash: #475569; --field: #475569; --off: #172033; --hover: #64748B;
+    --ready-bg: rgba(34, 197, 94, 0.18); --ready-ink: #86EFAC; --danger: #F87171;
+  }
+  .ncbdb button { margin: 0; font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; -webkit-appearance: none; appearance: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .ncbdb button:disabled { cursor: default; }
+  .ncbdb button:active:not(:disabled) { transform: scale(0.985); filter: brightness(0.97); }
+  .ncbdb h1, .ncbdb h2, .ncbdb p { margin: 0; }
+  .ncbdb svg { display: block; flex: none; }
+  .ncbdb :focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+  .ncbdb [hidden] { display: none !important; }
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .ncbdb {
+    --pc: #2563EB; --pc-ink: #1D4ED8; --pc-rgb: 37, 99, 235; --tint: #EEF4FF; --tint-line: #C7D7FB;
+
+    
+    --bar-h: 52px;
+    --gap-y: 8px;
+    --tab-h: 40px;
+    --cell-h: 38px;
+    --row-gap: 6px;
+    --field-pad: 10px;
+    --prompt-gap: 8px;
+    --input-h: 46px;
+    --seg-h: 44px;
+    --pin-pad: 12px;
+    --pop-h: 44px;
+    --sug-h: 46px;
+    --ck-gap: 10px;
+    --ck-pad: 10px;
+    --ck-num: 36px;
+    --ck-blade-h: 54px;
+    --ck-blade-f: 20px;
+    --ck-part-h: 48px;
+    --ck-part-f: 18px;
+    --ck-name-f: 28px;
+    --ck-ban-pad: 14px 16px;
+    --dock-pad: 12px;
+    --dock-btn-h: 62px;
+
+    position: relative;
+    height: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+  }
+  .ncbdb.short {
+    --bar-h: 48px; --gap-y: 6px; --tab-h: 36px; --cell-h: 34px; --row-gap: 4px;
+    --field-pad: 8px; --prompt-gap: 6px; --input-h: 44px; --seg-h: 40px;
+    --pin-pad: 8px; --pop-h: 40px; --sug-h: 42px;
+    --ck-gap: 8px; --ck-pad: 8px; --ck-blade-h: 48px; --ck-blade-f: 19px; --ck-part-h: 44px; --ck-part-f: 17px;
+    --ck-name-f: 24px; --ck-ban-pad: 10px 14px; --dock-pad: 10px; --dock-btn-h: 58px;
+  }
+  .ncbdb.dense {
+    --ck-gap: 6px; --ck-pad: 6px; --ck-num: 30px; --ck-blade-h: 40px; --ck-blade-f: 17px; --ck-part-h: 36px; --ck-part-f: 15px;
+    --ck-name-f: 20px; --ck-ban-pad: 8px 12px; --dock-pad: 8px; --dock-btn-h: 54px;
+  }
+  .ncbdb.kb { --gap-y: 6px; --cell-h: 30px; --row-gap: 4px; --field-pad: 6px; --prompt-gap: 4px; --input-h: 44px; }
+  .ncbdb.kb .tabs { display: none; }
+  .ncbdb.kb-min .deck { display: none; }
+  .ncbdb .top { flex: none; }
+  .ncbdb .main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .ncbdb .bar {
+    flex: none;
+    height: calc(var(--bar-h) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 6px 0 2px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+  }
+  .ncbdb .icon-btn { width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; padding: 0; border: none; border-radius: 10px; background: transparent; color: var(--ink-2); }
+  .ncbdb .bar-title { flex: 1 1 auto; min-width: 0; font-size: 18px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .pill { flex: none; margin-right: 4px; padding: 4px 10px; border-radius: 999px; background: var(--track); color: var(--ink-2); font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .ncbdb .bar-btn { height: 40px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-size: 15px; font-weight: 600; }
+  .ncbdb .bar-btn:disabled { color: #94A3B8; }
+  .ncbdb .tabs { flex: none; padding: var(--gap-y) 12px 0; }
+  .ncbdb .tabs-track { display: grid; grid-template-columns: minmax(0, auto) minmax(0, auto); gap: 4px; padding: 4px; border-radius: 14px; background: var(--track); }
+  .ncbdb .tab { min-width: 0; height: var(--tab-h); display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; border: none; border-radius: 10px; background: transparent; color: var(--ink-3); font-size: 15px; font-weight: 700; }
+  .ncbdb .tab.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+  .ncbdb .tab-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; }
+  .ncbdb .tab-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .tab-count { flex: none; padding: 1px 8px; border-radius: 999px; background: var(--line-2); color: var(--ink-2); font-size: 12px; font-weight: 700; }
+  .ncbdb .tab.on .tab-count { background: var(--track); }
+  .ncbdb .tab .tab-count.ready { background: var(--ready-bg); color: var(--ready-ink); }
+  .ncbdb .deck { flex: none; padding: var(--gap-y) 12px 0; }
+  .ncbdb .deck-card { padding: var(--gap-y); border-radius: 16px; background: var(--card); border: 1px solid var(--line); display: flex; flex-direction: column; gap: var(--row-gap); }
+  .ncbdb .deck-row { display: grid; grid-template-columns: 26px minmax(0, 1.55fr) minmax(0, 1fr) minmax(0, 1.2fr); gap: 6px; align-items: center; }
+  .ncbdb .badge { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--track); color: var(--ink-2); font-size: 13px; font-weight: 800; }
+  .ncbdb .badge.now { background: var(--card); color: var(--pc-ink); box-shadow: inset 0 0 0 2px var(--pc); }
+  .ncbdb .badge.done { background: var(--pc); color: #FFFFFF; box-shadow: none; }
+  .ncbdb .cell { height: var(--cell-h); min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 9px; border-radius: 10px; border: 1px solid var(--edge); background: var(--card); color: var(--ink); font-size: 13px; font-weight: 600; text-align: left; }
+  .ncbdb .cell .t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .cell.empty { border: 1.5px dashed var(--dash); background: var(--bg); color: var(--muted); font-weight: 500; }
+  .ncbdb .cell.builtin { border-color: var(--bg); background: var(--bg); color: var(--muted); font-weight: 500; font-style: italic; }
+  .ncbdb .cell.now { border: 1.5px solid var(--pc); background: var(--card); box-shadow: 0 0 0 3px rgba(var(--pc-rgb), 0.22); }
+  .ncbdb .cell.now.empty { color: var(--pc-ink); font-weight: 700; }
+  .ncbdb .cell-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.18); }
+  .ncbdb .field { flex: none; padding: var(--field-pad) 12px 0; }
+  .ncbdb .prompt { height: 20px; display: flex; font-size: 15px; line-height: 20px; font-weight: 700; white-space: pre; overflow: hidden; }
+  .ncbdb .prompt:focus { outline: none; }
+  .ncbdb .prompt-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .prompt-rest { flex: none; }
+  .ncbdb .search { margin-top: var(--prompt-gap); height: var(--input-h); display: flex; align-items: center; gap: 8px; padding: 0 5px 0 12px; border-radius: 12px; background: var(--card); border: 1.5px solid var(--field); color: var(--muted); }
+  .ncbdb .search:focus-within { border-color: var(--pc); box-shadow: 0 0 0 3px rgba(var(--pc-rgb), 0.18); }
+  .ncbdb .search input { flex: 1 1 auto; min-width: 0; height: 40px; padding: 0; border: none; outline: none; background: transparent; color: var(--ink); font: inherit; font-size: 16px; }
+  .ncbdb .search input::placeholder { color: var(--muted); opacity: 1; }
+  .ncbdb .q-clear { width: 36px; height: 36px; flex: none; display: flex; align-items: center; justify-content: center; padding: 0; border: none; border-radius: 8px; background: var(--used-bg); color: var(--ink-2); }
+  .ncbdb .segwrap { flex: none; padding: var(--gap-y) 12px 0; }
+  .ncbdb .seg-track { display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: var(--track); }
+  .ncbdb .seg { flex: 1 1 0; min-width: 0; height: var(--seg-h); padding: 0; border: none; border-radius: 9px; background: transparent; color: var(--ink-3); font-size: 15px; font-weight: 700; }
+  .ncbdb .seg.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+  .ncbdb .scroller { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .ncbdb .pinned { flex: none; padding: var(--pin-pad) 12px; background: var(--bg); border-bottom: 1px solid var(--edge); }
+  .ncbdb .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 12px 12px calc(24px + env(safe-area-inset-bottom)); }
+  .ncbdb .scroller.unpin { display: block; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .ncbdb .scroller.unpin .pinned { padding-bottom: 6px; border-bottom: none; }
+  .ncbdb .scroller.unpin .body { overflow: visible; }
+  .ncbdb.flow { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .ncbdb.flow > .main { flex: none; display: block; }
+  .ncbdb.flow .scroller { display: block; overflow: visible; }
+  .ncbdb.flow .body { overflow: visible; }
+  .ncbdb.flow > .dock { position: sticky; bottom: 0; }
+  .ncbdb .label { margin: 0 2px 8px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .ncbdb .label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 2px 8px; }
+  .ncbdb .label-row .label { flex: none; margin: 0; }
+  .ncbdb .hint { min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .grid { display: grid; gap: 8px; }
+  .ncbdb .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ncbdb .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ncbdb .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .ncbdb .g5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .ncbdb .mb { margin-bottom: 18px; }
+  .ncbdb .az-head { grid-column: 1 / -1; margin: 6px 2px 0; font-size: 13px; font-weight: 800; color: var(--muted); }
+  .ncbdb .chip { position: relative; min-width: 0; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); }
+  .ncbdb .chip-t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .chip-blade { height: 46px; justify-content: flex-start; gap: 8px; padding: 0 10px 0 12px; border-width: 2px; border-radius: 12px; font-size: 15px; font-weight: 600; text-align: left; }
+  .ncbdb .chip-blade .chip-t { flex: 1 1 auto; }
+  .ncbdb .chip-ratchet { height: 44px; padding: 0 2px; border-radius: 10px; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .ncbdb .pinned .chip-ratchet { height: var(--pop-h); }
+  .ncbdb .chip-ratchet.mx { padding: 0; font-size: 13px; }
+  .ncbdb .chip-ratchet.word { padding: 0 8px; font-size: 14px; font-weight: 600; }
+  .ncbdb .g5 > .chip-ratchet.word { grid-column: span 2; }
+  .ncbdb .chip-bit { height: 44px; padding: 0 8px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+  .ncbdb .chip-bit.lg { height: 46px; border-radius: 12px; font-size: 15px; }
+  .ncbdb .chip.used { background: var(--used-bg); border-color: var(--used-line); color: var(--used-ink); }
+  .ncbdb .chip.cur { box-shadow: 0 0 0 3px rgba(var(--pc-rgb), 0.35); }
+  .ncbdb .chip.cur:not(.colored) { background: var(--tint); border-color: var(--pc); }
+  .ncbdb [data-used]::after { content: attr(data-used); position: absolute; top: -7px; right: -5px; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #475569; color: #FFFFFF; font-size: 10px; font-weight: 800; letter-spacing: 0; }
+  .ncbdb .chip-blade[data-used]::after { position: static; width: 20px; height: 20px; flex: none; font-size: 11px; }
+  .ncbdb .chip-ratchet.mx[data-used]::after { top: -6px; right: -4px; width: 16px; height: 16px; }
+  .ncbdb .cc { min-height: 58px; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 8px 12px; border-radius: 12px; border: 2px solid var(--line-2); background: var(--card); color: var(--ink); text-align: left; }
+  .ncbdb .cc-blade { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .cc-sub { font-size: 13px; font-weight: 500; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .cc.off { background: var(--off); border-color: var(--used-line); color: var(--used-ink); }
+  .ncbdb .cc.off .cc-sub { color: var(--clash); }
+  .ncbdb .use-all { min-height: 58px; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; border: none; border-radius: 12px; background: var(--pc); color: #FFFFFF; font-size: 15px; font-weight: 700; }
+  .ncbdb .sug-grid { margin-bottom: 12px; }
+  .ncbdb .sug { height: var(--sug-h); min-width: 0; padding: 0 12px; border-radius: 12px; border: 1px solid var(--tint-line); background: var(--tint); color: var(--ink); font-size: 15px; font-weight: 700; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .sug:disabled { background: var(--off); border-color: var(--used-line); color: var(--used-ink); }
+  .ncbdb .combo { margin-bottom: 18px; padding: 14px; border-radius: 16px; background: var(--tint); border: 1px solid var(--tint-line); }
+  .ncbdb .combo-label { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+  .ncbdb .combo-title { margin-top: 6px; font-size: 19px; line-height: 1.25; font-weight: 700; overflow-wrap: anywhere; }
+  .ncbdb .combo-sub { margin-top: 2px; font-size: 14px; color: var(--ink-3); }
+  .ncbdb .combo-sub.clash { color: var(--clash); }
+  .ncbdb .combo-btn { margin-top: 12px; width: 100%; height: 48px; padding: 0 14px; border: none; border-radius: 12px; background: var(--pc); color: #FFFFFF; font-size: 16px; font-weight: 700; white-space: nowrap; }
+  .ncbdb .combo-btn:disabled { background: #94A3B8; }
+  .ncbdb.kb .combo { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 10px; margin-bottom: 12px; padding: 8px 8px 8px 12px; }
+  .ncbdb.kb .combo-label, .ncbdb.kb .combo-sub:not(.clash) { display: none; }
+  .ncbdb.kb .combo-title { grid-column: 1; margin: 0; font-size: 16px; }
+  .ncbdb.kb .combo-sub { grid-column: 1; margin: 0; font-size: 13px; }
+  .ncbdb.kb .combo-btn { grid-column: 2; grid-row: 1 / span 2; width: auto; height: 44px; margin: 0; font-size: 15px; }
+  .ncbdb .none { padding: 18px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); font-size: 15px; line-height: 1.45; color: var(--ink-2); overflow-wrap: anywhere; }
+  .ncbdb .crumbs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .ncbdb .crumb { flex: 1 1 0; min-width: 0; height: 54px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; padding: 0 9px; border-radius: 12px; border: 1.5px dashed var(--dash); background: var(--bg); color: var(--ink); text-align: left; }
+  .ncbdb .crumb-label { max-width: 100%; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .crumb-value { max-width: 100%; font-size: 15px; font-weight: 700; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .crumb.set { border: 1px solid var(--line-2); background: var(--card); }
+  .ncbdb .crumb.set .crumb-value { color: var(--ink); }
+  .ncbdb .crumb.cur { border: 2px solid var(--pc); background: var(--tint); }
+  .ncbdb .crumb.cur .crumb-label, .ncbdb .crumb.cur:not(.set) .crumb-value { color: var(--pc-ink); }
+  .ncbdb .crumbs.four .crumb { padding: 0 6px; }
+  .ncbdb .crumbs.four .crumb-value { font-size: clamp(12px, 3.5vw, 15px); }
+  .ncbdb .cx-opt { position: relative; height: 52px; min-width: 0; padding: 0 4px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-size: 15px; font-weight: 600; white-space: nowrap; }
+  .ncbdb .cx-opt.on { border: 2px solid var(--pc); background: var(--tint); }
+  .ncbdb .cx-opt:disabled { background: var(--used-bg); border-color: var(--used-line); color: var(--used-ink); }
+  .ncbdb .cx-opt[data-tag]::after { content: attr(data-tag); position: absolute; top: -7px; right: -4px; padding: 1px 6px; border-radius: 999px; background: var(--ink); color: #FFFFFF; font-size: 9px; font-weight: 800; letter-spacing: 0.04em; }
+  .ncbdb .mx-head, .ncbdb .mx-row { display: grid; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .ncbdb .mx-head { font-size: 12px; font-weight: 700; color: var(--muted); text-align: center; }
+  .ncbdb .mx-label { font-size: 14px; font-weight: 800; color: var(--muted); text-align: center; }
+  .ncbdb .mx-none { height: 44px; border-radius: 10px; border: 1px dashed var(--line); }
+  .ncbdb .mx-other { margin-top: 18px; }
+  .ncbdb .mx-head.tight, .ncbdb .mx-row.tight { gap: 4px; }
+  .ncbdb .mx-row.tight .chip-ratchet.mx { font-size: 11px; letter-spacing: -0.02em; }
+  .ncbdb .card { padding: 18px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); }
+  .ncbdb .card-title { font-size: 18px; font-weight: 700; }
+  .ncbdb .card-title:focus, .ncbdb .ck-name:focus, .ncbdb .cover-title:focus { outline: none; }
+  .ncbdb .card-text { margin-top: 6px; font-size: 15px; line-height: 1.45; color: var(--ink-3); }
+  .ncbdb .card-btn { margin-top: 14px; width: 100%; min-height: 48px; padding: 6px 14px; border: none; border-radius: 12px; background: var(--night); color: #FFFFFF; font-size: 16px; font-weight: 700; }
+  .ncbdb .card-btn.ghost { border: 1px solid var(--line-2); background: var(--card); color: var(--ink); }
+  .ncbdb .locked { margin-top: min(72px, 8vh); padding: 28px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .ncbdb .locked .card-title { margin-top: 16px; font-size: 22px; }
+  .ncbdb .ok-ring { width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #DCFCE7; color: #15803D; }
+  .ncbdb .ck-banner { padding: var(--ck-ban-pad); border-radius: 16px; background: var(--tint); border: 2px solid var(--pc); }
+  .ncbdb .ck-who { display: flex; align-items: center; gap: 10px; }
+  .ncbdb .ck-dot { width: 14px; height: 14px; flex: none; border-radius: 50%; background: var(--pc); }
+  .ncbdb .ck-name { min-width: 0; font-size: var(--ck-name-f); line-height: 1.15; font-weight: 800; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .ncbdb .ck-q { margin-top: 4px; font-size: 16px; color: var(--ink-2); }
+  .ncbdb .ck-card { display: grid; grid-template-columns: var(--ck-num) minmax(0, 1fr) minmax(0, 1fr); gap: 6px 8px; align-items: center; margin-top: var(--ck-gap); padding: var(--ck-pad); border-radius: 16px; background: var(--card); border: 1px solid var(--line); }
+  .ncbdb .ck-num { grid-row: 1 / 3; width: var(--ck-num); height: var(--ck-num); display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--pc); color: #FFFFFF; font-size: 18px; font-weight: 800; }
+  .ncbdb .ck-cell { min-width: 0; min-height: var(--ck-part-h); display: flex; align-items: center; padding: 3px 14px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-size: var(--ck-part-f); font-weight: 600; text-align: left; }
+  .ncbdb .ck-cell .t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .ck-blade { grid-column: 2 / 4; min-height: var(--ck-blade-h); border-width: 2px; font-size: var(--ck-blade-f); font-weight: 700; line-height: 1.15; }
+  .ncbdb .ck-blade .t { white-space: normal; overflow-wrap: anywhere; }
+  .ncbdb .ck-cell.builtin { border-color: var(--bg); background: var(--bg); color: var(--muted); font-weight: 500; font-style: italic; }
+  .ncbdb .ck-hint { margin-top: 14px; font-size: 15px; color: var(--ink-3); text-align: center; }
+  .ncbdb[data-stage="check"] .body { padding-bottom: 12px; }
+  .ncbdb.short .ck-hint { margin-top: 10px; }
+  .ncbdb.dense .ck-banner { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 10px; }
+  .ncbdb.dense .ck-who { min-width: 0; }
+  .ncbdb.dense .ck-q { flex: none; margin: 0; font-size: 14px; }
+  .ncbdb.dense .ck-num { font-size: 16px; }
+  .ncbdb.dense .ck-card { gap: 4px 8px; }
+  .ncbdb.dense .ck-hint { margin-top: 8px; font-size: 14px; }
+  .ncbdb[data-stage="cover"] .scroller, .ncbdb[data-stage="cover"] .body { background: var(--night); }
+  .ncbdb .cover { padding: min(88px, 9vh) 8px 0; display: flex; flex-direction: column; align-items: center; text-align: center; color: #FFFFFF; }
+  .ncbdb .cover-eye { width: 76px; height: 76px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #1E293B; color: #E2E8F0; }
+  .ncbdb .cover-title { margin-top: 22px; max-width: 100%; font-size: 30px; line-height: 1.2; font-weight: 800; overflow-wrap: anywhere; }
+  .ncbdb .cover-text { margin-top: 10px; font-size: 18px; line-height: 1.4; color: #E2E8F0; }
+  .ncbdb .cover-done { margin-top: 24px; max-width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: #1E293B; color: #BBF7D0; font-size: 15px; font-weight: 600; }
+  .ncbdb .cover-done span { min-width: 0; overflow-wrap: anywhere; }
+  .ncbdb[data-stage="cover"] :focus-visible { outline-color: #FFFFFF; }
+  .ncbdb .toast-slot { flex: none; position: relative; }
+  .ncbdb:not([data-stage="build"]) .toast-slot { height: 0; }
+  .ncbdb:not([data-stage="build"]) .notice { position: absolute; left: 0; right: 0; bottom: 0; }
+  .ncbdb .notice { margin: 0 12px 12px; padding: 12px 14px; border-radius: 14px; background: var(--night); color: #FFFFFF; display: flex; align-items: center; gap: 10px; font-size: 15px; line-height: 1.3; font-weight: 600; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25); }
+  .ncbdb .notice svg { color: #4ADE80; }
+  .ncbdb .notice.warn svg { color: #FBBF24; }
+  .ncbdb .notice.info svg { color: #93C5FD; }
+  .ncbdb .notice span { min-width: 0; }
+  .ncbdb[data-stage="cover"] .notice { background: #1E293B; }
+  .ncbdb .dock { flex: none; padding: var(--dock-pad) 12px calc(var(--dock-pad) + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--line); }
+  .ncbdb[data-stage="cover"] .dock { background: var(--night); border-top-color: var(--night); }
+  .ncbdb .dock-btn { width: 100%; min-height: var(--dock-btn-h); display: flex; align-items: center; gap: 10px; padding: 6px 18px; border: none; border-radius: 14px; background: var(--pc); color: #FFFFFF; text-align: left; }
+  .ncbdb .dock-btn.confirm { justify-content: space-between; }
+  .ncbdb .dock-btn.reveal { justify-content: center; font-size: 19px; font-weight: 700; }
+  .ncbdb .dock-btn.reveal span { min-width: 0; line-height: 1.2; overflow-wrap: anywhere; }
+  .ncbdb .confirm-text { display: flex; flex-direction: column; min-width: 0; }
+  .ncbdb .confirm-title { max-width: 100%; display: flex; font-size: 19px; line-height: 1.2; font-weight: 700; white-space: pre; }
+  .ncbdb .confirm-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .confirm-verb { flex: none; }
+  .ncbdb .confirm-sub { font-size: 13px; line-height: 1.35; font-weight: 500; }
+  .ncbdb .menu-backdrop { position: fixed; inset: 0; z-index: 5; cursor: pointer; }
+  .ncbdb .menu { position: absolute; top: calc(env(safe-area-inset-top) + var(--bar-h) - 2px); right: 8px; z-index: 6; width: 264px; max-width: calc(100% - 16px); padding: 6px; display: flex; flex-direction: column; border-radius: 14px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18); }
+  .ncbdb .menu-item { min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 6px 12px; border: none; border-radius: 10px; background: transparent; color: var(--ink); font-size: 15px; line-height: 1.25; font-weight: 600; text-align: left; }
+  .ncbdb .menu-item.danger { color: var(--danger); }
+  .ncbdb .mi-text { flex: 1 1 auto; min-width: 0; }
+  .ncbdb .switch { position: relative; width: 36px; height: 22px; flex: none; border-radius: 999px; background: #94A3B8; }
+  .ncbdb .switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #FFFFFF; }
+  .ncbdb .switch.on { background: #15803D; }
+  .ncbdb .switch.on::after { left: 16px; }
+  @media (hover: hover) {
+  .ncbdb .chip:hover:not(:disabled):not(.colored), .ncbdb .cx-opt:hover:not(:disabled):not(.on) { border-color: var(--hover); }
+  .ncbdb .menu-item:hover, .ncbdb .icon-btn:hover { background: var(--used-bg); }
+
+  }
+  @media (max-width: 359px) {
+  .ncbdb .mx-head, .ncbdb .mx-row { gap: 4px; }
+  .ncbdb .chip-ratchet.mx { font-size: 12px; }
+  .ncbdb .cx-opt { font-size: 14px; }
+  .ncbdb .tab { gap: 5px; padding: 0 6px; font-size: 14px; }
+  .ncbdb .cell { gap: 4px; padding: 0 6px; font-size: 12px; }
+
+  }
+  @media (prefers-reduced-motion: no-preference) {
+  .ncbdb button { transition: transform 0.06s ease-out; }
+  .ncbdb .notice { animation: ncbdbRise 0.18s ease-out both; }
+  .ncbdb .dock-btn { animation: ncbdbArm var(--arm, 600ms) ease-out both; }
+
+  }
+  @keyframes ncbdbRise {
+ from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } 
+  }
+  @keyframes ncbdbArm {
+ from { opacity: 0.45; } to { opacity: 1; } 
+  }
+  .ncbdb .label-row .hint { flex: 1 1 auto; text-align: right; }
+  .ncbdb .label-row .label.shrink { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdb .link-btn { flex: none; align-self: center; height: 30px; display: flex; align-items: center; gap: 5px; margin: -6px -4px -6px 0; padding: 0 8px; border: none; border-radius: 8px; background: transparent; color: var(--pc-ink); font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .ncbdb .link-btn.danger { color: var(--danger); }
+  .ncbdb .link-btn:hover { background: var(--used-bg); }
+`;
+function ncbdbEnsureCss() {
+  try {
+    if (document.getElementById("ncbdb-css")) return;
+    const st = document.createElement("style");
+    st.id = "ncbdb-css";
+    st.textContent = NCBDB_CSS;
+    document.head.appendChild(st);
+  } catch (e) {}
+}
+// Player colours: color = buttons and outlines, ink = the same colour dark (or light) enough for small text,
+// tint / line = light fills. Player 1 blue, player 2 red, as everywhere else in the app.
+const NCBDB_PLAYER_COLORS = {
+  light: [
+    { color: "#2563EB", ink: "#1D4ED8", rgb: "37, 99, 235", tint: "#EEF4FF", line: "#C7D7FB" },
+    { color: "#DC2626", ink: "#B91C1C", rgb: "220, 38, 38", tint: "#FEF2F2", line: "#F6C8C8" }
+  ],
+  dark: [
+    { color: "#3B82F6", ink: "#93C5FD", rgb: "59, 130, 246", tint: "rgba(59, 130, 246, 0.16)", line: "rgba(59, 130, 246, 0.45)" },
+    { color: "#EF4444", ink: "#FCA5A5", rgb: "239, 68, 68", tint: "rgba(239, 68, 68, 0.16)", line: "rgba(239, 68, 68, 0.45)" }
+  ]
+};
+const NCBDB_ICONS = {
+  back: '<path d="M15 18l-6-6 6-6"/>',
+  undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  dots: '<path d="M12 5h.01"/><path d="M12 12h.01"/><path d="M12 19h.01"/>',
+  history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
+  restart: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+  check: '<path d="M20 6L9 17l-5-5"/>',
+  alert: '<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5h.01"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/>',
+  trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>',
+  flag: '<path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+  x: '<path d="M18 6L6 18"/><path d="M6 6l12 12"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>'
+};
+function ncbdbIcon(name, size, stroke) {
+  return React.createElement("svg", {
+    width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: stroke,
+    strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true",
+    dangerouslySetInnerHTML: { __html: NCBDB_ICONS[name] }
+  });
+}
+const NCBDB_CFG = {
+  tapGuardMs: 300,     // a second tap on the same spot inside this window is ignored (not Undo)
+  stageGuardMs: 600,   // "confirms", "Show deck" and Back ignore taps for this long after a check screen appears
+  noticeMs: 3200,      // how long a notice stays up
+  minListPx: 150,      // Popular ratchets stay pinned only while the list below keeps this much room
+  hideKey: "ncblast.deckHideBetween" // device setting: blank screen between the two deck checks
+};
+const NCBDB_PARTS = ["blade", "ratchet", "bit"];
+const ncbdbClone = o => JSON.parse(JSON.stringify(o));
+const ncbdbCap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const ncbdbOther = i => (i === 0 ? 1 : 0);
+const ncbdbByName = (a, b) => a.localeCompare(b);
+const ncbdbCxBlank = () => ({ step: "chip", chip: "", blade: "", over: "", assist: "" });
+function ncbdbReadHide() {
+  try { return localStorage.getItem(NCBDB_CFG.hideKey) !== "0"; } catch (e) { return true; }
+}
+// Fresh screen state for decks that may already hold parts (a resumed match, or Back from the next screen).
+function ncbdbInitState(d1, d2, need) {
+  const gap = deck => {
+    for (let c = 0; c < 3; c++) for (const p of NCBDB_PARTS) if (need(deck[c], p) && !deck[c][p]) return { c, p };
+    return null;
+  };
+  const a1 = gap(d1), a2 = gap(d2);
+  return {
+    player: a1 || !a2 ? 0 : 1,
+    active: a1 || a2 || null,
+    check: null, fix: null, hist: [],
+    query: "", seg: "std", cx: ncbdbCxBlank(), menu: false,
+    hide: ncbdbReadHide()
+  };
+}
+
+function DeckBuilderV2(props) {
+  const h = React.createElement;
+  const { d1, d2, setD1, setD2, parts, eventFast, dark } = props;
+  ncbdbEnsureCss();
+
+  /* ---------- Parts, from the parts library ---------- */
+  const lists = useMemo(() => {
+    const pcx = parts && parts.cx || {};
+    const crossover = pcx.crossover || CROSSOVER_BLADES;
+    const cx = {
+      chips: pcx.gear_chips || CX_CHIPS,
+      blades: pcx.cx_blades || CX_BLADES,
+      cxeBlades: pcx.cxe_blades || CXE_BLADES,
+      overBlades: pcx.cxe_over || CXE_OVER_BLADES,
+      assists: pcx.assist || CX_ASSISTS,
+      popularAssists: CX_ASSIST_TOP5,
+      plainChip: "Standard" // left out of the blade's name, and may repeat in a deck
+    };
+    const notStandard = new Set([...crossover, ...cx.chips, ...cx.blades, ...cx.cxeBlades, ...cx.overBlades, ...cx.assists]);
+    const blades = [...new Set((parts && parts.blades || []).filter(n => n && !notStandard.has(n)))];
+    const quick = QUICK_COMBOS.map(q => ({ blade: q.blade || null, ratchet: q.ratchet || null, bit: q.bit || null }));
+    return {
+      blades, crossover, cx, quick,
+      ratchets: parts && parts.ratchets || [],
+      bits: parts && parts.bits || [],
+      popular: { blade: TOP10.blades || [], ratchet: TOP10.ratchets || [], bit: TOP10.bits || [] }
+    };
+  }, [parts]);
+  const CX = lists.cx;
+  const builtInRatchet = new Set(NO_RATCHET_BLADES);
+  const builtInBit = new Set(NO_BIT_RATCHETS);
+  const repeatable = new Set(["No Ratchet"]); // not a physical part, so it may appear in more than one combo
+
+  const pal = NCBDB_PLAYER_COLORS[dark ? "dark" : "light"];
+  const P = [props.p1, props.p2].map((n, i) => Object.assign({ name: String(n || "Player " + (i + 1)) }, pal[i]));
+  const prevOf = i => (props.prev && props.prev[i] || []).slice(0, 3);
+  const decks = [d1, d2];
+
+  /* ---------- Rules ---------- */
+  // Does this combo need the part? Fast Blast: only the blade. Some blades have the ratchet built in, some ratchets the bit.
+  function need(c, p) {
+    if (p === "blade") return true;
+    if (eventFast) return false;
+    if (p === "ratchet") return !(c.blade && builtInRatchet.has(c.blade));
+    return !(c.ratchet && builtInBit.has(c.ratchet));
+  }
+  const s = props.st || ncbdbInitState(d1, d2, need);
+  function nextEmpty(deck) {
+    for (let c = 0; c < 3; c++) for (const p of NCBDB_PARTS) if (need(deck[c], p) && !deck[c][p]) return { c, p };
+    return null;
+  }
+  function progress(deck) {
+    let done = 0, total = 0;
+    for (const c of deck) for (const p of NCBDB_PARTS) if (need(c, p)) { total++; if (c[p]) done++; }
+    return { done, total };
+  }
+  // Which other combo in this deck already has the part (-1 when none).
+  function usedIn(deck, p, name, except) {
+    if (!name || repeatable.has(name)) return -1;
+    for (let c = 0; c < 3; c++) if (c !== except && deck[c][p] === name) return c;
+    return -1;
+  }
+  // "Emperor Blast Heavy" back into its pieces. null for a blade that is not CX.
+  function cxParts(name) {
+    const w = String(name || "").split(" ");
+    const e = w.findIndex(x => CX.cxeBlades.includes(x));
+    if (e >= 0) {
+      if (e > 1 || w.length !== e + 3 || !CX.overBlades.includes(w[e + 1]) || !CX.assists.includes(w[e + 2])) return null;
+      if (e === 1 && !CX.chips.includes(w[0])) return null;
+      return { chip: e ? w[0] : CX.plainChip, blade: w[e], over: w[e + 1], assist: w[e + 2] };
+    }
+    if (w.length === 3 && CX.chips.includes(w[0]) && CX.blades.includes(w[1]) && CX.assists.includes(w[2])) return { chip: w[0], blade: w[1], over: "", assist: w[2] };
+    if (w.length === 2 && CX.blades.includes(w[0]) && CX.assists.includes(w[1])) return { chip: CX.plainChip, blade: w[0], over: "", assist: w[1] };
+    return null;
+  }
+  // CX pieces already used by the other combos in this deck: piece name -> combo index.
+  function cxUsed(deck, except) {
+    const used = { chip: {}, blade: {}, over: {}, assist: {} };
+    deck.forEach((c, i) => {
+      const x = i === except ? null : cxParts(c.blade);
+      if (!x) return;
+      if (x.chip !== CX.plainChip) used.chip[x.chip] = i;
+      used.blade[x.blade] = i;
+      if (x.over) used.over[x.over] = i;
+      used.assist[x.assist] = i;
+    });
+    return used;
+  }
+  // Why a combo cannot go in slot ci ('' when it can): no part twice in one deck.
+  function clashOf(deck, ci, c) {
+    for (const p of NCBDB_PARTS) {
+      const u = usedIn(deck, p, c[p], ci);
+      if (u >= 0) return `${c[p]} is in combo ${u + 1}`;
+    }
+    const x = cxParts(c.blade);
+    if (x) {
+      const used = cxUsed(deck, ci);
+      for (const k of ["chip", "blade", "over", "assist"]) {
+        if (x[k] && used[k][x[k]] !== undefined) return `${x[k]} is in combo ${used[k][x[k]] + 1}`;
+      }
+    }
+    return "";
+  }
+  const bothBuiltOf = dk => !nextEmpty(dk[0]) && !nextEmpty(dk[1]);
+  // build: picking parts (also while fixing a part from a check screen)
+  // check: one player's deck on screen for that player to confirm
+  // cover: both decks hidden while the phone goes to the other player
+  function stageOf(S, dk) {
+    if (!S.check || S.active || !bothBuiltOf(dk)) return "build";
+    return S.check.cover ? "cover" : "check";
+  }
+
+  /* ---------- Notices (only this screen) ---------- */
+  const [notice, setNotice] = useState(null); // { text, kind, id }
+  const noticeId = useRef(0);
+  function notify(text, kind) {
+    const id = ++noticeId.current;
+    setNotice({ text, kind: kind || "ok", id });
+    setTimeout(() => setNotice(n => (n && n.id === id ? null : n)), NCBDB_CFG.noticeMs);
+  }
+  function clearNotice() {
+    noticeId.current++;
+    setNotice(null);
+  }
+  function buzz(pattern) {
+    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* not supported (iPhone) */ }
+  }
+
+  /* ---------- Actions ----------
+     Each action works on a copy S of the screen state plus S.decks, the same way the mock-up
+     changes its state, and act() hands the result back to MatchScreen in one go. */
+  function act(fn) {
+    const S = Object.assign({}, s, { hist: s.hist.slice(), decks: [d1, d2] });
+    if (fn(S) === false) return;
+    const dk = S.decks;
+    delete S.decks;
+    props.setSt(S);
+    if (dk[0] !== d1) setD1(dk[0]);
+    if (dk[1] !== d2) setD2(dk[1]);
+  }
+  const snapshot = S => ncbdbClone({ player: S.player, decks: S.decks, active: S.active, check: S.check, fix: S.fix });
+  function resetPicker(S) {
+    S.query = "";
+    S.seg = "std";
+    S.cx = ncbdbCxBlank();
+    S.menu = false;
+  }
+  // Store new decks, then move to the next empty part: same player first, then the other player, then the check.
+  function commit(S, nd, player, note) {
+    S.hist.push(snapshot(S));
+    if (S.hist.length > 60) S.hist.shift();
+    let who = player, active = nextEmpty(nd[player]), msg = note || "";
+    if (!active) {
+      const o = ncbdbOther(player), gap = nextEmpty(nd[o]);
+      if (gap) { who = o; active = gap; msg = `${P[player].name}'s deck is done. Now ${P[o].name}'s.`; }
+    }
+    if (!active) {
+      // Both decks are built. The check starts with the player whose deck is already on screen,
+      // so no other deck ever appears without a deliberate tap.
+      const ck = S.check;
+      S.check = ck && ck.order[ck.i] === who ? { order: ck.order, i: ck.i, cover: false } : { order: [who, ncbdbOther(who)], i: 0, cover: false };
+      S.fix = null;
+    }
+    S.decks = nd;
+    S.player = who;
+    S.active = active;
+    resetPicker(S);
+    if (msg) notify(msg, "ok"); else clearNotice();
+  }
+  // Put parts into the combo being built. Returns false, with a notice, when a part is already used.
+  function fill(parts2) {
+    let ok = false;
+    act(S => {
+      const a = S.active;
+      if (!a) return false;
+      const nd = ncbdbClone(S.decks), deck = nd[S.player], c = deck[a.c];
+      for (const p of NCBDB_PARTS) if (p in parts2) c[p] = parts2[p] || null;
+      if (eventFast) { c.ratchet = null; c.bit = null; }
+      if (c.blade && builtInRatchet.has(c.blade)) c.ratchet = null;
+      if (c.ratchet && builtInBit.has(c.ratchet)) c.bit = null;
+      const clash = clashOf(deck, a.c, c);
+      if (clash) {
+        notify(clash.replace(" is in ", " is already in ") + ".", "warn");
+        return false;
+      }
+      buzz(8);
+      commit(S, nd, S.player);
+      ok = true;
+    });
+    return ok;
+  }
+  const pick = (p, name) => fill({ [p]: name });
+  function useLast() {
+    act(S => {
+      const last = prevOf(S.player);
+      if (!last.length || !S.active) return false;
+      const nd = ncbdbClone(S.decks);
+      nd[S.player] = last.map(c => eventFast
+        ? { blade: c.blade || null, ratchet: null, bit: null }
+        : { blade: c.blade || null, ratchet: c.ratchet || null, bit: c.bit || null });
+      while (nd[S.player].length < 3) nd[S.player].push(emptyCombo());
+      buzz(8);
+      commit(S, nd, S.player);
+    });
+  }
+  // Tap a part in the deck (or on a check screen) to change it.
+  function edit(pi, ci, p) {
+    act(S => {
+      const c = S.decks[pi][ci];
+      if (!need(c, p)) return false;
+      if (S.check && !S.fix) S.fix = { decks: ncbdbClone(S.decks), hist: S.hist.length };
+      S.player = pi;
+      S.active = { c: ci, p };
+      resetPicker(S);
+      clearNotice();
+      if (p === "blade" && c.blade) {
+        // Reopen the picker the blade came from. A CX blade opens with its pieces filled in,
+        // so one piece can be swapped without redoing the others.
+        const x = cxParts(c.blade);
+        if (x) { S.seg = "cx"; S.cx = Object.assign({ step: "blade" }, x); }
+        else if (lists.crossover.includes(c.blade)) S.seg = "cross";
+      }
+    });
+  }
+  function switchPlayer(i) {
+    act(S => {
+      if (S.player === i) return false;
+      S.player = i;
+      S.active = nextEmpty(S.decks[i]);
+      resetPicker(S);
+      clearNotice();
+    });
+  }
+  function startCheck(S) {
+    if (!bothBuiltOf(S.decks)) return false;
+    S.check = { order: [S.player, ncbdbOther(S.player)], i: 0, cover: false };
+    S.active = null;
+    S.fix = null;
+    resetPicker(S);
+    clearNotice();
+  }
+  function goOther() {
+    act(S => {
+      if (bothBuiltOf(S.decks)) return startCheck(S);
+      const i = ncbdbOther(S.player);
+      S.player = i;
+      S.active = nextEmpty(S.decks[i]);
+      resetPicker(S);
+      clearNotice();
+    });
+  }
+  function confirmCheck() {
+    if (stageOf(s, decks) !== "check") return;
+    const ck = s.check;
+    clearNotice();
+    buzz(15);
+    if (ck.i === 0) {
+      act(S => {
+        S.menu = false;
+        S.check = { order: ck.order, i: 1, cover: S.hide };
+        S.player = ck.order[1];
+      });
+    } else {
+      // Both players checked their own deck: same steps as the old Start Match button.
+      act(S => {
+        S.menu = false;
+        S.check = null;
+        S.active = null;
+        S.fix = null;
+      });
+      props.onStart();
+    }
+  }
+  function reveal() {
+    act(S => {
+      if (stageOf(S, S.decks) !== "cover") return false;
+      const ck = S.check;
+      S.menu = false;
+      S.check = { order: ck.order, i: 1, cover: false };
+      S.player = ck.order[1];
+    });
+  }
+  // Back walks the check in reverse, through the hidden screen, so a deck never shows by surprise.
+  function back() {
+    const stage = stageOf(s, decks), ck = s.check;
+    if (stage === "build" && !ck) {
+      props.onBack();
+      return;
+    }
+    act(S => {
+      S.menu = false;
+      if (stage === "build") {
+        if (S.fix) {
+          // Changing a part from a check screen: Back cancels the change.
+          S.decks = S.fix.decks;
+          S.hist.length = Math.min(S.hist.length, S.fix.hist);
+        } else if (!bothBuiltOf(S.decks)) {
+          notify("Pick the missing part first.", "warn");
+          return;
+        }
+        S.fix = null;
+        S.active = null;
+        S.player = ck.order[ck.i];
+        resetPicker(S);
+        clearNotice();
+      } else if (stage === "cover") {
+        S.check = { order: ck.order, i: 0, cover: false };
+        S.player = ck.order[0];
+      } else if (ck.i === 1) {
+        if (S.hide) S.check = { order: ck.order, i: 1, cover: true };
+        else { S.check = { order: ck.order, i: 0, cover: false }; S.player = ck.order[0]; }
+      } else {
+        S.check = null;
+      }
+    });
+  }
+  function undo() {
+    act(S => {
+      const last = S.hist.pop();
+      if (!last) return false;
+      S.player = last.player;
+      S.decks = last.decks;
+      S.active = last.active;
+      S.check = last.check || null;
+      S.fix = last.fix || null;
+      resetPicker(S);
+      clearNotice();
+    });
+  }
+  function clearDeck() {
+    act(S => {
+      const nd = ncbdbClone(S.decks);
+      nd[S.player] = [emptyCombo(), emptyCombo(), emptyCombo()];
+      commit(S, nd, S.player, `${P[S.player].name}'s deck cleared. Undo brings it back.`);
+    });
+  }
+  function startOver() {
+    act(S => {
+      S.hist.push(snapshot(S));
+      S.decks = [[emptyCombo(), emptyCombo(), emptyCombo()], [emptyCombo(), emptyCombo(), emptyCombo()]];
+      S.player = 0;
+      S.active = { c: 0, p: "blade" };
+      S.check = null;
+      S.fix = null;
+      resetPicker(S);
+      notify("Both decks cleared. Undo brings them back.", "info");
+    });
+  }
+  function toggleHide() {
+    act(S => {
+      S.hide = !S.hide;
+      try { localStorage.setItem(NCBDB_CFG.hideKey, S.hide ? "1" : "0"); } catch (e) {}
+    });
+  }
+  function clearPrev() {
+    props.onClearPrev(s.player);
+    notify(`${P[s.player].name}'s previous combos cleared.`, "info");
+  }
+  const setUi = patch => act(S => { Object.assign(S, patch); });
+
+  /* ----- CX: lock chip, main blade, (over blade), assist ----- */
+  function cxSteps(x) {
+    const steps = ["chip", "blade"];
+    if (x.blade && CX.cxeBlades.includes(x.blade)) steps.push("over");
+    steps.push("assist");
+    return steps;
+  }
+  // Same naming as the old CX picker: the Standard chip is left out of the name.
+  function cxName(x) {
+    const core = CX.cxeBlades.includes(x.blade) ? `${x.blade} ${x.over} ${x.assist}` : `${x.blade} ${x.assist}`;
+    return x.chip === CX.plainChip ? core : `${x.chip} ${core}`;
+  }
+  // Each tap sets one piece and opens the next missing one. The last piece adds the blade.
+  function pickCx(kind, name) {
+    const x = Object.assign({}, s.cx, { [kind]: name });
+    const steps = cxSteps(x);
+    if (!steps.includes("over")) x.over = "";
+    const next = steps.find(st => !x[st]);
+    x.step = next || kind;
+    if (next) { buzz(8); setUi({ cx: x }); return; }
+    pick("blade", cxName(x));
+  }
+
+  /* ----- Search -----
+     The text is split on spaces. Each word is matched against the start of the words in a
+     part's name ("wiz" finds Wizard Rod, "wr" finds it by initials, "160" finds 1-60).
+     The best blade, ratchet and bit together make the "whole combo" card. */
+  function search(query) {
+    const toks = String(query || "").toLowerCase().split(/\s+/).map(t => t.replace(/[^a-z0-9]/g, "")).filter(Boolean);
+    const rank = (p, n) => { const i = lists.popular[p].indexOf(n); return i < 0 ? 99 : i; };
+    const score = (p, name) => {
+      const lower = name.toLowerCase();
+      const n = lower.replace(/[^a-z0-9]/g, "");
+      const ws = lower.split(/[^a-z0-9]+/).filter(Boolean);
+      const ini = ws.map(w => w.charAt(0)).join("");
+      let sc = 0;
+      for (const t of toks) {
+        if (n === t) { sc += 3; continue; }
+        if (p === "ratchet") { if (t.length >= 2 && n.indexOf(t) === 0) sc += 2; continue; }
+        if (ws.some(w => w.indexOf(t) === 0)) sc += 2;
+        else if (t.length >= 2 && ws.length > 1 && ini === t) sc += 2;
+      }
+      return sc;
+    };
+    const find = (p, list) => list
+      .map(n => ({ n, s: score(p, n), r: rank(p, n) }))
+      .filter(x => x.s >= 2)
+      .sort((x, y) => (y.s - x.s) || (x.r - y.r) || ncbdbByName(x.n, y.n))
+      .map(x => x.n);
+    return {
+      blade: find("blade", [...new Set(lists.blades.concat(lists.crossover))]),
+      ratchet: eventFast ? [] : find("ratchet", lists.ratchets),
+      bit: eventFast ? [] : find("bit", lists.bits)
+    };
+  }
+  // The best blade, ratchet and bit from a search, and what adding them would do.
+  function bestCombo(res) {
+    const a = s.active, deck = decks[s.player];
+    const found = {};
+    for (const p of NCBDB_PARTS) if (res[p][0]) found[p] = res[p][0];
+    const after = Object.assign({}, deck[a.c], found);
+    if (after.blade && builtInRatchet.has(after.blade)) { delete found.ratchet; after.ratchet = null; }
+    if (after.ratchet && builtInBit.has(after.ratchet)) { delete found.bit; after.bit = null; }
+    return {
+      parts: found,
+      n: Object.keys(found).length,
+      title: NCBDB_PARTS.map(p => found[p]).filter(Boolean).join(" · "),
+      clash: clashOf(deck, a.c, after),
+      missing: NCBDB_PARTS.filter(p => need(after, p) && !after[p])
+    };
+  }
+  // Enter in the search box adds the best match and keeps the keyboard open for the next combo.
+  function enterSearch() {
+    if (!s.active || !s.query.trim()) return;
+    const best = bestCombo(search(s.query));
+    if (!best.n) return;
+    if (fill(best.parts)) refocusRef.current = true;
+  }
+
+  /* ---------- Taps ---------- */
+  const qRef = useRef(null);
+  const tapRef = useRef({ t: 0, x: 0, y: 0 });
+  const stageRef = useRef({ key: "", at: 0 });
+  const kbRef = useRef(false);
+  const refocusRef = useRef(false);
+  // Picking with a tap closes the phone keyboard, so the next step has the whole screen.
+  const CLOSES_KEYBOARD = { pick: 1, fill: 1, "use-last": 1, "cx-pick": 1, "cx-step": 1, edit: 1, tab: 1, seg: 1 };
+  // These wait a moment after a check screen appears, so a double tap cannot confirm or reveal a deck.
+  const WAITS_FOR_STAGE = { confirm: 1, reveal: 1, back: 1 };
+  function tap(action, fn) {
+    return e => {
+      const now = performance.now();
+      const byKeyboard = e.detail === 0;
+      if (!byKeyboard) {
+        const L = tapRef.current;
+        const again = now - L.t < NCBDB_CFG.tapGuardMs && Math.hypot(e.clientX - L.x, e.clientY - L.y) < 40;
+        L.t = now; L.x = e.clientX; L.y = e.clientY;
+        if (again && action !== "undo" && action !== "clear-query") return;
+      }
+      if (WAITS_FOR_STAGE[action] && stageRef.current.key !== "build" && now - stageRef.current.at < NCBDB_CFG.stageGuardMs) return;
+      if (!byKeyboard && CLOSES_KEYBOARD[action] && document.activeElement === qRef.current) qRef.current.blur();
+      kbRef.current = byKeyboard;
+      fn();
+    };
+  }
+
+  /* ---------- View pieces ---------- */
+  const stage = stageOf(s, decks), building = stage === "build", ck = s.check;
+  const a = building ? s.active : null;
+  const q = a ? s.query.trim() : "";
+  const who = building ? s.player : ck.order[ck.i]; // whose colours are on screen
+  const pl = P[who];
+  const stageKey = stage + (ck ? ":" + ck.i + ":" + ck.cover : "");
+  if (stageKey !== stageRef.current.key) stageRef.current = { key: stageKey, at: performance.now() };
+
+  // One part you can pick. Grey with a combo number when another combo already has it.
+  function chip(p, name, size, key) {
+    const deck = decks[s.player];
+    const used = usedIn(deck, p, name, a.c);
+    const cur = deck[a.c][p] === name;
+    const color = p === "blade" ? (BLADE_COLORS[name] || "") : "";
+    const cls = ["chip", "chip-" + p];
+    if (size) cls.push(size);
+    if (p === "ratchet" && !/\d/.test(name)) cls.push("word");
+    let style;
+    if (used >= 0) cls.push("used");
+    else {
+      if (cur) cls.push("cur");
+      if (color) { cls.push("colored"); style = { borderColor: color, background: color + "18" }; }
+    }
+    const label = used >= 0 ? `${name}, already used in combo ${used + 1}` : (cur ? `${name}, current pick` : `Pick ${name}`);
+    return h("button", {
+      key: key || p + ":" + name, type: "button", className: cls.join(" "), style, "aria-label": label,
+      "data-used": used >= 0 ? String(used + 1) : undefined, disabled: used >= 0,
+      onClick: tap("pick", () => pick(p, name))
+    }, h("span", { className: "chip-t" }, name));
+  }
+  function azList(p, list, heads, size) {
+    let last = "";
+    const out = [];
+    list.slice().sort(ncbdbByName).forEach(n => {
+      const letter = n.charAt(0).toUpperCase();
+      if (heads && letter !== last) out.push(h("div", { key: "h" + letter, className: "az-head" }, letter));
+      last = letter;
+      out.push(chip(p, n, size));
+    });
+    return out;
+  }
+  // A whole combo in one button: previous combos and quick combos.
+  function comboCard(qc, key) {
+    const deck = decks[s.player];
+    const clash = clashOf(deck, a.c, qc);
+    const color = BLADE_COLORS[qc.blade] || "";
+    const rest = qc.ratchet ? (builtInBit.has(qc.ratchet) || !qc.bit ? qc.ratchet : `${qc.ratchet} · ${qc.bit}`) : (qc.bit || "");
+    const style = !clash && color ? { borderColor: color, background: color + "18" } : undefined;
+    return h("button", {
+      key, type: "button", className: "cc" + (clash ? " off" : ""), style, disabled: !!clash,
+      onClick: tap("fill", () => fill({ blade: qc.blade, ratchet: qc.ratchet, bit: qc.bit }))
+    }, h("span", { className: "cc-blade" }, qc.blade), h("span", { className: "cc-sub" }, clash || rest));
+  }
+
+  function barEl() {
+    const fixing = building && !!ck;
+    let backLabel = "Back";
+    if (fixing) backLabel = "Cancel the change and go back to the check";
+    else if (stage === "check" && ck.i === 0) backLabel = "Back to building";
+    else if (stage === "check") backLabel = s.hide ? "Back to the hidden screen" : `Back to ${P[ck.order[0]].name}'s deck`;
+    else if (stage === "cover") backLabel = `Back to ${P[ck.order[0]].name}'s deck`;
+    const step = stage === "check" ? `${ck.i + 1} of 2` : (stage === "cover" ? "1 of 2 done" : "");
+    return [
+      h("button", { key: "b", className: "icon-btn", type: "button", "aria-label": backLabel, onClick: tap("back", back) }, ncbdbIcon("back", 22, 2.2)),
+      h("h1", { key: "t", className: "bar-title" }, building ? (eventFast ? "Record blades" : "Record decks") : (eventFast ? "Check blades" : "Check decks")),
+      step ? h("span", { key: "p", className: "pill" }, step) : null,
+      fixing ? h("button", { key: "c", className: "bar-btn", type: "button", onClick: tap("back", back) }, "Cancel")
+        : building ? h("button", { key: "u", className: "bar-btn", type: "button", disabled: !s.hist.length, onClick: tap("undo", undo) }, ncbdbIcon("undo", 18, 2), "Undo") : null,
+      h("button", {
+        key: "m", className: "icon-btn", type: "button", "aria-label": "More options", "aria-haspopup": "menu", "aria-expanded": s.menu,
+        onClick: tap("menu", () => setUi({ menu: !s.menu }))
+      }, ncbdbIcon("dots", 22, 2.6))
+    ];
+  }
+  function tabsEl() {
+    return h("div", { className: "tabs-track", role: "group", "aria-label": "Whose deck" }, P.map((p, i) => {
+      const pr = progress(decks[i]), on = s.player === i, done = pr.done === pr.total;
+      return h("button", { key: i, className: "tab" + (on ? " on" : ""), type: "button", "aria-pressed": on, onClick: tap("tab", () => switchPlayer(i)) },
+        h("span", { className: "tab-dot", style: { background: p.color } }),
+        h("span", { className: "tab-name" }, p.name),
+        h("span", { className: "tab-count" + (done ? " ready" : "") }, done ? "Ready" : pr.done + "/" + pr.total));
+    }));
+  }
+  function cellEl(pi, ci, p) {
+    const c = decks[pi][ci], val = c[p];
+    const where = `${P[pi].name} combo ${ci + 1} ${p}`;
+    if (!need(c, p)) return h("button", { key: p, className: "cell builtin", type: "button", disabled: true, "aria-label": `${where} is built in` }, h("span", { className: "t" }, "Built in"));
+    const now = !!(s.active && s.active.c === ci && s.active.p === p);
+    const text = val || (now ? `Pick ${p}` : ncbdbCap(p));
+    const color = p === "blade" && val ? BLADE_COLORS[val] : "";
+    // The spoken label always contains the words shown on the button (voice control relies on that).
+    const label = val ? `${where}: ${val}. Tap to change` : (now ? `Pick ${p}, ${P[pi].name} combo ${ci + 1}` : `${where}, not picked yet`);
+    return h("button", {
+      key: p, className: "cell" + (val ? "" : " empty") + (now ? " now" : ""), type: "button", "aria-label": label,
+      "aria-current": now ? "true" : undefined, onClick: tap("edit", () => edit(pi, ci, p))
+    }, color ? h("span", { className: "cell-dot", style: { background: color } }) : null, h("span", { className: "t" }, text));
+  }
+  function deckEl() {
+    const pi = s.player, act0 = s.active;
+    const cols = eventFast ? ["blade"] : NCBDB_PARTS;
+    return h("div", { className: "deck-card", role: "group", "aria-label": `${P[pi].name}'s deck` }, [0, 1, 2].map(ci => {
+      const c = decks[pi][ci];
+      const complete = NCBDB_PARTS.every(p => !need(c, p) || !!c[p]);
+      const now = !!(act0 && act0.c === ci);
+      return h("div", { key: ci, className: "deck-row", style: eventFast ? { gridTemplateColumns: "26px minmax(0, 1fr)" } : undefined },
+        h("span", { className: "badge" + (complete ? " done" : (now ? " now" : "")), "aria-hidden": "true" }, complete ? "✓" : ci + 1),
+        cols.map(p => cellEl(pi, ci, p)));
+    }));
+  }
+  function segEl() {
+    const opts = [["std", "Standard"], ["cx", "CX"], ["cross", "Crossover"]];
+    return h("div", { className: "seg-track", role: "group", "aria-label": "Blade type" }, opts.map(([k, t]) =>
+      h("button", { key: k, className: "seg" + (s.seg === k ? " on" : ""), type: "button", "aria-pressed": s.seg === k, onClick: tap("seg", () => setUi({ seg: k, cx: ncbdbCxBlank() })) }, t)));
+  }
+  // Ratchet step, stays put above the list: one-tap finishes for this blade, then the popular ratchets.
+  function pinnedEl() {
+    const deck = decks[s.player], c = deck[a.c];
+    const pool = prevOf(s.player).concat(lists.quick);
+    const seen = {};
+    const sugs = [];
+    for (const x of pool) {
+      if (x.blade !== c.blade || !x.ratchet) continue;
+      const key = x.ratchet + "|" + (x.bit || "");
+      if (seen[key]) continue;
+      seen[key] = true;
+      const clash = clashOf(deck, a.c, { blade: null, ratchet: x.ratchet, bit: x.bit });
+      const title = x.bit && !builtInBit.has(x.ratchet) ? `${x.ratchet} · ${x.bit}` : x.ratchet;
+      sugs.push(h("button", {
+        key, className: "sug", type: "button", title: clash || undefined, disabled: !!clash,
+        onClick: tap("fill", () => fill({ ratchet: x.ratchet, bit: x.bit }))
+      }, title + (clash ? " (in use)" : "")));
+    }
+    return [
+      sugs.length ? h("div", { key: "sl", className: "label" }, `One tap: finish ${c.blade}`) : null,
+      sugs.length ? h("div", { key: "sg", className: "grid g2 sug-grid" }, sugs) : null,
+      h("div", { key: "pl", className: "label" }, "Popular ratchets"),
+      h("div", { key: "pg", className: "grid g5" }, lists.popular.ratchet.map(n => chip("ratchet", n)))
+    ];
+  }
+  function bladesBody() {
+    const prev = prevOf(s.player);
+    const out = [];
+    if (prev.length) {
+      const useAll = progress(decks[s.player]).done === 0;
+      const hint = useAll ? `last round · tap one or use all ${prev.length}` : `last round · tap one for combo ${a.c + 1}`;
+      out.push(h("div", { key: "pl", className: "label-row" },
+        h("span", { className: "label" }, eventFast ? "Previous blades" : "Previous combos"),
+        h("span", { className: "hint" }, hint),
+        h("button", { className: "link-btn danger", type: "button", onClick: tap("clear-prev", clearPrev), "aria-label": `Clear ${P[s.player].name}'s previous combos` }, "Clear")));
+      const items = eventFast
+        ? [...new Set(prev.map(c => c.blade).filter(Boolean))].map(n => chip("blade", n, "", "pv:" + n))
+        : prev.map((c, i) => comboCard(c, "pv" + i));
+      if (useAll) items.push(h("button", { key: "all", className: "use-all", type: "button", onClick: tap("use-last", useLast) }, ncbdbIcon("history", 18, 2.2), `Use all ${prev.length}`));
+      out.push(h("div", { key: "pg", className: "grid g2 mb" }, items));
+    }
+    if (!eventFast) {
+      out.push(h("div", { key: "ql", className: "label-row" }, h("span", { className: "label" }, "Quick combos"), h("span", { className: "hint" }, "fills all 3 parts")));
+      out.push(h("div", { key: "qg", className: "grid g2 mb" }, lists.quick.map((c, i) => comboCard(c, "q" + i))));
+    }
+    out.push(h("div", { key: "bl", className: "label" }, "Popular blades"));
+    out.push(h("div", { key: "bg", className: "grid g2 mb" }, lists.popular.blade.map(n => chip("blade", n))));
+    out.push(h("div", { key: "al", className: "label" }, "All blades, A to Z"));
+    out.push(h("div", { key: "ag", className: "grid g2" }, azList("blade", lists.blades, true)));
+    return out;
+  }
+  function crossBody() {
+    return [h("div", { key: "l", className: "label" }, "Crossover blades, A to Z"), h("div", { key: "g", className: "grid g2" }, azList("blade", lists.crossover, false))];
+  }
+  function cxBody() {
+    const x = s.cx, steps = cxSteps(x);
+    const idx = Math.max(0, steps.indexOf(x.step)), step = steps[idx];
+    const used = cxUsed(decks[s.player], a.c);
+    // Four pieces (CXE) leave less room per label, so they get the short names.
+    const four = steps.length > 3;
+    const labels = four ? { chip: "Chip", blade: "Main", over: "Over", assist: "Assist" } : { chip: "Lock chip", blade: "Main blade", assist: "Assist" };
+    const titles = { chip: "pick the lock chip", blade: "pick the main blade", over: "pick the over blade", assist: "pick the assist blade" };
+    const guideKind = { blade: "blade", over: "over_blade", assist: "assist" }[step];
+    const crumbs = steps.map((st, i) => {
+      const cur = st === step, val = x[st], open = cur || !!val || i < idx;
+      return h("button", {
+        key: st, className: "crumb" + (cur ? " cur" : "") + (val ? " set" : ""), type: "button", "aria-current": cur ? "step" : undefined, disabled: !open,
+        onClick: tap("cx-step", () => setUi({ cx: Object.assign({}, s.cx, { step: st }) }))
+      }, h("span", { className: "crumb-label" }, labels[st]), h("span", { className: "crumb-value" }, val || (cur ? "Pick now" : "Later")));
+    });
+    let opts;
+    if (step === "chip") opts = CX.chips.map(n => [n, ""]);
+    else if (step === "blade") opts = CX.blades.slice().sort(ncbdbByName).map(n => [n, ""]).concat(CX.cxeBlades.slice().sort(ncbdbByName).map(n => [n, "CXE"]));
+    else if (step === "over") opts = CX.overBlades.map(n => [n, ""]);
+    else opts = CX.popularAssists.filter(n => CX.assists.includes(n)).concat(CX.assists.filter(n => !CX.popularAssists.includes(n)).sort(ncbdbByName)).map(n => [n, ""]);
+    const grid = step === "blade" || step === "assist" ? "g4" : "g3";
+    const buttons = opts.map(([n, kind]) => {
+      const u = used[step][n], off = u !== undefined, on = x[step] === n;
+      const what = kind ? `${n}, ${kind} blade` : n;
+      const label = off ? `${what}, already used in combo ${u + 1}` : (on ? `${what}, current pick` : `Pick ${what}`);
+      // The corner badge (combo number, or CXE) is drawn by CSS from data-used / data-tag.
+      return h("button", {
+        key: n, className: "cx-opt" + (on && !off ? " on" : ""), type: "button", "aria-label": label,
+        "data-used": off ? String(u + 1) : undefined, "data-tag": !off && kind ? kind : undefined, disabled: off,
+        onClick: tap("cx-pick", () => pickCx(step, n))
+      }, n);
+    });
+    return [
+      h("div", { key: "c", className: "crumbs" + (four ? " four" : "") }, crumbs),
+      h("div", { key: "l", className: "label-row" },
+        h("span", { className: "label shrink" }, `Step ${idx + 1} of ${steps.length}: ${titles[step]}`),
+        guideKind && props.onGuide ? h("button", { className: "link-btn", type: "button", onClick: tap("guide", () => props.onGuide(guideKind)) }, ncbdbIcon("image", 14, 2.2), "Picture guide") : null),
+      h("div", { key: "g", className: "grid " + grid }, buttons)
+    ];
+  }
+  // All ratchets as a table: row = first number, column = height. Built from the list, so new sizes show up on their own.
+  function ratchetsBody() {
+    const map = {}, heights = [], rest = [];
+    for (const r of lists.ratchets) {
+      const m = /^([0-9A-Z])-(\d\d)$/.exec(r);
+      if (!m) { rest.push(r); continue; }
+      (map[m[1]] = map[m[1]] || {})[m[2]] = r;
+      if (!heights.includes(m[2])) heights.push(m[2]);
+    }
+    heights.sort();
+    const rows = Object.keys(map).sort((x, y) => (/\d/.test(x) ? 0 : 1) - (/\d/.test(y) ? 0 : 1) || ncbdbByName(x, y));
+    const cols = { gridTemplateColumns: `22px repeat(${heights.length}, minmax(0, 1fr))` };
+    const tight = heights.length > 7 ? " tight" : ""; // more heights than today: smaller text so the names still fit
+    return [
+      h("div", { key: "l", className: "label-row" }, h("span", { className: "label" }, "All ratchets"), h("span", { className: "hint" }, "row = first number, column = height")),
+      h("div", { key: "hd", className: "mx-head" + tight, style: cols, "aria-hidden": "true" }, h("span", null), heights.map(x => h("span", { key: x }, x))),
+      rows.map(k => h("div", { key: "r" + k, className: "mx-row" + tight, style: cols },
+        h("span", { className: "mx-label", "aria-hidden": "true" }, k),
+        heights.map(x => (map[k][x] ? chip("ratchet", map[k][x], "mx") : h("span", { key: "n" + x, className: "mx-none", "aria-hidden": "true" }))))),
+      rest.length ? h("div", { key: "ol", className: "label mx-other" }, "Other") : null,
+      rest.length ? h("div", { key: "og", className: "grid g3" }, rest.map(n => chip("ratchet", n))) : null
+    ];
+  }
+  function bitsBody() {
+    return [
+      h("div", { key: "pl", className: "label" }, "Popular bits"),
+      h("div", { key: "pg", className: "grid g2 mb" }, lists.popular.bit.map(n => chip("bit", n, "lg"))),
+      h("div", { key: "al", className: "label" }, "All bits, A to Z"),
+      h("div", { key: "ag", className: "grid g3" }, azList("bit", lists.bits, false))
+    ];
+  }
+  function searchBody(qq) {
+    const res = search(qq), best = bestCombo(res);
+    const out = [];
+    if (best.n >= (eventFast ? 1 : 2)) {
+      const sub = best.clash || (best.missing.length ? `Then pick the ${best.missing.join(" and ")}` : (eventFast ? `Adds it as blade ${a.c + 1}` : `Fills combo ${a.c + 1} in one tap`));
+      out.push(h("div", { key: "combo", className: "combo" },
+        h("div", { className: "combo-label" }, eventFast ? "Blade found" : (best.missing.length ? "Parts found" : "Whole combo found")),
+        h("div", { className: "combo-title" }, best.title),
+        h("div", { className: "combo-sub" + (best.clash ? " clash" : "") }, sub),
+        h("button", { className: "combo-btn", type: "button", disabled: !!best.clash, onClick: tap("fill", () => fill(best.parts)) }, `Add to combo ${a.c + 1}`)));
+    }
+    const b = res.blade.slice(0, 8), r = res.ratchet.slice(0, 10), x = res.bit.slice(0, 9);
+    if (b.length) out.push(h("div", { key: "bl", className: "label" }, "Blades"), h("div", { key: "bg", className: "grid g2 mb" }, b.map(n => chip("blade", n))));
+    if (r.length) out.push(h("div", { key: "rl", className: "label" }, "Ratchets"), h("div", { key: "rg", className: "grid g5 mb" }, r.map(n => chip("ratchet", n))));
+    if (x.length) out.push(h("div", { key: "xl", className: "label" }, "Bits"), h("div", { key: "xg", className: "grid g3 mb" }, x.map(n => chip("bit", n))));
+    if (!b.length && !r.length && !x.length) out.push(h("div", { key: "none", className: "none" }, `Nothing matches "${qq}". Check the spelling, or add the part in the parts library.`));
+    return out;
+  }
+  function deckDoneBody() {
+    const o = ncbdbOther(s.player), both = bothBuiltOf(decks);
+    return h("div", { className: "card" },
+      h("h2", { className: "card-title", tabIndex: -1, "data-focus": "" }, `${P[s.player].name}'s ${eventFast ? "blades are" : "deck is"} complete`),
+      h("p", { className: "card-text" }, "Tap any part above to change it."),
+      h("button", { className: "card-btn", type: "button", style: both ? undefined : { background: P[o].color }, onClick: tap("go-other", goOther) },
+        both ? (eventFast ? "Check blades with the players" : "Check decks with the players") : `Go to ${P[o].name}'s ${eventFast ? "blades" : "deck"}`));
+  }
+  // One player's deck, big enough to read at arm's length. Tap a part to fix it.
+  function checkBody(pi) {
+    const cards = [0, 1, 2].map(ci => {
+      const c = decks[pi][ci];
+      const cell = p => {
+        const where = `${P[pi].name} combo ${ci + 1} ${p}`;
+        if (!need(c, p)) return eventFast ? null : h("button", { key: p, className: `ck-cell ck-${p} builtin`, type: "button", disabled: true, "aria-label": `${where} is built in` }, h("span", { className: "t" }, "Built in"));
+        const color = p === "blade" ? (BLADE_COLORS[c[p]] || "") : "";
+        return h("button", {
+          key: p, className: `ck-cell ck-${p}`, type: "button", style: color ? { borderColor: color, background: color + "18" } : undefined,
+          "aria-label": `${where}: ${c[p]}. Tap to change`, onClick: tap("edit", () => edit(pi, ci, p))
+        }, h("span", { className: "t" }, c[p]));
+      };
+      return h("div", { key: ci, className: "ck-card" },
+        h("span", { className: "ck-num", "aria-hidden": "true", style: eventFast ? { gridRow: "1" } : undefined }, ci + 1),
+        cell("blade"), cell("ratchet"), cell("bit"));
+    });
+    return [
+      h("div", { key: "ban", className: "ck-banner" },
+        h("div", { className: "ck-who" }, h("span", { className: "ck-dot" }), h("h2", { className: "ck-name", tabIndex: -1, "data-focus": "" }, P[pi].name)),
+        h("div", { className: "ck-q" }, eventFast ? "Are these your blades?" : "Is this your deck?")),
+      cards,
+      h("p", { key: "hint", className: "ck-hint" }, "Something wrong? Tap the part to fix it.")
+    ];
+  }
+  function coverBody(next, done) {
+    return h("div", { className: "cover" },
+      h("span", { className: "cover-eye" }, ncbdbIcon("eyeOff", 36, 2)),
+      h("h2", { className: "cover-title", tabIndex: -1, "data-focus": "" }, `Next: ${P[next].name}`),
+      h("p", { className: "cover-text" }, "Both decks are hidden. Turn the screen to them, then tap the button."),
+      h("div", { className: "cover-done" }, ncbdbIcon("check", 16, 2.8), h("span", null, `${P[done].name} confirmed`)));
+  }
+  function dockEl() {
+    if (stage === "check") {
+      const o = ncbdbOther(who);
+      const sub = ck.i === 1 ? "Both players checked. Starts the match" : (s.hide ? `Hides this deck, then ${P[o].name} checks` : `Next: ${P[o].name} checks`);
+      return h("button", { key: "c" + stageKey, className: "dock-btn confirm", type: "button", onClick: tap("confirm", confirmCheck) },
+        h("span", { className: "confirm-text" },
+          h("span", { className: "confirm-title" }, h("span", { className: "confirm-name" }, pl.name), h("span", { className: "confirm-verb" }, " confirms")),
+          h("span", { className: "confirm-sub" }, sub)),
+        ncbdbIcon("check", 24, 2.6));
+    }
+    return h("button", { key: "r" + stageKey, className: "dock-btn reveal", type: "button", onClick: tap("reveal", reveal) },
+      ncbdbIcon("eye", 22, 2.2), h("span", null, `Show ${pl.name}'s ${eventFast ? "blades" : "deck"}`));
+  }
+  function menuItems() {
+    const items = [];
+    const close = fn => () => { fn(); };
+    if (building && !ck) items.push(h("button", { key: "cd", className: "menu-item danger", type: "button", role: "menuitem", onClick: tap("clear-deck", close(clearDeck)) }, ncbdbIcon("trash", 18, 2), h("span", { className: "mi-text" }, eventFast ? "Clear these blades" : "Clear this deck")));
+    items.push(h("button", { key: "so", className: "menu-item danger", type: "button", role: "menuitem", onClick: tap("start-over", startOver) }, ncbdbIcon("restart", 18, 2), h("span", { className: "mi-text" }, "Start over")));
+    items.push(h("button", { key: "hd", className: "menu-item", type: "button", role: "menuitemcheckbox", "aria-checked": s.hide, onClick: tap("toggle-hide", toggleHide) },
+      ncbdbIcon("eyeOff", 18, 2), h("span", { className: "mi-text" }, "Hide decks between players"), h("span", { className: "switch" + (s.hide ? " on" : ""), "aria-hidden": "true" })));
+    if (props.toggleDark) items.push(h("button", { key: "dk", className: "menu-item", type: "button", role: "menuitemcheckbox", "aria-checked": !!dark, onClick: tap("dark", () => props.toggleDark()) },
+      ncbdbIcon("moon", 18, 2), h("span", { className: "mi-text" }, "Dark mode"), h("span", { className: "switch" + (dark ? " on" : ""), "aria-hidden": "true" })));
+    items.push(h("button", { key: "rp", className: "menu-item", type: "button", role: "menuitem", onClick: tap("report", () => { setUi({ menu: false }); if (window.__ncbOpenBugReport) window.__ncbOpenBugReport(); }) }, ncbdbIcon("flag", 18, 2), h("span", { className: "mi-text" }, "Report a problem")));
+    return items;
+  }
+
+  /* ---------- What goes on screen ---------- */
+  let body;
+  if (stage === "check") body = checkBody(who);
+  else if (stage === "cover") body = coverBody(who, ck.order[0]);
+  else if (!a) body = deckDoneBody();
+  else if (q) body = searchBody(q);
+  else if (a.p === "ratchet") body = ratchetsBody();
+  else if (a.p === "bit") body = bitsBody();
+  else body = s.seg === "cx" ? cxBody() : (s.seg === "cross" ? crossBody() : bladesBody());
+  const bladeStep = !!a && a.p === "blade" && !q;
+  const ratchetStep = !!a && a.p === "ratchet" && !q;
+  const docked = stage === "check" || stage === "cover";
+  const promptEl = a ? [
+    h("span", { key: "n", className: "prompt-name" }, pl.name),
+    h("span", { key: "r", className: "prompt-rest" }, ` · Combo ${a.c + 1}: ${decks[s.player][a.c][a.p] ? "change the" : "pick the"} ${a.p}`)
+  ] : null;
+  const vw = typeof window !== "undefined" ? window.innerWidth : 400;
+  const placeholder = eventFast ? (vw < 384 ? "Search blades" : "Search blades: wiz, shark…") : (vw < 340 ? "Type: wiz 160 hexa" : (vw < 384 ? "Search or type: wiz 160 hexa" : "Search, or type a combo: wiz 160 hexa"));
+  let say = "";
+  if (stage === "check") say = `${pl.name}, ${eventFast ? "are these your blades?" : "is this your deck?"}`;
+  else if (stage === "cover") say = `Both decks are hidden. Next: ${pl.name}.`;
+  else if (a) say = `${pl.name}, combo ${a.c + 1}: pick the ${a.p}`;
+  else say = `${pl.name}'s deck is complete.`;
+  const noticeKind = notice ? notice.kind : "ok";
+
+  /* ---------- Fit the screen ---------- */
+  const R = {
+    app: useRef(null), bar: useRef(null), tabs: useRef(null), deck: useRef(null), field: useRef(null),
+    seg: useRef(null), scroller: useRef(null), pinned: useRef(null), body: useRef(null), dock: useRef(null), prompt: useRef(null)
+  };
+  const viewKey = [stageKey, s.player, a ? a.c + a.p : "", s.seg, s.cx.step, q].join("|");
+  const lastView = useRef("");
+  function layout() {
+    const app = R.app.current;
+    if (!app) return;
+    const qEl = qRef.current;
+    const vv = window.visualViewport || null;
+    const coarse = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+    const typing = !!qEl && document.activeElement === qEl;
+    // 1. Phones lay the keyboard over the page. While typing, shrink the screen to the part still visible.
+    let covered = 0;
+    if (typing && vv && Math.abs(vv.scale - 1) < 0.02) covered = window.innerHeight - vv.height;
+    if (covered > 120) {
+      app.style.height = vv.height + "px";
+      app.style.transform = vv.offsetTop ? `translateY(${vv.offsetTop}px)` : "";
+    } else {
+      app.style.height = "";
+      app.style.transform = "";
+    }
+    const kb = typing && (coarse || covered > 120);
+    const height = app.clientHeight;
+    app.classList.toggle("short", height < 720);
+    app.classList.toggle("dense", height < 660);
+    app.classList.toggle("kb", kb);
+    app.classList.remove("kb-min");
+    // 2. How much room is left for the lists? Too little: give up the deck while typing, then let more of the page scroll.
+    const parts2 = [R.bar, R.tabs, R.deck, R.field, R.seg, R.dock].map(r => r.current).filter(Boolean);
+    const roomLeft = () => app.clientHeight - parts2.reduce((sum, el) => sum + el.offsetHeight, 0);
+    let room = roomLeft();
+    if (kb && room < 130) {
+      app.classList.add("kb-min");
+      room = roomLeft();
+    }
+    const flow = room < 100;
+    app.classList.toggle("flow", flow);
+    const pin = R.pinned.current, sc = R.scroller.current, bd = R.body.current;
+    if (sc) sc.classList.toggle("unpin", !flow && !!pin && !pin.hidden && room - pin.offsetHeight < NCBDB_CFG.minListPx);
+    // 3. A player must see all three combos without scrolling. If long names push the deck
+    //    past the bottom of its check screen, use the tighter sizes.
+    if (app.getAttribute("data-stage") === "check" && !flow && bd && bd.scrollHeight > bd.clientHeight + 1) app.classList.add("dense");
+  }
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  React.useLayoutEffect(() => {
+    // A new view starts at the top of its list.
+    if (viewKey !== lastView.current) {
+      lastView.current = viewKey;
+      [R.body, R.scroller, R.app].forEach(r => { if (r.current) r.current.scrollTop = 0; });
+      // Keyboard users: when the view changed, move focus to its heading so they are not left on a removed button.
+      if (kbRef.current) {
+        const target = R.body.current && R.body.current.querySelector("[data-focus]") || (a ? R.prompt.current : null);
+        if (target) target.focus({ preventScroll: true });
+      }
+    }
+    if (refocusRef.current) {
+      refocusRef.current = false;
+      if (stage === "build" && s.active && qRef.current) qRef.current.focus();
+    }
+    layout();
+  });
+  useEffect(() => {
+    if (props.onOpen) props.onOpen(); // FLAG 1014: the timing clock starts the first time the deck builder opens
+    const run = () => layoutRef.current();
+    const vv = window.visualViewport || null;
+    window.addEventListener("resize", run);
+    if (vv) { vv.addEventListener("resize", run); vv.addEventListener("scroll", run); }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(run).catch(() => {});
+    return () => {
+      window.removeEventListener("resize", run);
+      if (vv) { vv.removeEventListener("resize", run); vv.removeEventListener("scroll", run); }
+    };
+  }, []);
+  // Menu: Escape closes it, arrow keys move between its items.
+  const menuRef = useRef(null);
+  useEffect(() => {
+    if (!s.menu) return undefined;
+    const first = menuRef.current && menuRef.current.querySelector("button");
+    if (first && kbRef.current) first.focus();
+    const onKey = e => {
+      if (e.key === "Escape") { setUi({ menu: false }); }
+      else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        const items = menuRef.current ? [...menuRef.current.querySelectorAll("button")] : [];
+        const at = items.indexOf(document.activeElement);
+        const next = items[(at + (e.key === "ArrowDown" ? 1 : items.length - 1) + items.length) % items.length];
+        if (next) { e.preventDefault(); next.focus(); }
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
+
+  const appStyle = { "--pc": pl.color, "--pc-ink": pl.ink, "--pc-rgb": pl.rgb, "--tint": pl.tint, "--tint-line": pl.line, "--arm": NCBDB_CFG.stageGuardMs + "ms" };
+  return h("div", { className: "ncbdb-wrap" },
+    typeof BugReportInlineButton === "function" ? h(BugReportInlineButton, { hidden: true }) : null, // hides the floating ? (Report a problem is in the menu)
+    h("div", { className: "ncbdb", ref: R.app, "data-stage": stage, style: appStyle },
+      h("header", { className: "top" },
+        h("div", { className: "bar", ref: R.bar }, barEl()),
+        s.menu ? h("div", { className: "menu-backdrop", onClick: tap("menu-close", () => setUi({ menu: false })) }) : null,
+        s.menu ? h("div", { className: "menu", ref: menuRef, role: "menu", "aria-label": "More options" }, menuItems()) : null),
+      h("main", { className: "main" },
+        h("div", { className: "tabs", ref: R.tabs, hidden: !(building && !ck) }, building && !ck ? tabsEl() : null),
+        h("div", { className: "deck", ref: R.deck, hidden: !building }, building ? deckEl() : null),
+        h("div", { className: "field", ref: R.field, hidden: !a },
+          h("div", { className: "prompt", ref: R.prompt, tabIndex: -1 }, promptEl),
+          h("label", { className: "search" },
+            ncbdbIcon("search", 18, 2.2),
+            h("input", {
+              ref: qRef, type: "text", inputMode: "text", enterKeyHint: "go", autoComplete: "off", autoCorrect: "off", autoCapitalize: "off", spellCheck: false,
+              placeholder, "aria-label": eventFast ? "Search blades" : "Search parts, or type a whole combo and press Enter",
+              value: a ? s.query : "",
+              onChange: e => setUi({ query: e.target.value }),
+              onKeyDown: e => {
+                if (e.nativeEvent && e.nativeEvent.isComposing) return;
+                if (e.key === "Enter") { e.preventDefault(); enterSearch(); }
+                else if (e.key === "Escape" && s.query) { e.stopPropagation(); setUi({ query: "" }); }
+              },
+              onFocus: () => layoutRef.current(),
+              // Wait a moment so the layout does not jump under a tap that is still landing. The scroll reset
+              // is for iPhones, which can leave the page pushed up after the keyboard closes.
+              onBlur: () => setTimeout(() => { window.scrollTo(0, 0); layoutRef.current(); }, 120)
+            }),
+            h("button", {
+              className: "q-clear", type: "button", "aria-label": "Clear search", hidden: !(a && s.query),
+              // Keep the cursor in the search box when its clear button is pressed (Android would close the keyboard).
+              onMouseDown: e => e.preventDefault(),
+              onClick: tap("clear-query", () => { setUi({ query: "" }); if (qRef.current) qRef.current.focus(); })
+            }, ncbdbIcon("x", 16, 2.4)))),
+        h("div", { className: "segwrap", ref: R.seg, hidden: !bladeStep }, bladeStep ? segEl() : null),
+        h("div", { className: "scroller", ref: R.scroller },
+          h("div", { className: "pinned", ref: R.pinned, hidden: !ratchetStep }, ratchetStep ? pinnedEl() : null),
+          h("div", { className: "body", ref: R.body }, body)),
+        h("div", { className: "toast-slot" },
+          notice ? h("div", { key: notice.id, className: "notice" + (noticeKind === "ok" ? "" : " " + noticeKind), role: "status" },
+            ncbdbIcon(noticeKind === "warn" ? "alert" : (noticeKind === "info" ? "info" : "check"), 18, noticeKind === "ok" ? 2.8 : 2.2),
+            h("span", null, notice.text)) : null)),
+      docked ? h("footer", { className: "dock", ref: R.dock }, dockEl()) : null,
+      h("div", { className: "sr-only", "aria-live": "polite" }, say)));
+}
+
 function MatchScreen({
   config,
   parts,
@@ -1066,6 +2422,12 @@ function MatchScreen({
   const [cxPicker, setCxPicker] = useState(null); // null | {step,who,slot,chip?,blade?,returnToReview?}
   const [cxGuide, setCxGuide] = useState(null); // null | "blade" | "over_blade" | "assist" — reference image overlay
   const [deckReview, setDeckReview] = useState(false); // true = show review screen, false = in picker flow
+  // FLAG 1034: the new deck builder's own screen state (current part, check stage, undo list, search, CX steps).
+  // Kept here so it survives the CX Picture Guide opening over it; cleared whenever the judge is back on the player pick.
+  const [deckV2State, setDeckV2State] = useState(null);
+  useEffect(() => {
+    if (phase === "pick") setDeckV2State(null);
+  }, [phase]);
   const [lerStrikes, setLerStrikes] = useState(_resume ? _resume.lerStrikes : [0, 0]); // launch error strike counter per player [p1,p2]
   const [pickTab, setPickTab] = useState(challongeSlug || config.tm ? "active" : "roster"); // "roster" | "active" | "station"
   const [activeMatches, setActiveMatches] = useState(null); // null | "loading" | []
@@ -6654,6 +8016,63 @@ function MatchScreen({
     });
   }
 
+  if (phase === "deck" && ff(1034)) {
+    // FLAG 1034: new deck builder (Record decks, then each player checks their own deck). Same data as the old
+    // screens below; onStart is the old "Start Match" button's steps, onBack the old Back from the deck review.
+    return /*#__PURE__*/React.createElement(DeckBuilderV2, {
+      p1: p1,
+      p2: p2,
+      d1: d1,
+      d2: d2,
+      setD1: setD1,
+      setD2: setD2,
+      parts: parts,
+      eventFast: eventFast,
+      dark: dark,
+      toggleDark: toggleDark,
+      prev: [p1, p2].map(n => (n && workerCombos[n] || []).map(normalizeCombo).filter(c => comboReady(c))),
+      onClearPrev: i => {
+        const playerName = i === 0 ? p1 : p2;
+        if (!playerName) return;
+        setWorkerCombos(prev => {
+          const n = {
+            ...prev
+          };
+          delete n[playerName];
+          workerCombosRef.current = n;
+          return n;
+        });
+        // Push empty array to the tournament registry to clear this player's entry (same as the old Clear Previous Combos)
+        if (challongeSlug && !eventFast) pushCombosForTournament(challongeSlug, playerName, []);
+      },
+      st: deckV2State,
+      setSt: setDeckV2State,
+      onOpen: () => {
+        if (ff(1014)) setTiming(t => timingStampPure(t, "start", null, Date.now())); // FLAG 1014: the clock starts the first time the deck builder opens
+      },
+      onGuide: kind => setCxGuide(kind),
+      onBack: () => {
+        setDeckReview(false);
+        setPhase("pick");
+      },
+      onStart: () => {
+        stampTiming("decks"); // FLAG 1014: Decks Recorded marker
+        // Save decks to registry NOW so the next judge can see them immediately (same as the old Start Match).
+        pushDeckToRegistry();
+        if (config.tm) {
+          setSideAssign({
+            pickPriority: null
+          });
+          setSidePicker({
+            priority: null
+          });
+          setPhase("battle");
+        } else {
+          setPhase("order");
+        }
+      }
+    });
+  }
   if (phase === "deck") {
     // (Auto-start removed: deck review screen now shows first, players tap "Record Deck" per player)
 

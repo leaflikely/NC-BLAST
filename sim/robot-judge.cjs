@@ -90,7 +90,7 @@ class RobotJudge {
     for (let guard = 0; guard < 80; guard++) {
       const s = await this.screen();
       const btns = await ui.buttons(p);
-      if (/Spin Finish|Set Deck Order|Pick a Side|Who Won the Die Roll|Deck Review|CONFIRM RESULT|Select Match/.test(s) && !/Select the Challonge event/.test(s)) break;
+      if (/Spin Finish|Set Deck Order|Pick a Side|Who Won the Die Roll|Deck Review|Record decks|Check decks|Record blades|Check blades|Both decks are hidden|CONFIRM RESULT|Select Match/.test(s) && !/Select the Challonge event/.test(s)) break;
       if (btns.includes("⚖️ A Judge")) { await ui.tap(p, "⚖️ A Judge", { optional: true, timeout: 1500 }); continue; }
       if (btns.some(t => evName.test(t))) { await ui.tap(p, evName, { optional: true, timeout: 1500 }); continue; }
       if (btns.includes("Log in with Challonge →")) { await ui.tap(p, "Log in with Challonge →", { optional: true, timeout: 1500 }); continue; }
@@ -108,7 +108,7 @@ class RobotJudge {
       if (btns.includes("Next: Players →")) { await ui.tap(p, "Next: Players →", { optional: true, timeout: 1500 }); continue; }
       await p.waitForTimeout(ui.POLL * 2);
     }
-    await ui.waitForText(p, /Select Match|Spin Finish|Set Deck Order|Pick a Side|Who Won the Die Roll|Deck Review|CONFIRM RESULT/, 10000);
+    await ui.waitForText(p, /Select Match|Spin Finish|Set Deck Order|Pick a Side|Who Won the Die Roll|Deck Review|Record decks|Check decks|Record blades|Check blades|Both decks are hidden|CONFIRM RESULT/, 10000);
     this.say("logged in as " + this.judge.username + " (" + this.judge.bracketName + ")");
   }
 
@@ -232,6 +232,8 @@ class RobotJudge {
   async buildDecks() {
     const p = this.page;
     for (let guard = 0; guard < 80; guard++) {
+      // Flag 1034: the new Record decks screen (wait a moment for it, the app may still be loading combos).
+      if (await ui.until(p, () => p.$(".ncbdb"), guard ? 0 : 1500)) return this.buildDecksV2();
       const s = await this.screen();
       if (/Deck Review/.test(s) && !/— (FIRST|SECOND|THIRD) COMBO/.test(s)) {
         // Review screen. Start recording whoever is not done yet, or move on.
@@ -249,6 +251,13 @@ class RobotJudge {
   // Reads the 🕐 Previous Combos row on the blade picker: [{ text, disabled }], or null when there is none.
   async readPrevCombos() {
     return this.page.evaluate(() => {
+      // Flag 1034 screen: "Previous combos" label row, then a grid of combo cards (blade | ratchet · bit).
+      if (document.querySelector(".ncbdb")) {
+        const row = [...document.querySelectorAll(".ncbdb .label-row")].find(x => /^Previous (combos|blades)$/.test((x.querySelector(".label") || {}).textContent || ""));
+        if (!row) return null;
+        const grid = row.nextElementSibling;
+        return grid ? [...grid.querySelectorAll("button.cc, button.chip")].map(b => ({ text: [...b.children].map(x => x.textContent.trim()).filter(Boolean).join(" | "), disabled: !!b.disabled })) : [];
+      }
       const label = [...document.querySelectorAll("p")].find(x => /Previous Combos/.test(x.textContent));
       if (!label) return null;
       const grid = label.parentElement && label.parentElement.nextElementSibling;
@@ -300,6 +309,145 @@ class RobotJudge {
     if (renamed && !got) { what = "Previous combos lost after a player was renamed in the bracket"; level = "warn"; }
     this.fw.find(level, this.who, what, name + " in " + match + " (last played round " + truth.round + " as \"" + truth.name.trim() + "\"): expected " + truth.combos.join(" / ") + "; shown " + (got ? shown.map(x => x.text).join(" / ") : "nothing") + (otherTruths.length ? " (that is " + otherTruths.map(t => t.name.trim()).join(", ") + "'s deck)" : ""));
     return shown;
+  }
+
+  // ── Flag 1034: the new Record decks screen, then each player checks their own deck ──
+  // Reads the screen (stage, prompt), picks parts like a judge would (previous combo, quick combo,
+  // typed search, CX steps, or a part button), sometimes fixes a part from a check screen, then
+  // taps both "<name> confirms" buttons. The match then starts by itself (no Start Match button).
+  async buildDecksV2() {
+    const p = this.page;
+    this.current.v2 = true;
+    this.current.v2Fixed = false;
+    for (let guard = 0; guard < 160; guard++) {
+      // The screen ignores a second tap on the same spot within 0.3 s (and a tap inside that window
+      // restarts it), and its confirm buttons wait 0.6 s after they appear, so a real judge's pace is used.
+      if (guard) await p.waitForTimeout(340);
+      const st = await p.evaluate(() => {
+        const app = document.querySelector(".ncbdb");
+        if (!app) return null;
+        const f = app.querySelector(".field");
+        return { stage: app.getAttribute("data-stage"), prompt: f && !f.hidden ? f.querySelector(".prompt").innerText.replace(/\s+/g, " ").trim() : "" };
+      });
+      if (!st) return;   // the deck screen closed: the match has started
+      await this.screen();
+      if (st.stage === "check") {
+        // Now and then a player spots a wrong part on their check screen: fix it, like a judge would.
+        if (!this.current.v2Fixed && this.rnd.chance(0.08)) {
+          const cells = await p.$$(".ncbdb .ck-cell:not(:disabled)");
+          if (cells.length) {
+            this.current.v2Fixed = true;
+            this.say("player asks to fix a part on the check screen");
+            await this.rnd.pick(cells).click({ timeout: 3000 }).catch(() => {});
+            continue;
+          }
+        }
+        const ok = await ui.tap(p, / confirms/, { optional: true, timeout: 1500 });
+        if (ok) this.say("deck confirmed by its player");
+        continue;
+      }
+      if (st.stage === "cover") { await ui.tap(p, /^Show .+'s (deck|blades)$/, { optional: true, timeout: 1500 }); continue; }
+      if (!st.prompt) {
+        await ui.tap(p, /^(Check (decks|blades) with the players|Go to .+'s (deck|blades))$/, { optional: true, timeout: 1500 });
+        continue;
+      }
+      const m = /^(.+?) · Combo (\d): (?:pick|change) the (blade|ratchet|bit)$/.exec(st.prompt);
+      if (!m) { await p.waitForTimeout(ui.POLL); continue; }
+      if (m[3] === "blade") await this.pickBladeV2(m[1], Number(m[2]));
+      else await this.pickPartV2(m[3]);
+      await p.waitForTimeout(ui.POLL);
+    }
+    throw new Error("Deck building (new screen) did not finish (stuck on: " + (await this.screen()).replace(/\n+/g, " / ").slice(0, 200) + ")");
+  }
+
+  // Clicks one enabled element matching a selector, chosen at random. Returns its text, or null.
+  async clickRandom(sel) {
+    const els = await this.page.$$(sel);
+    const ok = [];
+    for (const e of els) if (await e.isEnabled().catch(() => false) && await e.isVisible().catch(() => false)) ok.push(e);
+    if (!ok.length) return null;
+    const el = this.rnd.pick(ok);
+    const t = ((await el.innerText().catch(() => "")) || "").replace(/\s+/g, " ").trim();
+    await el.click({ timeout: 3000 }).catch(() => {});
+    return t;
+  }
+
+  // Marks the combo cards under one label ("Previous combos", "Quick combos") so clickRandom can find them.
+  async markGrid(label) {
+    return this.page.evaluate(label => {
+      document.querySelectorAll("[data-robot-pick]").forEach(x => x.removeAttribute("data-robot-pick"));
+      const row = [...document.querySelectorAll(".ncbdb .label-row")].find(x => ((x.querySelector(".label") || {}).textContent || "") === label);
+      const grid = row && row.nextElementSibling;
+      if (!grid) return 0;
+      const bs = [...grid.querySelectorAll("button.cc")];
+      bs.forEach(b => b.setAttribute("data-robot-pick", ""));
+      return bs.length;
+    }, label);
+  }
+
+  async pickBladeV2(name, combo) {
+    const p = this.page;
+    // On a player's first combo the Previous combos row must show their last deck (same check as the old screen).
+    if (combo === 1) {
+      const empty = await p.evaluate(() => !document.querySelector(".ncbdb .deck-row .cell:not(.empty):not(.builtin)"));
+      if (empty) await this.checkPrevCombos("\n" + name + " — FIRST COMBO");
+    }
+    const r = this.rnd();
+    const reuse = this.opts.reuseRate === undefined ? 0.4 : this.opts.reuseRate;
+    if (r < reuse) {
+      if (await this.markGrid("Previous combos")) {
+        const t = await this.clickRandom("[data-robot-pick]");
+        if (t) { this.say("previous combo " + t); this.reusedPrev = (this.reusedPrev || 0) + 1; return; }
+      }
+    }
+    if (r < reuse + 0.2) {
+      if (await this.markGrid("Quick combos")) {
+        const t = await this.clickRandom("[data-robot-pick]");
+        if (t) { this.say("quick combo " + t); return; }
+      }
+    }
+    if (r < reuse + 0.35) {
+      // Type a blade name in the search box and press Enter, like a judge using the keyboard.
+      const names = await p.$$eval(".ncbdb .body .chip-blade:not(:disabled) .chip-t", xs => xs.map(x => x.textContent));
+      if (names.length) {
+        const n = this.rnd.pick(names);
+        this.say("search " + n + " + Enter");
+        await p.fill(".ncbdb .search input", n);
+        await p.press(".ncbdb .search input", "Enter");
+        await p.waitForTimeout(ui.POLL);
+        // Close the keyboard the way a judge would, by tapping on to the next part.
+        await p.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+        return;
+      }
+    }
+    if (r < reuse + 0.45) {
+      // A CX blade, one piece per tap.
+      await ui.tap(p, "CX", { optional: true, timeout: 1000 });
+      for (let i = 0; i < 6; i++) {
+        const still = await p.$(".ncbdb .cx-opt");
+        if (!still) break;
+        const t = await this.clickRandom(".ncbdb .cx-opt:not(:disabled)");
+        if (!t) break;
+        this.say("CX piece " + t);
+        await p.waitForTimeout(ui.POLL);
+        const pr = await p.evaluate(() => { const f = document.querySelector(".ncbdb .field"); return f && !f.hidden ? f.innerText : ""; });
+        if (!/pick the blade|change the blade/.test(pr)) return;
+      }
+      await ui.tap(p, "Standard", { optional: true, timeout: 800 });
+    }
+    const t = await this.clickRandom(".ncbdb .body .chip-blade:not(:disabled)");
+    if (t) this.say("blade " + t);
+  }
+
+  async pickPartV2(kind) {
+    const p = this.page;
+    if (kind === "ratchet" && this.rnd.chance(0.3)) {
+      const t = await this.clickRandom(".ncbdb .pinned .sug:not(:disabled)");
+      if (t) { this.say("one-tap finish " + t); return; }
+    }
+    const t = await this.clickRandom(".ncbdb .chip-" + kind + ":not(:disabled)");
+    if (!t) throw new Error("No " + kind + " to pick on the new deck screen");
+    this.say(kind + " " + t);
   }
 
   async pickBlade() {
@@ -377,7 +525,8 @@ RobotJudge.prototype.playMatch = async function () {
   this.undos = 0;
   this.history = [];   // app state before each battle (for checking Undo)
   this.expSets = [];   // set scores the robot expects, e.g. [[4,2],[1,4],...]
-  await this.tap("Start Match ⚔️");
+  // Flag 1034: the new deck screen starts the match itself after both players confirm.
+  if (!this.current.v2) await this.tap("Start Match ⚔️");
   for (let guard = 0; guard < 400; guard++) {
     const p = this.page;   // (can change mid-match: a handoff moves the robot to another phone)
     const s = await this.screen();
