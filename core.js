@@ -1,4 +1,4 @@
-// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-11-10a | retired overlay flags 1007, 1010, 1018, 1019, 1021 (staff skip list now only 1026) | previous: 2026-11-08b | staff-flags-apply-on-first-load (a device that started with an older or empty list reloads once to apply the new one, unless a match is in progress) | previous: 2026-11-08a | staff-flag-defaults (flags the staff menu turned on/off for everyone are read here; cached copy used at load, fresh copy fetched in the background) | previous: 2026-11-03a | overlay-flip-key (new saved setting name for the stream overlay left/right flip) | previous: 2026-10-29a | quick-combos-update (new Top 10 quick combos, Glory Valkyrie Kick has no ratchet) | previous: 2026-10-22b split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
+// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-10a | retired overlay flags 1007, 1010, 1018, 1019, 1021 (staff skip list now only 1026) | previous: 2026-11-08b | staff-flags-apply-on-first-load (a device that started with an older or empty list reloads once to apply the new one, unless a match is in progress) | previous: 2026-11-08a | staff-flag-defaults (flags the staff menu turned on/off for everyone are read here; cached copy used at load, fresh copy fetched in the background) | previous: 2026-11-03a | overlay-flip-key (new saved setting name for the stream overlay left/right flip) | previous: 2026-10-29a | quick-combos-update (new Top 10 quick combos, Glory Valkyrie Kick has no ratchet) | previous: 2026-10-22b split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
 const {
   useState,
   useEffect,
@@ -202,7 +202,7 @@ function clearFlagOverrides() {
 
 /* ═══════════════════════════════════════
    BUG REPORTS — FLAG 1005 (recording)
-   Nothing here runs unless 1005 is on. Keeps a small rolling list of errors,
+   Keeps a small rolling list of errors,
    failed network calls and a few app events, saved to localStorage so it
    survives the reload a judge does after something breaks.
    Nothing is ever sent anywhere — the judge chooses to share a report.
@@ -221,7 +221,6 @@ function _bugLogSave() {
 }
 
 function bugLog(kind, msg, extra) {
-  if (!ff(1005)) return;
   try {
     const entry = { t: new Date().toISOString(), k: kind, m: String(msg == null ? "" : msg).slice(0, 500) };
     if (extra) entry.x = extra;
@@ -261,7 +260,7 @@ function _bugSafeUrl(u) {
   }
 }
 
-if (ff(1005)) {
+{
   try {
     const prev = JSON.parse(localStorage.getItem(BUGLOG_KEY) || "[]");
     if (Array.isArray(prev)) BUGLOG.push(...prev.slice(-BUGLOG_MAX));

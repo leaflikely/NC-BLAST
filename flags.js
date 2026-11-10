@@ -33,16 +33,9 @@
  * --espiiii
  */
 window.FEATURE_FLAGS = new Set([
-  1001, // match log scoping
-  1002, // tag battles by match
-  1003, // honest Sheets submit result (re-enabled 2026-10-11 after the button gating was removed and it was tested)
-  1004, // WCB event creation in Organizer view
-  1005, // "?" bug report button on every screen
-  1006, // overlay set dots
   1008, // judge app sends Swap to the overlay
   1009, // overlay mirrors on Swap (needs 1008)
   1011, // overlay shows each new matchup; stream slot stays on between matches
-  1012, // Organizer view: type any number of stadiums (1-99)
   1013, // Send to database beside the Sheets submit; judge name required to submit
   1014, // Match timing notebook (judge). Nothing is sent anywhere yet; the notebook is kept on the device and shown in the cog menu.
   1015, // Send match timing to the database after Submit (needs 1014 and 1013; needs the Worker /db/timing door deployed first).
@@ -54,7 +47,6 @@ window.FEATURE_FLAGS = new Set([
   1024, // Post-battle graphics Upset Alert and Currently Playing: the judge app also sends the tournament link and the round's upsets (from player seeds); the overlay lists the other live matches. Needs flag 1023.
   1025, // Real battles reach the stream overlay through the database Worker too (the original route is sometimes 10-30 seconds behind); the overlay shows whichever copy arrives first.
   1026, // Post-battle graphic Matchup Stats (how the two combos about to battle did against each other before); Test fire uses the real match data.
-  1027, // Judge view: a Stream channel button on the Select Match screen, so a judge can pick the channel (and connect) before decks are recorded.
   1028, // Overlay deck order graphic: when the judge locks the deck order (Start Match on the Set Deck Order screen), the overlay shows both players' three combos in order until the first battle is scored. 
   1030, // Standby slides on the stream between rounds: after a judge's last match at a stadium, the overlay shows standings, round results and the event's most used combos (needs the /deck-log + /event-stats routes in the database Worker; the question 'no more matches here?' appears on the judge's New Match button).
   1029, // Upset Alert last line: "Wins 2-1 on Stadium B" (or "judged by <name>"). The judge app saves who judged each result and their stadium (needs the /match-notes block pasted into the database Worker).
@@ -65,36 +57,6 @@ window.FEATURE_FLAGS = new Set([
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
 window.FEATURE_FLAG_INFO = {
-  1001: {
-    name: "Match log scoping",
-    desc: "Keeps each match's battle log separate. Fixes the confirm screen showing battles from other matches, stops handoff copying a tablet's whole history, and caps the stored log.",
-    off: "Old behaviour: handoff sends the entire device log, match boundary comes from the session only, log grows without limit."
-  },
-  1002: {
-    name: "Tag battles by match",
-    desc: "Stamps every battle with the match it belongs to, so screens filter by that instead of counting positions in one shared list. Battles from older matches and other tournaments can no longer appear, even on a device with a messy log.",
-    off: "Old behaviour: the current match is everything after a saved position number. If that number is wrong, older battles show up."
-  },
-  1003: {
-    name: "Honest Sheets submit result",
-    desc: "Stops the false 'Sheets failed' message. The results were reaching the spreadsheet, but the reply could not be read, so the app reported failure. Also adds a timeout, blocks double-submits, and actually downloads the CSV if the send really fails.",
-    off: "Old behaviour: reports failure whenever the reply can't be read, even though the rows were saved. Re-submitting duplicates them."
-  },
-  1004: {
-    name: "WCB event creation (Organizer)",
-    desc: "Adds a 'Load from WCB link' box in Organizer view, next to the Challonge one. Paste a West Coast Bladers bracket link and it registers the event in BLAST's shared list, pulling the name and roster from WCB automatically. Judges can select and score a WCB event's open matches the same way as a Challonge one — starting a match and submitting its result now write back to WCB itself, not just Challonge.",
-    off: "Old behaviour: Organizer view only offers Challonge as an event source."
-  },
-  1005: {
-    name: "Report a problem button",
-    desc: "Adds a ? button on every screen. Judges describe what went wrong, get a bug number, and can send a report with this device's recent errors and match state to the organizers. Nothing is sent unless they choose to.",
-    off: "No ? button, and no error recording on this device."
-  },
-  1006: {
-    name: "Overlay set dots",
-    desc: "Fixes the stream overlay missing the last set dot. The point that wins a set now sends the new set count to the overlay right away, so the match-winning dot appears. Also stops quick back-to-back updates from being dropped.",
-    off: "Old behaviour: the overlay gets the set count from before the point. The final set dot never appears, and earlier dots show up late."
-  },
   1008: {
     name: "Send Swap to the overlay (judge)",
     desc: "When the judge taps Swap, the judge app tells the stream overlay right away instead of waiting for the next point. The overlay only mirrors if its own flag, 1009, is on.",
@@ -109,11 +71,6 @@ window.FEATURE_FLAG_INFO = {
     name: "Overlay shows each new matchup (judge)",
     desc: "As soon as the judge picks the next two players, the stream overlay switches to them at 0-0 instead of waiting for the first point. The stream slot also stays on between matches, so a streaming station keeps streaming until the judge turns it off in the cog menu.",
     off: "Old behaviour: the stream slot turns off after every match, and a new matchup only reaches the overlay on its first point."
-  },
-  1012: {
-    name: "Any number of stadiums (Organizer)",
-    desc: "In Organizer view, the 'How many stadiums are you running?' step gets a number box (1-99) next to the 1-8 buttons. Stadium names continue past H as I, J ... Z, then AA, AB. Colours past H repeat the first eight. Judge devices show the extra stations automatically.",
-    off: "Old behaviour: only the buttons 1-8 (stadiums A-H)."
   },
   1013: {
     name: "Send to database (judge)",
@@ -169,11 +126,6 @@ window.FEATURE_FLAG_INFO = {
     name: "Matchup Stats graphic and real-data Test fire (overlay)",
     desc: "Adds MATCHUP HISTORY to the post-battle list (after Match Point, before the round records), once per match: how the two combos about to battle have done against each other before (favorite, win percentage, points per battle, number of battles). Needs at least 10 past battles of that exact pairing; test events are left out. Read from the database Worker (/matchup-stats). Also: the Settings panel Test fire buttons for Records, Pending, Upset, Currently Playing and Matchup Stats now build the graphic from the real current match (a labelled sample with an error code shows if the data is missing), and a Clear graphic memory button lets once-per-match/round graphics show again. Needs flags 1023 and 1024.",
     off: "Old behaviour: no Matchup Stats graphic; Test fire shows fixed sample graphics."
-  },
-  1027: {
-    name: "Stream channel button on the Select Match screen (judge)",
-    desc: "Adds a Stream channel button to the judge's Select Match screen. It opens the same window as the cog menu's Stream overlay (pick Channel 1-4 or Off, then Connect Channel), so a judge can connect to a channel in round 1 before the decks are recorded and the first battle starts.",
-    off: "Old behaviour: the channel can only be picked from the cog menu on the battle screen."
   },
   1028: {
     name: "Deck order graphic on the stream overlay (judge + overlay)",

@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 // FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
 // stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
 // (the set that was just won: its score is saved a moment after the overlay push) is added at
@@ -813,8 +813,6 @@ function MatchScreen({
   const [log, setLog] = useState(() => sGet(KEYS.matchLog, []));
   const [future, setFuture] = useState([]);
   const [matchStartIdx, setMatchStartIdx] = useState(() => {
-    // FLAG 1001 off: original behaviour — resume snapshot only, else 0.
-    if (!ff(1001)) return _resume ? _resume.matchStartIdx : 0;
     // Prefer the resume snapshot, else fall back to the persisted value.
     // Always clamp into the log so a stale index can never expose earlier
     // matches (or point past the end). --espiiii
@@ -872,9 +870,8 @@ function MatchScreen({
     });
   }, [timing, matchKey]);
 
-  // The current match's battles. Falls back to the index when 1002 is off, or
-  // when we have no key yet (e.g. resuming a session started on the old build).
-  const useKeyScoping = ff(1002) && !!matchKey;
+  // The current match's battles. Falls back to the index when we have no key yet (e.g. resuming a session started on the old build).
+  const useKeyScoping = !!matchKey;
   const currentMatch = useKeyScoping
     ? log.filter(e => e.matchKey === matchKey)
     : log.slice(matchStartIdx);
@@ -1119,15 +1116,9 @@ function MatchScreen({
   // past the cap. This is the only place the log is pruned. --espiiii
   const beginMatchLog = entries => {
     const source = Array.isArray(entries) ? entries : [];
-    // FLAG 1002: mint a fresh identity for this match. Kept outside the 1001
-    // branch so key scoping works regardless of the older flag. --espiiii
+    // Mint a fresh identity for this match (battles are filtered by it). --espiiii
     setMatchKey(`${challongeSlug || "manual"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     setTiming(null); // FLAG 1014: a new match always starts with an empty timing notebook
-    // FLAG 1001 off: no pruning, just set the boundary like before.
-    if (!ff(1001)) {
-      setMatchStartIdx(source.length);
-      return;
-    }
     const pruned = pruneMatchLog(source);
     if (pruned.length !== source.length) {
       setLog(pruned);
@@ -1140,7 +1131,6 @@ function MatchScreen({
   // indexes into. sessionStorage alone was not enough - see KEYS.matchStart.
   // Hook runs unconditionally; the flag is checked inside. --espiiii
   useEffect(() => {
-    if (!ff(1001)) return;
     sSave(KEYS.matchStart, matchStartIdx);
   }, [matchStartIdx]);
 
@@ -1203,22 +1193,21 @@ function MatchScreen({
   // Placed after every state these read and before any early return, so hook
   // order never changes. The flag is checked inside each one. --espiiii
   useEffect(() => {
-    if (ff(1005)) bugLog("screen", "match phase: " + phase);
+    bugLog("screen", "match phase: " + phase);
   }, [phase]);
   // Submit errors are caught and shown on screen, so they never reach the
   // error recorder. And WCB/Challonge often answer HTTP 200 with the error in
   // the body. Watching the status catches every outcome in one place,
   // including the exact message the judge saw.
   useEffect(() => {
-    if (ff(1005) && challongeSubmitStatus != null) bugLog("submit", "bracket submit: " + String(challongeSubmitStatus));
+    if (challongeSubmitStatus != null) bugLog("submit", "bracket submit: " + String(challongeSubmitStatus));
   }, [challongeSubmitStatus]);
   useEffect(() => {
-    if (ff(1005) && underwayStatus != null) bugLog("submit", "mark underway: " + String(underwayStatus));
+    if (underwayStatus != null) bugLog("submit", "mark underway: " + String(underwayStatus));
   }, [underwayStatus]);
   // Snapshot of what's on screen, read when a report is filed. Only named
   // fields — no tokens, nothing from storage.
   useEffect(() => {
-    if (!ff(1005)) return;
     try {
       window.__ncbLiveMatch = {
         at: new Date().toISOString(),
@@ -1535,8 +1524,7 @@ function MatchScreen({
     const cap = config.pts > 0 ? config.pts : Infinity;
     const np = [Math.min(raw[0], cap), Math.min(raw[1], cap)];
     const entry = {
-      // FLAG 1002: stamps which match (and event) this battle belongs to.
-      // Harmless when 1002 is off — nothing reads it. --espiiii
+      // Stamps which match (and event) this battle belongs to. --espiiii
       matchKey: matchKey,
       slug: challongeSlug || "",
       set: curSet,
@@ -1596,10 +1584,10 @@ function MatchScreen({
       n[scoringPi] += 1;
       return n;
     })() : [sets[0], sets[1]];
-    const setsExtra = ff(1006) ? {
+    const setsExtra = {
       sets: setsAfter,
       matchOver: setWon && setsAfter[scoringPi] >= need
-    } : {};
+    };
 
     // LER — 1-strike system: first LER adds a strike, second converts to a point
     // Combos do NOT advance on LER — push overlay now with unchanged r1/r2
@@ -2227,8 +2215,6 @@ function MatchScreen({
     const now = Date.now();
     const sinceLast = now - pushOverlayDebounceRef.current;
     if (sinceLast < 500) {
-      // FLAG 1006 off: drop it, as before.
-      if (!ff(1006)) return;
       // Keep only the newest held push; anything older is out of date.
       pushOverlayTrailExtraRef.current = extraState;
       if (!pushOverlayTrailTimerRef.current) {
@@ -2243,7 +2229,7 @@ function MatchScreen({
     }
     pushOverlayDebounceRef.current = now;
     // A push is going out now, so anything held is superseded.
-    if (ff(1006)) pushOverlayTrailExtraRef.current = null;
+    pushOverlayTrailExtraRef.current = null;
     const activeComboOf = (deck, idx) => {
       const c = idx !== null ? deck[idx] : null;
       return c?.blade ? {
@@ -2894,11 +2880,11 @@ function MatchScreen({
       sets: [...sets],
       curSet,
       shuf,
-      // FLAG 1001: send only the current match's battles. Off = whole device
-      // log, which leaked every past match to the receiving judge. --espiiii
-      log: ff(1001) ? currentMatch : [...log],
-      matchStartIdx: ff(1001) ? 0 : matchStartIdx,
-      // FLAG 1002: the receiving judge keeps scoring the same match, so it has
+      // Send only the current match's battles (the whole device log would leak every
+      // past match to the receiving judge). --espiiii
+      log: currentMatch,
+      matchStartIdx: 0,
+      // The receiving judge keeps scoring the same match, so it has
       // to carry the same identity or its battles would split in two. --espiiii
       matchKey: matchKey,
       challongeMatchId,
@@ -3156,15 +3142,10 @@ function MatchScreen({
     setCurSet(preview.curSet || 1);
     setShuf(preview.shuf || 1);
     if (ff(1014)) setTiming(timingClean(preview.timing)); // FLAG 1014: keep the same clock across judges (none if the sender had none)
-    // FLAG 1001: keep this judge's own history and append just the handed-off
-    // match. Slicing by the sender's matchStartIdx also protects us from
-    // tablets still on the old build, which sent their whole log.
-    // Off = original behaviour: replace our log with whatever arrived.
-    // --espiiii
-    if (!ff(1001)) {
-      setLog(preview.log || []);
-      setMatchStartIdx(preview.matchStartIdx || 0);
-    } else {
+    // Keep this judge's own history and append just the handed-off match. Slicing by the
+    // sender's matchStartIdx also protects us from tablets still on an old build, which
+    // sent their whole log. --espiiii
+    {
       const raw = Array.isArray(preview.log) ? preview.log : [];
       const from = Number.isInteger(preview.matchStartIdx) ? preview.matchStartIdx : 0;
       const incoming = raw.slice(from);
@@ -3174,7 +3155,7 @@ function MatchScreen({
       setMatchStartIdx(base.length);
       sSave(KEYS.matchLog, merged);
     }
-    // FLAG 1002: adopt the incoming match's identity so we keep scoring the
+    // Adopt the incoming match's identity so we keep scoring the
     // same match. Prefer the explicit field, else read it off the battles we
     // just received. Set it either way — a stale key from our previous match
     // would filter the incoming battles out entirely. Null means no key
@@ -5483,7 +5464,7 @@ function MatchScreen({
       onClick: goBack
     }, IC.back, " Back"), /*#__PURE__*/React.createElement("h1", {
       style: S.title
-    }, "Select Match"), ff(1027) && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    }, "Select Match"), /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
       type: "button",
       onClick: () => setOverlayModal(true),
       style: {
@@ -7377,9 +7358,9 @@ function MatchScreen({
       showFooter: padFixed,
       tournamentName: config.tm && config.tournamentName ? config.tournamentName : "",
       onBack: () => setOverBackConfirm(true),
-      onHelp: ff(1005) ? () => {
+      onHelp: () => {
         if (window.__ncbOpenBugReport) window.__ncbOpenBugReport();
-      } : null,
+      },
       onConfirm: () => allPlayersDone ? setJudgeSubmitModal(true) : setConfirmOverlay(true),
       onCsv: () => onDownloadCSV(currentMatch, {
         p1,
@@ -8957,7 +8938,7 @@ function MatchScreen({
     // dark-mode toggle in this corner. --espiiii
     // The "?" and the dark mode toggle now live inside the cog menu. BugReportInlineButton is
     // still mounted (hidden) so the floating "?" stays out of the way on this screen.
-    return /*#__PURE__*/React.createElement(React.Fragment, null, ff(1005) && /*#__PURE__*/React.createElement(BugReportInlineButton, {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(BugReportInlineButton, {
       hidden: true
     }), /*#__PURE__*/React.createElement("div", {
       style: {
@@ -9041,7 +9022,7 @@ function MatchScreen({
       }
     }), ff(1014) && menuRow("timing", "\u23F1", "Match timing", () => setTimingOpen(true)), !ff(1033) && menuRow("layout", "\u283F", layoutEditMode ? "Exit layout edit" : "Adjust layout", () => setLayoutEditMode(m => !m), {
       color: layoutEditMode ? "#7C3AED" : undefined
-    }), ff(1005) && menuRow("report", "?", "Report a problem", () => {
+    }), menuRow("report", "?", "Report a problem", () => {
       if (window.__ncbOpenBugReport) window.__ncbOpenBugReport();
     }), menuRow("dark", dark ? "\u2600\uFE0F" : "\uD83C\uDF19", dark ? "Light mode" : "Dark mode", toggleDark)))));
   })())), ff(1033) && ncbPadScoreCard({
@@ -10413,7 +10394,7 @@ function MatchScreen({
       sSave(KEYS.matchLog, []);
       // FLAG 1001: reset the boundary too, or it points past the now-empty
       // log. --espiiii
-      if (ff(1001)) setMatchStartIdx(0);
+      setMatchStartIdx(0);
       setHistoryConfirmClear(false);
       setHistoryOpen(false);
     },

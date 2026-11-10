@@ -1,4 +1,4 @@
-// NC BLAST screens.js | part 3 of 6 (load order is set in index.html) | last updated: 2026-10-22b | split-from-app.js (styles, library manager, event picker, format screen, shuffle and misreport screens, other shared screens; code moved here unchanged)
+// NC BLAST screens.js | part 3 of 6 (load order is set in index.html) | last updated: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-22b | split-from-app.js (styles, library manager, event picker, format screen, shuffle and misreport screens, other shared screens; code moved here unchanged)
 /* ═══════════════════════════════════════
    STYLES
 ═══════════════════════════════════════ */
@@ -3876,7 +3876,7 @@ function ShuffleOrderScreen({
     style: {
       // Wider right padding (56 vs 16) while the floating "?" bug-report button is on, so the
       // countdown and Undo button end before the "?" begins instead of sitting under it.
-      padding: ff(1005) ? "12px 56px 10px 16px" : "12px 16px 10px",
+      padding: "12px 56px 10px 16px",
       borderBottom: "1px solid var(--border)",
       flexShrink: 0,
       display: "flex",

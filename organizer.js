@@ -1,4 +1,4 @@
-// NC BLAST organizer.js | part 5 of 6 (load order is set in index.html) | last updated: 2026-10-30a | station-live-row (each Station Queue module shows its current live match, score and judge) | previous: 2026-10-27a notifications-tab-and-queue-auto-add (flag 1017) | previous: 2026-10-22b split-from-app.js (PIN window, organizer dashboard (OrgApp) and event add/list screen; code moved here unchanged)
+// NC BLAST organizer.js | part 5 of 6 (load order is set in index.html) | last updated: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-30a | station-live-row (each Station Queue module shows its current live match, score and judge) | previous: 2026-10-27a notifications-tab-and-queue-auto-add (flag 1017) | previous: 2026-10-22b split-from-app.js (PIN window, organizer dashboard (OrgApp) and event add/list screen; code moved here unchanged)
 function PinModal({
   title,
   subtitle,
@@ -316,8 +316,8 @@ function OrgApp({
   const [jwInput, setJwInput] = useState(""); // textarea paste input
 
   // ── Stadium assignment state ──────────────────────────────────────────
-  const [stadiumCount, setStadiumCount] = useState(null); // null = not set yet, a whole number once chosen (1-8 via buttons; any 1-99 with flag 1012)
-  const [stadiumCountText, setStadiumCountText] = useState(""); // what is typed in the flag-1012 number box
+  const [stadiumCount, setStadiumCount] = useState(null); // null = not set yet, a whole number once chosen (1-8 via buttons, or any 1-99)
+  const [stadiumCountText, setStadiumCountText] = useState(""); // what is typed in the number box
   const [stadiumAssign, setStadiumAssign] = useState({}); // { challongeUsername: "A"|"B"|... }
   const [stadiumDragOver, setStadiumDragOver] = useState(null);
   const [stadiumSaving, setStadiumSaving] = useState(false);
@@ -2904,7 +2904,7 @@ function OrgApp({
         fontFamily: "'Outfit',sans-serif",
         cursor: "pointer"
       }
-    }, n)), ff(1012) && /*#__PURE__*/React.createElement("div", {
+    }, n)), /*#__PURE__*/React.createElement("div", {
       style: { display: "flex", gap: 6, alignItems: "center", width: "100%", marginTop: 4 }
     }, /*#__PURE__*/React.createElement("input", {
       type: "number",
@@ -4811,7 +4811,7 @@ function OrgTournamentSelect({
   const [linkError, setLinkError] = useState(null);
   const [displayName, setDisplayName] = useState("");
   const [addStep, setAddStep] = useState(null); // null | "name" | "ranked" | "adding"
-  // WCB (West Coast Bladers) event creation — Phase 1, org-only, flagged off by default (flag 1004)
+  // WCB (West Coast Bladers) event creation — Phase 1, org-only, 
   const [wcbLinkInput, setWcbLinkInput] = useState("");
   const [wcbLinkError, setWcbLinkError] = useState(null);
   const [wcbStep, setWcbStep] = useState(null); // null | "confirm" | "adding"
@@ -6038,7 +6038,7 @@ function OrgTournamentSelect({
       color: "#EF4444",
       marginTop: 8
     }
-  }, linkError)), ff(1004) && /*#__PURE__*/React.createElement("div", {
+  }, linkError)), /*#__PURE__*/React.createElement("div", {
     style: {
       background: "var(--surface)",
       borderRadius: 14,
