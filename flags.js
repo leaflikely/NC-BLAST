@@ -39,10 +39,8 @@ window.FEATURE_FLAGS = new Set([
   1004, // WCB event creation in Organizer view
   1005, // "?" bug report button on every screen
   1006, // overlay set dots
-  1007, // overlay finish flash no longer overlaps name/combo
   1008, // judge app sends Swap to the overlay
   1009, // overlay mirrors on Swap (needs 1008)
-  1010, // overlay combo chips at 2x
   1011, // overlay shows each new matchup; stream slot stays on between matches
   1012, // Organizer view: type any number of stadiums (1-99)
   1013, // Send to database beside the Sheets submit; judge name required to submit
@@ -50,18 +48,15 @@ window.FEATURE_FLAGS = new Set([
   1015, // Send match timing to the database after Submit (needs 1014 and 1013; needs the Worker /db/timing door deployed first).
   1016, // Error files (failed battles send, failed timing send, bug reports) go to the cloud backup folder instead of the judge's device (needs the Worker /backup/upload door deployed first).
   1017, // Submit check + notifications: a score only counts as sent once the bracket site confirms it; New Match waits (with an escape button); the org view gets a Notifications tab (needs the Worker add-on routes /submit/verify and /notify/* deployed first).
-  // 1018, // Stream overlay stage layout (overlay only). Held OFF on purpose: it changes how every stream looks. Try it per OBS source with ?ff=1018 on the overlay link; to turn it on for everyone, remove the // at the start of this line.
-  // 1019, // New stream-overlay scoreboard look from the Claude Design mock-up (overlay only; turns the stage layout 1018 on by itself). Held OFF while it is being tuned: try it per OBS source with ?ff=1019 on the overlay link.
-  1020, // Judge app tells the stream overlay who won each finished set (for the overlay's set dots; only used by the new look, flag 1019).
-  1021, // Stream overlay space shapes (wide / tall) plus the 5-second post-battle graphic (overlay only; turns 1018 and 1019 on by itself). On by default: the plain link ncblast.pages.dev/overlay?slot=N fills its OBS source, settings live in a hover-only gear. To see the old look on one source add ?ff=-1021 to its link.
-  1022, // Post-battle graphic gets a second, general graphic: the finish text shows 3 seconds, fades away, then the round and each player's match record (W-L) show for the gear's "General graphic" seconds (default 5). The judge app adds the records to what it sends the overlay. Needs flag 1021. Turn it off to get the single graphic back.
-  1023, // Post-battle graphic pool: after the finish text one general graphic is picked from an ordered list (Match Winner at the end of a match, Final Battle, Match Point, Match Context once per match, then Matches Pending). The judge app adds the battle count, the Swiss/Top Cut flag and the pending-match count to what it sends the overlay. Needs flags 1021 and 1022. Turn it off to get the plain records graphic after every finish.
+  1020, // Judge app tells the stream overlay who won each finished set (for the overlay's set dots; only used by the overlay's set dots).
+  1022, // Post-battle graphic gets a second, general graphic: the finish text shows 3 seconds, fades away, then the round and each player's match record (W-L) show for the gear's "General graphic" seconds (default 5). The judge app adds the records to what it sends the overlay. Turn it off to get the single graphic back.
+  1023, // Post-battle graphic pool: after the finish text one general graphic is picked from an ordered list (Match Winner at the end of a match, Final Battle, Match Point, Match Context once per match, then Matches Pending). The judge app adds the battle count, the Swiss/Top Cut flag and the pending-match count to what it sends the overlay. Needs flag 1022. Turn it off to get the plain records graphic after every finish.
   1024, // Post-battle graphics Upset Alert and Currently Playing: the judge app also sends the tournament link and the round's upsets (from player seeds); the overlay lists the other live matches. Needs flag 1023.
   1025, // Real battles reach the stream overlay through the database Worker too (the original route is sometimes 10-30 seconds behind); the overlay shows whichever copy arrives first.
   1026, // Post-battle graphic Matchup Stats (how the two combos about to battle did against each other before); Test fire uses the real match data.
   1027, // Judge view: a Stream channel button on the Select Match screen, so a judge can pick the channel (and connect) before decks are recorded.
-  1028, // Overlay deck order graphic: when the judge locks the deck order (Start Match on the Set Deck Order screen), the overlay shows both players' three combos in order until the first battle is scored. Needs flag 1021.
-  1030, // Standby slides on the stream between rounds: after a judge's last match at a stadium, the overlay shows standings, round results and the event's most used combos (needs 1021 and the /deck-log + /event-stats routes in the database Worker; the question 'no more matches here?' appears on the judge's New Match button).
+  1028, // Overlay deck order graphic: when the judge locks the deck order (Start Match on the Set Deck Order screen), the overlay shows both players' three combos in order until the first battle is scored. 
+  1030, // Standby slides on the stream between rounds: after a judge's last match at a stadium, the overlay shows standings, round results and the event's most used combos (needs the /deck-log + /event-stats routes in the database Worker; the question 'no more matches here?' appears on the judge's New Match button).
   1029, // Upset Alert last line: "Wins 2-1 on Stadium B" (or "judged by <name>"). The judge app saves who judged each result and their stadium (needs the /match-notes block pasted into the database Worker).
   1031, // Fast Blast event mode: the org can switch Fast Blast on when creating an event (blade-only combos, no deck building). This flag covers the toggle on the name screen and the Fast Blast badge on the event list. Turn it off to hide both.
   // 1032, // Score pad redesign, first two screens (judge): the Match result screen and the player tap-to-confirm screen use the new look from the Claude Design mock-up. Drawing only, scoring and submitting are untouched. Held OFF on purpose (a tournament is coming): a judge can try it on their own device from the gear menu > Feature Flags, or remove the // at the start of this line to turn it on for everyone.
@@ -100,11 +95,6 @@ window.FEATURE_FLAG_INFO = {
     desc: "Fixes the stream overlay missing the last set dot. The point that wins a set now sends the new set count to the overlay right away, so the match-winning dot appears. Also stops quick back-to-back updates from being dropped.",
     off: "Old behaviour: the overlay gets the set count from before the point. The final set dot never appears, and earlier dots show up late."
   },
-  1007: {
-    name: "Overlay finish text cleanup",
-    desc: "On the stream overlay, the XTREME / OVER / BURST flash sits next to the score, in the empty space on the scoring player's side, instead of on top of their name and combo. The combo stays visible. If the flash would still cover something, only that piece fades while it shows. Overlay only - add &ff=1007 to the OBS source URL to try it.",
-    off: "Old behaviour: the flash text overlaps the player's name and combo."
-  },
   1008: {
     name: "Send Swap to the overlay (judge)",
     desc: "When the judge taps Swap, the judge app tells the stream overlay right away instead of waiting for the next point. The overlay only mirrors if its own flag, 1009, is on.",
@@ -114,11 +104,6 @@ window.FEATURE_FLAG_INFO = {
     name: "Overlay mirrors on Swap (overlay)",
     desc: "Stream overlay only. When the judge swaps sides, player 1 moves to the right and player 2 to the left, each keeping their colour, so the stream matches where players are standing. Needs 1008 on the judging device. Add &ff=1009 to the OBS source URL to try it.",
     off: "Old behaviour: the overlay always shows player 1 on the left."
-  },
-  1010: {
-    name: "Bigger combos on the overlay (overlay)",
-    desc: "Stream overlay only. Combo chips (blade / ratchet / bit) are twice the size so viewers can read them. While a finish flash shows, the scorer's combo may fade for those 2 seconds if it would overlap. Add &ff=1010 to the OBS source URL.",
-    off: "Old behaviour: small combo text."
   },
   1011: {
     name: "Overlay shows each new matchup (judge)",
@@ -155,34 +140,19 @@ window.FEATURE_FLAG_INFO = {
     desc: "After a judge sends a score to the bracket site (Challonge or WCB), the app asks the site to confirm the match really shows as finished. Until it does, the judge's New Match button stays locked. If the bracket site cannot be reached, the judge can press 'Tell the TO to enter it by hand', which adds the score to a new Notifications tab in Organizer view (red number on the tab). The tab also lists send errors and matches that were added to a station queue automatically, and has a Resolved section. Waiting matches that are missing from every station queue are now added to the shortest queue automatically. Needs the Worker add-on routes deployed first.",
     off: "Old behaviour: a score counts as sent as soon as the bracket site answers, New Match is never locked, there is no Notifications tab, and a match missing from every station queue stays missing until the queues are regenerated."
   },
-  1018: {
-    name: "Stage layout for the stream overlay (overlay)",
-    desc: "Stream overlay only. The overlay becomes a fixed 1920x1080 stage with the scoreboard centered along the bottom, 40% of the screen wide by default (change with ?w= and ?bottom= on the overlay link). The rest of the stage stays empty and transparent for future features. Dragging and resizing are switched off, and the scoreboard no longer stretches or runs off the screen. In OBS, make the browser source 1920 wide by 1080 tall.",
-    off: "Old behaviour: a draggable, resizable scoreboard box (or ?fullscreen=1, which runs wider than the screen)."
-  },
-  1019: {
-    name: "New scoreboard look for the stream overlay (overlay)",
-    desc: "Stream overlay only. Replaces the scoreboard card with the new compact design: player names and the score big, blade and ratchet/bit lines under each name, set dots under the score, a gold line on top, and a banner above it when a finish is scored. Turns the stage layout (flag 1018) on by itself. No brand label, tournament name, judge name, sides or point-limit text. Add ?edit=1 to the overlay link to get a small switch for the width: the mock-up's size (one third of the screen) or 40%.",
-    off: "Old behaviour: the original scoreboard card."
-  },
   1020: {
     name: "Overlay set dots show who won each set (judge)",
-    desc: "The judge app adds the winner of every finished set, in order, to what it sends the stream overlay. The new overlay look (flag 1019) uses it to colour set dot 1 for the set 1 winner, dot 2 for the set 2 winner, and so on. Nothing changes on screen without flag 1019.",
+    desc: "The judge app adds the winner of every finished set, in order, to what it sends the stream overlay. The stream overlay uses it to colour set dot 1 for the set 1 winner, dot 2 for the set 2 winner, and so on.",
     off: "Old behaviour: the overlay only knows how many sets each player won, so the new look draws player 1's wins first."
-  },
-  1021: {
-    name: "Space shapes and post-battle graphic for the stream overlay (overlay)",
-    desc: "Stream overlay only. The overlay lives in a fixed-shape space (wide or tall) and fills whatever box OBS gives the source, so OBS decides position and size; the link stays the same per channel (overlay?slot=N) and the shape, side and timing are set in a gear that appears when the mouse is over the source's top-left corner (OBS: right-click the source, Interact). The old drag editor is gone: position and size come only from OBS (extra ?x= ?y= ?s= on an old link are ignored; ?edit=1 just shows a demo match). Wide shape: the scoreboard sits in the middle, then slides left, right or alternates while a graphic comes out on the other side. Tall shape: the scoreboard sits at the bottom (or top) and the graphic slides out above (or below) it. After every finish the graphic shows the finish, the points, who scored, the winning combo and the set score for 5 seconds (change with ?gfx=). Turns the new scoreboard look (flag 1019) on by itself.",
-    off: "Old behaviour: the scoreboard sits where flags 1018 / 1019 put it, with a small banner above it after a finish."
   },
   1022: {
     name: "Round and match records after each finish (overlay + judge)",
-    desc: "After a finish, the stream overlay shows the finish graphic for 3 seconds, then its text fades away and a second graphic shows the round (e.g. Swiss Round 1) and each player's match record (wins-losses in this tournament) for 5 seconds (the gear's General graphic setting changes the 5). The judge app looks up the finished matches when a match starts and adds the records to what it sends the overlay; if it cannot, the records show 0-0. When the match ends, that match is counted straight away. Needs flag 1021.",
+    desc: "After a finish, the stream overlay shows the finish graphic for 3 seconds, then its text fades away and a second graphic shows the round (e.g. Swiss Round 1) and each player's match record (wins-losses in this tournament) for 5 seconds (the gear's General graphic setting changes the 5). The judge app looks up the finished matches when a match starts and adds the records to what it sends the overlay; if it cannot, the records show 0-0. When the match ends, that match is counted straight away. ",
     off: "Old behaviour: one finish graphic that stays for the gear's time, no records graphic."
   },
   1023: {
     name: "Variety of post-battle graphics (overlay + judge)",
-    desc: "After the finish text (3 seconds) the overlay picks ONE general graphic for the next 5 seconds, checking an ordered list from the top: at the end of a match a Winner graphic (winner's name in their colour, the battle count, and their Swiss record in the group stage); FINAL BATTLE! with shaking text when it becomes 3-3 in the deciding set; MATCH POINT [player]! when a player has 3 points in a set and has already won a set; the round and player records (once per match); and finally the basic pool, which takes turns between its graphics (Matches Pending: how many matches in this round have not started). More graphics are added to this list later. The judge app adds the battle count, whether the event is Swiss, and the pending-match count to what it sends the overlay, and refreshes the bracket every 30 seconds during a match. Needs flags 1021 and 1022.",
+    desc: "After the finish text (3 seconds) the overlay picks ONE general graphic for the next 5 seconds, checking an ordered list from the top: at the end of a match a Winner graphic (winner's name in their colour, the battle count, and their Swiss record in the group stage); FINAL BATTLE! with shaking text when it becomes 3-3 in the deciding set; MATCH POINT [player]! when a player has 3 points in a set and has already won a set; the round and player records (once per match); and finally the basic pool, which takes turns between its graphics (Matches Pending: how many matches in this round have not started). More graphics are added to this list later. The judge app adds the battle count, whether the event is Swiss, and the pending-match count to what it sends the overlay, and refreshes the bracket every 30 seconds during a match. Needs flag 1022.",
     off: "Old behaviour: the round and records graphic after every finish."
   },
   1024: {
@@ -207,7 +177,7 @@ window.FEATURE_FLAG_INFO = {
   },
   1028: {
     name: "Deck order graphic on the stream overlay (judge + overlay)",
-    desc: "When the judge taps Start Match on the Set Deck Order screen, the overlay's slide-out graphic shows both players' three combos in the order they were locked (player on the scoreboard's left in the left column, combo 1 on top). It stays up until the first battle of that order is scored, then the normal post-battle graphic takes over. It shows every time an order is locked: the start of each set and after each shuffle. The judge app also sends the new first combos with it, so the scoreboard matches row 1. Needs flag 1021 (space shapes).",
+    desc: "When the judge taps Start Match on the Set Deck Order screen, the overlay's slide-out graphic shows both players' three combos in the order they were locked (player on the scoreboard's left in the left column, combo 1 on top). It stays up until the first battle of that order is scored, then the normal post-battle graphic takes over. It shows every time an order is locked: the start of each set and after each shuffle. The judge app also sends the new first combos with it, so the scoreboard matches row 1.",
     off: "Old behaviour: no deck order graphic."
   },
   1029: {

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- NC BLAST overlay.html | last updated: 2026-11-03w | thin yellow border on all four sides of the scoreboard and the graphic (seam stays 2px); Dynamic wide also re-sides a graphic that is already showing | previous: 2026-11-03v | Dynamic wide (graphic comes out on the battle winner side), Review mode for Test fire (skips the finish text, graphic stays until clicked again or replaced) | previous: 2026-11-03u | Final Battle without round line, new SET POINT 3-3 (no shaking) for 3-3 in earlier sets, winner set score green, round count only on Matches Pending / Winner / Upset Alert | previous: 2026-11-03t | winner graphic in the winner colour with white outlined text; Match point: (colon, no exclamation, no round line); NEXT BATTLE line larger, shrinks only if it does not fit | previous: 2026-11-03s | Matchup Stats: Battle Win and PPB on one row (green above 50% / above 0, red below), favorite shown as the blade name (full combo if both blades match), bigger NEXT BATTLE line | previous: 2026-11-03r | Matchup Stats redesigned: NEXT BATTLE: [P1 combo] vs [P2 combo], the combo with the higher PPB, Battle Win %, PPB with the sample size on the right | previous: 2026-11-03q | the graphic wipes its text once hidden behind the scoreboard and the next one is fully set up (finish layer on, no fade) before it slides out | previous: 2026-11-03p | flag 1026 fix: the general graphic is picked 3 s after the finish (when the lookups have arrived) instead of at the instant of the finish; Currently Playing also reads the other channels from the database Worker; &debug=1 shows why Currently Playing / Matchup were skipped | previous: 2026-11-03o | flag 1026: Matchup Stats graphic; Test fire builds from the real match (E-codes when data is missing); Clear graphic memory button | previous: 2026-11-03n | flag 1025: real battles also arrive through the database Worker (not delayed), duplicates and older late arrivals are ignored | previous: 2026-11-03m | &debug=1 on the link shows a timing readout | previous: 2026-11-03l | OBS no longer lags: waits run on a background-worker clock (browsers slow normal timers on pages they think are hidden) and a backup check every 4 s catches a stuck long-poll | previous: 2026-11-03k | flag 1024: Upset Alert + Currently Playing graphics, Test fire also plays in OBS (relayed by the Worker), Worker settings read every 3 s | previous: 2026-11-03j | settings live on the database Worker (/overlay-config) so the plain link ?slot=N works in OBS and the browser; settings panel needs the password once per device | previous: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
+<!-- NC BLAST overlay.html | last updated: 2026-11-10a | retired flags 1007, 1010, 1018, 1019, 1021 (the new scoreboard, stage layout and post-battle graphic are now permanent; ?ff=-1021 no longer brings back the old look) | previous: 2026-11-03w | thin yellow border on all four sides of the scoreboard and the graphic (seam stays 2px); Dynamic wide also re-sides a graphic that is already showing | previous: 2026-11-03v | Dynamic wide (graphic comes out on the battle winner side), Review mode for Test fire (skips the finish text, graphic stays until clicked again or replaced) | previous: 2026-11-03u | Final Battle without round line, new SET POINT 3-3 (no shaking) for 3-3 in earlier sets, winner set score green, round count only on Matches Pending / Winner / Upset Alert | previous: 2026-11-03t | winner graphic in the winner colour with white outlined text; Match point: (colon, no exclamation, no round line); NEXT BATTLE line larger, shrinks only if it does not fit | previous: 2026-11-03s | Matchup Stats: Battle Win and PPB on one row (green above 50% / above 0, red below), favorite shown as the blade name (full combo if both blades match), bigger NEXT BATTLE line | previous: 2026-11-03r | Matchup Stats redesigned: NEXT BATTLE: [P1 combo] vs [P2 combo], the combo with the higher PPB, Battle Win %, PPB with the sample size on the right | previous: 2026-11-03q | the graphic wipes its text once hidden behind the scoreboard and the next one is fully set up (finish layer on, no fade) before it slides out | previous: 2026-11-03p | flag 1026 fix: the general graphic is picked 3 s after the finish (when the lookups have arrived) instead of at the instant of the finish; Currently Playing also reads the other channels from the database Worker; &debug=1 shows why Currently Playing / Matchup were skipped | previous: 2026-11-03o | flag 1026: Matchup Stats graphic; Test fire builds from the real match (E-codes when data is missing); Clear graphic memory button | previous: 2026-11-03n | flag 1025: real battles also arrive through the database Worker (not delayed), duplicates and older late arrivals are ignored | previous: 2026-11-03m | &debug=1 on the link shows a timing readout | previous: 2026-11-03l | OBS no longer lags: waits run on a background-worker clock (browsers slow normal timers on pages they think are hidden) and a backup check every 4 s catches a stuck long-poll | previous: 2026-11-03k | flag 1024: Upset Alert + Currently Playing graphics, Test fire also plays in OBS (relayed by the Worker), Worker settings read every 3 s | previous: 2026-11-03j | settings live on the database Worker (/overlay-config) so the plain link ?slot=N works in OBS and the browser; settings panel needs the password once per device | previous: 2026-11-03i | one link: the panel rewrites the address bar so the tab link is the OBS link | previous: 2026-11-03h | Settings panel is always on screen in a normal browser tab and is never built inside OBS (OBS shows only the scoreboard/graphics; in OBS the link decides shape/side/board/gfx); panel shows a "Copy link" line | previous: 2026-11-03g | Matches Pending text white, Settings button always visible (?settings=0 hides it), Settings has a Test fire button for each graphic | previous: 2026-11-03f | graphic-pool-stage-1 (flag 1023: after the finish text ONE general graphic is picked from an ordered list: Match Winner at match end, Final Battle (shaking text), Match Point, Match Context once per match, then the basic pool which takes turns - for now Matches Pending only) | previous: 2026-11-03e | records-graphic (flag 1022: after a finish the finish text shows 3 seconds, fades away, then a general graphic with the round and each player's match record shows for the gear's General graphic seconds, default 5) | previous: 2026-11-03d | yellow seam line between scoreboard and graphic (wide shape) | previous: 2026-11-03c | Settings button always visible in a normal browser (hover-only inside OBS) | previous: 2026-11-03b | old drag editor removed, ?x= ?y= ?s= ?edit=1 no longer move or scale (OBS decides), gear choices win over link values | previous: 2026-11-03a | blank-source fix: new look is on inside the page itself (old cached flags.js can no longer hide it), source size re-checked every second | previous: 2026-11-02g | editor info text shows the full OBS source size of the chosen shape | previous: 2026-11-02f | gear panel shows the OBS source sizes for wide and tall and checks the current source | previous: 2026-11-02e | static channel links: overlay fills its OBS source, settings gear (hover top-left corner) saved per channel, flag 1021 on by default | previous: 2026-11-02d | flag 1021 space shapes (wide / tall) the organizer drags and scales in edit mode, scoreboard slides aside and a 5-second post-battle graphic comes out from behind it | previous: 2026-11-02c edit-mode width switch (add ?edit=1 to the link: pick the mock's size, one third, or 40%; remembered per OBS source) | previous: 2026-11-02b flag 1019 update: set dots coloured by who won each set (judge app sends setWinners, flag 1020) and a "Pending Match..." notice when there is no match data | previous: 2026-11-02 flag 1019 new scoreboard look (from the Claude Design mock-up, 640x162, own block #board, needs the stage layout which 1019 turns on by itself) | previous: 2026-11-01 flag 1018 stage layout: fixed 1920x1080 stage, scoreboard centered at the bottom (default 40% of the width), no drag/resize, card scaled once instead of twice | previous: 2026-07-18 combo desync fixed (next combo pushed on score); ?fullscreen=1 param for full 1920x1080 canvas mode -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -354,29 +354,6 @@
   #p1-flash { background: rgba(59,130,246,0.22); }
   #p2-flash { background: rgba(249,115,22,0.22); }
 
-  /* FLAG 1007: the flash must not print on top of the player's name, side or
-     combo. It sits on the inner edge of the scorer's column, next to the score,
-     where the column is empty, and is only as wide as its text. If it still
-     covers something (long name, small layout), JS marks just that element
-     .under-flash and it fades. Only applies with body.ff-1007. --espiiii */
-  body.ff-1007 .player-flash {
-    inset: 0 auto;           /* full height, width from its text */
-    width: max-content;
-    max-width: 75%;
-    padding: 0 18px;
-  }
-  body.ff-1007 #p1-flash { left: auto; right: 0; }   /* p1: towards the score */
-  body.ff-1007 #p2-flash { left: 0; right: auto; }   /* p2: towards the score */
-  body.ff-1007 .player > :not(.player-flash) { transition: opacity 0.15s ease; }
-  body.ff-1007 .player > .under-flash { opacity: 0; }
-
-  /* FLAG 1010: combo chips at 2x so they read from across the room. Wider
-     chips can reach the 1007 flash; the scorer's combo then fades for the
-     2.2s the flash shows (the .under-flash rule above). --espiiii */
-  body.ff-1010 .combo-part { font-size: 24px; padding: 6px 16px; border-radius: 5px; }
-  body.ff-1010 .combo-label { font-size: 14px; }
-  body.ff-1010 .combo-dot { font-size: 20px; }
-
   /* FLAG 1009 (overlay): when the judge swaps sides (judge flag 1008) the
      pushed state has swapped:true and, with 1009 on, the scoreboard gets
      .swapped. Player 1's whole column -
@@ -392,9 +369,6 @@
   .scoreboard.swapped #p2-block .combo-parts { justify-content: flex-start; }
   .scoreboard.swapped .pts-row,
   .scoreboard.swapped .sets-row { flex-direction: row-reverse; }
-  /* the 1007 flash stays on the side facing the score */
-  body.ff-1007 .scoreboard.swapped #p1-flash { right: auto; left: 0; }
-  body.ff-1007 .scoreboard.swapped #p2-flash { left: auto; right: 0; }
 
   .flash-type {
     font-family: 'Barlow Condensed', sans-serif;
@@ -894,7 +868,6 @@ const OVERLAY_FLAGS = (() => {
   try {
     (window.FEATURE_FLAGS || []).forEach(id => on.add(Number(id)));
   } catch (e) {}
-  on.add(1021);   // the plain channel link must always work, even if OBS cached an older flags.js; ?ff=-1021 turns it off
   try {
     (params.get("ff") || "").split(",").forEach(raw => {
       const n = Number(raw.trim());
@@ -907,11 +880,9 @@ const OVERLAY_FLAGS = (() => {
 function ff(id) {
   return OVERLAY_FLAGS.has(id);
 }
-if (ff(1007)) document.body.classList.add("ff-1007");
-if (ff(1010)) document.body.classList.add("ff-1010");
-if (ff(1018) || ff(1019) || ff(1021)) document.body.classList.add("ff-1018");   // 1019 and 1021 need the stage layout, so they turn it on
-if (ff(1019) || ff(1021)) document.body.classList.add("ff-1019");   // 1021 needs the new scoreboard look
-if (ff(1021)) document.body.classList.add("ff-1021", "noanim");
+// The stage layout, the new scoreboard look and the space shapes + post-battle graphic are
+// permanent (they used to be flags 1018, 1019 and 1021). The class names are kept because the CSS uses them.
+document.body.classList.add("ff-1018", "ff-1019", "ff-1021", "noanim");
 const SLOT = parseInt(params.get("slot") || "1");
 const EDIT_MODE = params.get("edit") === "1"; // ?edit=1 shows controls
 // ?fullscreen=1 — locks widget to full 1920px width at bottom of canvas;
@@ -923,11 +894,11 @@ const FULLSCREEN = params.get("fullscreen") === "1";
 //   ?w=700  anything above 1 is read as pixels            (clamped 320 to 1920)
 //   ?bottom=20  gap in pixels under the scoreboard         default 0
 // It wins over ?fullscreen=1 if both are on the link.
-const SPACE = ff(1021);                 // space shapes + post-battle graphic (turns 1018 and 1019 on by itself)
-const BOARD = ff(1019) || SPACE;        // new scoreboard look (needs the stage layout)
-const STAGE = ff(1018) || BOARD;
-const CARD_ID = BOARD ? "board" : "main-card";   // the box the stage code measures and scales
-const CARD_W  = BOARD ? 640 : 860;               // its natural width (keep equal to the CSS above)
+const SPACE = true;                     // space shapes + post-battle graphic (permanent)
+const BOARD = true;                     // new scoreboard look (permanent)
+const STAGE = true;                     // stage layout (permanent)
+const CARD_ID = "board";                // the box the stage code measures and scales
+const CARD_W  = 640;                    // its natural width (keep equal to the CSS above)
 const LOCKED = FULLSCREEN || STAGE;   // modes where dragging / resizing is switched off
 const STAGE_W_KEY = "ncblast-stage-w";   // the width picked with the edit-mode switch (kept in this browser source)
 function stageWidth() {
@@ -2026,54 +1997,12 @@ function popScore(elId, timerRef) {
 //                                     committer = 1 - scorerIdx
 //   LER-STRIKE (first LER, no point): scorerIdx = the committer themselves
 
-// FLAG 1007 helpers. Measure what the text actually covers, not the element's
-// box: name and combo boxes can span the whole column while the text is short.
-function _contentRect(node) {
-  // Union of the rects of every piece of visible text inside the node. A block
-  // child (e.g. the "COMBO" label row) spans the full column even when its text
-  // is short, so measuring boxes would report overlaps that aren't there.
-  let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
-  try {
-    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-    const range = document.createRange();
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-      if (!n.textContent.trim()) continue;
-      range.selectNodeContents(n);
-      for (const q of range.getClientRects()) {
-        if (!q.width && !q.height) continue;
-        l = Math.min(l, q.left); t = Math.min(t, q.top);
-        r = Math.max(r, q.right); b = Math.max(b, q.bottom);
-      }
-    }
-  } catch (e) {}
-  if (l === Infinity) return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
-  return { left: l, top: t, right: r, bottom: b, width: r - l, height: b - t };
-}
-function _clearUnderFlash() {
-  document.querySelectorAll(".player > .under-flash").forEach(n => n.classList.remove("under-flash"));
-}
-// Fade only the parts of the scorer's column the flash really covers.
-function _markUnderFlash(flashEl) {
-  const f = flashEl.getBoundingClientRect();
-  Array.from(flashEl.parentElement.children).forEach(child => {
-    if (child === flashEl) return;
-    const b = _contentRect(child);
-    if (!b.width && !b.height) return;
-    const pad = 6; // px of breathing room around the flash
-    const overlaps = b.left < f.right + pad && b.right > f.left - pad && b.top < f.bottom && b.bottom > f.top;
-    child.classList.toggle("under-flash", overlaps);
-  });
-}
-
 function showFlash(type, scorerIdx, p1Name, p2Name, p1Color, p2Color) {
   // Clear both flashes first
   p1Flash.classList.remove("visible");
   p2Flash.classList.remove("visible");
-  // "flashing" marks the scorer's column; with 1007 on, .under-flash fades only
-  // what the flash covers. No CSS targets either when 1007 is off. --espiiii
   p1Flash.parentElement.classList.remove("flashing");
   p2Flash.parentElement.classList.remove("flashing");
-  if (ff(1007)) _clearUnderFlash();
   clearTimeout(flashTimer);
 
   let flashIdx;   // which player block to light up
@@ -2116,14 +2045,12 @@ function showFlash(type, scorerIdx, p1Name, p2Name, p1Color, p2Color) {
   flashEl.querySelector(".flash-winner").textContent = bottomLine;
   flashEl.classList.add("visible");
   flashEl.parentElement.classList.add("flashing");
-  if (ff(1007)) _markUnderFlash(flashEl);
 
   flashTimer = setTimeout(() => {
     p1Flash.classList.remove("visible");
     p2Flash.classList.remove("visible");
     p1Flash.parentElement.classList.remove("flashing");
     p2Flash.parentElement.classList.remove("flashing");
-    if (ff(1007)) _clearUnderFlash();
   }, 2200);
 }
 
@@ -2205,7 +2132,7 @@ function showBoardFlash(type, scorerIdx, p1Name, p2Name) {
 function renderState(state, prevState) {
   if (!state && SPACE && EDIT_MODE) state = DEMO_STATE;   // edit mode with no real match: show a demo so there is something to look at
   // FLAG 1030: standby panel (between rounds) takes over the whole space; any ordinary state ends it (a test fire is left alone).
-  if (SPACE && ff(1030) && ff(1021) && state && state.standby && typeof state.standby === "object") { showStandby(state); return; }
+  if (SPACE && ff(1030) && state && state.standby && typeof state.standby === "object") { showStandby(state); return; }
   if (sbOn && !sbTest) hideStandby();
   if (!state) {
     scoreboard.style.display = "none";
