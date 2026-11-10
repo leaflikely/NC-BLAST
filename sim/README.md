@@ -93,6 +93,18 @@ the robot files. Open it in a browser.
 - Confirm, let both players tap, submit, press New Match, repeat until the event is over.
 - Station A streams to channel 1, and an OBS-sized overlay window watches that channel.
 
+## Extra tests (added Nov 2026)
+
+- Previous Combos: each player's real last deck is recorded; in later matches the 🕐 Previous Combos
+  row must show exactly that deck. Robots also reuse previous combos about 4 times in 10.
+- Name traps: "Alex" / "Alex K.", a trailing space, an emoji, accents, a very long name, and a
+  player renamed in the bracket after round 1. Every screen is scanned for "ID:123", "undefined", "NaN".
+- Station clashes: once per round a robot takes another station's match from ⚡ Active Matches;
+  robots sometimes tap a just-finished match again.
+- Handoff: once per event a match is handed to a relief judge's phone through the handoff link.
+- Bad wifi: `--wifi bad` (and about 1 event in 3 of a `--mix` sweep): slow and lost requests; robots retry.
+- Long shifts: the report flags the app getting slower or using more memory over many matches.
+
 ## What gets checked
 
 - After every battle: the score follows the rules (points capped at 4, sets end at 4, Own finishes

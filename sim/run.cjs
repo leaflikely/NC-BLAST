@@ -29,7 +29,7 @@ function args() {
   const a = process.argv.slice(2);
   const o = {
     rounds: 1, seed: 1, judges: 8, players: 32, show: false, site: "auto", verbose: false, overlay: true,
-    undoRate: 0.05, refreshRate: 0.02, runs: 1, parallel: 1, mix: false, overlayEvery: 0,
+    undoRate: 0.05, refreshRate: 0.02, runs: 1, parallel: 1, mix: false, overlayEvery: 0, wifi: "good",
   };
   for (let i = 0; i < a.length; i++) {
     const k = a[i].replace(/^--/, "");
@@ -38,12 +38,15 @@ function args() {
     else if (k === "verbose") o.verbose = true;
     else if (k === "no-overlay") o.overlay = false;
     else if (k === "mix") o.mix = true;
+    else if (k === "new-routes") o.newRoutes = true;
     else if (["rounds", "seed", "judges", "players", "parallel"].includes(k)) { o[k] = parseInt(v, 10); i++; }
     else if (k === "runs") { o.runs = /^(forever|inf|infinite|0)$/i.test(v) ? Infinity : parseInt(v, 10); i++; }
     else if (k === "overlay-every") { o.overlayEvery = parseInt(v, 10); i++; }
     else if (k === "undo-rate") { o.undoRate = parseFloat(v); i++; }
     else if (k === "refresh-rate") { o.refreshRate = parseFloat(v); i++; }
     else if (k === "site") { o.site = v; i++; }
+    else if (k === "wifi") { o.wifi = v === "bad" ? "bad" : v === "mixed" ? "mixed" : "good"; o.wifiExplicit = true; i++; }
+    else if (["handoff-rate", "clash-rate", "reopen-rate", "reuse-rate"].includes(k)) { o[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = parseFloat(v); i++; }
     else if (k === "chrome") { o.chrome = v; i++; }
     else if (k === "help" || k === "h") { console.log(fs.readFileSync(__filename, "utf8").split("\n").slice(1, 19).join("\n")); process.exit(0); }
     else { console.error("Unknown option: " + a[i] + "  (node run.cjs --help lists them)"); process.exit(2); }
@@ -57,12 +60,14 @@ function args() {
 
 // The setup for one event. With --mix each run gets its own (repeatable) mix of sizes.
 function eventSetup(o, runSeed) {
-  if (!o.mix) return { players: o.players, judges: o.judges, rounds: o.rounds };
   const r = makeRandom(runSeed * 7919 + 13);
+  // --wifi mixed (the default in a --mix sweep): about 1 event in 3 has bad wifi.
+  const wifi = o.wifi === "mixed" || (o.mix && o.wifi === "good" && o.wifiExplicit !== true) ? (r() < 0.34 ? "bad" : "good") : o.wifi;
+  if (!o.mix) return { players: o.players, judges: o.judges, rounds: o.rounds, wifi };
   const players = r.pick([8, 12, 16, 24, 32]);
   const judges = Math.max(1, Math.min(8, Math.floor(players / 2), 1 + Math.floor(r() * 8)));
   const rounds = 1 + Math.floor(r() * (players <= 8 ? 3 : players <= 16 ? 4 : 5));
-  return { players, judges, rounds };
+  return { players, judges, rounds, wifi };
 }
 
 // Plays one whole event and writes its report. Returns the result (findings, matches, timing).
@@ -71,7 +76,7 @@ async function runEvent(browser, o, site, runSeed, outDir, quiet) {
   fs.mkdirSync(path.join(outDir, "shots"), { recursive: true });
   const setup = eventSetup(o, runSeed);
   const ev = makeEvent({ players: setup.players, judges: setup.judges });
-  const fw = new FakeWorker(ev, { rounds: setup.rounds });
+  const fw = new FakeWorker(ev, { rounds: setup.rounds, wifi: setup.wifi, seed: runSeed, newRoutes: !!o.newRoutes });
   const { baseUrl, siteHost } = site;
 
   const devices = [];
@@ -90,7 +95,9 @@ async function runEvent(browser, o, site, runSeed, outDir, quiet) {
     robots.push(new RobotJudge(dev, fw, j, {
       seed: runSeed * 1000 + i + 1, verbose: o.verbose, undoRate: o.undoRate, refreshRate: o.refreshRate,
       streamSlot: overlayDev && i === 0 ? 1 : 0, overlayPage: overlayDev && i === 0 ? overlayDev.page : null,
-      overlayEvery: o.overlayEvery,
+      overlayEvery: o.overlayEvery, baseUrl,
+      handoffRate: o.handoffRate, clashRate: o.clashRate, reopenRate: o.reopenRate, reuseRate: o.reuseRate,
+      openReliefDevice: async who => { const d = await openDevice(browser, fw, who, { siteHost }); devices.push(d); return d; },
     }));
   }
 
@@ -109,6 +116,7 @@ async function runEvent(browser, o, site, runSeed, outDir, quiet) {
       try { await r.page.screenshot({ path: path.join(outDir, shot) }); } catch (_) {}
       let screen = "";
       try { screen = (await r.screen()).replace(/\n+/g, " / ").slice(0, 600); } catch (_) {}
+      fw.stuck = true;
       failures.push({ who: r.who, error: String(e && e.message || e).slice(0, 600), shot, screen, lastSteps: r.steps.slice(-25).map(s => s.text) });
       fw.find("bug", r.who, "Robot got stuck", String(e && e.message || e).split("\n")[0].slice(0, 300));
       r.stopped = true;
@@ -117,14 +125,26 @@ async function runEvent(browser, o, site, runSeed, outDir, quiet) {
   if (progress) clearInterval(progress);
 
   // Crashes and error messages seen on any device
-  robots.forEach(r => {
-    [...new Set(r.dev.errors)].forEach(e => fw.find("bug", r.who, "Page crashed with an error", e));
-    [...new Set(r.dev.consoleErrors)].forEach(e => {
+  robots.forEach(r => r.allDevs.forEach(dev => {
+    [...new Set(dev.errors)].forEach(e => fw.find("bug", r.who, "Page crashed with an error", e));
+    [...new Set(dev.consoleErrors)].forEach(e => {
       // The page-close "match abandoned" signal is sent with sendBeacon, which always carries browser
       // credentials; the Worker answers with a wildcard origin, so the browser refuses to send it.
       if (/overlay\/push/.test(e) && /credentials mode is 'include'/.test(e)) fw.find("warn", r.who, "\"Match abandoned\" signal on page close/refresh is blocked by the browser (sendBeacon + wildcard CORS)", e.slice(0, 160));
+      else if (fw.wifiBad && /Failed to fetch|NetworkError|net::ERR|AbortError|TypeError: Failed/i.test(e)) fw.find("info", r.who, "Network error message in the console (bad wifi, expected)", e.slice(0, 160));
       else fw.find("warn", r.who, "Error message in the browser console", e);
     });
+  }));
+  // Long shifts: does the app answer more slowly, or use more and more memory, as the day goes on?
+  robots.forEach(r => {
+    const t = r.saveTimes;
+    if (t.length >= 30) {
+      const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+      const first = avg(t.slice(0, 10)), last = avg(t.slice(-10));
+      if (last > Math.max(first * 1.5, first + 250)) fw.find("warn", r.who, "App answers taps more slowly late in a long shift", `saving a battle took ${Math.round(first)} ms on average at the start and ${Math.round(last)} ms by the end (${t.length} battles, no reload)`);
+    }
+    const h = r.heap;
+    if (h.length >= 5 && h[h.length - 1] > Math.max(h[0] * 2.5, h[0] + 60)) fw.find("warn", r.who, "App memory keeps growing during a long shift", `${h[0]} MB after the first match, ${h[h.length - 1]} MB after match ${h.length}`);
   });
   if (overlayDev) {
     try { await overlayDev.page.screenshot({ path: path.join(outDir, "shots", "overlay-channel-1.png") }); } catch (_) {}
@@ -137,11 +157,15 @@ async function runEvent(browser, o, site, runSeed, outDir, quiet) {
   await Promise.all(devices.map(d => d.ctx.close().catch(() => {})));
 
   const result = {
-    options: { ...o, runs: o.runs === Infinity ? "forever" : o.runs, seed: runSeed, players: setup.players, judges: setup.judges, rounds: setup.rounds },
+    options: { ...o, runs: o.runs === Infinity ? "forever" : o.runs, seed: runSeed, players: setup.players, judges: setup.judges, rounds: setup.rounds, wifi: setup.wifi },
+    wifiStats: fw.wifiBad ? fw.wifiStats : null,
     site: site.label, startedAt: new Date(started).toISOString(), seconds: Math.round((Date.now() - started) / 1000),
     event: { name: ev.name, slug: ev.slug, players: ev.players.length, rounds: ev.round, matches: ev.matches.length, complete: ev.matches.filter(m => m.state === "complete").length },
     findings: fw.findings, failures,
-    robots: robots.map(r => ({ who: r.who, judge: r.judge.bracketName, matches: r.matchesDone, refreshes: r.refreshes || 0, overlayDelays: r.overlayDelays || [] })),
+    robots: robots.map(r => ({ who: r.who, judge: r.judge.bracketName, matches: r.matchesDone, refreshes: r.refreshes || 0, overlayDelays: r.overlayDelays || [],
+      prevCombos: r.prevStats || { checked: 0, ok: 0 }, reusedPrev: r.reusedPrev || 0, handoffs: r.handoffs || 0, retries: r.retries || 0,
+      saveMs: r.saveTimes.length ? Math.round(r.saveTimes.reduce((a, b) => a + b, 0) / r.saveTimes.length) : null, heapMB: r.heap })),
+    clashes: fw.clashes || 0,
     overlayShot: overlayDev ? "shots/overlay-channel-1.png" : null,
     requests: fw.log.length,
   };

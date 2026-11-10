@@ -59,6 +59,11 @@ async function openDevice(browser, fw, who, opts = {}) {
     // The app's own pages and files (when testing the live site) load normally.
     // Everything else (Challonge, the Workers, Google Sheets) is answered by the fake.
     if (siteHost && new URL(r.url()).host === siteHost) return route.continue();
+    // Bad venue wifi (--wifi bad): some requests are slow, some are lost before they arrive,
+    // and some arrive but the reply is lost on the way back (the app cannot tell which).
+    const fate = fw.wifiFate ? fw.wifiFate(r.method(), r.url()) : null;
+    if (fate && fate.delay) await new Promise(res => setTimeout(res, fate.delay));
+    if (fate && fate.fail === "before") { try { await route.abort("failed"); } catch (_) {} return; }
     let ans;
     try {
       ans = fw.handle({ method: r.method(), url: r.url(), body: r.postData(), who });
@@ -66,6 +71,7 @@ async function openDevice(browser, fw, who, opts = {}) {
       fw.find("bug", who, "Simulator error while answering " + r.url(), String(e && e.stack || e).slice(0, 300));
       ans = { status: 500, json: { error: "simulator error" } };
     }
+    if (fate && fate.fail === "after") { try { await route.abort("failed"); } catch (_) {} return; }
     if (ans.delay) await new Promise(res => setTimeout(res, ans.delay));
     const headers = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS" };
     try {

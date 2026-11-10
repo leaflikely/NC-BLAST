@@ -5,20 +5,28 @@
 
 const ui = require("./ui.cjs");
 
-// Small seeded random number generator (same seed = same choices every time)
-function makeRandom(seed) {
-  let a = seed >>> 0;
-  const next = () => {
-    a = (a + 0x6D2B79F5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-  next.pick = list => list[Math.floor(next() * list.length)];
-  next.chance = p => next() < p;
-  return next;
-}
+const { makeRandom } = require("./random.cjs");
+
+const BAD_TEXT = [
+  [/\bID:\s?\d+/, "Screen shows an ID instead of a player name"],
+  [/\bundefined\b/, "Screen shows the word \"undefined\""],
+  [/\bNaN\b/, "Screen shows \"NaN\" (a broken number)"],
+  [/\[object Object\]/, "Screen shows \"[object Object]\""],
+];
+
+// "Blade | 1-60 · Hexa" (no ratchet for blades like Bullet Griffon): the way the Previous Combos
+// row reads, so the robot's record and the screen can be compared directly.
+const comboText = c => {
+  const r = (c.ratchet || "").trim(), b = (c.bit || "").trim();
+  return (c.blade || "").trim() + " | " + [r, b].filter(Boolean).join(" · ");
+};
+const norm = t => String(t || "").replace(/\s+/g, " ").trim().toLowerCase();
+// BLAST shows (and, as of Nov 2026, also stores) names over 15 characters as the first 12 + "…".
+// Same rule as tn() in core.js, so the robot can recognise both forms on screen.
+const shortName = n => n && n.length > 15 ? n.slice(0, 12) + "…" : n || "";
+const escRe = t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const nameRe = n => new RegExp("^(" + escRe(n.trim()) + "|" + escRe(shortName(n)) + ")$");
+const sameName = (shown, n) => norm(shown) === norm(n) || norm(shown) === norm(shortName(n));
 
 // Buttons on the part pickers that are not parts.
 const NOT_PARTS = new Set(["", "?", "Back", "Undo", "★ Popular", "# Numerical", "CX Tab", "✕"]);
@@ -36,6 +44,9 @@ class RobotJudge {
     this.steps = [];                // what this robot did, for the report
     this.matchesDone = [];
     this.current = null;            // { p1, p2, matchNo, startedAt }
+    this.allDevs = [dev];           // every phone this robot has used (a handoff adds one)
+    this.saveTimes = [];            // ms from the last tap of a battle until the app saved it
+    this.heap = [];                 // app memory use (MB) after each match
   }
 
   say(text) {
@@ -47,7 +58,25 @@ class RobotJudge {
     await ui.tap(this.page, match, opts);
   }
 
-  async screen() { return ui.screenText(this.page); }
+  async screen() {
+    const t = await ui.screenText(this.page);
+    this.scan(t);
+    return t;
+  }
+
+  // Text that should never be on a screen: an id where a name belongs, or a broken value.
+  scan(t) {
+    for (const [re, what] of BAD_TEXT) {
+      const m = re.exec(t);
+      if (!m) continue;
+      const key = what + "|" + (this.current ? this.current.matchId : "-");
+      this.scanned = this.scanned || new Set();
+      if (this.scanned.has(key)) continue;
+      this.scanned.add(key);
+      const around = t.slice(Math.max(0, m.index - 50), m.index + m[0].length + 50).replace(/\n+/g, " / ");
+      this.fw.find("bug", this.who, what, (this.current ? this.current.p1 + " vs " + this.current.p2 + ": " : "") + "…" + around + "…");
+    }
+  }
 
   // ── log in ───────────────────────────────────────────────────────────────
   async login(baseUrl, opts = {}) {
@@ -58,25 +87,25 @@ class RobotJudge {
     }
     // Screen by screen, so it also works after a refresh (when some steps are skipped).
     const evName = new RegExp("^" + this.fw.ev.name.replace(/[()]/g, "\\$&"));
-    for (let guard = 0; guard < 40; guard++) {
+    for (let guard = 0; guard < 80; guard++) {
       const s = await this.screen();
       const btns = await ui.buttons(p);
       if (/Spin Finish|Set Deck Order|Pick a Side|Who Won the Die Roll|Deck Review|CONFIRM RESULT|Select Match/.test(s) && !/Select the Challonge event/.test(s)) break;
-      if (btns.includes("⚖️ A Judge")) { await this.tap("⚖️ A Judge"); continue; }
-      if (btns.some(t => evName.test(t))) { await this.tap(evName); continue; }
-      if (btns.includes("Log in with Challonge →")) { await this.tap("Log in with Challonge →"); continue; }
+      if (btns.includes("⚖️ A Judge")) { await ui.tap(p, "⚖️ A Judge", { optional: true, timeout: 1500 }); continue; }
+      if (btns.some(t => evName.test(t))) { await ui.tap(p, evName, { optional: true, timeout: 1500 }); continue; }
+      if (btns.includes("Log in with Challonge →")) { await ui.tap(p, "Log in with Challonge →", { optional: true, timeout: 1500 }); continue; }
       if (/Enter your Challonge username/.test(s)) {
         await p.fill("input", this.judge.username);
-        await this.tap("Confirm →");
+        await ui.tap(p, "Confirm →", { optional: true, timeout: 1500 });
         continue;
       }
-      if (btns.includes("✏️ Manual Name Entry") && !(await p.$("input[placeholder='Enter your name…']"))) { await this.tap("✏️ Manual Name Entry"); continue; }
+      if (btns.includes("✏️ Manual Name Entry") && !(await p.$("input[placeholder='Enter your name…']"))) { await ui.tap(p, "✏️ Manual Name Entry", { optional: true, timeout: 1500 }); continue; }
       if (await p.$("input[placeholder='Enter your name…']")) {
         await p.fill("input[placeholder='Enter your name…']", this.judge.bracketName);
-        await this.tap("Confirm");
+        await ui.tap(p, "Confirm", { optional: true, timeout: 1500 });
         continue;
       }
-      if (btns.includes("Next: Players →")) { await this.tap("Next: Players →"); continue; }
+      if (btns.includes("Next: Players →")) { await ui.tap(p, "Next: Players →", { optional: true, timeout: 1500 }); continue; }
       await p.waitForTimeout(ui.POLL * 2);
     }
     await ui.waitForText(p, /Select Match|Spin Finish|Set Deck Order|Pick a Side|Who Won the Die Roll|Deck Review|CONFIRM RESULT/, 10000);
@@ -96,24 +125,105 @@ class RobotJudge {
         this.say("stream to channel " + this.opts.streamSlot);
       }
     }
-    await this.tap("🏟️ Station");
+    // At most one clash test per round, so the rest of the round stays a normal event.
+    this.fw.clashRounds = this.fw.clashRounds || {};
+    if (!this.fw.clashRounds[this.fw.ev.round] && this.rnd.chance(this.opts.clashRate === undefined ? 0.08 : this.opts.clashRate)) {
+      this.fw.clashRounds[this.fw.ev.round] = true;
+      if (await this.takeOtherStationsMatch()) return true;
+    }
+    for (let i = 0; i < 20; i++) {
+      if (await this.answerStandbyPrompt()) continue;
+      if (await ui.tap(this.page, "🏟️ Station", { optional: true, timeout: 500 })) break;
+      if (i === 19) throw new Error("Could not get to the Station list");
+    }
     await this.tap("↻ Refresh", { optional: true, timeout: 1500 });
     await ui.waitForText(this.page, /STATION [A-H] MATCHES|station/i);
+    // A judge who is not on the organizer's station list (like a relief judge) is asked to pick one.
+    if (/Pick your station/i.test(await this.screen())) {
+      this.say("pick station " + this.judge.station);
+      await this.tap(this.judge.station);
+      await ui.waitForText(this.page, /STATION [A-H] MATCHES/i, 5000).catch(() => {});
+    }
     // Wait for the match rows to show (an empty station simply times out after a moment).
     const btns = (await ui.until(this.page, async () => { const b = await ui.buttons(this.page); return b.some(x => /^#\d+ /.test(x)) && b; }, 1200)) || await ui.buttons(this.page);
-    const done = new Set(this.matchesDone.map(m => m.name.replace(/\s+/g, "")));
+    const done = new Set(this.matchesDone.map(m => String(m.matchId)));
     // Station rows look like "#1 Ace RamirezvsBree Tanaka". Match them to the bracket to get exact names.
-    const n = this.fw.idToName();
+    // Every name a player has had (current first), keyed by their bracket group id.
+    const names = {};
+    this.fw.ev.players.forEach(pl => { names[pl.gid] = [pl.name, ...(pl.oldNames || [])].map(x => x.trim()); });
+    const byGid = {};
+    this.fw.ev.players.forEach(pl => { byGid[pl.gid] = pl; });
     const rows = btns.filter(b => /^#\d+ /.test(b)).map(b => {
       const flat = b.replace(/^#\d+ /, "").replace(/\s+/g, "");
-      const m = this.fw.ev.matches.find(x => (n[x.player1_id] + "vs" + n[x.player2_id]).replace(/\s+/g, "") === flat);
-      return { label: b, m, p1: m && n[m.player1_id], p2: m && n[m.player2_id] };
+      for (const m of this.fw.ev.matches) {
+        for (const a of names[m.player1_id] || []) for (const c of names[m.player2_id] || []) {
+          if ((a + "vs" + c).replace(/\s+/g, "") === flat) return { label: b, m, p1: a, p2: c, pl1: byGid[m.player1_id], pl2: byGid[m.player2_id] };
+        }
+      }
+      return { label: b };
     });
-    const row = rows.find(r => r.m && !done.has((r.p1 + " vs " + r.p2).replace(/\s+/g, "")));
+    rows.filter(r => /^#\d+ \s*vs|vs\s*$/.test(r.label)).forEach(r => this.fw.find("bug", this.who, "Station list shows a match with a blank player name", r.label));
+    rows.filter(r => !r.m).forEach(r => this.fw.find("warn", this.who, "Station list shows a match the bracket does not have", r.label));
+    rows.filter(r => r.m && (r.p1 !== r.pl1.name.trim() || r.p2 !== r.pl2.name.trim()))
+      .forEach(r => this.fw.find("warn", this.who, "Station list still shows a player's old name after it was renamed in the bracket", r.label + " (now " + r.pl1.name.trim() + " vs " + r.pl2.name.trim() + ")"));
+    const row = rows.find(r => r.m && !done.has(String(r.m.id)));
     if (!row) return false;
-    this.current = { label: row.label, p1: row.p1, p2: row.p2, matchId: row.m.id, startedAt: Date.now() };
+    this.current = { label: row.label, p1: row.p1, p2: row.p2, pl1: row.pl1, pl2: row.pl2, matchId: row.m.id, startedAt: Date.now(), prevChecked: {} };
     this.say("take " + row.label + " (match " + row.m.id + ")");
-    await this.tap(row.label);
+    // Tap the match; if the app does not move on (a lost request on bad wifi), tap it again like a judge would.
+    for (let i = 0; ; i++) {
+      await this.tap(row.label, { timeout: 4000 }).catch(() => {});
+      if (await ui.until(this.page, async () => (await ui.buttons(this.page)).includes("Build Decks →"), 6000)) break;
+      if (i >= 2) {
+        this.fw.find(this.fw.wifiBad ? "info" : "warn", this.who, "Tapping a match in the Station list did not open it" + (this.fw.wifiBad ? " (bad wifi)" : ""), row.label + " (3 tries)");
+        return false;
+      }
+      this.say("match did not open, tapping again");
+      await ui.tap(this.page, "↻ Refresh", { optional: true, timeout: 800 });
+    }
+    this.claim();
+    await this.tap("Build Decks →");
+    return true;
+  }
+
+  // Note who is scoring which match, so two judges on one match can be spotted.
+  claim() {
+    const id = String(this.current.matchId);
+    this.fw.inPlay = this.fw.inPlay || {};
+    const other = this.fw.inPlay[id];
+    if (other && other !== this.who) {
+      this.fw.find("warn", this.who, "Two judges are scoring the same match at the same time (no warning from the app)", this.current.p1 + " vs " + this.current.p2 + ": station " + other + " already has it open" + (this.current.stolen ? " (taken from Active Matches)" : " (taken from the Station list)"));
+      this.fw.clashes = (this.fw.clashes || 0) + 1;
+      (this.fw.contested = this.fw.contested || {})[id] = true;
+    }
+    this.fw.inPlay[id] = this.who;
+  }
+
+  // Station clash test: open ⚡ Active Matches and take a match that belongs to another station,
+  // preferably one another judge is already scoring. Returns false if there is nothing to take.
+  async takeOtherStationsMatch() {
+    const p = this.page;
+    if (!(await ui.tap(p, "⚡ Active Matches", { optional: true, timeout: 1500 }))) return false;
+    await ui.tap(p, "↻ Refresh", { optional: true, timeout: 800 });
+    const rows = (await ui.until(p, async () => { const b = (await ui.buttons(p)).filter(x => / Select →$/.test(x)); return b.length && b; }, 2000)) || [];
+    const n = this.fw.idToName();
+    const mine = new Set((this.fw.stationQueues()[this.judge.station] || []).map(String));
+    const inPlay = this.fw.inPlay || {};
+    const cands = rows.map(label => {
+      const mm = /^(.+?) vs (.+?) Round \d+ · Match #\d+ Select →$/.exec(label);
+      if (!mm) return null;
+      const m = this.fw.ev.matches.find(x => x.state !== "complete" && sameName(mm[1], n[x.player1_id]) && sameName(mm[2], n[x.player2_id]));
+      return m && !mine.has(String(m.id)) && inPlay[String(m.id)] !== this.who && !(this.fw.contested || {})[String(m.id)] ? { label, m, p1: mm[1], p2: mm[2] } : null;
+    }).filter(Boolean);
+    if (!cands.length) { await ui.tap(p, "🏟️ Station", { optional: true, timeout: 800 }); return false; }
+    const busy = cands.filter(c => inPlay[String(c.m.id)]);
+    const pick = busy.length ? this.rnd.pick(busy) : this.rnd.pick(cands);
+    const byGid = {};
+    this.fw.ev.players.forEach(pl => { byGid[pl.gid] = pl; });
+    this.current = { label: pick.label, p1: n[pick.m.player1_id].trim(), p2: n[pick.m.player2_id].trim(), pl1: byGid[pick.m.player1_id], pl2: byGid[pick.m.player2_id], matchId: pick.m.id, startedAt: Date.now(), prevChecked: {}, stolen: true };
+    this.say("CLASH TEST: take another station's match from Active Matches: " + pick.label);
+    await this.tap(pick.label);
+    this.claim();
     await this.tap("Build Decks →");
     return true;
   }
@@ -136,8 +246,78 @@ class RobotJudge {
     throw new Error("Deck building did not finish (stuck on: " + (await this.screen()).replace(/\n+/g, " / ").slice(0, 200) + ")");
   }
 
+  // Reads the 🕐 Previous Combos row on the blade picker: [{ text, disabled }], or null when there is none.
+  async readPrevCombos() {
+    return this.page.evaluate(() => {
+      const label = [...document.querySelectorAll("p")].find(x => /Previous Combos/.test(x.textContent));
+      if (!label) return null;
+      const grid = label.parentElement && label.parentElement.nextElementSibling;
+      if (!grid) return [];
+      return [...grid.querySelectorAll("button")].map(b => ({ text: b.innerText.split("\n").map(x => x.trim()).filter(Boolean).join(" | "), disabled: !!b.disabled }));
+    });
+  }
+
+  // On a player's first combo, the Previous Combos row must show that player's last deck exactly
+  // (or nothing at all if they have not played yet).
+  async checkPrevCombos(screenText) {
+    const m = /(^|\n)([^\n]+?) — (FIRST|SECOND|THIRD) COMBO/.exec(screenText);
+    if (!m || m[3] !== "FIRST") return null;
+    const who = sameName(m[2], this.current.p1) ? 1 : sameName(m[2], this.current.p2) ? 2 : 0;
+    if (!who || this.current.prevChecked[who]) return null;
+    this.current.prevChecked[who] = true;
+    const pl = who === 1 ? this.current.pl1 : this.current.pl2;
+    const name = who === 1 ? this.current.p1 : this.current.p2;
+    const truth = this.fw.truthDecks[pl.id];
+    const shown = await this.readPrevCombos();
+    // A match two judges scored has two "real" decks, so there is no single right answer to check.
+    if (truth && truth.contested) return shown;
+    const match = this.current.p1 + " vs " + this.current.p2;
+    this.prevStats = this.prevStats || { checked: 0, ok: 0 };
+    this.prevStats.checked++;
+    if (!truth) {
+      if (shown && shown.length) this.fw.find("bug", this.who, "Previous Combos shown for a player who has not played yet (someone else's deck?)", name + " in " + match + ": " + shown.map(x => x.text).join(" / "));
+      else this.prevStats.ok++;
+      return shown;
+    }
+    const want = truth.combos.map(norm).sort().join(" / ");
+    const got = (shown || []).map(x => norm(x.text)).sort().join(" / ");
+    if (want === got) { this.prevStats.ok++; return shown; }
+    const renamed = this.fw.renamed && this.fw.renamed.id === pl.id;
+    // Combos whose ratchet has the bit built in (Turbo, Operate…) are complete in BLAST but have no bit.
+    const shownSet = new Set((shown || []).map(x => norm(x.text)));
+    const missing = truth.combos.filter(c => !shownSet.has(norm(c)));
+    const noBit = c => truth.raw && truth.raw.some(r => comboText(r) === c && r.ratchet && !r.bit);
+    if (missing.length && missing.every(noBit) && got) {
+      const extra = (shown || []).map(x => x.text).filter(t => !truth.combos.map(norm).includes(norm(t)));
+      this.fw.find("bug", this.who, "Previous Combos leave out combos whose ratchet has a built-in bit (Turbo, Operate…)", name + ": left out " + missing.join(" / ") + (extra.length ? "; an older combo shows instead: " + extra.join(" / ") : "") + ". The Worker's /combos/slug save keeps only combos with a bit.");
+      return shown;
+    }
+    const otherTruths = Object.values(this.fw.truthDecks).filter(t => t !== truth && t.combos.map(norm).sort().join(" / ") === got);
+    let what = !got ? "Previous Combos missing for a player who has played before"
+      : otherTruths.length ? "Previous Combos show another player's deck"
+      : "Previous Combos differ from the player's last deck";
+    let level = "bug";
+    if (renamed && !got) { what = "Previous combos lost after a player was renamed in the bracket"; level = "warn"; }
+    this.fw.find(level, this.who, what, name + " in " + match + " (last played round " + truth.round + " as \"" + truth.name.trim() + "\"): expected " + truth.combos.join(" / ") + "; shown " + (got ? shown.map(x => x.text).join(" / ") : "nothing") + (otherTruths.length ? " (that is " + otherTruths.map(t => t.name.trim()).join(", ") + "'s deck)" : ""));
+    return shown;
+  }
+
   async pickBlade() {
     const p = this.page;
+    const shown = await this.checkPrevCombos(await this.screen());
+    // Like a real judge, often reuse a previous combo when there is one.
+    const usable = (shown || await this.readPrevCombos() || []).map((x, i) => ({ ...x, i })).filter(x => !x.disabled);
+    if (usable.length && this.rnd.chance(this.opts.reuseRate === undefined ? 0.4 : this.opts.reuseRate)) {
+      const pick = this.rnd.pick(usable);
+      this.say("previous combo " + pick.text);
+      const h = await p.evaluateHandle(i => {
+        const label = [...document.querySelectorAll("p")].find(x => /Previous Combos/.test(x.textContent));
+        return label.parentElement.nextElementSibling.querySelectorAll("button")[i];
+      }, pick.i);
+      await h.asElement().click({ timeout: 3000 });
+      this.reusedPrev = (this.reusedPrev || 0) + 1;
+      return;
+    }
     // Sometimes use a Quick Combo (fills all three parts in one tap), like a hurried judge.
     if (this.rnd.chance(0.3)) {
       const quick = await p.$$eval("button:has(.qc-blade)", bs => bs.filter(b => !b.disabled).map(b => [...b.querySelectorAll("[data-label]")].map(x => x.getAttribute("data-label")).join(" ")));
@@ -192,7 +372,6 @@ RobotJudge.prototype.pickFinish = function () {
 
 // Plays the current match from "Start Match" to the end. Checks the score after every battle.
 RobotJudge.prototype.playMatch = async function () {
-  const p = this.page;
   const sideName = s => (s === "p1" ? this.current.p1 : this.current.p2);
   this.battles = 0;
   this.undos = 0;
@@ -200,12 +379,13 @@ RobotJudge.prototype.playMatch = async function () {
   this.expSets = [];   // set scores the robot expects, e.g. [[4,2],[1,4],...]
   await this.tap("Start Match ⚔️");
   for (let guard = 0; guard < 400; guard++) {
+    const p = this.page;   // (can change mid-match: a handoff moves the robot to another phone)
     const s = await this.screen();
     const btns = await ui.buttons(p);
     if (/Who Won the Die Roll\?/.test(s)) {
       const who = this.rnd.pick(["p1", "p2"]);
       this.say("die roll won by " + sideName(who));
-      await this.tap(sideName(who));
+      await this.tap(nameRe(sideName(who)));
       continue;
     }
     if (/Pick a Side/.test(s)) {
@@ -236,6 +416,15 @@ RobotJudge.prototype.battle = async function () {
   const p = this.page;
   const before = await this.state();
   if (!before) throw new Error("No saved match state during battles");
+  if (!this.current.decksRecorded && Array.isArray(before.d1) && Array.isArray(before.d2)) {
+    this.current.decksRecorded = true;
+    [[this.current.pl1, before.d1], [this.current.pl2, before.d2]].forEach(([pl, deck]) => {
+      const prev = this.fw.truthDecks[pl.id];
+      const round = this.fw.ev.matches.find(x => x.id === this.current.matchId).round;
+      const contested = !!(this.fw.contested || {})[String(this.current.matchId)] || !!(prev && prev.contested && prev.round === round);
+      this.fw.truthDecks[pl.id] = { name: pl.name, combos: deck.map(comboText), raw: deck, round, contested };
+    });
+  }
   const name = this.current.p1 + " vs " + this.current.p2;
   // Now and then a judge taps the wrong thing and presses Undo.
   if (this.history.length && this.rnd.chance(this.opts.undoRate === undefined ? 0.05 : this.opts.undoRate)) {
@@ -255,6 +444,13 @@ RobotJudge.prototype.battle = async function () {
       if (prev) this.expSets.length = prev.expSetsLen;
       return;
     }
+  }
+  // Once per event: hand the match to a relief judge on a second phone.
+  if (this.opts.openReliefDevice && !this.opts.streamSlot && !this.fw.handoffDone && this.history.length && !this.current.stolen
+      && this.rnd.chance(this.opts.handoffRate === undefined ? 0.03 : this.opts.handoffRate)) {
+    this.fw.handoffDone = true;
+    await this.handOff(before);
+    return;
   }
   // Now and then the page gets refreshed mid-match (phone locks, browser reloads). The judge
   // logs back in and the match must come back exactly as it was.
@@ -299,7 +495,8 @@ RobotJudge.prototype.battle = async function () {
   }
   this.battles++;
   // Wait until the app has saved the battle (its saved state changes), at most 2 seconds.
-  await ui.until(p, changed, 2000);
+  const t0 = Date.now();
+  if (await ui.until(p, changed, 2000)) this.saveTimes.push(Date.now() - t0);
   const after = await this.state();
   this.checkScore(before, after, exp, side, f);
   // (Skip the battle that ends a set: the overlay keeps showing that set's final score for a bit.)
@@ -311,14 +508,14 @@ RobotJudge.prototype.battle = async function () {
 // within a few seconds.
 RobotJudge.prototype.checkOverlay = async function (st) {
   const ov = this.opts.overlayPage;
-  const P1 = this.current.p1.toUpperCase(), P2 = this.current.p2.toUpperCase();
+  const forms = n => [n.trim().toUpperCase(), shortName(n).toUpperCase()];
   const want = st.pts[0] + "-" + st.pts[1];
   const started = Date.now();
   let seen = "";
   while (Date.now() - started < 8000) {
     const t = await ov.evaluate(() => document.body.innerText).catch(() => "");
     const lines = t.split(/\n+/).map(x => x.trim()).filter(Boolean);
-    const a = lines.indexOf(P1), b = lines.indexOf(P2);
+    const a = lines.findIndex(x => forms(this.current.p1).includes(x)), b = lines.findIndex(x => forms(this.current.p2).includes(x));
     if (a >= 0 && b > a) {
       const nums = lines.slice(a + 1, b).filter(x => /^\d+$/.test(x));
       seen = nums.slice(0, 2).join("-");
@@ -332,7 +529,7 @@ RobotJudge.prototype.checkOverlay = async function (st) {
     await this.page.waitForTimeout(ui.POLL * 2);
   }
   const name = this.current.p1 + " vs " + this.current.p2;
-  this.fw.find("bug", this.who, "Stream overlay did not show the right score within 8 seconds", name + ": judge screen " + want + ", overlay " + (seen || "nothing") + (this.refreshedIn === name ? " (the judge's page was refreshed earlier in this match)" : ""));
+  this.fw.find(this.fw.wifiBad ? "warn" : "bug", this.who, "Stream overlay did not show the right score within 8 seconds" + (this.fw.wifiBad ? " (bad wifi)" : ""), name + ": judge screen " + want + ", overlay " + (seen || "nothing") + (this.refreshedIn === name ? " (the judge's page was refreshed earlier in this match)" : ""));
 };
 
 // The score the app shows must match the rules. A set ends at 4 points, then the points reset.
@@ -378,17 +575,64 @@ RobotJudge.prototype.finishMatch = async function () {
   }
   const submitsBefore = this.fw.submits.length;
   const ingestsBefore = this.fw.ingests.length;
+  if (!(await ui.until(p, async () => (await ui.buttons(p)).includes("Submit"), 8000))) {
+    const t = (await this.screen()).replace(/\n+/g, " / ");
+    const where = name + (this.current.handedOff ? " (after a handoff)" : "");
+    // First try what a judge would: reload the page, log in again, and confirm once more.
+    if (!this.current.reloadTried) {
+      this.current.reloadTried = { judge: (/JUDGE \/ ([^/]+) \//.exec(t) || [])[1] || "?", buttons: (await ui.buttons(p)).join(" | ") };
+      this.say("no bracket Submit button: reload, log in again, try once more");
+      await this.login(this.opts.baseUrl);
+      if ((await ui.buttons(this.page)).includes("⚖️ Judge Confirm →")) return this.finishMatch();
+    }
+    // Still no way to send the result to the bracket from this phone. Note it, then do what an
+    // organizer would: enter the result in the bracket by hand, so the event can go on.
+    this.fw.find("bug", this.who, "No bracket Submit button at the end of the match", where + ". Judge shown: " + this.current.reloadTried.judge + "; buttons: " + this.current.reloadTried.buttons + (this.current.reloadTried ? " (still none after reloading and logging in again)" : ""));
+    const cap = this.opts.setPoints || 4;
+    const wins = this.expSets.reduce((a, x) => { if (x[0] >= cap) a[0]++; else if (x[1] >= cap) a[1]++; return a; }, [0, 0]);
+    this.fw.enterByHand(this.current.matchId, this.expSets.map(x => x[0] + "-" + x[1]).join(","), wins[0] > wins[1] ? 1 : 2);
+    this.matchesDone.push({ name, matchId: this.current.matchId, handedOff: !!this.current.handedOff, exp: "(entered by hand)", battles: this.battles, undos: this.undos, ms: Date.now() - this.current.startedAt });
+    if (this.fw.inPlay) delete this.fw.inPlay[String(this.current.matchId)];
+    // Start this phone fresh (reload and log in again), like a judge would.
+    await this.login(this.opts.baseUrl);
+    return;
+  }
+  if (this.current.reloadTried) this.fw.find("bug", this.who, "No bracket Submit button at the end of the match until the judge reloads and logs in again", name + (this.current.handedOff ? " (after a handoff)" : "") + ". Before reloading, judge shown: " + this.current.reloadTried.judge + "; buttons: " + this.current.reloadTried.buttons);
   await this.tap("Submit", { timeout: 8000 });
   this.say("submit " + name);
-  await ui.waitForText(p, /Submitted to Challonge|Challonge.*(fail|error)|New Match/i, 20000);
+  // Wait for the bracket to answer. If the send failed, retry like a judge would (up to 5 times).
+  let tries = 0;
+  for (;;) {
+    const r = await ui.until(p, async () => {
+      const t = await this.screen();
+      if (/✓ Submitted to Challonge/.test(t)) return "ok";
+      if ((await ui.buttons(p)).some(b => /Failed — Retry|NOT sent to Challonge — tap to retry/.test(b))) return "failed";
+      return false;
+    }, 20000);
+    if (r !== "failed" || tries >= 5) break;
+    tries++;
+    this.retries = (this.retries || 0) + 1;
+    this.say("bracket send failed, Retry (" + tries + ")");
+    await ui.tap(p, /Failed — Retry|NOT sent to Challonge — tap to retry/);
+  }
+  for (let d = 0; d < 3; d++) {
+    const failed = await ui.until(p, async () => {
+      const b = await ui.buttons(p);
+      if (b.some(x => /Database: failed/.test(x))) return "failed";
+      return /✓ Database: sent/.test(await this.screen()) ? "ok" : false;
+    }, 4000);
+    if (failed !== "failed") break;
+    this.say("database send failed, tap to retry");
+    await ui.tap(p, /Database: failed/, { optional: true, timeout: 500 });
+  }
   await ui.until(p, async () =>
     this.fw.submits.slice(submitsBefore).some(x => x.who === this.who) &&
     this.fw.ingests.slice(ingestsBefore).some(x => x.who === this.who) &&
     /✓ Submitted to Challonge/.test(await this.screen()), 2500);
   const s = await this.screen();
   if (!/✓ Submitted to Challonge/.test(s)) this.fw.find("bug", this.who, "Bracket submit did not show success", name + ": " + (s.match(/[^\n]*Challonge[^\n]*/g) || []).join(" / "));
-  if (/Database: (failed|error)/i.test(s)) this.fw.find("bug", this.who, "Database send failed", name);
-  if (/Sheets.*(failed|error)/i.test(s)) this.fw.find("bug", this.who, "Sheets send failed", name);
+  if (/Database: (failed|error)/i.test(s)) this.fw.find(this.fw.wifiBad ? "warn" : "bug", this.who, "Database send failed" + (this.fw.wifiBad ? " even after retrying (bad wifi)" : ""), name);
+  if (/Sheets.*(failed|error)/i.test(s)) this.fw.find(this.fw.wifiBad ? "warn" : "bug", this.who, "Sheets send failed" + (this.fw.wifiBad ? " (bad wifi)" : ""), name);
 
   // What the robot expects
   const cap = this.opts.setPoints || 4;
@@ -398,7 +642,9 @@ RobotJudge.prototype.finishMatch = async function () {
 
   // What reached the (fake) bracket
   const sub = this.fw.submits.slice(submitsBefore).filter(x => x.who === this.who);
-  if (sub.length !== 1) this.fw.find("bug", this.who, sub.length ? "Bracket got the result more than once" : "Bracket never got the result", name + " (" + sub.length + " submits)");
+  if (sub.length > 1 && sub.every(x => x.scores_csv === sub[0].scores_csv && x.winner_id === sub[0].winner_id))
+    this.fw.find("info", this.who, "Result reached the bracket twice after a lost reply (same score both times, harmless)", name);
+  else if (sub.length !== 1) this.fw.find("bug", this.who, sub.length ? "Bracket got the result more than once" : "Bracket never got the result", name + " (" + sub.length + " submits)");
   const last = sub[sub.length - 1];
   if (last) {
     if (String(last.matchId) !== String(matchId)) this.fw.find("bug", this.who, "Result went to the wrong bracket match", name + ": sent to " + last.matchId + ", playing " + matchId);
@@ -414,7 +660,8 @@ RobotJudge.prototype.finishMatch = async function () {
     const judges = [...new Set(rows.map(r => String(Array.isArray(r) ? r[1] : r.Judge)))];
     this.judgeNames = this.judgeNames || [];
     judges.forEach(j => { if (!this.judgeNames.includes(j)) this.judgeNames.push(j); });
-    if (this.judgeNames.length > 1) this.fw.find("bug", this.who, "Judge name in the saved battles changed between matches", "logged in as " + this.judge.username + " / picked \"" + this.judge.bracketName + "\"; rows used: " + this.judgeNames.map(j => "\"" + j + "\"").join(", ") + " (now on " + name + ")");
+    if (this.current.handedOff) this.judgeNames = [];   // a relief judge took over: new name from here on
+    else if (this.judgeNames.length > 1) this.fw.find("bug", this.who, "Judge name in the saved battles changed between matches", "logged in as " + this.judge.username + " / picked \"" + this.judge.bracketName + "\"; rows used: " + this.judgeNames.map(j => "\"" + j + "\"").join(", ") + " (now on " + name + ")");
     const counted = this.battles - this.undos * 1; // each Undo removes one battle
     const nonStrike = rows.filter(r => !/strike/i.test(String(Array.isArray(r) ? r[13] : r.FinishType)));
     void nonStrike;
@@ -427,16 +674,97 @@ RobotJudge.prototype.finishMatch = async function () {
       if (e && (Number(a[16]) !== e[0] || Number(a[17]) !== e[1])) this.fw.find("bug", this.who, "Database set score differs from the battles", name + " set " + k + ": rows end at " + a[16] + "-" + a[17] + ", battles say " + e.join("-"));
     });
   }
-  this.matchesDone.push({ name, matchId, exp, battles: this.battles, undos: this.undos, ms: Date.now() - this.current.startedAt });
+  try { const mb = await p.evaluate(() => performance.memory ? performance.memory.usedJSHeapSize / 1048576 : 0); if (mb) this.heap.push(Math.round(mb)); } catch (_) {}
+  this.matchesDone.push({ name, matchId: this.current.matchId, handedOff: !!this.current.handedOff, retries: tries, exp, battles: this.battles, undos: this.undos, ms: Date.now() - this.current.startedAt });
 
   // Back to the match list. The finished match should not still be offered.
-  await this.tap("New Match");
+  await this.tap(/^New Match/);
   const listOrPrompt = async () => { const b = await ui.buttons(p); return (b.includes("Yes, no more matches here") || b.some(x => /^#\d+ /.test(x))) && b; };
   await ui.until(p, listOrPrompt, 1500);
   if (await this.answerStandbyPrompt()) await ui.until(p, async () => (await ui.buttons(p)).some(x => /^#\d+ /.test(x)), 1500);
   const btns = await ui.buttons(p);
   const stale = btns.find(b => /^#\d+ /.test(b) && b.replace(/\s+/g, "").includes((this.current.p1 + "vs" + this.current.p2).replace(/\s+/g, "")));
   if (stale) this.fw.find("warn", this.who, "Station list still offers the match that was just submitted (until Refresh)", name);
+  if (this.fw.inPlay && this.fw.inPlay[String(this.current.matchId)] === this.who) delete this.fw.inPlay[String(this.current.matchId)];
+  // Clash test: tap the finished match again, like a judge who did not notice it was done.
+  if (stale && this.rnd.chance(this.opts.reopenRate === undefined ? 0.25 : this.opts.reopenRate)) {
+    this.say("CLASH TEST: tap the finished match again");
+    await this.tap(stale);
+    const s2 = await ui.until(p, async () => { const t = await this.screen(); return /Build Decks|Deck Review|Start Match|already|complete|submitted/i.test(t) && t; }, 3000) || await this.screen();
+    if ((await ui.buttons(p)).includes("Build Decks →")) {
+      this.fw.find("warn", this.who, "A match that was already submitted can be opened again from the Station list", name + ": the app goes to Build Decks with no warning");
+    } else {
+      this.reopenBlocked = (this.reopenBlocked || 0) + 1;
+      this.say("app stopped it: " + s2.replace(/\n+/g, " / ").slice(0, 120));
+    }
+    // Back out to the match list without scoring it again.
+    for (let i = 0; i < 6 && !(await ui.buttons(p)).includes("🏟️ Station"); i++) {
+      await ui.tap(p, "Back", { optional: true, timeout: 1000 });
+      await ui.tap(p, /^(Yes|Leave|Discard|OK)/, { optional: true, timeout: 300 });
+    }
+    if (!(await ui.buttons(p)).includes("🏟️ Station")) throw new Error("Could not get back to the match list after reopening a finished match");
+  }
+};
+
+// Hand the match in progress to a relief judge on a second phone (the QR link from the
+// "Hand off match" menu), then carry on scoring on that phone.
+const HANDOFF_FIELDS = {
+  pts: "points", sets: "sets won", curSet: "current set", setScores: "earlier set scores", d1: "player 1's deck", d2: "player 2's deck",
+  r1: "which combo player 1 has in play", r2: "which combo player 2 has in play", used1: "player 1's used combos", used2: "player 2's used combos",
+  currentSides: "B/X sides", sideAssign: "B/X side choice", lerStrikes: "launch-error strikes", set1PriorityName: "Set 1 pick priority (~P~ tag)",
+  challongeRound: "round number", challongeMatchId: "bracket match", shuf: "shuffle number",
+};
+RobotJudge.prototype.handOff = async function (before) {
+  const p = this.page;
+  const name = this.current.p1 + " vs " + this.current.p2;
+  const known = new Set(Object.keys(this.fw.handoffs));
+  this.say("HANDOFF: hand the match to a relief judge");
+  await p.click('button[title="Settings"]', { timeout: 3000 });
+  await ui.tap(p, /Hand off match/);
+  await ui.tap(p, /new device|another device|other phone/i, { optional: true, timeout: 600 });
+  const token = await ui.until(p, async () => Object.keys(this.fw.handoffs).find(k => !known.has(k)), 6000);
+  if (!token) {
+    // The app could not save the handoff (on bad wifi it shows "Network error creating handoff").
+    this.fw.find(this.fw.wifiBad ? "info" : "bug", this.who, "Handoff could not be started" + (this.fw.wifiBad ? " (bad wifi)" : ""), name);
+    await ui.tap(p, /^(Cancel|✕|Close)$/, { optional: true, timeout: 800 });
+    this.fw.handoffDone = false;   // let a later battle try again
+    return;
+  }
+
+  const old = { dev: this.dev, page: this.page };
+  const relief = await this.opts.openReliefDevice(this.who);
+  this.allDevs.push(relief);
+  this.dev = relief; this.page = relief.page;
+  this.judge = { ...this.judge, username: this.judge.username + "b", bracketName: this.judge.bracketName + " (relief)" };
+  await this.page.goto(this.opts.baseUrl + "/?handoff=" + token, { waitUntil: "domcontentloaded" });
+  await this.login(null, { here: true });
+  const card = await ui.until(this.page, async () => (await ui.buttons(this.page)).includes("✓ Accept Match") && await this.screen(), 8000);
+  if (!card) throw new Error("The handoff link did not show the Accept card on the second phone");
+  if (/Not logged in — battles won't have a judge name/.test(card))
+    this.fw.find("warn", this.who, "Handoff card says the receiving judge is not logged in, though they are", "relief judge logged in as " + this.judge.username + " (\"" + this.judge.bracketName + "\")");
+  await this.tap("✓ Accept Match");
+  const after = await ui.until(this.page, async () => { const st = await this.state(); return st && String(st.challongeMatchId) === String(before.challongeMatchId) && st; }, 6000);
+  if (!after) throw new Error("Accepting the handoff did not load the match on the second phone");
+  const lost = Object.keys(HANDOFF_FIELDS).filter(k => JSON.stringify(before[k] === undefined ? null : before[k]) !== JSON.stringify(after[k] === undefined ? null : after[k]));
+  if (lost.length) this.fw.find("bug", this.who, "Handoff to another phone drops part of the match", name + ": lost or changed " + lost.map(k => HANDOFF_FIELDS[k] + " (" + JSON.stringify(before[k]) + " → " + JSON.stringify(after[k]) + ")").join("; "));
+  const cleared = await ui.until(old.page, async () => !(await old.page.evaluate(() => sessionStorage.getItem("ncblast-match-resume-v1"))), 8000);
+  if (!cleared) this.fw.find("warn", this.who, "The first phone still holds the match after handing it off", name);
+  this.current.handedOff = true;
+  this.handoffs = (this.handoffs || 0) + 1;
+  // Can the relief judge keep scoring? If not, recover the way a judge would: Undo back to the deck order.
+  const usable = async () => (await ui.buttons(this.page)).includes("Spin Finish +1") || /Set Deck Order/.test(await this.screen());
+  if (!(await ui.until(this.page, usable, 3000))) {
+    this.fw.find("bug", this.who, "After a handoff the score pad cannot be used (finish buttons greyed out)", name + ": the relief judge has to Undo back to the deck order to continue, losing this set's battles");
+    for (let i = 0; i < 15 && !(await usable()); i++) {
+      if (!(await ui.tap(this.page, "UNDO", { optional: true, timeout: 1000 }))) break;
+      const prev = this.history.pop();
+      if (prev) this.expSets.length = prev.expSetsLen;
+      this.undos++;
+      await this.page.waitForTimeout(300);
+    }
+    if (!(await usable())) throw new Error("Could not recover the match after the handoff");
+  }
+  this.say("HANDOFF done, continuing on the relief phone");
 };
 
 // A streaming station is asked "Are there no more matches at this stadium?" when its queue
@@ -459,6 +787,7 @@ RobotJudge.prototype.run = async function (baseUrl, isEventOver) {
     const got = await this.takeNextMatch();
     if (!got) {
       if (isEventOver()) break;
+      if (this.fw.stuck) { this.say("stopping: another station is stuck"); break; }
       idle++;
       // If no result has reached the bracket for 2 minutes, another station is stuck: stop waiting.
       const lastSubmit = this.fw.submits.length ? this.fw.submits[this.fw.submits.length - 1].at : this.fw.startedAt;

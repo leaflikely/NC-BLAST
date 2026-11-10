@@ -6,14 +6,19 @@
 // (group_player_ids), and match player ids are the GROUP ids. That is how real events look,
 // and it is a known trouble spot for name lookups, so the fake copies it on purpose.
 
+// Name traps are mixed into the first 12 so even small events get them:
+// a name that is the start of another ("Alex" / "Alex K."), a trailing space, an emoji,
+// accents and apostrophes, and a very long name. "Hana Sato" is renamed in the bracket
+// after round 1 (see renameAfterRound1).
 const PLAYER_NAMES = [
-  "Ace Ramirez", "Bree Tanaka", "Cole Whitfield", "Dani Okafor", "Eli Novak", "Faye Lindqvist",
-  "Gus Moreno", "Hana Sato", "Ivan Petrov", "Jade Collins", "Kai Mendoza", "Lena Fischer",
-  "Milo Grant", "Nia Adeyemi", "Owen Park", "Pia Rossi", "Quinn Harper", "Rafa Delgado",
-  "Sage Bennett", "Theo Nakamura", "Uma Patel", "Vic Herrera", "Wes Dalton", "Xena Kowalski",
-  "Yuri Ivanov", "Zoë Laurent", "D'Angelo Brooks", "Mai Nguyen", "Leo Santos", "Ruby Chen",
-  "Finn O'Neil", "José Álvarez",
+  "Ace Ramirez", "Bree Tanaka", "Alex", "Dani Okafor", "Alex K.", "Zoë Laurent",
+  "Milo Grant ", "Hana Sato", "D'Angelo Brooks", "🔥Blaze", "José Álvarez", "Christopher Montgomery-Wellington III",
+  "Cole Whitfield", "Eli Novak", "Faye Lindqvist", "Gus Moreno", "Ivan Petrov", "Jade Collins",
+  "Kai Mendoza", "Lena Fischer", "Nia Adeyemi", "Owen Park", "Pia Rossi", "Quinn Harper",
+  "Rafa Delgado", "Sage Bennett", "Theo Nakamura", "Uma Patel", "Vic Herrera", "Wes Dalton",
+  "Mai Nguyen", "Finn O'Neil",
 ];
+const RENAME = { from: "Hana Sato", to: "Hana Sato-Kim" };
 
 const STATIONS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
@@ -118,4 +123,13 @@ function roundComplete(ev) {
   return ev.matches.filter(m => m.round === ev.round).every(m => m.state === "complete");
 }
 
-module.exports = { makeEvent, participantRecord, addSwissRound, roundComplete, records, STATIONS };
+// A player fixes their name in the bracket between rounds (it happens). Returns what changed.
+function renameAfterRound1(ev) {
+  const p = ev.players.find(x => x.name === RENAME.from);
+  if (!p) return null;
+  p.oldNames = [p.name];
+  p.name = RENAME.to;
+  return { id: p.id, from: RENAME.from, to: RENAME.to };
+}
+
+module.exports = { renameAfterRound1, makeEvent, participantRecord, addSwissRound, roundComplete, records, STATIONS };
