@@ -4,6 +4,25 @@ const path = require("path");
 
 const esc = s => String(s === undefined || s === null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+const STYLE = `<style>
+:root{--bg:#f7f7f5;--card:#fff;--ink:#1d1d1b;--mute:#6b6b66;--line:#e4e3de;--bug:#c2410c;--warn:#a16207;--info:#475569;--ok:#15803d}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--card:#1e1e1c;--ink:#ecebe6;--mute:#9a9992;--line:#2e2e2b;--bug:#fb923c;--warn:#facc15;--info:#94a3b8;--ok:#4ade80}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:920px;margin:0 auto;padding:24px 16px 60px}h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:28px 0 10px}
+.sub{color:var(--mute);margin:0 0 18px}.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}.tile b{display:block;font-size:24px}.tile span{color:var(--mute);font-size:13px}
+.f{background:var(--card);border:1px solid var(--line);border-radius:10px;margin:0 0 10px;padding:12px 14px}
+.f summary{cursor:pointer;list-style:none;display:flex;gap:10px;align-items:baseline}.f summary::-webkit-details-marker{display:none}
+.tag{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:99px;border:1px solid currentColor;flex:none}
+.bug{color:var(--bug)}.warn{color:var(--warn)}.info{color:var(--info)}.n{color:var(--mute);margin-left:auto;flex:none}
+.f ul{margin:10px 0 0;padding-left:18px;color:var(--mute);font-size:13px;word-break:break-word}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}th{color:var(--mute);font-weight:600}
+.stuck{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--bug);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.stuck img{max-width:240px;border:1px solid var(--line);border-radius:6px;margin-top:8px}code{font-size:12px}
+.ok{color:var(--ok);font-weight:600}.wrap{overflow-x:auto}
+</style>`;
+
 function group(findings) {
   const g = new Map();
   findings.forEach(f => {
@@ -27,24 +46,7 @@ function writeReport(dir, r) {
   const avg = matches.length ? Math.round(matches.reduce((a, m) => a + m.ms, 0) / matches.length / 1000) : 0;
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BLAST Sim Report</title>
-<style>
-:root{--bg:#f7f7f5;--card:#fff;--ink:#1d1d1b;--mute:#6b6b66;--line:#e4e3de;--bug:#c2410c;--warn:#a16207;--info:#475569;--ok:#15803d}
-@media (prefers-color-scheme:dark){:root{--bg:#141413;--card:#1e1e1c;--ink:#ecebe6;--mute:#9a9992;--line:#2e2e2b;--bug:#fb923c;--warn:#facc15;--info:#94a3b8;--ok:#4ade80}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
-main{max-width:920px;margin:0 auto;padding:24px 16px 60px}h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:28px 0 10px}
-.sub{color:var(--mute);margin:0 0 18px}.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}.tile b{display:block;font-size:24px}.tile span{color:var(--mute);font-size:13px}
-.f{background:var(--card);border:1px solid var(--line);border-radius:10px;margin:0 0 10px;padding:12px 14px}
-.f summary{cursor:pointer;list-style:none;display:flex;gap:10px;align-items:baseline}.f summary::-webkit-details-marker{display:none}
-.tag{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:99px;border:1px solid currentColor;flex:none}
-.bug{color:var(--bug)}.warn{color:var(--warn)}.info{color:var(--info)}.n{color:var(--mute);margin-left:auto;flex:none}
-.f ul{margin:10px 0 0;padding-left:18px;color:var(--mute);font-size:13px;word-break:break-word}
-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13px}
-th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}th{color:var(--mute);font-weight:600}
-.stuck{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--bug);border-radius:10px;padding:12px 14px;margin-bottom:10px}
-.stuck img{max-width:240px;border:1px solid var(--line);border-radius:6px;margin-top:8px}code{font-size:12px}
-.ok{color:var(--ok);font-weight:600}.wrap{overflow-x:auto}
-</style></head><body><main>
+${STYLE}</head><body><main>
 <h1>BLAST simulator report</h1>
 <p class="sub">${esc(r.event.name)} · ${r.event.players} players · ${r.robots.length} robot judges · seed ${r.options.seed} · ${esc(r.site || "")} · ${esc(r.startedAt.replace("T", " ").slice(0, 19))} UTC · ${r.seconds}s</p>
 <div class="tiles">
@@ -72,4 +74,53 @@ ${matches.map(m => `<tr><td>${esc(m.who)}</td><td>${esc(m.name)}</td><td>${esc(m
   return file;
 }
 
-module.exports = { writeReport };
+// The combined report for a sweep (many events). Rewritten after every event.
+function writeSweep(dir, sw) {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "sweep.json"), JSON.stringify(sw, null, 2));
+  const runs = sw.runs.slice().sort((a, b) => a.n - b.n);
+  const all = runs.flatMap(r => r.findings.map(f => ({ ...f, run: r })));
+  const groups = group(all).map(g => {
+    const inRuns = [...new Map(g.items.map(i => [i.run.n, i.run])).values()].sort((a, b) => a.n - b.n);
+    return { ...g, inRuns };
+  });
+  const label = { bug: "Bug", warn: "Check", info: "Note" };
+  const sum = k => runs.reduce((a, r) => a + (r[k] || 0), 0);
+  const kinds = l => groups.filter(g => g.level === l).length;
+  const rerun = r => `node run.cjs --seed ${r.seed}${sw.options.mix ? " --mix" : ` --rounds ${r.rounds} --players ${r.players} --judges ${r.judges}`}`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BLAST Sim Sweep</title>
+${STYLE}
+<style>.rare{font-size:12px;color:var(--mute)}td a{color:inherit}</style>
+</head><body><main>
+<h1>BLAST simulator sweep</h1>
+<p class="sub">${runs.length} event(s)${sw.options.mix ? " of mixed sizes" : ""} · ${esc(sw.site)} · started ${esc(sw.startedAt.replace("T", " ").slice(0, 19))} UTC · ${Math.round(sw.seconds / 60)} min so far</p>
+<div class="tiles">
+<div class="tile"><b>${runs.length}</b><span>events</span></div>
+<div class="tile"><b>${sum("complete")}</b><span>matches played</span></div>
+<div class="tile"><b>${sum("battles")}</b><span>battles scored</span></div>
+<div class="tile"><b>${sum("undos")} / ${sum("refreshes")}</b><span>undos / refreshes</span></div>
+<div class="tile"><b class="${kinds("bug") ? "bug" : "ok"}">${kinds("bug")}</b><span>kinds of bug</span></div>
+<div class="tile"><b class="${kinds("warn") ? "warn" : "ok"}">${kinds("warn")}</b><span>kinds of check</span></div>
+</div>
+<h2>Findings across all events</h2>
+<p class="sub">Sorted by kind, then by how often. A finding seen in only a few events is the interesting kind: it depends on what the robots happened to do. Re-run that exact event with the command shown.</p>
+${groups.length ? groups.map(g => {
+  const few = g.inRuns.length < runs.length;
+  return `<details class="f"${g.level === "bug" ? " open" : ""}><summary><span class="tag ${g.level}">${label[g.level]}</span><span>${esc(g.what)}</span><span class="n">${g.inRuns.length} of ${runs.length} events</span></summary>
+<ul>${g.items.slice(0, 6).map(i => `<li>Event ${i.run.n} (seed ${i.run.seed}), station ${esc(i.who)}: ${esc(i.detail)}</li>`).join("")}${g.items.length > 6 ? `<li>…${g.items.length - 6} more</li>` : ""}</ul>
+${few ? `<p class="rare">First seen in event ${g.inRuns[0].n}. Repeat it: <code>${esc(rerun(g.inRuns[0]))}</code></p>` : ""}</details>`;
+}).join("") : `<p class="ok">Nothing found.</p>`}
+<h2>Events</h2>
+<div class="wrap"><table><tr><th>#</th><th>Seed</th><th>Size</th><th>Matches</th><th>Battles</th><th>Time</th><th>Bugs</th><th>Checks</th><th>Stuck</th><th></th></tr>
+${runs.map(r => `<tr><td>${r.n}</td><td>${r.seed}</td><td>${r.players}p · ${r.judges}j · ${r.rounds}r</td><td>${r.complete}/${r.matches}</td><td>${r.battles}</td><td>${r.seconds}s</td>
+<td class="${r.findings.some(f => f.level === "bug") ? "bug" : ""}">${new Set(r.findings.filter(f => f.level === "bug").map(f => f.what)).size}</td>
+<td>${new Set(r.findings.filter(f => f.level === "warn").map(f => f.what)).size}</td><td class="${r.stuck ? "bug" : ""}">${r.stuck || ""}</td>
+<td>${r.report ? `<a href="${esc(r.report)}">report</a>` : ""}</td></tr>`).join("")}
+</table></div>
+</main></body></html>`;
+  fs.writeFileSync(path.join(dir, "sweep.html"), html);
+  return path.join(dir, "sweep.html");
+}
+
+module.exports = { writeReport, writeSweep };

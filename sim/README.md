@@ -47,12 +47,33 @@ node sim/run.cjs
 ## Options
 
 ```
-node run.cjs                  one Swiss round: 32 players, 8 judges, 16 matches (about 40 seconds)
-node run.cjs --rounds 5       a full 5-round Swiss day (about 3 minutes)
+node run.cjs                  one Swiss round: 32 players, 8 judges, 16 matches
+node run.cjs --rounds 5       a full 5-round Swiss day
 node run.cjs --seed 7         different robot choices (same seed = same choices, so a run can be repeated)
 node run.cjs --show           watch the browser windows while it runs
 node run.cjs --site live      always test ncblast.pages.dev, even inside a copy of the repo
 ```
+
+## Many events in a row (a sweep)
+
+```
+node run.cjs --runs 20                    20 events, each with different robot choices
+node run.cjs --runs 20 --rounds 5         20 full 5-round days
+node run.cjs --runs 50 --mix              50 events of mixed sizes (8 to 32 players, 1 to 8 judges, 1 to 5 rounds)
+node run.cjs --runs forever --mix         keep going until you press Ctrl+C
+node run.cjs --runs 50 --parallel 2       two events at a time (only helps on a computer with many cores)
+```
+
+A sweep writes one combined report, `sweep.html`, updated after every event, so it is always
+safe to stop with Ctrl+C. It lists every kind of problem with the number of events it showed up in,
+plus a report for each event. A problem that shows up in only a few events depends on what the
+robots happened to do; the report gives the exact command to replay that event.
+
+How fast: one robot plays a match in about 5 seconds. With 8 robots the computer's processor is
+the limit: on a 2-core machine a 16-match round takes about 35 seconds; a typical 8-core PC
+should be much quicker. Try `--parallel 2` or `3` on a strong computer and keep whichever
+finishes events fastest. In a sweep the stream overlay is checked on about 1 battle in 3
+(`--overlay-every 1` checks every battle).
 
 Other options: `--judges 4`, `--undo-rate 0.1` (how often a robot presses Undo, default 0.05),
 `--refresh-rate 0.05` (how often a robot refreshes mid-match, default 0.02), `--no-overlay`,

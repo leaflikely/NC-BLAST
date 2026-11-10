@@ -2,6 +2,9 @@
 // The app draws some labels in unusual ways (text split into <span>s, or a CSS data-label),
 // so these helpers compare the text a person would SEE, not the raw page code.
 
+// How often to look at the screen again while waiting for something (milliseconds).
+const POLL = 40;
+
 // Text of a button as a person reads it: inner text, else data-label/aria-label, with spaces tidied.
 const SEEN_TEXT = `
   (el) => {
@@ -57,7 +60,7 @@ async function tap(page, match, opts = {}) {
       const seen = await buttons(page);
       throw new Error("No button \"" + match + "\" on screen. Buttons: " + seen.slice(0, 40).join(" | "));
     }
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(POLL);
   }
 }
 
@@ -75,7 +78,7 @@ async function waitForText(page, re, timeout = 8000) {
     const t = await screenText(page);
     if (re.test(t)) return t;
     if (Date.now() > end) throw new Error("Timed out waiting for " + re + ". Screen starts: " + t.replace(/\n+/g, " / ").slice(0, 300));
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(POLL);
   }
 }
 
@@ -103,7 +106,22 @@ async function tapSide(page, side, match, opts = {}) {
       if (opts.optional) return false;
       throw new Error("No \"" + match + "\" button for " + side + ". Buttons: " + (await buttons(page)).slice(0, 30).join(" | "));
     }
-    await page.waitForTimeout(150);
+    await page.waitForTimeout(POLL);
   }
 }
 module.exports.tapSide = tapSide;
+
+// Waits until check() returns something truthy, looking every POLL ms. Returns that value,
+// or false after the time limit (never throws: the caller decides what a timeout means).
+async function until(page, check, timeout = 3000) {
+  const end = Date.now() + timeout;
+  for (;;) {
+    let v = false;
+    try { v = await check(); } catch (_) {}
+    if (v) return v;
+    if (Date.now() > end) return false;
+    await page.waitForTimeout(POLL);
+  }
+}
+module.exports.until = until;
+module.exports.POLL = POLL;

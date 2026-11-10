@@ -77,7 +77,7 @@ class RobotJudge {
         continue;
       }
       if (btns.includes("Next: Players →")) { await this.tap("Next: Players →"); continue; }
-      await p.waitForTimeout(300);
+      await p.waitForTimeout(ui.POLL * 2);
     }
     await ui.waitForText(p, /Select Match|Spin Finish|Set Deck Order|Pick a Side|Who Won the Die Roll|Deck Review|CONFIRM RESULT/, 10000);
     this.say("logged in as " + this.judge.username + " (" + this.judge.bracketName + ")");
@@ -99,8 +99,8 @@ class RobotJudge {
     await this.tap("🏟️ Station");
     await this.tap("↻ Refresh", { optional: true, timeout: 1500 });
     await ui.waitForText(this.page, /STATION [A-H] MATCHES|station/i);
-    await this.page.waitForTimeout(500);
-    const btns = await ui.buttons(this.page);
+    // Wait for the match rows to show (an empty station simply times out after a moment).
+    const btns = (await ui.until(this.page, async () => { const b = await ui.buttons(this.page); return b.some(x => /^#\d+ /.test(x)) && b; }, 1200)) || await ui.buttons(this.page);
     const done = new Set(this.matchesDone.map(m => m.name.replace(/\s+/g, "")));
     // Station rows look like "#1 Ace RamirezvsBree Tanaka". Match them to the bracket to get exact names.
     const n = this.fw.idToName();
@@ -131,7 +131,7 @@ class RobotJudge {
       if (/Select Blade/.test(s)) { await this.pickBlade(); continue; }
       if (/^\s*Back\s*\n\s*(Undo\s*\n\s*)?Ratchet\b/m.test(s) || /\nRatchet\n/.test(s)) { await this.pickPart("ratchet"); continue; }
       if (/\nBit\n/.test(s)) { await this.pickPart("bit"); continue; }
-      await p.waitForTimeout(200);
+      await p.waitForTimeout(ui.POLL);
     }
     throw new Error("Deck building did not finish (stuck on: " + (await this.screen()).replace(/\n+/g, " / ").slice(0, 200) + ")");
   }
@@ -219,7 +219,7 @@ RobotJudge.prototype.playMatch = async function () {
       if (left.length) { await this.tap(this.rnd.pick(left)); continue; }
       const go = btns.find(t => /^Start/.test(t));
       if (go) { this.say("deck order set"); await this.tap(go); continue; }
-      await p.waitForTimeout(200);
+      await p.waitForTimeout(ui.POLL);
       continue;
     }
     if (btns.includes("Spin Finish +1")) {
@@ -227,7 +227,7 @@ RobotJudge.prototype.playMatch = async function () {
       continue;
     }
     if (/CONFIRM RESULT|Judge Confirm/.test(s)) return s;
-    await p.waitForTimeout(250);
+    await p.waitForTimeout(ui.POLL);
   }
   throw new Error("Match did not finish after 400 steps");
 };
@@ -245,7 +245,8 @@ RobotJudge.prototype.battle = async function () {
       this.say("UNDO last battle");
       // (No confirm step: Undo acts at once. Undoing the first battle of a set goes back to
       // that set's deck order screen, which has its own Undo button, so never tap twice.)
-      await p.waitForTimeout(400);
+      const was = JSON.stringify(before);
+      await ui.until(p, async () => JSON.stringify(await this.state()) !== was, 1500);
       const after = await this.state();
       const prev = this.history.pop();
       if (after && prev && (after.pts.join() !== prev.state.pts.join() || after.sets.join() !== prev.state.sets.join() || after.curSet !== prev.state.curSet)) {
@@ -261,7 +262,7 @@ RobotJudge.prototype.battle = async function () {
     this.say("REFRESH the page mid-match");
     await p.reload({ waitUntil: "domcontentloaded" });
     await this.login(null, { here: true });
-    await p.waitForTimeout(500);
+    await ui.until(p, async () => (await ui.buttons(p)).includes("Spin Finish +1"), 3000);
     const back = await this.state();
     const onPad = (await ui.buttons(p)).includes("Spin Finish +1");
     if (!back || !onPad || back.pts.join() !== before.pts.join() || back.sets.join() !== before.sets.join() || back.curSet !== before.curSet) {
@@ -284,20 +285,26 @@ RobotJudge.prototype.battle = async function () {
   exp[0] = Math.min(exp[0], cap); exp[1] = Math.min(exp[1], cap);
   this.history.push({ state: before, expSetsLen: this.expSets.length });
   this.say("battle: " + (side === "p1" ? this.current.p1 : this.current.p2) + " " + f.label + (f.ler ? " (launch error)" : ""));
+  const was = JSON.stringify(before);
+  const changed = async () => JSON.stringify(await this.state()) !== was;
+  const continueOrChanged = async () => (await ui.buttons(p)).includes("Continue") || await changed();
   await ui.tapSide(p, side, f.label);
   if (f.ler) {
-    await ui.tap(p, "Continue", { optional: true, timeout: 1500 });
+    await ui.until(p, continueOrChanged, 1500);
+    await ui.tap(p, "Continue", { optional: true, timeout: 0 });
   } else {
     await ui.tapSide(p, side, /Confirm/);
     // Own finishes ask "are you sure?" first.
-    if (f.penalty) await ui.tap(p, "Continue", { optional: true, timeout: 1500 });
+    if (f.penalty) { await ui.until(p, continueOrChanged, 1500); await ui.tap(p, "Continue", { optional: true, timeout: 0 }); }
   }
   this.battles++;
-  await p.waitForTimeout(250);
+  // Wait until the app has saved the battle (its saved state changes), at most 2 seconds.
+  await ui.until(p, changed, 2000);
   const after = await this.state();
   this.checkScore(before, after, exp, side, f);
   // (Skip the battle that ends a set: the overlay keeps showing that set's final score for a bit.)
-  if (this.opts.overlayPage && after && after.phase === "battle" && after.curSet === before.curSet) await this.checkOverlay(after);
+  const every = this.opts.overlayEvery || 1;
+  if (this.opts.overlayPage && after && after.phase === "battle" && after.curSet === before.curSet && this.rnd() < 1 / every) await this.checkOverlay(after);
 };
 
 // The OBS overlay on this judge's stream channel should show the same names and points
@@ -322,7 +329,7 @@ RobotJudge.prototype.checkOverlay = async function (st) {
         return;
       }
     } else seen = "names not shown";
-    await this.page.waitForTimeout(250);
+    await this.page.waitForTimeout(ui.POLL * 2);
   }
   const name = this.current.p1 + " vs " + this.current.p2;
   this.fw.find("bug", this.who, "Stream overlay did not show the right score within 8 seconds", name + ": judge screen " + want + ", overlay " + (seen || "nothing") + (this.refreshedIn === name ? " (the judge's page was refreshed earlier in this match)" : ""));
@@ -363,13 +370,21 @@ RobotJudge.prototype.finishMatch = async function () {
   const matchId = st && st.challongeMatchId;
   const ids = st ? [st.challongeP1ParticipantId, st.challongeP2ParticipantId] : [null, null];
   await this.tap("⚖️ Judge Confirm →");
-  for (let i = 0; i < 2; i++) { await this.tap(/TAP TO CONFIRM/); await p.waitForTimeout(250); }
+  const confirms = async () => (await ui.buttons(p)).filter(b => /TAP TO CONFIRM/.test(b)).length;
+  for (let i = 0; i < 2; i++) {
+    const n = await ui.until(p, confirms, 3000);
+    await this.tap(/TAP TO CONFIRM/);
+    await ui.until(p, async () => (await confirms()) < n, 1500);
+  }
   const submitsBefore = this.fw.submits.length;
   const ingestsBefore = this.fw.ingests.length;
   await this.tap("Submit", { timeout: 8000 });
   this.say("submit " + name);
   await ui.waitForText(p, /Submitted to Challonge|Challonge.*(fail|error)|New Match/i, 20000);
-  await p.waitForTimeout(1200);
+  await ui.until(p, async () =>
+    this.fw.submits.slice(submitsBefore).some(x => x.who === this.who) &&
+    this.fw.ingests.slice(ingestsBefore).some(x => x.who === this.who) &&
+    /✓ Submitted to Challonge/.test(await this.screen()), 2500);
   const s = await this.screen();
   if (!/✓ Submitted to Challonge/.test(s)) this.fw.find("bug", this.who, "Bracket submit did not show success", name + ": " + (s.match(/[^\n]*Challonge[^\n]*/g) || []).join(" / "));
   if (/Database: (failed|error)/i.test(s)) this.fw.find("bug", this.who, "Database send failed", name);
@@ -416,9 +431,9 @@ RobotJudge.prototype.finishMatch = async function () {
 
   // Back to the match list. The finished match should not still be offered.
   await this.tap("New Match");
-  await p.waitForTimeout(800);
-  await this.answerStandbyPrompt();
-  await p.waitForTimeout(700);
+  const listOrPrompt = async () => { const b = await ui.buttons(p); return (b.includes("Yes, no more matches here") || b.some(x => /^#\d+ /.test(x))) && b; };
+  await ui.until(p, listOrPrompt, 1500);
+  if (await this.answerStandbyPrompt()) await ui.until(p, async () => (await ui.buttons(p)).some(x => /^#\d+ /.test(x)), 1500);
   const btns = await ui.buttons(p);
   const stale = btns.find(b => /^#\d+ /.test(b) && b.replace(/\s+/g, "").includes((this.current.p1 + "vs" + this.current.p2).replace(/\s+/g, "")));
   if (stale) this.fw.find("warn", this.who, "Station list still offers the match that was just submitted (until Refresh)", name);
@@ -432,7 +447,7 @@ RobotJudge.prototype.answerStandbyPrompt = async function () {
   const yes = this.rnd.chance(0.3);
   this.say("stream standby prompt: " + (yes ? "yes, no more matches" : "no, more are coming"));
   await this.tap(yes ? "Yes, no more matches here" : "No, more are coming");
-  await this.page.waitForTimeout(400);
+  await ui.until(this.page, async () => !(await ui.buttons(this.page)).includes("Yes, no more matches here"), 1500);
   return true;
 };
 
@@ -448,7 +463,7 @@ RobotJudge.prototype.run = async function (baseUrl, isEventOver) {
       // If no result has reached the bracket for 2 minutes, another station is stuck: stop waiting.
       const lastSubmit = this.fw.submits.length ? this.fw.submits[this.fw.submits.length - 1].at : this.fw.startedAt;
       if (Date.now() - lastSubmit > 120000) throw new Error("Waited 2 minutes for a match (another station may be stuck)");
-      await this.page.waitForTimeout(2000);
+      await this.page.waitForTimeout(1000);
       continue;
     }
     idle = 0;

@@ -1,102 +1,104 @@
 #!/usr/bin/env node
-// NC BLAST simulator: run a whole fake event with robot judges.
+// NC BLAST simulator: run fake events with robot judges.
 //
-//   node run.cjs                      32 players, 8 judges, 1 Swiss round
-//   node run.cjs --rounds 3           play 3 Swiss rounds
-//   node run.cjs --seed 42            different (but repeatable) robot choices
-//   node run.cjs --judges 4           fewer judges
+//   node run.cjs                      one event: 32 players, 8 judges, 1 Swiss round
+//   node run.cjs --rounds 5           play 5 Swiss rounds
+//   node run.cjs --runs 20            20 events in a row, each with different robot choices
+//   node run.cjs --runs forever       keep going until you press Ctrl+C
+//   node run.cjs --runs 20 --mix      also vary the event each time (players, judges, rounds)
+//   node run.cjs --parallel 2         run 2 events at the same time (needs a strong computer)
+//   node run.cjs --seed 42            start from a different (but repeatable) set of choices
 //   node run.cjs --show               watch the browsers (slower)
 //   node run.cjs --site live          test the live site (ncblast.pages.dev)
 //   node run.cjs --site local         test the app files in the folder above this one
 //
 // Which site: as sim/run.cjs inside a copy of the NC-BLAST repo it tests those files; anywhere
 // else it tests the live site. Either way nothing is sent anywhere: every request the app makes to
-// Challonge, the Workers or Google Sheets is answered by fake-worker.cjs. A report is written
-// to reports/<time>/ next to this file.
+// Challonge, the Workers or Google Sheets is answered by fake-worker.cjs. Reports are written to
+// reports/<time>/ next to this file.
 
 const fs = require("fs");
 const path = require("path");
 const { startServer, loadPlaywright, openDevice } = require("./harness.cjs");
 const { makeEvent, roundComplete } = require("./fake-event.cjs");
 const { FakeWorker } = require("./fake-worker.cjs");
-const { RobotJudge } = require("./robot-judge.cjs");
-const { writeReport } = require("./report.cjs");
+const { RobotJudge, makeRandom } = require("./robot-judge.cjs");
+const { writeReport, writeSweep } = require("./report.cjs");
 
 function args() {
   const a = process.argv.slice(2);
-  const o = { rounds: 1, seed: 1, judges: 8, players: 32, show: false, site: "auto", verbose: false, overlay: true, undoRate: 0.05, refreshRate: 0.02 };
+  const o = {
+    rounds: 1, seed: 1, judges: 8, players: 32, show: false, site: "auto", verbose: false, overlay: true,
+    undoRate: 0.05, refreshRate: 0.02, runs: 1, parallel: 1, mix: false, overlayEvery: 0,
+  };
   for (let i = 0; i < a.length; i++) {
     const k = a[i].replace(/^--/, "");
     const v = a[i + 1];
     if (k === "show") o.show = true;
     else if (k === "verbose") o.verbose = true;
     else if (k === "no-overlay") o.overlay = false;
-    else if (["rounds", "seed", "judges", "players"].includes(k)) { o[k] = parseInt(v, 10); i++; }
+    else if (k === "mix") o.mix = true;
+    else if (["rounds", "seed", "judges", "players", "parallel"].includes(k)) { o[k] = parseInt(v, 10); i++; }
+    else if (k === "runs") { o.runs = /^(forever|inf|infinite|0)$/i.test(v) ? Infinity : parseInt(v, 10); i++; }
+    else if (k === "overlay-every") { o.overlayEvery = parseInt(v, 10); i++; }
     else if (k === "undo-rate") { o.undoRate = parseFloat(v); i++; }
     else if (k === "refresh-rate") { o.refreshRate = parseFloat(v); i++; }
     else if (k === "site") { o.site = v; i++; }
     else if (k === "chrome") { o.chrome = v; i++; }
-    else if (k === "help" || k === "h") { console.log(fs.readFileSync(__filename, "utf8").split("\n").slice(1, 14).join("\n")); process.exit(0); }
+    else if (k === "help" || k === "h") { console.log(fs.readFileSync(__filename, "utf8").split("\n").slice(1, 19).join("\n")); process.exit(0); }
+    else { console.error("Unknown option: " + a[i] + "  (node run.cjs --help lists them)"); process.exit(2); }
   }
+  if (!(o.runs >= 1)) o.runs = 1;
+  if (!(o.parallel >= 1)) o.parallel = 1;
+  // The overlay check is the slowest one. Every battle on a single run; about 1 in 3 in a sweep.
+  if (!o.overlayEvery) o.overlayEvery = o.runs > 1 ? 3 : 1;
   return o;
 }
 
-async function main() {
-  const o = args();
+// The setup for one event. With --mix each run gets its own (repeatable) mix of sizes.
+function eventSetup(o, runSeed) {
+  if (!o.mix) return { players: o.players, judges: o.judges, rounds: o.rounds };
+  const r = makeRandom(runSeed * 7919 + 13);
+  const players = r.pick([8, 12, 16, 24, 32]);
+  const judges = Math.max(1, Math.min(8, Math.floor(players / 2), 1 + Math.floor(r() * 8)));
+  const rounds = 1 + Math.floor(r() * (players <= 8 ? 3 : players <= 16 ? 4 : 5));
+  return { players, judges, rounds };
+}
+
+// Plays one whole event and writes its report. Returns the result (findings, matches, timing).
+async function runEvent(browser, o, site, runSeed, outDir, quiet) {
   const started = Date.now();
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const outDir = path.join(__dirname, "reports", stamp);
   fs.mkdirSync(path.join(outDir, "shots"), { recursive: true });
+  const setup = eventSetup(o, runSeed);
+  const ev = makeEvent({ players: setup.players, judges: setup.judges });
+  const fw = new FakeWorker(ev, { rounds: setup.rounds });
+  const { baseUrl, siteHost } = site;
 
-  const { chromium } = loadPlaywright();
-  const ev = makeEvent({ players: o.players, judges: o.judges });
-  const fw = new FakeWorker(ev, { rounds: o.rounds });
-  const { server, url: localUrl } = await startServer();
-  // Only a real copy of the repo counts: this file inside a folder named "sim", next to the app files.
-  // (A loose folder of robot files tests the live site, even if old BLAST downloads sit nearby.)
-  const hasAppFiles = path.basename(__dirname) === "sim" && fs.existsSync(path.join(__dirname, "..", "index.html")) && fs.existsSync(path.join(__dirname, "..", "judge-match.js"));
-  if (o.site === "auto") o.site = hasAppFiles ? "local" : "live";
-  if (o.site === "local" && !hasAppFiles) { console.error("No app files in the folder above this one. Use --site live to test ncblast.pages.dev."); process.exit(2); }
-  const baseUrl = o.site === "local" ? localUrl : o.site === "live" ? "https://ncblast.pages.dev" : o.site.replace(/\/+$/, "");
-  const siteHost = o.site === "local" ? null : new URL(baseUrl).host;
-
-  // Browser: the Chrome already on this computer if there is one, otherwise Playwright's own.
-  const launch = { headless: !o.show };
-  if (process.env.SIM_CHROME_ARG) launch.args = [process.env.SIM_CHROME_ARG];   // one extra Chrome setting, for testing
-  const chromePath = o.chrome || ["/usr/bin/google-chrome"].find(p => fs.existsSync(p));
-  let browser;
-  if (chromePath) browser = await chromium.launch({ ...launch, executablePath: chromePath });
-  else {
-    try { browser = await chromium.launch({ ...launch, channel: "chrome" }); }
-    catch (_) {
-      try { browser = await chromium.launch(launch); }
-      catch (e) { console.error("No browser found. Install Google Chrome, or run:  npx playwright install chromium"); process.exit(2); }
-    }
-  }
-
-  console.log(`NC BLAST simulator: ${ev.players.length} players, ${ev.judges.length} judges, ${o.rounds} round(s), seed ${o.seed}, site ${o.site === "local" ? "the app files next to this folder" : baseUrl}`);
-
+  const devices = [];
   // Station A streams to channel 1, watched by an OBS-sized overlay window (Wide shape size).
   let overlayDev = null;
   if (o.overlay) {
     overlayDev = await openDevice(browser, fw, "OBS", { viewport: { width: 1536, height: 194 }, siteHost });
+    devices.push(overlayDev);
     await overlayDev.page.goto(baseUrl + "/overlay?slot=1", { waitUntil: "domcontentloaded" });
   }
   const robots = [];
   for (let i = 0; i < ev.judges.length; i++) {
     const j = ev.judges[i];
     const dev = await openDevice(browser, fw, j.station, { siteHost });
+    devices.push(dev);
     robots.push(new RobotJudge(dev, fw, j, {
-      seed: o.seed * 1000 + i + 1, verbose: o.verbose, undoRate: o.undoRate, refreshRate: o.refreshRate,
+      seed: runSeed * 1000 + i + 1, verbose: o.verbose, undoRate: o.undoRate, refreshRate: o.refreshRate,
       streamSlot: overlayDev && i === 0 ? 1 : 0, overlayPage: overlayDev && i === 0 ? overlayDev.page : null,
+      overlayEvery: o.overlayEvery,
     }));
   }
 
-  const isEventOver = () => ev.round >= o.rounds && roundComplete(ev);
+  const isEventOver = () => ev.round >= setup.rounds && roundComplete(ev);
   const failures = [];
-  const progress = setInterval(() => {
+  const progress = quiet ? null : setInterval(() => {
     const done = ev.matches.filter(m => m.state === "complete").length;
-    console.log(`  round ${ev.round}/${o.rounds} · ${done}/${ev.matches.length} matches done · ${fw.findings.length} findings · ${Math.round((Date.now() - started) / 1000)}s`);
+    console.log(`  round ${ev.round}/${setup.rounds} · ${done}/${ev.matches.length} matches done · ${fw.findings.length} findings · ${Math.round((Date.now() - started) / 1000)}s`);
   }, 15000);
 
   await Promise.all(robots.map(async r => {
@@ -109,9 +111,10 @@ async function main() {
       try { screen = (await r.screen()).replace(/\n+/g, " / ").slice(0, 600); } catch (_) {}
       failures.push({ who: r.who, error: String(e && e.message || e).slice(0, 600), shot, screen, lastSteps: r.steps.slice(-25).map(s => s.text) });
       fw.find("bug", r.who, "Robot got stuck", String(e && e.message || e).split("\n")[0].slice(0, 300));
+      r.stopped = true;
     }
   }));
-  clearInterval(progress);
+  if (progress) clearInterval(progress);
 
   // Crashes and error messages seen on any device
   robots.forEach(r => {
@@ -130,28 +133,126 @@ async function main() {
   }
   Object.entries(fw.unknown).forEach(([k, n]) => fw.find("info", "-", "App called a route the simulator does not know", k + " (" + n + "x)"));
 
+  // Close this event's browser windows so a long sweep does not pile them up.
+  await Promise.all(devices.map(d => d.ctx.close().catch(() => {})));
+
   const result = {
-    options: o, site: o.site === "local" ? "app files next to the sim folder" : baseUrl, startedAt: new Date(started).toISOString(), seconds: Math.round((Date.now() - started) / 1000),
+    options: { ...o, runs: o.runs === Infinity ? "forever" : o.runs, seed: runSeed, players: setup.players, judges: setup.judges, rounds: setup.rounds },
+    site: site.label, startedAt: new Date(started).toISOString(), seconds: Math.round((Date.now() - started) / 1000),
     event: { name: ev.name, slug: ev.slug, players: ev.players.length, rounds: ev.round, matches: ev.matches.length, complete: ev.matches.filter(m => m.state === "complete").length },
     findings: fw.findings, failures,
     robots: robots.map(r => ({ who: r.who, judge: r.judge.bracketName, matches: r.matchesDone, refreshes: r.refreshes || 0, overlayDelays: r.overlayDelays || [] })),
     overlayShot: overlayDev ? "shots/overlay-channel-1.png" : null,
     requests: fw.log.length,
   };
-  const file = writeReport(outDir, result);
-  await browser.close();
-  server.close();
+  result.reportFile = writeReport(outDir, result);
+  return result;
+}
 
-  const kinds = l => new Set(fw.findings.filter(f => f.level === l).map(f => f.what)).size;
-  const bugs = kinds("bug");
-  const warns = kinds("warn");
-  console.log(`\nDone in ${result.seconds}s: ${result.event.complete}/${result.event.matches} matches played, ${bugs} kind(s) of bug, ${warns} kind(s) of check.`);
-  [...new Set(fw.findings.filter(f => f.level !== "info").map(f => f.level + "|" + f.what))].forEach(k => {
-    const [lvl, what] = k.split("|");
-    console.log(`  ${lvl === "bug" ? "BUG  " : "CHECK"} ${what} (${fw.findings.filter(f => f.what === what).length}x)`);
+const kindsOf = (findings, level) => [...new Set(findings.filter(f => f.level === level).map(f => f.what))];
+
+async function main() {
+  const o = args();
+  const started = Date.now();
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const outRoot = path.join(__dirname, "reports", stamp);
+
+  const { chromium } = loadPlaywright();
+  const { server, url: localUrl } = await startServer();
+  // Only a real copy of the repo counts: this file inside a folder named "sim", next to the app files.
+  // (A loose folder of robot files tests the live site, even if old BLAST downloads sit nearby.)
+  const hasAppFiles = path.basename(__dirname) === "sim" && fs.existsSync(path.join(__dirname, "..", "index.html")) && fs.existsSync(path.join(__dirname, "..", "judge-match.js"));
+  if (o.site === "auto") o.site = hasAppFiles ? "local" : "live";
+  if (o.site === "local" && !hasAppFiles) { console.error("No app files in the folder above this one. Use --site live to test ncblast.pages.dev."); process.exit(2); }
+  const baseUrl = o.site === "local" ? localUrl : o.site === "live" ? "https://ncblast.pages.dev" : o.site.replace(/\/+$/, "");
+  const site = { baseUrl, siteHost: o.site === "local" ? null : new URL(baseUrl).host, label: o.site === "local" ? "app files next to the sim folder" : baseUrl };
+
+  // Browser: the Chrome already on this computer if there is one, otherwise Playwright's own.
+  const launch = { headless: !o.show };
+  if (process.env.SIM_CHROME_ARG) launch.args = [process.env.SIM_CHROME_ARG];   // one extra Chrome setting, for testing
+  const chromePath = o.chrome || ["/usr/bin/google-chrome"].find(p => fs.existsSync(p));
+  let browser;
+  if (chromePath) browser = await chromium.launch({ ...launch, executablePath: chromePath });
+  else {
+    try { browser = await chromium.launch({ ...launch, channel: "chrome" }); }
+    catch (_) {
+      try { browser = await chromium.launch(launch); }
+      catch (e) { console.error("No browser found. Install Google Chrome, or run:  npx playwright install chromium"); process.exit(2); }
+    }
+  }
+
+  // ── a single event (the original behaviour) ─────────────────────────────
+  if (o.runs === 1) {
+    const s = eventSetup(o, o.seed);
+    console.log(`NC BLAST simulator: ${s.players} players, ${s.judges} judges, ${s.rounds} round(s), seed ${o.seed}, site ${site.label}`);
+    const r = await runEvent(browser, o, site, o.seed, outRoot, false);
+    await browser.close(); server.close();
+    const bugs = kindsOf(r.findings, "bug"), warns = kindsOf(r.findings, "warn");
+    console.log(`\nDone in ${r.seconds}s: ${r.event.complete}/${r.event.matches} matches played, ${bugs.length} kind(s) of bug, ${warns.length} kind(s) of check.`);
+    [...bugs.map(w => ["BUG  ", w]), ...warns.map(w => ["CHECK", w])].forEach(([lvl, w]) =>
+      console.log(`  ${lvl} ${w} (${r.findings.filter(f => f.what === w).length}x)`));
+    console.log("Report: " + r.reportFile);
+    process.exit(bugs.length ? 1 : 0);
+  }
+
+  // ── a sweep: many events, one combined report ───────────────────────────
+  const total = o.runs === Infinity ? "∞" : o.runs;
+  console.log(`NC BLAST simulator sweep: ${total} event(s)${o.mix ? " of mixed sizes" : `, each ${o.players} players / ${o.judges} judges / ${o.rounds} round(s)`}, ${o.parallel} at a time, seeds from ${o.seed}, site ${site.label}`);
+  console.log(`Combined report (updated after every event): ${path.join(outRoot, "sweep.html")}`);
+  console.log(o.runs === Infinity ? "Press Ctrl+C to stop. Events already finished are kept in the report.\n" : "");
+
+  const sweep = { site: site.label, options: { ...o, runs: total }, startedAt: new Date(started).toISOString(), runs: [], seconds: 0 };
+  const seen = new Set();
+  let next = 0, stopping = false;
+  process.on("SIGINT", () => {
+    if (stopping) { console.log("\nStopping now."); process.exit(130); }
+    stopping = true;
+    console.log("\nFinishing the event(s) in progress, then stopping. Press Ctrl+C again to stop at once.");
   });
-  console.log("Report: " + file);
-  process.exit(bugs ? 1 : 0);
+
+  const worker = async () => {
+    while (!stopping && next < o.runs) {
+      const n = ++next;
+      const runSeed = o.seed + n - 1;
+      const dir = path.join(outRoot, `run-${String(n).padStart(3, "0")}-seed-${runSeed}`);
+      let r;
+      try {
+        r = await runEvent(browser, o, site, runSeed, dir, true);
+      } catch (e) {
+        r = { options: { seed: runSeed, ...eventSetup(o, runSeed) }, seconds: 0, event: { complete: 0, matches: 0 }, failures: [{ who: "-", error: String(e && e.message || e) }],
+          findings: [{ level: "bug", who: "-", what: "Simulator could not run this event", detail: String(e && e.message || e).slice(0, 300) }], robots: [], reportFile: null };
+      }
+      const kinds = [...kindsOf(r.findings, "bug"), ...kindsOf(r.findings, "warn")];
+      const fresh = kinds.filter(k => !seen.has(k));
+      kinds.forEach(k => seen.add(k));
+      const battles = r.robots.reduce((a, x) => a + x.matches.reduce((b, m) => b + m.battles, 0), 0);
+      sweep.runs.push({
+        n, seed: runSeed, players: r.options.players, judges: r.options.judges, rounds: r.options.rounds,
+        seconds: r.seconds, complete: r.event.complete, matches: r.event.matches, battles,
+        undos: r.robots.reduce((a, x) => a + x.matches.reduce((b, m) => b + m.undos, 0), 0),
+        refreshes: r.robots.reduce((a, x) => a + (x.refreshes || 0), 0),
+        stuck: r.failures.length, findings: r.findings,
+        report: r.reportFile ? path.relative(outRoot, r.reportFile).split(path.sep).join("/") : null,
+      });
+      sweep.seconds = Math.round((Date.now() - started) / 1000);
+      writeSweep(outRoot, sweep);
+      const bugKinds = kindsOf(r.findings, "bug").length;
+      console.log(`event ${n}${o.runs === Infinity ? "" : "/" + o.runs} · seed ${runSeed} · ${r.options.players}p ${r.options.judges}j ${r.options.rounds}r · ${r.event.complete}/${r.event.matches} matches · ${r.seconds}s · ${bugKinds} bug kind(s)` +
+        (fresh.length ? `\n   NEW: ${fresh.join(" | ")}` : ""));
+    }
+  };
+  await Promise.all(Array.from({ length: o.parallel }, worker));
+  await browser.close(); server.close();
+
+  const matches = sweep.runs.reduce((a, r) => a + r.complete, 0);
+  const battles = sweep.runs.reduce((a, r) => a + r.battles, 0);
+  const allFindings = sweep.runs.flatMap(r => r.findings);
+  const bugs = kindsOf(allFindings, "bug"), warns = kindsOf(allFindings, "warn");
+  console.log(`\nSweep done in ${sweep.seconds}s: ${sweep.runs.length} event(s), ${matches} matches, ${battles} battles, ${bugs.length} kind(s) of bug, ${warns.length} kind(s) of check.`);
+  [...bugs.map(w => ["BUG  ", w]), ...warns.map(w => ["CHECK", w])].forEach(([lvl, w]) =>
+    console.log(`  ${lvl} ${w} (in ${sweep.runs.filter(r => r.findings.some(f => f.what === w)).length} of ${sweep.runs.length} events)`));
+  console.log("Report: " + path.join(outRoot, "sweep.html"));
+  process.exit(bugs.length ? 1 : 0);
 }
 
 main().catch(e => { console.error(e); process.exit(2); });
