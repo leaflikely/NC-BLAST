@@ -46,7 +46,7 @@ th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}th{co
 .ok{color:var(--ok);font-weight:600}.wrap{overflow-x:auto}
 </style></head><body><main>
 <h1>BLAST simulator report</h1>
-<p class="sub">${esc(r.event.name)} · ${r.event.players} players · ${r.robots.length} robot judges · seed ${r.options.seed} · ${esc(r.startedAt.replace("T", " ").slice(0, 19))} UTC · ${r.seconds}s</p>
+<p class="sub">${esc(r.event.name)} · ${r.event.players} players · ${r.robots.length} robot judges · seed ${r.options.seed} · ${esc(r.site || "")} · ${esc(r.startedAt.replace("T", " ").slice(0, 19))} UTC · ${r.seconds}s</p>
 <div class="tiles">
 <div class="tile"><b>${r.event.complete}/${r.event.matches}</b><span>matches played</span></div>
 <div class="tile"><b>${r.event.rounds}</b><span>Swiss rounds</span></div>

@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 // NC BLAST simulator: run a whole fake event with robot judges.
 //
-//   node sim/run.cjs                      32 players, 8 judges, 1 Swiss round
-//   node sim/run.cjs --rounds 3           play 3 Swiss rounds
-//   node sim/run.cjs --seed 42            different (but repeatable) robot choices
-//   node sim/run.cjs --judges 4           fewer judges
-//   node sim/run.cjs --show               watch the browsers (slower)
-//   node sim/run.cjs --site live          test the live site (ncblast.pages.dev) instead of
-//                                         this folder's files; outside calls are still faked
+//   node run.cjs                      32 players, 8 judges, 1 Swiss round
+//   node run.cjs --rounds 3           play 3 Swiss rounds
+//   node run.cjs --seed 42            different (but repeatable) robot choices
+//   node run.cjs --judges 4           fewer judges
+//   node run.cjs --show               watch the browsers (slower)
+//   node run.cjs --site live          test the live site (ncblast.pages.dev)
+//   node run.cjs --site local         test the app files in the folder above this one
 //
-// Nothing is sent anywhere: every request the app makes to Challonge, the Workers or Google
-// Sheets is answered by sim/fake-worker.cjs. A report is written to sim/reports/<time>/.
+// Which site: inside a copy of the NC-BLAST repo it tests those files; in a folder on its own
+// it tests the live site. Either way nothing is sent anywhere: every request the app makes to
+// Challonge, the Workers or Google Sheets is answered by fake-worker.cjs. A report is written
+// to reports/<time>/ next to this file.
 
 const fs = require("fs");
 const path = require("path");
@@ -22,7 +24,7 @@ const { writeReport } = require("./report.cjs");
 
 function args() {
   const a = process.argv.slice(2);
-  const o = { rounds: 1, seed: 1, judges: 8, players: 32, show: false, site: "local", verbose: false, overlay: true, undoRate: 0.05, refreshRate: 0.02 };
+  const o = { rounds: 1, seed: 1, judges: 8, players: 32, show: false, site: "auto", verbose: false, overlay: true, undoRate: 0.05, refreshRate: 0.02 };
   for (let i = 0; i < a.length; i++) {
     const k = a[i].replace(/^--/, "");
     const v = a[i + 1];
@@ -50,25 +52,38 @@ async function main() {
   const ev = makeEvent({ players: o.players, judges: o.judges });
   const fw = new FakeWorker(ev, { rounds: o.rounds });
   const { server, url: localUrl } = await startServer();
-  const baseUrl = o.site === "live" ? "https://ncblast.pages.dev" : localUrl;
+  const hasAppFiles = fs.existsSync(path.join(__dirname, "..", "index.html")) && fs.existsSync(path.join(__dirname, "..", "judge-match.js"));
+  if (o.site === "auto") o.site = hasAppFiles ? "local" : "live";
+  if (o.site === "local" && !hasAppFiles) { console.error("No app files in the folder above this one. Use --site live to test ncblast.pages.dev."); process.exit(2); }
+  const baseUrl = o.site === "local" ? localUrl : o.site === "live" ? "https://ncblast.pages.dev" : o.site.replace(/\/+$/, "");
+  const siteHost = o.site === "local" ? null : new URL(baseUrl).host;
 
+  // Browser: the Chrome already on this computer if there is one, otherwise Playwright's own.
   const launch = { headless: !o.show };
-  const chrome = o.chrome || ["/usr/bin/google-chrome"].find(p => fs.existsSync(p));
-  if (chrome) launch.executablePath = chrome;
-  const browser = await chromium.launch(launch);
+  if (process.env.SIM_CHROME_ARG) launch.args = [process.env.SIM_CHROME_ARG];   // one extra Chrome setting, for testing
+  const chromePath = o.chrome || ["/usr/bin/google-chrome"].find(p => fs.existsSync(p));
+  let browser;
+  if (chromePath) browser = await chromium.launch({ ...launch, executablePath: chromePath });
+  else {
+    try { browser = await chromium.launch({ ...launch, channel: "chrome" }); }
+    catch (_) {
+      try { browser = await chromium.launch(launch); }
+      catch (e) { console.error("No browser found. Install Google Chrome, or run:  npx playwright install chromium"); process.exit(2); }
+    }
+  }
 
-  console.log(`NC BLAST simulator: ${ev.players.length} players, ${ev.judges.length} judges, ${o.rounds} round(s), seed ${o.seed}, site ${o.site === "live" ? baseUrl : "this folder"}`);
+  console.log(`NC BLAST simulator: ${ev.players.length} players, ${ev.judges.length} judges, ${o.rounds} round(s), seed ${o.seed}, site ${o.site === "local" ? "the app files next to this folder" : baseUrl}`);
 
   // Station A streams to channel 1, watched by an OBS-sized overlay window (Wide shape size).
   let overlayDev = null;
   if (o.overlay) {
-    overlayDev = await openDevice(browser, fw, "OBS", { viewport: { width: 1536, height: 194 } });
+    overlayDev = await openDevice(browser, fw, "OBS", { viewport: { width: 1536, height: 194 }, siteHost });
     await overlayDev.page.goto(baseUrl + "/overlay?slot=1", { waitUntil: "domcontentloaded" });
   }
   const robots = [];
   for (let i = 0; i < ev.judges.length; i++) {
     const j = ev.judges[i];
-    const dev = await openDevice(browser, fw, j.station);
+    const dev = await openDevice(browser, fw, j.station, { siteHost });
     robots.push(new RobotJudge(dev, fw, j, {
       seed: o.seed * 1000 + i + 1, verbose: o.verbose, undoRate: o.undoRate, refreshRate: o.refreshRate,
       streamSlot: overlayDev && i === 0 ? 1 : 0, overlayPage: overlayDev && i === 0 ? overlayDev.page : null,
@@ -114,7 +129,7 @@ async function main() {
   Object.entries(fw.unknown).forEach(([k, n]) => fw.find("info", "-", "App called a route the simulator does not know", k + " (" + n + "x)"));
 
   const result = {
-    options: o, startedAt: new Date(started).toISOString(), seconds: Math.round((Date.now() - started) / 1000),
+    options: o, site: o.site === "local" ? "app files next to the sim folder" : baseUrl, startedAt: new Date(started).toISOString(), seconds: Math.round((Date.now() - started) / 1000),
     event: { name: ev.name, slug: ev.slug, players: ev.players.length, rounds: ev.round, matches: ev.matches.length, complete: ev.matches.filter(m => m.state === "complete").length },
     findings: fw.findings, failures,
     robots: robots.map(r => ({ who: r.who, judge: r.judge.bracketName, matches: r.matchesDone, refreshes: r.refreshes || 0, overlayDelays: r.overlayDelays || [] })),

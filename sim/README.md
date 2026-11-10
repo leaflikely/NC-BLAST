@@ -6,34 +6,60 @@ decks, score battles, make the odd mistake, refresh their phones, and submit res
 the same time. Everything they see is checked against the rules, and a report lists anything
 that looked wrong.
 
-Nothing leaves your computer. Every request the app makes to Challonge, the two Workers, or
-Google Sheets is answered by a pretend Worker (`fake-worker.cjs`) from memory. No real bracket,
-spreadsheet, or database is touched.
+No real data is touched. Every request the app makes to Challonge, the two Workers, or Google
+Sheets is answered by a pretend Worker (`fake-worker.cjs`) from memory, so no real bracket,
+spreadsheet, or database ever sees the robots. When testing the live site, the only thing loaded
+from the internet is the app itself (its pages and code files).
 
-## Run it
+## Run it on its own (tests the live site)
 
-One-time setup (needs Node.js 18 or newer):
+You don't need a copy of NC-BLAST. With only the robot files in a folder, the simulator tests the
+live site, ncblast.pages.dev. The app loads from the real site, but its calls to Challonge, the
+Workers and Google Sheets are still all faked.
+
+1. Make a folder anywhere, for example `Documents\blast-sim`.
+2. Put these 7 files from this `sim` folder into it: `run.cjs`, `robot-judge.cjs`, `fake-worker.cjs`,
+   `fake-event.cjs`, `harness.cjs`, `ui.cjs`, `report.cjs`.
+3. In File Explorer, open that folder, click the address bar, type `cmd`, and press Enter.
+4. One-time setup (needs Node.js 18 or newer from nodejs.org; check with `node -v`):
+   ```
+   npm install playwright
+   ```
+   It uses the Google Chrome already on the computer. With no Chrome installed, also run
+   `npx playwright install chromium`.
+5. Run it:
+   ```
+   node run.cjs
+   ```
+
+After that, a run is just steps 3 and 5.
+
+## Run it inside a copy of NC-BLAST (tests those files)
+
+Inside a copy of the repo, the same commands test the files in that copy instead of the live
+site. That's useful for checking a change before it's pushed. From the NC-BLAST folder:
 
 ```
 npm install --no-save playwright
-npx playwright install chromium
+node sim/run.cjs
 ```
 
-Then, from the NC-BLAST folder:
+## Options
 
 ```
-node sim/run.cjs                  one Swiss round: 32 players, 8 judges, 16 matches (about 40 seconds)
-node sim/run.cjs --rounds 5       a full 5-round Swiss day (about 3 minutes)
-node sim/run.cjs --seed 7         different robot choices (same seed = same choices, so a run can be repeated)
-node sim/run.cjs --show           watch the browser windows while it runs
-node sim/run.cjs --site live      test the live site (ncblast.pages.dev) instead of this folder's files
+node run.cjs                  one Swiss round: 32 players, 8 judges, 16 matches (about 40 seconds)
+node run.cjs --rounds 5       a full 5-round Swiss day (about 3 minutes)
+node run.cjs --seed 7         different robot choices (same seed = same choices, so a run can be repeated)
+node run.cjs --show           watch the browser windows while it runs
+node run.cjs --site live      always test ncblast.pages.dev, even inside a copy of the repo
 ```
 
 Other options: `--judges 4`, `--undo-rate 0.1` (how often a robot presses Undo, default 0.05),
 `--refresh-rate 0.05` (how often a robot refreshes mid-match, default 0.02), `--no-overlay`,
 `--verbose` (print every tap), `--chrome <path>` (use a specific Chrome).
 
-The report is written to `sim/reports/<date-time>/report.html` (open it in a browser).
+When it finishes, it prints where the report was saved: `reports\<date-time>\report.html` next to
+the robot files. Open it in a browser.
 `report.json` has the same data for tools. The `reports` folder is not saved to git.
 
 ## What the robots do

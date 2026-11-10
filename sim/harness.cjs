@@ -50,10 +50,15 @@ async function openDevice(browser, fw, who, opts = {}) {
     viewport: opts.viewport || { width: 412, height: 915 },   // a typical phone
     deviceScaleFactor: 1,
     hasTouch: !!opts.touch,
+    serviceWorkers: "block",   // so every request goes through the fake below, never around it
   });
+  const siteHost = opts.siteHost || null;
   const dev = { who, ctx, page: null, errors: [], consoleErrors: [] };
   await ctx.route(OUTSIDE, async route => {
     const r = route.request();
+    // The app's own pages and files (when testing the live site) load normally.
+    // Everything else (Challonge, the Workers, Google Sheets) is answered by the fake.
+    if (siteHost && new URL(r.url()).host === siteHost) return route.continue();
     let ans;
     try {
       ans = fw.handle({ method: r.method(), url: r.url(), body: r.postData(), who });
