@@ -9,8 +9,8 @@
 //   node run.cjs --site live          test the live site (ncblast.pages.dev)
 //   node run.cjs --site local         test the app files in the folder above this one
 //
-// Which site: inside a copy of the NC-BLAST repo it tests those files; in a folder on its own
-// it tests the live site. Either way nothing is sent anywhere: every request the app makes to
+// Which site: as sim/run.cjs inside a copy of the NC-BLAST repo it tests those files; anywhere
+// else it tests the live site. Either way nothing is sent anywhere: every request the app makes to
 // Challonge, the Workers or Google Sheets is answered by fake-worker.cjs. A report is written
 // to reports/<time>/ next to this file.
 
@@ -52,7 +52,9 @@ async function main() {
   const ev = makeEvent({ players: o.players, judges: o.judges });
   const fw = new FakeWorker(ev, { rounds: o.rounds });
   const { server, url: localUrl } = await startServer();
-  const hasAppFiles = fs.existsSync(path.join(__dirname, "..", "index.html")) && fs.existsSync(path.join(__dirname, "..", "judge-match.js"));
+  // Only a real copy of the repo counts: this file inside a folder named "sim", next to the app files.
+  // (A loose folder of robot files tests the live site, even if old BLAST downloads sit nearby.)
+  const hasAppFiles = path.basename(__dirname) === "sim" && fs.existsSync(path.join(__dirname, "..", "index.html")) && fs.existsSync(path.join(__dirname, "..", "judge-match.js"));
   if (o.site === "auto") o.site = hasAppFiles ? "local" : "live";
   if (o.site === "local" && !hasAppFiles) { console.error("No app files in the folder above this one. Use --site live to test ncblast.pages.dev."); process.exit(2); }
   const baseUrl = o.site === "local" ? localUrl : o.site === "live" ? "https://ncblast.pages.dev" : o.site.replace(/\/+$/, "");
