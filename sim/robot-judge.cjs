@@ -543,6 +543,46 @@ RobotJudge.prototype.playMatch = async function () {
       await this.tap(side);
       continue;
     }
+    // Flag 1035: the new Deck order screen. Tap combos in a random order for each player (the 3rd fills in
+    // by itself), sometimes take one back, sometimes fix an order from a check screen, then both players confirm.
+    if (await p.$(".ncbdo")) {
+      await p.waitForTimeout(340);   // the screen ignores a second tap on the same spot within 0.3 s, and new screens for 0.6 s
+      const st = await p.evaluate(() => {
+        const a = document.querySelector(".ncbdo");
+        if (!a) return null;
+        return { stage: a.getAttribute("data-stage"), open: a.querySelectorAll(".bey .badge:not(.on)").length, picked: a.querySelectorAll(".bey .badge.on").length, dock: !!a.querySelector(".dock-btn"), fixing: a.getAttribute("data-stage") === "pick" && !a.querySelector(".tabs") };
+      });
+      if (!st) continue;
+      if (st.stage === "check") {
+        if (!this.current.orderFixed && this.rnd.chance(0.06)) {
+          this.current.orderFixed = true;
+          this.say("player asks to change their order");
+          await ui.tap(p, "Change order", { optional: true, timeout: 1500 });
+          continue;
+        }
+        if (await ui.tap(p, / confirms/, { optional: true, timeout: 1500 })) this.say("order confirmed by its player");
+        continue;
+      }
+      if (st.stage === "cover") { await ui.tap(p, /^Show .+'s order$/, { optional: true, timeout: 1500 }); continue; }
+      if (st.picked === 1 && this.rnd.chance(0.1)) {
+        this.say("takes back the 1st pick");
+        await p.click(".ncbdo .bey:has(.badge.on)", { timeout: 2000 }).catch(() => {});
+        continue;
+      }
+      if (st.open && st.picked < 3) {
+        const els = await p.$$(".ncbdo .bey:has(.badge:not(.on))");
+        if (els.length) { await this.rnd.pick(els).click({ timeout: 2000 }).catch(() => {}); continue; }
+      }
+      if (st.fixing && st.picked === 3) {
+        // Changing an order from the check screen: take back the 1st place, then pick again.
+        await p.click(".ncbdo .bey:has(.badge.on)", { timeout: 2000 }).catch(() => {});
+        continue;
+      }
+      if (st.picked === 3 && st.dock) { this.say("deck order set"); await ui.tap(p, "Check with the players", { optional: true, timeout: 1500 }); continue; }
+      // In the middle of the short pause after the 3rd place fills in: wait, or switch to the player still to do.
+      await p.waitForTimeout(ui.POLL);
+      continue;
+    }
     if (/Set Deck Order/.test(s)) {
       const left = btns.filter(t => t.startsWith("· "));
       if (left.length) { await this.tap(this.rnd.pick(left)); continue; }
@@ -901,7 +941,7 @@ RobotJudge.prototype.handOff = async function (before) {
   this.current.handedOff = true;
   this.handoffs = (this.handoffs || 0) + 1;
   // Can the relief judge keep scoring? If not, recover the way a judge would: Undo back to the deck order.
-  const usable = async () => (await ui.buttons(this.page)).includes("Spin Finish +1") || /Set Deck Order/.test(await this.screen());
+  const usable = async () => (await ui.buttons(this.page)).includes("Spin Finish +1") || /Set Deck Order/.test(await this.screen()) || !!(await this.page.$(".ncbdo"));
   if (!(await ui.until(this.page, usable, 3000))) {
     this.fw.find("bug", this.who, "After a handoff the score pad cannot be used (finish buttons greyed out)", name + ": the relief judge has to Undo back to the deck order to continue, losing this set's battles");
     for (let i = 0; i < 15 && !(await usable()); i++) {

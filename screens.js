@@ -1,4 +1,4 @@
-// NC BLAST screens.js | part 3 of 6 (load order is set in index.html) | last updated: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-22b | split-from-app.js (styles, library manager, event picker, format screen, shuffle and misreport screens, other shared screens; code moved here unchanged)
+// NC BLAST screens.js | part 3 of 6 (load order is set in index.html) | last updated: 2026-11-11a | deck-order-redesign (flag 1035, on by default: new Deck order screen from the teammate mock-up for the first order of a set and every reshuffle - one player at a time with taps only, then each player checks and confirms their own order, with a hidden screen between them; top-bar Undo still undoes the last battle; the old Set Deck Order screen stays as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-22b | split-from-app.js (styles, library manager, event picker, format screen, shuffle and misreport screens, other shared screens; code moved here unchanged)
 /* ═══════════════════════════════════════
    STYLES
 ═══════════════════════════════════════ */
@@ -3359,6 +3359,552 @@ function ComboLabel({
    Timer is a compact countdown in the header (no clock, no pause).
    Expired → non-blocking red banner only. Deck order can be set at any time.
 ═══════════════════════════════════════ */
+// ── FLAG 1035: deck order redesign (one player at a time, then each player checks their own order) ──
+// Ported from a teammate's mock-up (deck-order-redesign.html). Shown instead of the old Set Deck Order
+// screen (first order of a set and every reshuffle). Same props and the same onConfirm hand-back as the
+// old screen, so everything after it (overlay deck order graphic, deck log, timing marks) is unchanged.
+// Ordering is taps only (no dragging). The top-bar Undo is the old one: it undoes the last battle.
+// Taking back a place is done by tapping a numbered combo.
+const NCBDO_CSS = `
+  .ncbdo-wrap {
+    --page: #E6EAF1; --bg: #F4F6FA; --card: #FFFFFF; --ink: #0F172A; --ink-2: #334155; --ink-3: #475569; --muted: #5B6578;
+    --line: #E3E8F0; --line-2: #D5DCE7; --track: #E7EBF2; --night: #0F172A; --edge: #94A3B8; --dash: #64748B; --hover-bg: #EEF1F6;
+    --ready-bg: #DCFCE7; --ready-ink: #166534; --low-bg: #FEF3C7; --low-ink: #92400E; --out-bg: #FEE2E2; --out-ink: #991B1B; --danger: #B91C1C;
+    --font: 'Outfit', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    position: fixed; inset: 0; z-index: 20; overflow: hidden; background: var(--page); color: var(--ink); font-family: var(--font);
+    -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; overscroll-behavior: none;
+  }
+  body.dark .ncbdo-wrap {
+    --page: #0B1120; --bg: #0F172A; --card: #1E293B; --ink: #F1F5F9; --ink-2: #CBD5E1; --ink-3: #B4C0D3; --muted: #94A3B8;
+    --line: #2A3650; --line-2: #3A4762; --track: #0B1120; --night: #020617; --edge: #475569; --dash: #94A3B8; --hover-bg: #334155;
+    --ready-bg: rgba(34, 197, 94, 0.18); --ready-ink: #86EFAC; --low-bg: rgba(245, 158, 11, 0.2); --low-ink: #FCD34D; --out-bg: rgba(239, 68, 68, 0.22); --out-ink: #FCA5A5; --danger: #F87171;
+  }
+
+  .ncbdo button { margin: 0; font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; -webkit-appearance: none; appearance: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .ncbdo button:disabled { cursor: default; }
+  .ncbdo button:active:not(:disabled) { transform: scale(0.985); filter: brightness(0.97); }
+  .ncbdo h1, .ncbdo h2, .ncbdo p { margin: 0; }
+  .ncbdo svg { display: block; flex: none; }
+  .ncbdo :focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+  .ncbdo [hidden] { display: none !important; }
+  .ncbdo .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .ncbdo {
+    --pc: #2563EB; --pc-ink: #1D4ED8; --tint: #EEF4FF;
+    --bar-h: 52px; --gap: 10px; --row-h: 88px; --row-f: 22px; --badge: 56px; --ask-f: 24px;
+    --ck-h: 84px; --name-f: 28px; --dock-h: 62px; --dock-pad: 12px;
+    position: relative; height: 100%; max-width: 480px; margin: 0 auto;
+    padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
+    display: flex; flex-direction: column; overflow: hidden; background: var(--bg);
+  }
+  @media (max-height: 699px) {
+  .ncbdo { --bar-h: 48px; --gap: 8px; --row-h: 76px; --row-f: 20px; --badge: 50px; --ask-f: 22px; --ck-h: 72px; --name-f: 24px; --dock-h: 58px; --dock-pad: 10px; }
+
+  }
+  @media (max-height: 619px) {
+  .ncbdo { --row-h: 64px; --row-f: 19px; --badge: 44px; --ask-f: 20px; --ck-h: 60px; --name-f: 20px; --dock-h: 54px; --dock-pad: 8px; }
+
+  }
+  .ncbdo[data-stage="cover"] { background: var(--night); }
+  .ncbdo .top { flex: none; }
+  .ncbdo .main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .ncbdo .bar { height: calc(var(--bar-h) + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 6px 0 2px; display: flex; align-items: center; gap: 4px; background: var(--card); border-bottom: 1px solid var(--line); }
+  .ncbdo .icon-btn { width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; padding: 0; border: none; border-radius: 10px; background: transparent; color: var(--ink-2); }
+  .ncbdo .titles { flex: 1 1 auto; min-width: 0; }
+  .ncbdo .bar-title { font-size: 18px; line-height: 22px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdo .bar-sub { font-size: 12px; line-height: 15px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdo .pill { flex: none; margin-right: 4px; padding: 4px 10px; border-radius: 999px; background: var(--track); color: var(--ink-2); font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .ncbdo .timer { flex: none; display: flex; align-items: center; gap: 5px; margin-right: 4px; padding: 5px 10px; border-radius: 999px; background: var(--ready-bg); color: var(--ready-ink); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .ncbdo .timer.low { background: var(--low-bg); color: var(--low-ink); }
+  .ncbdo .timer.out { background: var(--out-bg); color: var(--out-ink); }
+  .ncbdo .bar-btn { height: 40px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-size: 15px; font-weight: 600; }
+  .ncbdo .bar-btn:disabled { color: var(--edge); }
+  .ncbdo .score { flex: none; margin: 8px 12px 0; padding: 7px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); font-size: 13px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
+  .ncbdo .score span { display: flex; align-items: baseline; gap: 5px; }
+  .ncbdo .score b { font-size: 16px; font-weight: 800; }
+  .ncbdo .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 0 12px 12px; }
+  .ncbdo .tabs { display: grid; grid-template-columns: minmax(0, auto) minmax(0, auto); gap: 4px; margin-top: 8px; padding: 4px; border-radius: 14px; background: var(--track); }
+  .ncbdo .tab { min-width: 0; height: 40px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; border: none; border-radius: 10px; background: transparent; color: var(--ink-3); font-size: 15px; font-weight: 700; }
+  .ncbdo .tab.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); }
+  .ncbdo .tab-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; }
+  .ncbdo .tab-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdo .tab-count { flex: none; padding: 1px 8px; border-radius: 999px; background: var(--line-2); color: var(--ink-2); font-size: 12px; font-weight: 700; }
+  .ncbdo .tab.on .tab-count { background: var(--track); }
+  .ncbdo .tab .tab-count.ready { background: var(--ready-bg); color: var(--ready-ink); }
+  .ncbdo .banner { margin-top: 10px; padding: 12px 16px; border-radius: 16px; background: var(--tint); border: 2px solid var(--pc); }
+  .ncbdo .who { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 16px; font-weight: 800; color: var(--pc-ink); }
+  .ncbdo .who span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ncbdo .dot { width: 12px; height: 12px; flex: none; border-radius: 50%; background: var(--pc); }
+  .ncbdo .ask { margin-top: 4px; font-size: var(--ask-f); line-height: 1.2; font-weight: 800; }
+  .ncbdo .ask:focus, .ncbdo .ck-name:focus, .ncbdo .cover-title:focus, .ncbdo .card-title:focus { outline: none; }
+  .ncbdo .ask-sub { margin-top: 2px; font-size: 15px; color: var(--ink-2); }
+  .ncbdo .beys { display: flex; flex-direction: column; gap: var(--gap); margin-top: 12px; }
+  .ncbdo .bey { min-height: var(--row-h); display: flex; align-items: center; gap: 12px; padding: 6px 14px 6px 18px; border-radius: 16px; border: 2px solid var(--edge); background: var(--card); color: var(--ink); text-align: left; }
+  .ncbdo .bey-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .ncbdo .bey-name { font-size: var(--row-f); line-height: 1.2; font-weight: 700; overflow-wrap: anywhere; }
+  .ncbdo .bey-sub { font-size: 15px; font-weight: 500; color: var(--ink-2); }
+  .ncbdo .badge { width: var(--badge); height: var(--badge); flex: none; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px dashed var(--dash); background: var(--card); color: var(--ink-2); font-size: 16px; font-weight: 700; }
+  .ncbdo .badge.on { border: none; background: var(--pc); color: #FFFFFF; font-size: 19px; font-weight: 800; }
+  .ncbdo .ck-banner { margin-top: 10px; padding: 14px 16px; border-radius: 16px; background: var(--tint); border: 2px solid var(--pc); }
+  .ncbdo .ck-who { display: flex; align-items: center; gap: 10px; }
+  .ncbdo .ck-who .dot { width: 14px; height: 14px; }
+  .ncbdo .ck-name { min-width: 0; font-size: var(--name-f); line-height: 1.15; font-weight: 800; overflow-wrap: anywhere; }
+  .ncbdo .ck-q { margin-top: 4px; font-size: 16px; color: var(--ink-2); }
+  .ncbdo .ck-card { min-height: var(--ck-h); display: flex; align-items: center; gap: 14px; padding: 6px 16px 6px 12px; border-radius: 16px; border: 2px solid var(--edge); background: var(--card); }
+  .ncbdo .fixrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; font-size: 15px; color: var(--ink-2); }
+  .ncbdo .outline-btn { height: 46px; flex: none; padding: 0 18px; border-radius: 12px; border: 1.5px solid var(--pc-ink); background: var(--card); color: var(--pc-ink); font-size: 15px; font-weight: 700; }
+  .ncbdo .cover { padding: min(64px, 8vh) 8px 0; display: flex; flex-direction: column; align-items: center; text-align: center; color: #FFFFFF; }
+  .ncbdo .cover-eye { width: 76px; height: 76px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #1E293B; color: #E2E8F0; }
+  .ncbdo .cover-title { margin-top: 22px; max-width: 100%; font-size: 30px; line-height: 1.2; font-weight: 800; overflow-wrap: anywhere; }
+  .ncbdo .cover-text { margin-top: 10px; font-size: 18px; line-height: 1.4; color: #E2E8F0; }
+  .ncbdo .cover-done { margin-top: 24px; max-width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: #1E293B; color: #BBF7D0; font-size: 15px; font-weight: 600; }
+  .ncbdo .cover-done span { min-width: 0; overflow-wrap: anywhere; }
+  .ncbdo[data-stage="cover"] :focus-visible { outline-color: #FFFFFF; }
+  .ncbdo .card { margin-top: min(48px, 6vh); padding: 28px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; border-radius: 16px; background: var(--card); border: 1px solid var(--line); }
+  .ncbdo .ok-ring { width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #DCFCE7; color: #15803D; }
+  .ncbdo .card-title { margin-top: 16px; font-size: 22px; font-weight: 700; }
+  .ncbdo .card-text { margin-top: 6px; font-size: 15px; line-height: 1.45; color: var(--ink-2); }
+  .ncbdo .card-btn { margin-top: 18px; width: 100%; height: 48px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-size: 16px; font-weight: 700; }
+  .ncbdo .card-note { margin-top: 8px; font-size: 13px; line-height: 1.4; color: var(--ink-3); }
+  .ncbdo .toast-slot { flex: none; position: relative; height: 0; }
+  .ncbdo .notice { position: absolute; left: 0; right: 0; bottom: 0; margin: 0 12px 12px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; border-radius: 14px; background: var(--night); color: #FFFFFF; font-size: 15px; line-height: 1.3; font-weight: 600; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25); }
+  .ncbdo .notice svg { color: #4ADE80; }
+  .ncbdo .notice.info svg { color: #93C5FD; }
+  .ncbdo[data-stage="cover"] .notice { background: #1E293B; }
+  .ncbdo .dock { flex: none; display: flex; flex-direction: column; gap: 10px; padding: var(--dock-pad) 12px calc(var(--dock-pad) + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--line); }
+  .ncbdo[data-stage="cover"] .dock { background: var(--night); border-top-color: var(--night); }
+  .ncbdo .dock-btn { width: 100%; min-height: var(--dock-h); display: flex; align-items: center; justify-content: center; gap: 10px; padding: 6px 18px; border: none; border-radius: 14px; background: var(--night); color: #FFFFFF; font-size: 19px; line-height: 1.2; font-weight: 700; text-align: left; }
+  .ncbdo .dock-btn span { min-width: 0; overflow-wrap: anywhere; }
+  .ncbdo .dock-btn.confirm { justify-content: space-between; background: var(--pc); }
+  .ncbdo .confirm-text { display: flex; flex-direction: column; min-width: 0; }
+  .ncbdo .confirm-title { display: flex; max-width: 100%; white-space: pre; }
+  .ncbdo .confirm-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .ncbdo .confirm-verb { flex: none; }
+  .ncbdo .confirm-sub { font-size: 13px; line-height: 1.35; font-weight: 500; }
+  .ncbdo .menu-backdrop { position: fixed; inset: 0; z-index: 5; cursor: pointer; }
+  .ncbdo .menu { position: absolute; top: calc(env(safe-area-inset-top) + var(--bar-h) - 2px); right: 8px; z-index: 6; width: 264px; max-width: calc(100% - 16px); padding: 6px; display: flex; flex-direction: column; border-radius: 14px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18); }
+  .ncbdo .menu-item { min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 6px 12px; border: none; border-radius: 10px; background: transparent; color: var(--ink); font-size: 15px; line-height: 1.25; font-weight: 600; text-align: left; }
+  .ncbdo .menu-item.danger { color: var(--danger); }
+  .ncbdo .mi-text { flex: 1 1 auto; min-width: 0; }
+  .ncbdo .switch { position: relative; width: 36px; height: 22px; flex: none; border-radius: 999px; background: #94A3B8; }
+  .ncbdo .switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #FFFFFF; }
+  .ncbdo .switch.on { background: #15803D; }
+  .ncbdo .switch.on::after { left: 16px; }
+  @media (hover: hover) {
+  .ncbdo .menu-item:hover, .ncbdo .icon-btn:hover { background: var(--hover-bg); }
+
+  }
+  @media (max-width: 379px) {
+  .ncbdo .timer svg { display: none; }
+
+  }
+  @media (max-width: 359px) {
+  .ncbdo .bar { gap: 2px; }
+  .ncbdo .bar-title { font-size: 16px; line-height: 20px; }
+  .ncbdo .bar-btn .t { display: none; }
+  .ncbdo .bar-btn { padding: 0 10px; }
+  .ncbdo .tab { gap: 5px; padding: 0 6px; font-size: 14px; }
+
+  }
+  @media (prefers-reduced-motion: no-preference) {
+  .ncbdo button { transition: transform 0.06s ease-out; }
+  .ncbdo .notice { animation: ncbdoRise 0.18s ease-out both; }
+  .ncbdo .dock-btn { animation: ncbdoArm var(--arm, 600ms) ease-out both; }
+
+  }
+  @keyframes ncbdoRise {
+ from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } 
+  }
+  @keyframes ncbdoArm {
+ from { opacity: 0.45; } to { opacity: 1; } 
+  }
+`;
+function ncbdoEnsureCss() {
+  try {
+    if (document.getElementById("ncbdo-css")) return;
+    const st = document.createElement("style");
+    st.id = "ncbdo-css";
+    st.textContent = NCBDO_CSS;
+    document.head.appendChild(st);
+  } catch (e) {}
+}
+const NCBDO_COLORS = {
+  light: [
+    { color: "#2563EB", ink: "#1D4ED8", tint: "#EEF4FF" },
+    { color: "#DC2626", ink: "#B91C1C", tint: "#FEF2F2" }
+  ],
+  dark: [
+    { color: "#3B82F6", ink: "#93C5FD", tint: "rgba(59, 130, 246, 0.16)" },
+    { color: "#EF4444", ink: "#FCA5A5", tint: "rgba(239, 68, 68, 0.16)" }
+  ]
+};
+const NCBDO_ICONS = {
+  back: '<path d="M15 18l-6-6 6-6"/>',
+  undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  dots: '<path d="M12 5h.01"/><path d="M12 12h.01"/><path d="M12 19h.01"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  check: '<path d="M20 6L9 17l-5-5"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/>',
+  restart: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+  flag: '<path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'
+};
+function ncbdoIcon(name, size, stroke) {
+  return React.createElement("svg", {
+    width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: stroke,
+    strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true",
+    dangerouslySetInnerHTML: { __html: NCBDO_ICONS[name] }
+  });
+}
+const NCBDO_CFG = {
+  timerSeconds: 60,   // reshuffle countdown, same as the old screen (shown only when showTimer)
+  tapGuardMs: 300,    // a second tap on the same spot inside this window is ignored
+  stageGuardMs: 600,  // a new screen ignores taps for this long, so a double tap cannot carry over
+  beatMs: 600,        // how long 1st, 2nd and 3rd stay on screen before it moves on
+  noticeMs: 3200,
+  hideKey: "ncblast.deckHideBetween" // same device setting as the new deck builder: blank screen between players
+};
+const NCBDO_ORD = ["1st", "2nd", "3rd"];
+function ncbdoReadHide() {
+  try { return localStorage.getItem(NCBDO_CFG.hideKey) !== "0"; } catch (e) { return true; }
+}
+
+function DeckOrderV2(props) {
+  const h = React.createElement;
+  const { p1, p2, d1, d2, setD1, setD2, sets, pts, curSet, shuf, config, swapped, showTimer } = props;
+  ncbdoEnsureCss();
+  const dark = !!props.dark;
+  const pal = NCBDO_COLORS[dark ? "dark" : "light"];
+  // Index 0 is always player 1 (blue), 1 is player 2 (red). Tabs follow the table sides, like the old top/bottom.
+  const P = [p1, p2].map((n, i) => Object.assign({ name: String(n || "Player " + (i + 1)) }, pal[i]));
+  const decks = [d1 || [], d2 || []];
+  const tabOrder = swapped ? [1, 0] : [0, 1];
+  const other = i => (i === 0 ? 1 : 0);
+
+  /* ---------- State ----------
+     stage : 'pick'  the judge enters the orders (tabs switch player)
+             'check' one player looks at their own order and confirms it
+             'cover' both orders hidden while the phone goes to the other player
+     order : per player, the indexes of their combos in play order
+     ck    : the check in progress, { order: [first, second], i }
+     fixing: an order is being changed from a check screen (no tabs, Back cancels) */
+  const [S, setS] = useState(() => ({
+    who: tabOrder[0],
+    // Coming back from an undo: the previous order is already in d1/d2, so both start as 1st, 2nd, 3rd (same as the old screen).
+    order: props.presetOrder ? [[0, 1, 2], [0, 1, 2]] : [[], []],
+    stage: "pick", ck: null, fixing: false, fixSnap: null
+  }));
+  const [busy, setBusy] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [hide, setHide] = useState(ncbdoReadHide);
+  const [notice, setNotice] = useState(null);
+  const noticeId = useRef(0);
+  const SRef = useRef(S);
+  SRef.current = S;
+  const bothSet = st => st.order[0].length === 3 && st.order[1].length === 3;
+  const stageKey = S.stage + (S.ck ? ":" + S.ck.i : "") + (S.fixing ? ":fix" : "");
+  const stageRef = useRef({ key: "", at: performance.now() });
+  if (stageRef.current.key !== stageKey) stageRef.current = { key: stageKey, at: performance.now() };
+
+  function notify(text, kind) {
+    const id = ++noticeId.current;
+    setNotice({ text, kind: kind || "ok", id });
+    setTimeout(() => setNotice(n => (n && n.id === id ? null : n)), NCBDO_CFG.noticeMs);
+  }
+  function clearNotice() { noticeId.current++; setNotice(null); }
+  function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* not supported (iPhone) */ } }
+
+  /* ---------- Actions ---------- */
+  // Tap a combo. An open one takes the next place; after two, the last one fills in by itself.
+  // A numbered one is taken back, along with any place after it.
+  function tapBey(ci) {
+    if (busy || S.stage !== "pick") return;
+    const pi = S.who, at = S.order[pi].indexOf(ci);
+    let mine = S.order[pi].slice();
+    if (at >= 0) {
+      mine = mine.slice(0, mine.length === 3 ? Math.min(at, 1) : at);
+    } else {
+      mine.push(ci);
+      if (mine.length === 2) mine.push([0, 1, 2].find(i => !mine.includes(i)));
+    }
+    const order = S.order.slice();
+    order[pi] = mine;
+    setS(Object.assign({}, S, { order }));
+    clearNotice();
+    buzz(8);
+    // A short beat shows 1st, 2nd and 3rd before the screen moves on. Taps are ignored during it.
+    if (mine.length === 3) { setBusy(true); setTimeout(advance, NCBDO_CFG.beatMs); }
+  }
+  // After the beat: the other player's turn, or the check once both orders are set.
+  // The check starts with the player whose order is already on screen.
+  function advance() {
+    setBusy(false);
+    const st = SRef.current, pi = st.who, o = other(pi);
+    if (st.stage !== "pick" || st.order[pi].length !== 3) return;
+    if (st.fixing) setS(Object.assign({}, st, { stage: "check", fixing: false, fixSnap: null }));
+    else if (st.order[o].length === 3) setS(Object.assign({}, st, { stage: "check", ck: { order: [pi, o], i: 0 } }));
+    else { setS(Object.assign({}, st, { who: o })); notify(`${P[pi].name}'s order is set. Now ${P[o].name}'s.`, "ok"); }
+  }
+  function switchPlayer(i) {
+    if (busy || S.stage !== "pick" || S.fixing || S.who === i) return;
+    setS(Object.assign({}, S, { who: i }));
+    clearNotice();
+  }
+  function startCheck() {
+    if (busy || S.stage !== "pick" || S.fixing || !bothSet(S)) return;
+    setS(Object.assign({}, S, { stage: "check", ck: { order: [S.who, other(S.who)], i: 0 } }));
+    clearNotice();
+  }
+  // Both players confirmed: same steps as the old Start Match button.
+  function finish() {
+    const nd = [0, 1].map(pi => S.order[pi].map(ci => decks[pi][ci]));
+    setD1(nd[0]);
+    setD2(nd[1]);
+    props.onConfirm({ p1Deck: nd[0], p2Deck: nd[1] });
+  }
+  // The player on screen confirms their own order. The second confirm starts the match.
+  function confirmOrder() {
+    if (S.stage !== "check") return;
+    const ck = S.ck;
+    buzz(15);
+    setMenu(false);
+    if (ck.i === 1) { finish(); return; }
+    if (hide) setS(Object.assign({}, S, { stage: "cover" }));
+    else setS(Object.assign({}, S, { ck: { order: ck.order, i: 1 } }));
+  }
+  function showOrder() {
+    if (S.stage !== "cover") return;
+    setMenu(false);
+    setS(Object.assign({}, S, { stage: "check", ck: { order: S.ck.order, i: 1 } }));
+  }
+  // From a check: change that player's order. Only their screen opens, with no tabs,
+  // and it returns to the same check when the order is complete again.
+  function changeOrder() {
+    if (S.stage !== "check") return;
+    setS(Object.assign({}, S, { who: S.ck.order[S.ck.i], stage: "pick", fixing: true, fixSnap: S.order }));
+    clearNotice();
+  }
+  // Back walks the check in reverse, through the hidden screen, so an order never shows by surprise.
+  function back() {
+    if (busy) return;
+    const ck = S.ck;
+    setMenu(false);
+    if (S.stage === "pick") {
+      if (!S.fixing) return;
+      setS(Object.assign({}, S, { order: S.fixSnap, fixSnap: null, fixing: false, stage: "check" })); // Back cancels the change
+      return;
+    }
+    if (S.stage === "cover") setS(Object.assign({}, S, { stage: "check", ck: { order: ck.order, i: 0 } }));
+    else if (ck.i === 1 && hide) setS(Object.assign({}, S, { stage: "cover", ck: { order: ck.order, i: 0 } }));
+    else if (ck.i === 1) setS(Object.assign({}, S, { ck: { order: ck.order, i: 0 } }));
+    else setS(Object.assign({}, S, { stage: "pick", who: ck.order[0], ck: null }));
+  }
+  function startOver() {
+    setBusy(false);
+    setMenu(false);
+    setS({ who: tabOrder[0], order: [[], []], stage: "pick", ck: null, fixing: false, fixSnap: null });
+    notify("Both orders cleared.", "info");
+  }
+  function toggleHide() {
+    const v = !hide;
+    setHide(v);
+    try { localStorage.setItem(NCBDO_CFG.hideKey, v ? "1" : "0"); } catch (e) {}
+  }
+
+  /* ---------- Taps ---------- */
+  // These wait a moment after a new screen appears, so a double tap on one screen cannot
+  // confirm, reveal or change anything on the next.
+  const WAITS = { back: 1, bey: 1, "start-check": 1, confirm: 1, show: 1, change: 1 };
+  const tapRef = useRef({ t: 0, x: 0, y: 0 });
+  function tap(action, fn) {
+    return e => {
+      const now = performance.now(), byKeyboard = e.detail === 0;
+      if (!byKeyboard) {
+        const L = tapRef.current;
+        const again = now - L.t < NCBDO_CFG.tapGuardMs && Math.hypot(e.clientX - L.x, e.clientY - L.y) < 40;
+        L.t = now; L.x = e.clientX; L.y = e.clientY;
+        if (again) return;
+      }
+      if (WAITS[action] && now - stageRef.current.at < NCBDO_CFG.stageGuardMs) return;
+      fn();
+    };
+  }
+
+  /* ---------- Timer (reshuffles only, like the old screen) ---------- */
+  const [timerEnd] = useState(() => Date.now() + NCBDO_CFG.timerSeconds * 1000);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!showTimer) return undefined;
+    const t = setInterval(() => setTick(x => x + 1), 500);
+    return () => clearInterval(t);
+  }, [showTimer]);
+  const left = Math.max(0, Math.ceil((timerEnd - Date.now()) / 1000));
+
+  /* ---------- Menu keys ---------- */
+  const menuRef = useRef(null);
+  useEffect(() => {
+    if (!menu) return undefined;
+    const onKey = e => {
+      if (e.key === "Escape") setMenu(false);
+      else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        const items = menuRef.current ? [...menuRef.current.querySelectorAll("button")] : [];
+        const at = items.indexOf(document.activeElement);
+        const next = items[(at + (e.key === "ArrowDown" ? 1 : items.length - 1) + items.length) % items.length];
+        if (next) { e.preventDefault(); next.focus(); }
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
+  const bodyRef = useRef(null);
+  React.useLayoutEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = 0; }, [stageKey]);
+
+  /* ---------- View ---------- */
+  const ck = S.ck;
+  const who = S.stage === "check" ? ck.order[ck.i] : (S.stage === "cover" ? ck.order[1] : S.who); // whose colours are on screen
+  const pl = P[who];
+  const subOf = c => [c && c.ratchet, c && c.bit].filter(Boolean).join(" · ");
+  const paint = c => {
+    const col = c && c.blade && typeof BLADE_COLORS === "object" ? BLADE_COLORS[c.blade] : "";
+    return col ? { borderColor: col, background: col + "18" } : undefined;
+  };
+
+  function barEl() {
+    const entering = S.stage === "pick" && !S.fixing;
+    let backLabel = "Back, both orders stay hidden";
+    if (S.stage === "pick") backLabel = "Cancel the change and go back to the check";
+    else if (S.stage === "check" && ck.i === 0) backLabel = "Back to entering the orders";
+    const t = Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0");
+    return [
+      // The first screen has no Back (the old screen had none either): leaving it is Undo or Start.
+      entering ? h("span", { key: "sp", style: { width: 10, flex: "none" } }) :
+        h("button", { key: "b", className: "icon-btn", type: "button", "aria-label": backLabel, onClick: tap("back", back) }, ncbdoIcon("back", 22, 2.2)),
+      h("div", { key: "t", className: "titles" },
+        h("h1", { className: "bar-title" }, "Deck order"),
+        h("div", { className: "bar-sub" }, `Set ${curSet} · Shuffle ${shuf}`)),
+      S.stage === "check" ? h("span", { key: "p", className: "pill" }, `${ck.i + 1} of 2`) : null,
+      showTimer ? h("span", { key: "tm", className: "timer" + (left === 0 ? " out" : (left <= 10 ? " low" : "")), "aria-label": left === 0 ? "Time's up" : `${left} seconds left` },
+        ncbdoIcon("clock", 15, 2.4), left === 0 ? "Time's up" : t) : null,
+      entering ? (props.canUndo ? h("button", { key: "u", className: "bar-btn", type: "button", "aria-label": "Undo last battle", onClick: tap("undo", () => props.onUndo()) }, ncbdoIcon("undo", 18, 2), h("span", { className: "t" }, "Undo")) : null)
+        : (S.stage === "pick" ? h("button", { key: "c", className: "bar-btn", type: "button", onClick: tap("back", back) }, "Cancel") : null),
+      h("button", { key: "m", className: "icon-btn", type: "button", "aria-label": "More options", "aria-haspopup": "menu", "aria-expanded": menu, onClick: tap("menu", () => setMenu(!menu)) }, ncbdoIcon("dots", 22, 2.6))
+    ];
+  }
+  function scoreEl() {
+    const bo3 = config && config.bo > 1;
+    const target = config && config.pts > 0 ? config.pts : "∞";
+    const pair = v => [h("b", { key: "a", style: { color: P[tabOrder[0]].ink } }, v[tabOrder[0]]), ":", h("b", { key: "b", style: { color: P[tabOrder[1]].ink } }, v[tabOrder[1]])];
+    return [
+      bo3 ? h("span", { key: "s" }, "Sets ", pair(sets || [0, 0])) : null,
+      h("span", { key: "p" }, "Points ", pair(pts || [0, 0])),
+      h("span", { key: "f" }, "First to ", target)
+    ];
+  }
+  function pickBody() {
+    const pi = S.who, mine = S.order[pi], n = mine.length, next = NCBDO_ORD[n] || "";
+    const out = [];
+    if (!S.fixing) {
+      out.push(h("div", { key: "tabs", className: "tabs", role: "group", "aria-label": "Whose order" }, tabOrder.map(i => {
+        const k = S.order[i].length, on = i === pi;
+        return h("button", { key: i, className: "tab" + (on ? " on" : ""), type: "button", "aria-pressed": on, onClick: tap("tab", () => switchPlayer(i)) },
+          h("span", { className: "tab-dot", style: { background: P[i].color } }),
+          h("span", { className: "tab-name" }, P[i].name),
+          h("span", { className: "tab-count" + (k === 3 ? " ready" : "") }, k === 3 ? "Ready" : k + "/3"));
+      })));
+    }
+    const ask = n === 0 ? "Tap the bey that goes 1st" : (n === 1 ? "Now tap the 2nd" : "Order set");
+    const sub = n === 0 ? "It plays the first battle." : (n === 1 ? "The last one fills in by itself." : "Tap a numbered bey to take it back.");
+    out.push(h("div", { key: "ban", className: "banner" },
+      h("div", { className: "who" }, h("span", { className: "dot" }), h("span", null, P[pi].name)),
+      h("h2", { className: "ask" }, ask),
+      h("p", { className: "ask-sub" }, sub)));
+    out.push(h("div", { key: "beys", className: "beys" }, decks[pi].map((c, ci) => {
+      const at = mine.indexOf(ci), picked = at >= 0;
+      return h("button", { key: ci, className: "bey", type: "button", style: paint(c), onClick: tap("bey", () => tapBey(ci)) },
+        h("span", { className: "bey-text" }, h("span", { className: "bey-name" }, c && c.blade || "?"), h("span", { className: "bey-sub" }, subOf(c))),
+        picked ? h("span", { className: "badge on" }, NCBDO_ORD[at]) : h("span", { className: "badge" }, next + "?"),
+        picked ? h("span", { className: "sr-only" }, ". Tap to take it back") : null);
+    })));
+    return out;
+  }
+  // One player's combos in play order, for that player to check. Nothing of the other player is here.
+  function checkBody(pi) {
+    return [
+      h("div", { key: "ban", className: "ck-banner" },
+        h("div", { className: "ck-who" }, h("span", { className: "dot" }), h("h2", { className: "ck-name" }, P[pi].name)),
+        h("p", { className: "ck-q" }, "Is this your order?")),
+      h("div", { key: "beys", className: "beys" }, S.order[pi].map((ci, k) => {
+        const c = decks[pi][ci];
+        return h("div", { key: k, className: "ck-card", style: paint(c) },
+          h("span", { className: "badge on" }, NCBDO_ORD[k]),
+          h("span", { className: "bey-text" }, h("span", { className: "bey-name" }, c && c.blade || "?"), h("span", { className: "bey-sub" }, subOf(c))));
+      })),
+      h("div", { key: "fix", className: "fixrow" }, h("span", null, "Something wrong?"),
+        h("button", { className: "outline-btn", type: "button", onClick: tap("change", changeOrder) }, "Change order"))
+    ];
+  }
+  function coverBody() {
+    return h("div", { className: "cover" },
+      h("span", { className: "cover-eye" }, ncbdoIcon("eyeOff", 36, 2)),
+      h("h2", { className: "cover-title" }, `Next: ${P[ck.order[1]].name}`),
+      h("p", { className: "cover-text" }, "Both orders are hidden. Turn the screen to them, then tap the button."),
+      h("div", { className: "cover-done" }, ncbdoIcon("check", 16, 2.8), h("span", null, `${P[ck.order[0]].name} confirmed`)));
+  }
+  function dockEl() {
+    if (S.stage === "pick") {
+      return !busy && !S.fixing && bothSet(S) ? h("button", { key: "sc" + stageKey, className: "dock-btn", type: "button", onClick: tap("start-check", startCheck) }, "Check with the players") : null;
+    }
+    if (S.stage === "check") {
+      const pi = ck.order[ck.i], o = other(pi);
+      const sub = ck.i === 1 ? "Both players checked. Starts the match" : (hide ? `Hides this order, then ${P[o].name} checks` : `Next: ${P[o].name} checks`);
+      return h("button", { key: "c" + stageKey, className: "dock-btn confirm", type: "button", onClick: tap("confirm", confirmOrder) },
+        h("span", { className: "confirm-text" },
+          h("span", { className: "confirm-title" }, h("span", { className: "confirm-name" }, P[pi].name), h("span", { className: "confirm-verb" }, " confirms")),
+          h("span", { className: "confirm-sub" }, sub)),
+        ncbdoIcon("check", 24, 2.6));
+    }
+    const nx = ck.order[1];
+    return h("button", { key: "s" + stageKey, className: "dock-btn", type: "button", style: { background: P[nx].color }, onClick: tap("show", showOrder) },
+      ncbdoIcon("eye", 22, 2.2), h("span", null, `Show ${P[nx].name}'s order`));
+  }
+  function menuItems() {
+    const items = [
+      h("button", { key: "so", className: "menu-item danger", type: "button", role: "menuitem", onClick: tap("start-over", startOver) }, ncbdoIcon("restart", 18, 2), h("span", { className: "mi-text" }, "Start over")),
+      h("button", { key: "hd", className: "menu-item", type: "button", role: "menuitemcheckbox", "aria-checked": hide, onClick: tap("toggle-hide", toggleHide) },
+        ncbdoIcon("eyeOff", 18, 2), h("span", { className: "mi-text" }, "Hide orders between players"), h("span", { className: "switch" + (hide ? " on" : ""), "aria-hidden": "true" }))
+    ];
+    if (props.toggleDark) items.push(h("button", { key: "dk", className: "menu-item", type: "button", role: "menuitemcheckbox", "aria-checked": dark, onClick: tap("dark", () => props.toggleDark()) },
+      ncbdoIcon("moon", 18, 2), h("span", { className: "mi-text" }, "Dark mode"), h("span", { className: "switch" + (dark ? " on" : ""), "aria-hidden": "true" })));
+    items.push(h("button", { key: "rp", className: "menu-item", type: "button", role: "menuitem", onClick: tap("report", () => { setMenu(false); if (window.__ncbOpenBugReport) window.__ncbOpenBugReport(); }) }, ncbdoIcon("flag", 18, 2), h("span", { className: "mi-text" }, "Report a problem")));
+    return items;
+  }
+
+  const body = S.stage === "check" ? checkBody(who) : (S.stage === "cover" ? coverBody() : pickBody());
+  const dock = dockEl();
+  let say = "";
+  if (S.stage === "check") say = `${pl.name}, is this your order?`;
+  else if (S.stage === "cover") say = `Both orders are hidden. Next: ${pl.name}.`;
+  else say = `${pl.name}: ${S.order[S.who].length === 3 ? "order set" : "tap the bey that goes " + NCBDO_ORD[S.order[S.who].length]}`;
+  const appStyle = { "--pc": pl.color, "--pc-ink": pl.ink, "--tint": pl.tint, "--arm": NCBDO_CFG.stageGuardMs + "ms" };
+  return h("div", { className: "ncbdo-wrap" },
+    typeof BugReportInlineButton === "function" ? h(BugReportInlineButton, { hidden: true }) : null, // hides the floating ? (Report a problem is in the menu)
+    h("div", { className: "ncbdo", "data-stage": S.stage, style: appStyle },
+      h("header", { className: "top" },
+        h("div", { className: "bar" }, barEl()),
+        menu ? h("div", { className: "menu-backdrop", onClick: tap("menu-close", () => setMenu(false)) }) : null,
+        menu ? h("div", { className: "menu", ref: menuRef, role: "menu", "aria-label": "More options" }, menuItems()) : null),
+      h("main", { className: "main" },
+        h("div", { className: "score" }, scoreEl()),
+        h("div", { className: "body", ref: bodyRef }, body),
+        h("div", { className: "toast-slot" },
+          notice ? h("div", { key: notice.id, className: "notice" + (notice.kind === "info" ? " info" : ""), role: "status" },
+            ncbdoIcon(notice.kind === "info" ? "info" : "check", 18, notice.kind === "info" ? 2.2 : 2.8), h("span", null, notice.text)) : null)),
+      dock ? h("footer", { className: "dock" }, dock) : null,
+      h("div", { className: "sr-only", "aria-live": "polite" }, say)));
+}
+
+
 function ShuffleOrderScreen({
   showTimer,
   onConfirm,
