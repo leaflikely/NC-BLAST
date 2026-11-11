@@ -1,4 +1,4 @@
-// NC BLAST screens.js | part 3 of 6 (load order is set in index.html) | last updated: 2026-11-11d | deck-order-fit (flag 1035: when both decks and the two buttons do not fit, the screen tightens its sizes in up to two steps so nothing needs scrolling) | previous: 2026-11-11c | deck-order-two-buttons (flag 1035: once both orders are set the screen stays and shows Check With Players (the one-by-one check) and Looks good, start battles. (starts the shuffle right away, no check)) | previous: 2026-11-11b | deck-order-both-decks (flag 1035: both players' decks on one screen, each in its own blue or red box with the name and what to tap next; the player tabs are gone; the check still goes one player at a time, top player first) | previous: 2026-11-11a | deck-order-redesign (flag 1035, on by default: new Deck order screen from the teammate mock-up for the first order of a set and every reshuffle - one player at a time with taps only, then each player checks and confirms their own order, with a hidden screen between them; top-bar Undo still undoes the last battle; the old Set Deck Order screen stays as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-22b | split-from-app.js (styles, library manager, event picker, format screen, shuffle and misreport screens, other shared screens; code moved here unchanged)
+// NC BLAST screens.js | part 3 of 6 (load order is set in index.html) | last updated: 2026-11-11e | deck-order-buttons-always-shown (flag 1035: the two buttons are on screen from the start, greyed out and not tappable until both orders are set) | previous: 2026-11-11d | deck-order-fit (flag 1035: when both decks and the two buttons do not fit, the screen tightens its sizes in up to two steps so nothing needs scrolling) | previous: 2026-11-11c | deck-order-two-buttons (flag 1035: once both orders are set the screen stays and shows Check With Players (the one-by-one check) and Looks good, start battles. (starts the shuffle right away, no check)) | previous: 2026-11-11b | deck-order-both-decks (flag 1035: both players' decks on one screen, each in its own blue or red box with the name and what to tap next; the player tabs are gone; the check still goes one player at a time, top player first) | previous: 2026-11-11a | deck-order-redesign (flag 1035, on by default: new Deck order screen from the teammate mock-up for the first order of a set and every reshuffle - one player at a time with taps only, then each player checks and confirms their own order, with a hidden screen between them; top-bar Undo still undoes the last battle; the old Set Deck Order screen stays as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-22b | split-from-app.js (styles, library manager, event picker, format screen, shuffle and misreport screens, other shared screens; code moved here unchanged)
 /* ═══════════════════════════════════════
    STYLES
 ═══════════════════════════════════════ */
@@ -3406,6 +3406,8 @@ const NCBDO_CSS = `
   }
   .ncbdo[data-stage="cover"] { background: var(--night); }
   .ncbdo .dock-btn.go { background: var(--card); color: var(--ink); border: 2px solid var(--line-2); }
+  .ncbdo .dock-btn:disabled { background: var(--track); color: var(--muted); border: 2px solid transparent; opacity: 0.6; animation: none; }
+  .ncbdo .dock-btn.go:disabled { background: var(--card); border-color: var(--line); }
   /* fit1 / fit2: added by the screen itself, one step at a time, when both decks and the buttons do not fit without scrolling. */
   .ncbdo.fit1 .pnl .ask-sub { display: none; }
   .ncbdo.fit1 .pnl .bey { min-height: calc(var(--prow-h) - 8px); }
@@ -3902,10 +3904,13 @@ function DeckOrderV2(props) {
   }
   function dockEl() {
     if (S.stage === "pick") {
-      if (busy || S.fixing || !bothSet(S)) return null;
+      // While an order is being changed from a check screen, the screen goes back to that check by itself.
+      if (S.fixing) return null;
+      // Always on screen while the orders are entered; greyed out and not tappable until both orders are set.
+      const ready = !busy && bothSet(S);
       return [
-        h("button", { key: "sc" + stageKey, className: "dock-btn", type: "button", onClick: tap("start-check", startCheck) }, ncbdoIcon("eye", 22, 2.2), h("span", null, "Check With Players")),
-        h("button", { key: "go" + stageKey, className: "dock-btn go", type: "button", onClick: tap("start-now", startNow) }, ncbdoIcon("check", 22, 2.6), h("span", null, "Looks good, start battles."))
+        h("button", { key: "sc", className: "dock-btn", type: "button", disabled: !ready, onClick: tap("start-check", startCheck) }, ncbdoIcon("eye", 22, 2.2), h("span", null, "Check With Players")),
+        h("button", { key: "go", className: "dock-btn go", type: "button", disabled: !ready, onClick: tap("start-now", startNow) }, ncbdoIcon("check", 22, 2.6), h("span", null, "Looks good, start battles."))
       ];
     }
     if (S.stage === "check") {

@@ -552,7 +552,7 @@ RobotJudge.prototype.playMatch = async function () {
         if (!a) return null;
         // One box per player (both on screen; only one while an order is being changed): how many places are set in each.
         const boxes = [...a.querySelectorAll(".pnl")].map(b => ({ open: b.querySelectorAll(".bey .badge:not(.on)").length, picked: b.querySelectorAll(".bey .badge.on").length }));
-        return { stage: a.getAttribute("data-stage"), fixing: a.getAttribute("data-fixing") === "1", boxes, dock: !!a.querySelector(".dock-btn") };
+        return { stage: a.getAttribute("data-stage"), fixing: a.getAttribute("data-fixing") === "1", boxes, dock: !!a.querySelector(".dock-btn:not(:disabled)") };
       });
       if (!st) continue;
       if (st.stage === "check") {
