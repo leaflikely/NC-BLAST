@@ -853,7 +853,7 @@ RobotJudge.prototype.finishMatch = async function () {
   }
   // What reached the (fake) database: one row per battle that counted
   const ing = this.fw.ingests.slice(ingestsBefore).filter(x => x.who === this.who);
-  if (this.fw.flagOn && this.fw.flagOn(1013) && !ing.length) this.fw.find("warn", this.who, "Database never got the battles", name);
+  if (!ing.length) this.fw.find("warn", this.who, "Database never got the battles", name);
   if (ing.length) {
     const rows = ing[ing.length - 1].rows;
     // The Judge column should name the same judge on every match this robot scores.
@@ -877,7 +877,7 @@ RobotJudge.prototype.finishMatch = async function () {
   try { const mb = await p.evaluate(() => performance.memory ? performance.memory.usedJSHeapSize / 1048576 : 0); if (mb) this.heap.push(Math.round(mb)); } catch (_) {}
   this.matchesDone.push({ name, matchId: this.current.matchId, handedOff: !!this.current.handedOff, retries: tries, exp, battles: this.battles, undos: this.undos, ms: Date.now() - this.current.startedAt });
 
-  // Flag 1036: the "Next Action?" popup opens right after Submit. Mostly the judge taps New Match there; now and then
+  // The "Next Action?" popup opens right after Submit. Mostly the judge taps New Match there; now and then
   // Stay Here (then the page's own New Match), or, with a stream channel, Finished this round. (standby slides).
   let viaPopup = false;
   const dlg = '[role="dialog"][aria-label="Next Action?"]';
@@ -901,7 +901,7 @@ RobotJudge.prototype.finishMatch = async function () {
       viaPopup = true;
     }
     if (!viaPopup && await ui.until(p, () => p.$(dlg), 300)) this.fw.find("bug", this.who, "Next Action popup did not close", name);
-  } else if (await p.evaluate(() => typeof ff === "function" && ff(1036)).catch(() => false)) {
+  } else {
     this.fw.find("bug", this.who, "Next Action popup did not open after Submit", name);
   }
   // Back to the match list. The finished match should not still be offered.

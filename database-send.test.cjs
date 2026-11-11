@@ -1,4 +1,4 @@
-// Behavioural tests for flag 1013 (send to database beside the Sheets submit,
+// Behavioural tests for sending to the database beside the Sheets submit (was flag 1013, now always on,
 // judge name required to submit) and the UXE no-ratchet list fix.
 // Runs the real code sliced out of app.js / flags.js - no network is touched,
 // fetch is a fake that returns whatever each test tells it to.
@@ -63,7 +63,7 @@ let passed = 0;
 const test = async (name, fn) => { await fn(); passed++; console.log("  ok  " + name); };
 
 (async () => {
-  console.log("send to database (1013), judge name, UXE no-ratchet list");
+  console.log("send to database, judge name, UXE no-ratchet list");
 
   await test("success: POSTs to /db/ingest as normal JSON CORS, with slug, the same rows, flagged", async () => {
     const db = makeDb(() => okReply({ ok: true, inserted: 1, skipped: 0, notes: [] }));
@@ -219,20 +219,21 @@ const test = async (name, fn) => { await fn(); passed++; console.log("  ok  " + 
     assert(!/setSheetsStatus|lastSheetsPayloadRef|submitChallongeScore|SHEETS_URL/.test(dbBlock));
   });
 
-  await test("handleSendSheets: database call is only inside ff(1013), not awaited, and Sheets payload is unchanged", () => {
+  await test("handleSendSheets: the database call is wrapped so it cannot fail the submit, not awaited, and the Sheets payload is unchanged", () => {
     const body = slice(app, "  const handleSendSheets = async (roundLog, meta) => {", "\n  // Branch on role in the render");
     const call = body.indexOf("sendToDatabase(");
     assert(call > 0, "call missing");
-    assert(/if \(ff\(1013\)\) \{\s*try \{\s*sendToDatabase\(/.test(body), "call must sit inside if (ff(1013))");
+    assert(/try \{\s*sendToDatabase\(/.test(body), "call must sit inside a try block");
+    assert(!/ff\(1013\)/.test(body), "flag 1013 is retired: no flag check should be left");
     assert(!/await sendToDatabase/.test(body), "must not be awaited (cannot delay Sheets)");
     assert(/const payload = JSON\.stringify\(\{\s*rows,\s*battleRows,\s*judgeLog\s*\}\);/.test(body), "Sheets payload shape must not change");
     // rows array is built once and reused
     assert.strictEqual((body.match(/const rows = /g) || []).length, 1, "rows must be built once");
   });
 
-  await test("submit button: blank judge name is blocked only when 1013 is on", () => {
-    assert(/disabled: challongeSubmitStatus === "loading" \|\| ff\(1013\) && !\(judge \|\| ""\)\.trim\(\)/.test(app));
-    assert(/if \(ff\(1013\) && !\(judge \|\| ""\)\.trim\(\)\) return;/.test(app));
+  await test("submit button: a blank judge name always blocks the submit", () => {
+    assert(/disabled: challongeSubmitStatus === "loading" \|\| !\(judge \|\| ""\)\.trim\(\)/.test(app));
+    assert(/if \(!\(judge \|\| ""\)\.trim\(\)\) return;/.test(app));
   });
 
   await test("UXE no-ratchet list now includes Glory Valkyrie and Hells Nether (and keeps the original four)", () => {
@@ -244,11 +245,11 @@ const test = async (name, fn) => { await fn(); passed++; console.log("  ok  " + 
     assert(/const NO_RATCHET_BLADES = UXE_BLADES;/.test(app));
   });
 
-  await test("flag 1013 is in the default-on set and has a menu description", () => {
+  await test("flag 1013 is retired (database sending is always on)", () => {
     const set = slice(flags, "window.FEATURE_FLAGS = new Set([", "]);");
-    assert(/^\s*1013,/m.test(set), "1013 must be in the default set");
+    assert(!/^\s*1013,/m.test(set), "1013 should be gone from the default set");
     const info = flags.slice(flags.indexOf("window.FEATURE_FLAG_INFO"));
-    assert(/1013:\s*\{[\s\S]*?name:[\s\S]*?desc:[\s\S]*?off:/.test(info), "1013 info (name/desc/off) missing");
+    assert(!/1013:\s*\{/.test(info), "1013 should be gone from the menu descriptions");
   });
 
   console.log(`\n${passed} passed`);

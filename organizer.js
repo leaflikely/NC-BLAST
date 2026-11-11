@@ -1,4 +1,4 @@
-// NC BLAST organizer.js | part 5 of 6 (load order is set in index.html) | last updated: 2026-11-11a | part-requests (flag 1037: the Notifications tab lists judges' New Part requests for this event at the top, with the name to correct and Add part / Decline; pending requests count in the red badge; decided ones go under Resolved) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-30a | station-live-row (each Station Queue module shows its current live match, score and judge) | previous: 2026-10-27a notifications-tab-and-queue-auto-add (flag 1017) | previous: 2026-10-22b split-from-app.js (PIN window, organizer dashboard (OrgApp) and event add/list screen; code moved here unchanged)
+// NC BLAST organizer.js | part 5 of 6 (load order is set in index.html) | last updated: 2026-11-11b | retired flags 1013-1017 and 1036 (database sending, match timing, cloud error files, submit check + notifications, Next Action popup are now permanent; old code paths removed); 1033 folded into 1032 and 1037 into 1034 | previous: 2026-11-11a | part-requests (flag 1037: the Notifications tab lists judges' New Part requests for this event at the top, with the name to correct and Add part / Decline; pending requests count in the red badge; decided ones go under Resolved) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-30a | station-live-row (each Station Queue module shows its current live match, score and judge) | previous: 2026-10-27a notifications-tab-and-queue-auto-add (flag 1017) | previous: 2026-10-22b split-from-app.js (PIN window, organizer dashboard (OrgApp) and event add/list screen; code moved here unchanged)
 function PinModal({
   title,
   subtitle,
@@ -979,7 +979,7 @@ function OrgApp({
     masterKey: sessionStorage.getItem("ncblast-master-key") || localStorage.getItem("ncblast-master-key") || ""
   });
   const loadNotifs = async () => {
-    if (!ff(1017) || !slug) return;
+    if (!slug) return;
     try {
       const d = await workerGet(`/notify/list?slug=${encodeURIComponent(slug)}`);
       if (Array.isArray(d.notifications)) setNotifs(d.notifications);
@@ -1018,7 +1018,7 @@ function OrgApp({
     }
   };
   React.useEffect(() => {
-    if (!ff(1017) || !slug) return;
+    if (!slug) return;
     loadNotifs();
     const t = setInterval(loadNotifs, 10000);
     return () => clearInterval(t);
@@ -1031,14 +1031,14 @@ function OrgApp({
   const [partReqBusy, setPartReqBusy] = useState({}); // id -> true while saving
   const [partReqErr, setPartReqErr] = useState({}); // id -> why the last save failed
   const loadPartReqs = async () => {
-    if (!ff(1037) || !slug) return;
+    if (!ff(1034) || !slug) return;
     try {
       const d = await workerGet(`/part-requests?slug=${encodeURIComponent(slug)}`);
       if (Array.isArray(d.requests)) setPartReqs(d.requests);
     } catch (_) {}
   };
   React.useEffect(() => {
-    if (!ff(1037) || !slug) return;
+    if (!ff(1034) || !slug) return;
     loadPartReqs();
     const t = setInterval(loadPartReqs, 5000);
     return () => clearInterval(t);
@@ -1097,7 +1097,7 @@ function OrgApp({
   // A score the judge could not send is done as soon as the bracket shows the match finished (Challonge only:
   // WCB's match list never shows finished matches, so those are marked entered by hand).
   React.useEffect(() => {
-    if (!ff(1017) || !slug || slug.startsWith("wcb-") || !Array.isArray(pairings) || notifs.length === 0) return;
+    if (!slug || slug.startsWith("wcb-") || !Array.isArray(pairings) || notifs.length === 0) return;
     notifs.forEach(n => {
       if (n.resolved || n.type !== "bracket-send" || !n.matchId) return;
       const m = pairings.find(p => String(p.id) === String(n.matchId));
@@ -1110,7 +1110,7 @@ function OrgApp({
   // A waiting match that is missing from every station queue is added to a queue by itself. Only for a round whose
   // queues already exist (otherwise the TO just has not pressed Generate yet), and a hand-placed match is never moved.
   React.useEffect(() => {
-    if (!ff(1017) || !slug || !queuesGenerated || !stadiumCount || !Array.isArray(pairings) || pairings.length === 0) return;
+    if (!slug || !queuesGenerated || !stadiumCount || !Array.isArray(pairings) || pairings.length === 0) return;
     const letters = STADIUM_LABELS.slice(0, stadiumCount);
     if (letters.length === 0) return;
     const open = pairings.filter(m => m.state !== "complete");
@@ -1205,14 +1205,14 @@ function OrgApp({
     });
   }, [pairings, liveSlots, stationQueues, queuesGenerated, stadiumCount]);
   // Red number on the Notifications tab: things the TO has to act on (not the quiet "added to a queue" notes).
-  const partReqPending = ff(1037) ? partReqs.filter(r => r.status === "pending") : [];
-  const notifBadgeCount = (ff(1017) ? notifs.filter(n => !n.resolved && (n.type === "bracket-send" || n.type === "error")).length : 0) + partReqPending.length;
+  const partReqPending = ff(1034) ? partReqs.filter(r => r.status === "pending") : [];
+  const notifBadgeCount = notifs.filter(n => !n.resolved && (n.type === "bracket-send" || n.type === "error")).length + partReqPending.length;
   const renderNotificationsPanel = () => {
     const h = React.createElement;
     const needs = notifs.filter(n => !n.resolved && (n.type === "bracket-send" || n.type === "error"));
     const quiet = notifs.filter(n => !n.resolved && n.type !== "bracket-send" && n.type !== "error");
     const done = notifs.filter(n => n.resolved);
-    const partDone = ff(1037) ? partReqs.filter(r => r.status !== "pending").slice(0, 20) : [];
+    const partDone = ff(1034) ? partReqs.filter(r => r.status !== "pending").slice(0, 20) : [];
     const isWcb = slug.startsWith("wcb-");
     const bracketUrl = isWcb ? `https://westcoastbladers.com/brackets/view/${slug.slice(4)}` : slug.indexOf("-") > 0 ? `https://${slug.slice(0, slug.indexOf("-"))}.challonge.com/${slug.slice(slug.indexOf("-") + 1)}` : `https://challonge.com/${slug}`;
     const when = t => t ? new Date(t).toLocaleTimeString([], {
@@ -1446,7 +1446,7 @@ function OrgApp({
         color: "var(--text-muted)",
         margin: 0
       }
-    }, ff(1037) ? "Part requests from judges, scores that need entering, send errors, and automatic queue fixes" : "Scores that need entering, send errors, and automatic queue fixes")), btn("↻ Refresh", () => {
+    }, ff(1034) ? "Part requests from judges, scores that need entering, send errors, and automatic queue fixes" : "Scores that need entering, send errors, and automatic queue fixes")), btn("↻ Refresh", () => {
       loadNotifs();
       loadPartReqs();
     })), partReqPending.map(prCard), needs.length === 0 && partReqPending.length === 0 && h("div", {
@@ -1694,7 +1694,7 @@ function OrgApp({
       background: "var(--surface)",
       flexShrink: 0
     }
-  }, (ff(1017) || ff(1037) ? ["dashboard", "combos", "notifications"] : ["dashboard", "combos"]).map(tab => /*#__PURE__*/React.createElement("button", {
+  }, ["dashboard", "combos", "notifications"].map(tab => /*#__PURE__*/React.createElement("button", {
     key: tab,
     onClick: async () => {
       setOrgTab(tab);
@@ -1751,7 +1751,7 @@ function OrgApp({
       padding: "16px 24px 40px",
       boxSizing: "border-box"
     }
-  }, orgTab === "notifications" && (ff(1017) || ff(1037)) ? renderNotificationsPanel() : orgTab === "combos" ? (() => {
+  }, orgTab === "notifications" ? renderNotificationsPanel() : orgTab === "combos" ? (() => {
     // ── Combo Registry tab ───────────────────────────────────────────
     const refreshComboRegistry = async () => {
       if (!slug) return;

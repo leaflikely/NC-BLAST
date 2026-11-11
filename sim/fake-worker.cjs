@@ -38,8 +38,8 @@ class FakeWorker {
     this.combos = {};     // normalized player name -> combos
     this.scorelog = [];
     this.notify = [];
-    this.notes = [];      // match notes (flag 1029)
-    this.decks = [];      // deck log (flag 1030)
+    this.notes = [];      // match notes
+    this.decks = [];      // deck log
     this.backups = [];
     this.pings = [];
     this.handoffs = {};
@@ -188,7 +188,7 @@ class FakeWorker {
     }
 
     if (path === "/submit" && method === "POST") return this.submit(who, body);
-    // /submit/verify and /notify/* are in the app (flag 1017) but, per the Worker deploy notes, not
+    // /submit/verify and /notify/* are in the app but, per the Worker deploy notes, not
     // in the live Worker yet. Like the real Worker, the fake says "not found" unless --new-routes is used.
     if (!this.opts.newRoutes && /^\/(submit\/verify|notify\/)/.test(path)) return this.unknownRoute(who, method, "challonge-proxy", path);
     if (path === "/submit/verify" && method === "POST") {

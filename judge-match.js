@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-11e | retired flags 1008, 1009, 1011, 1020, 1022-1026, 1028-1030 (the stream overlay features are now permanent; old code paths removed) | previous: 2026-11-11d | new-part-requests (flag 1037: a New Part button at the end of every part list in the new deck builder (and under a search with no match); the judge types the name and waits while an organizer of the event adds or declines it in Org view > Notifications; once added it goes into the combo by itself) | previous: 2026-11-11c | deck-check-looks-good + own-buttons (deck builder check button says Looks Good and it and Show deck can be tapped right away; Own finish buttons say just Own, and on the new score pad the name and the +2/+3 sit side by side in bigger text) | previous: 2026-11-11b | next-action-popup (flag 1036, on by default: right after the judge submits, a "Next Action?" popup with New Match (main choice, waits for the bracket like the page button), Stay Here, and Finished this round. (only with a stream channel; starts the between-round standby slides)) | previous: 2026-11-11a | deck-order-redesign (flag 1035: the order screen call picks DeckOrderV2 from screens.js when the flag is on, and passes dark mode to it) | previous: 2026-11-10e | cx-picture-guide-new-parts (Picture guide lists Hurricane and Tread with the CXE blades, Tough with the over blades, Quell with the assist blades) | previous: 2026-11-10d | cxe-tag-dark-mode (flag 1034: the small CXE tag on the CX main blade buttons uses dark text in dark mode, it was white on near-white) | previous: 2026-11-10c | deck-builder-redesign (flag 1034, on by default: new Record decks screen from the teammate mock-up - deck always on screen, whole-combo search, ratchet grid, CX steps - then each player checks and confirms their own deck, with a hidden screen between them; Fast Blast uses it too; the old deck review and pickers stay as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-11f | retired flags 1013-1017 and 1036 (database sending, match timing, cloud error files, submit check + notifications, Next Action popup are now permanent; old code paths removed); 1033 folded into 1032 and 1037 into 1034 | previous: 2026-11-11e | retired flags 1008, 1009, 1011, 1020, 1022-1026, 1028-1030 (the stream overlay features are now permanent; old code paths removed) | previous: 2026-11-11d | new-part-requests (flag 1037: a New Part button at the end of every part list in the new deck builder (and under a search with no match); the judge types the name and waits while an organizer of the event adds or declines it in Org view > Notifications; once added it goes into the combo by itself) | previous: 2026-11-11c | deck-check-looks-good + own-buttons (deck builder check button says Looks Good and it and Show deck can be tapped right away; Own finish buttons say just Own, and on the new score pad the name and the +2/+3 sit side by side in bigger text) | previous: 2026-11-11b | next-action-popup (flag 1036, on by default: right after the judge submits, a "Next Action?" popup with New Match (main choice, waits for the bracket like the page button), Stay Here, and Finished this round. (only with a stream channel; starts the between-round standby slides)) | previous: 2026-11-11a | deck-order-redesign (flag 1035: the order screen call picks DeckOrderV2 from screens.js when the flag is on, and passes dark mode to it) | previous: 2026-11-10e | cx-picture-guide-new-parts (Picture guide lists Hurricane and Tread with the CXE blades, Tough with the over blades, Quell with the assist blades) | previous: 2026-11-10d | cxe-tag-dark-mode (flag 1034: the small CXE tag on the CX main blade buttons uses dark text in dark mode, it was white on near-white) | previous: 2026-11-10c | deck-builder-redesign (flag 1034, on by default: new Record decks screen from the teammate mock-up - deck always on screen, whole-combo search, ratchet grid, CX steps - then each player checks and confirms their own deck, with a hidden screen between them; Fast Blast uses it too; the old deck review and pickers stay as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 // FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
 // stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
 // (the set that was just won: its score is saved a moment after the overlay push) is added at
@@ -1652,7 +1652,7 @@ function DeckBuilderV2(props) {
      A part is missing from the lists: the judge types its name and it goes to the Worker for this event. The judge
      waits on a sheet until the organizer (owner or a head judge) adds or declines it in Org view > Notifications.
      Once added, the part joins the lists on this phone at once and goes into the combo being built. */
-  const reqOn = ff(1037);
+  const reqOn = ff(1034);
   const req = s.req || null;
   const liveRef = useRef(null);
   liveRef.current = { setReq, finishReq };
@@ -2388,32 +2388,28 @@ function MatchScreen({
 
   // ── Match timing notebook (FLAG 1014) — see timingClean() for the idea ───────
   const [timing, setTiming] = useState(() => {
-    if (!ff(1014) || !_resume) return null;
+    if (!_resume) return null;
     const saved = sGet(KEYS.matchTiming, null);
     return saved && saved.matchKey && saved.matchKey === (_resume.matchKey || null) ? timingClean(saved.t) : null;
   });
   const [timingOpen, setTimingOpen] = useState(false);
   const stampTiming = (kind, key) => {
-    if (!ff(1014)) return;
     const now = Date.now();
     setTiming(t => timingStampPure(t, kind, key, now));
   };
   // An Undo / Reset set is about to remove these log entries: keep them and open (or extend) a
   // fix window. "before" = how many entries the match has right now. Nothing is erased.
   const timingNoteUndo = (removed, kind) => {
-    if (!ff(1014)) return;
     const now = Date.now();
     const before = currentMatch.length;
     setTiming(t => timingUndoPure(t, removed, kind, now, before));
   };
   // Move markers whose step was undone / reset into the notebook's "old" list (see timingPrune).
   useEffect(() => {
-    if (!ff(1014)) return;
     setTiming(t => timingPrune(t, curSet, shuf, phase));
   }, [curSet, shuf, phase]);
   // Save to the device after every change so a refresh or crash loses nothing.
   useEffect(() => {
-    if (!ff(1014)) return;
     if (!timing) {
       try {
         localStorage.removeItem(KEYS.matchTiming);
@@ -2440,7 +2436,6 @@ function MatchScreen({
   // FLAG 1014: close an open fix window once the match is back to the number of entries it had
   // before the Undo / Reset set (or is over). It sits here because it needs currentMatch.
   useEffect(() => {
-    if (!ff(1014)) return;
     setTiming(t => timingCloseFixes(t, currentMatch, phase, Date.now()));
   }, [currentMatch.length, phase]);
   // FLAG 1014: read-only "Match timing" window (cog menu). Lists every clock reading (seconds since
@@ -2448,7 +2443,7 @@ function MatchScreen({
   // mistake) and the category totals. Undone and replaced lines stay on the list, greyed. Nothing
   // here writes or sends anything.
   const renderTimingModal = () => {
-    if (!ff(1014) || !timingOpen) return null;
+    if (!timingOpen) return null;
     const lines = timingBuildLines(timing, currentMatch, Date.now());
     const sum = timingSummary(lines);
     const f2 = n => typeof n === "number" && isFinite(n) ? n.toFixed(2) : "\u2014";
@@ -2568,7 +2563,7 @@ function MatchScreen({
   // useCallback so the part-button grid can stay memoized across renders
   // (identity only changes when `picker` does, not on every keystroke). --espiiii
   const openPicker = useCallback(val => {
-    if (ff(1014)) setTiming(t => timingStampPure(t, "start", null, Date.now())); // FLAG 1014: the clock starts the first time the deck builder opens
+    setTiming(t => timingStampPure(t, "start", null, Date.now())); // the clock starts the first time the deck builder opens
     setPickerHistory(h => picker ? [...h, picker] : h);
     setPicker(val);
     setPickerSearch("");
@@ -3937,7 +3932,7 @@ function MatchScreen({
   // the judge can still retry, "manual" when the TO must enter it), and clear it once it goes through
   // (status "sent"). Returns true when the Worker accepted the note. Never throws.
   const notifyBracket = async (status, matchId, p1Score, p2Score, winnerChallongeId, errText) => {
-    if (!ff(1017) || !challongeSlug) return false;
+    if (!challongeSlug) return false;
     try {
       const winnerIsP1 = String(winnerChallongeId) === String(challongeP1ParticipantId);
       const scoresCsv = setScores.length > 0 ? setScores.map(s => `${s.p1}-${s.p2}`).join(",") : `${p1Score}-${p2Score}`;
@@ -4008,10 +4003,9 @@ function MatchScreen({
     return verifyBracketScore(matchId, scoresCsv);
   };
   // New Match stays locked until the bracket site confirmed the score, or the judge told the TO to enter it by hand.
-  const newMatchLocked = ff(1017) && !!challongeSlug && !!challongeMatchId && challongeSubmitStatus !== "ok" && bracketEscape !== "done" && bracketEscape !== "skipped";
+  const newMatchLocked = !!challongeSlug && !!challongeMatchId && challongeSubmitStatus !== "ok" && bracketEscape !== "done" && bracketEscape !== "skipped";
   // The "send it again" and "tell the TO" buttons shown under the Challonge/WCB status while New Match is locked.
   const bracketEscapeUI = (bracketLabel, winnerId, showSend) => {
-    if (!ff(1017)) return null;
     if (!newMatchLocked) {
       return bracketEscape === "done" || bracketEscape === "skipped" ? /*#__PURE__*/React.createElement("div", {
         style: {
@@ -4123,17 +4117,15 @@ function MatchScreen({
         const data = await res.json();
         console.log("[BLAST] submitWcbScore response", { status: res.status, data });
         if (!data.ok) {
-          // FLAG 1017: WCB refuses a second result for a match it already finished. If WCB really shows it finished, that is a success, not a failure.
-          const alreadyDone = ff(1017) && /unfinished/i.test(String(data.data?.message || ""));
+          // WCB refuses a second result for a match it already finished. If WCB really shows it finished, that is a success, not a failure.
+          const alreadyDone = /unfinished/i.test(String(data.data?.message || ""));
           const again = alreadyDone ? await verifyBracketScore(matchId, scoresCsv) : null;
           if (!(again && again.confirmed === true)) throw new Error(data.data?.message || data.data?.code || `HTTP ${data.status || res.status}`);
         }
-        if (ff(1017)) {
-          const vr = await verifyBracketScoreTwice(matchId, scoresCsv);
-          if (vr.confirmed === false) throw new Error("Not confirmed by WCB - " + vr.reason);
-        }
+        const vr = await verifyBracketScoreTwice(matchId, scoresCsv);
+        if (vr.confirmed === false) throw new Error("Not confirmed by WCB - " + vr.reason);
         setChallongeSubmitStatus("ok");
-        if (ff(1017) && bracketFailReportedRef.current) {
+        if (bracketFailReportedRef.current) {
           bracketFailReportedRef.current = false;
           notifyBracket("sent", matchId, p1Score, p2Score, winnerChallongeId, "");
         }
@@ -4156,10 +4148,8 @@ function MatchScreen({
         }).catch(() => {}); // ignore errors — log is best-effort
       } catch (err) {
         setChallongeSubmitStatus(err.message || "error");
-        if (ff(1017)) {
-          bracketFailReportedRef.current = true;
-          notifyBracket("failed", matchId, p1Score, p2Score, winnerChallongeId, err.message || "error");
-        }
+        bracketFailReportedRef.current = true;
+        notifyBracket("failed", matchId, p1Score, p2Score, winnerChallongeId, err.message || "error");
       }
       return;
     }
@@ -4187,13 +4177,11 @@ function MatchScreen({
         data
       });
       if (!res.ok || data.errors) throw new Error(data.errors?.[0] || JSON.stringify(data.errors) || `HTTP ${res.status}`);
-      if (ff(1017)) {
-        // The send was accepted. Now ask the bracket site to confirm the match really shows as finished.
-        const vr = await verifyBracketScoreTwice(matchId, scoresCsv);
-        if (vr.confirmed === false) throw new Error("Not confirmed by Challonge - " + vr.reason);
-      }
+      // The send was accepted. Now ask the bracket site to confirm the match really shows as finished.
+      const vr = await verifyBracketScoreTwice(matchId, scoresCsv);
+      if (vr.confirmed === false) throw new Error("Not confirmed by Challonge - " + vr.reason);
       setChallongeSubmitStatus("ok");
-      if (ff(1017) && bracketFailReportedRef.current) {
+      if (bracketFailReportedRef.current) {
         bracketFailReportedRef.current = false;
         notifyBracket("sent", matchId, p1Score, p2Score, winnerChallongeId, "");
       }
@@ -4227,10 +4215,8 @@ function MatchScreen({
         return submitChallongeScore(matchId, p1Score, p2Score, winnerChallongeId, true);
       }
       setChallongeSubmitStatus(netTrouble ? "network problem - " + (err.message || "no connection") : err.message || "error");
-      if (ff(1017)) {
-        bracketFailReportedRef.current = true;
-        notifyBracket("failed", matchId, p1Score, p2Score, winnerChallongeId, netTrouble ? "network problem - " + (err.message || "no connection") : err.message || "error");
-      }
+      bracketFailReportedRef.current = true;
+      notifyBracket("failed", matchId, p1Score, p2Score, winnerChallongeId, netTrouble ? "network problem - " + (err.message || "no connection") : err.message || "error");
     }
   };
   const reset = () => {
@@ -4438,8 +4424,8 @@ function MatchScreen({
       challongeP2ParticipantId,
       overlaySlot,
       challongeSlug,
-      timing: ff(1014) ? timing : null,
-      // FLAG 1014: the clock travels with the match
+      timing,
+      // the clock travels with the match
       claimed: false
     };
     try {
@@ -4687,7 +4673,7 @@ function MatchScreen({
     setSets(preview.sets || [0, 0]);
     setCurSet(preview.curSet || 1);
     setShuf(preview.shuf || 1);
-    if (ff(1014)) setTiming(timingClean(preview.timing)); // FLAG 1014: keep the same clock across judges (none if the sender had none)
+    setTiming(timingClean(preview.timing)); // keep the same clock across judges (none if the sender had none)
     // Keep this judge's own history and append just the handed-off match. Slicing by the
     // sender's matchStartIdx also protects us from tablets still on an old build, which
     // sent their whole log. --espiiii
@@ -8234,7 +8220,7 @@ function MatchScreen({
       slug: challongeSlug || "", // FLAG 1037: New Part requests go to this event
       judge: judge || "",
       onOpen: () => {
-        if (ff(1014)) setTiming(t => timingStampPure(t, "start", null, Date.now())); // FLAG 1014: the clock starts the first time the deck builder opens
+        setTiming(t => timingStampPure(t, "start", null, Date.now())); // the clock starts the first time the deck builder opens
       },
       onGuide: kind => setCxGuide(kind),
       onBack: () => {
@@ -8823,11 +8809,11 @@ function MatchScreen({
         setPhase("battle");
       }
     };
-    // FLAG 1036: "Next Action?" popup, opened right after the judge submits.
+    // "Next Action?" popup, opened right after the judge submits.
     //   New Match         - the usual New Match (same button as on this page, so it waits for the bracket the same way)
     //   Stay Here         - closes the popup; the judge stays on this result page
-    //   Finished this round. - only with a stream channel: puts the overlay into the between-round standby slides (flag 1030)
-    const nextActionOpen = ff(1036) && submitted && nextActionFor !== null && nextActionFor === (matchKey || "match") && !standbyAsk;
+    //   Finished this round. - only with a stream channel: puts the overlay into the between-round standby slides
+    const nextActionOpen = submitted && nextActionFor !== null && nextActionFor === (matchKey || "match") && !standbyAsk;
     const canFinishRound = !!overlaySlot && !!challongeSlug && !String(challongeSlug).startsWith("wcb-");
     const nextActionPopup = nextActionOpen && /*#__PURE__*/React.createElement("div", {
       role: "dialog",
@@ -9896,10 +9882,9 @@ function MatchScreen({
           marginBottom: 6
         }
       }, "\u2715 Sheets failed \u2014 CSV downloaded"),
-      // FLAG 1013: a judge name is required before anything is submitted. If it is
-      // blank, ask for it here (same name box as the Judge field on this screen).
-      // Off = no prompt and no check, exactly as before. --espiiii
-      ff(1013) && !(judge || "").trim() && /*#__PURE__*/React.createElement("div", {
+      // A judge name is required before anything is submitted. If it is
+      // blank, ask for it here (same name box as the Judge field on this screen). --espiiii
+      !(judge || "").trim() && /*#__PURE__*/React.createElement("div", {
         style: {
           marginBottom: 10
         }
@@ -9925,34 +9910,32 @@ function MatchScreen({
         // Sheets in one click, so keying it off one service's state kills the
         // other — that broke Challonge submits. Duplicate protection lives
         // inside handleSendSheets instead. --espiiii
-        disabled: challongeSubmitStatus === "loading" || ff(1013) && !(judge || "").trim(),
+        disabled: challongeSubmitStatus === "loading" || !(judge || "").trim(),
         onClick: () => {
-          if (ff(1013) && !(judge || "").trim()) return; // FLAG 1013: blank judge name - do not submit
-          stampTiming("complete"); // FLAG 1014: Match Complete marker (first Submit press only)
-          // FLAG 1015: build the timing lines to send with the match. Same "first press wins" rule
+          if (!(judge || "").trim()) return; // blank judge name - do not submit
+          stampTiming("complete"); // Match Complete marker (first Submit press only)
+          // Build the timing lines to send with the match. Same "first press wins" rule
           // as the marker above, worked out here because the saved state is not updated yet.
           let timingPayload = null;
-          if (ff(1015) && ff(1014)) {
-            try {
-              const nowT = Date.now();
-              const first = currentMatch[0] || {};
-              timingPayload = timingToContract(timingStampPure(timing, "complete", null, nowT), currentMatch, {
-                slug: challongeSlug,
-                tournament: config && config.tournamentName || "",
-                matchKey,
-                match: first.p1Name ? first.p1Name + " vs " + first.p2Name : "",
-                judge,
-                p1,
-                p2
-              }, nowT);
-            } catch (_) {}
-          }
+          try {
+            const nowT = Date.now();
+            const first = currentMatch[0] || {};
+            timingPayload = timingToContract(timingStampPure(timing, "complete", null, nowT), currentMatch, {
+              slug: challongeSlug,
+              tournament: config && config.tournamentName || "",
+              matchKey,
+              match: first.p1Name ? first.p1Name + " vs " + first.p2Name : "",
+              judge,
+              p1,
+              p2
+            }, nowT);
+          } catch (_) {}
           setJudgeSubmitModal(false);
           setConfirmState({
             ...cs,
             judgeok: true
           });
-          if (ff(1036)) setNextActionFor(matchKey || "match"); // FLAG 1036: ask "Next Action?" right after the submit
+          setNextActionFor(matchKey || "match"); // ask "Next Action?" right after the submit
           if (submitSheetsCheck) {
             onSendSheets(currentMatch, {
               p1,
@@ -10244,7 +10227,7 @@ function MatchScreen({
       }
     }, "\u2715 Sheets submission failed \u2014 download CSV manually"),
     // FLAG 1013: separate Database status line. Never changes the Sheets wording above.
-    config.tm && ff(1013) && dbStatus && /*#__PURE__*/React.createElement("div", {
+    config.tm && dbStatus && /*#__PURE__*/React.createElement("div", {
       style: {
         marginTop: 10,
         padding: "10px 14px",
@@ -10282,7 +10265,7 @@ function MatchScreen({
       }
     }, "Reason: " + dbError)),
     // FLAG 1015: separate Timing status line (match timing sent to the database).
-    config.tm && ff(1015) && timingSendStatus && /*#__PURE__*/React.createElement("div", {
+    config.tm && timingSendStatus && /*#__PURE__*/React.createElement("div", {
       style: {
         marginTop: 10,
         padding: "10px 14px",
@@ -10397,7 +10380,7 @@ function MatchScreen({
 
   // Battle screen: position:fixed full viewport
   const lerApi = {}; // FLAG 1033: the Launch Error handlers, filled in below so the new layout can reuse them
-  const tmTop = config.tm && !ff(1033); // FLAG 1033: the new look has no purple tournament bar
+  const tmTop = config.tm && !ff(1032); // FLAG 1033: the new look has no purple tournament bar
   const COMBO_ROW_H = bp(54); // fixed height for combo picker row
   const STRIP_H = bp(36); // top strip height
   return /*#__PURE__*/React.createElement(ErrorBoundary, null, /*#__PURE__*/React.createElement("div", {
@@ -10406,7 +10389,7 @@ function MatchScreen({
       inset: 0,
       display: "flex",
       flexDirection: "column",
-      background: ff(1033) ? ncbPadTheme(dark).page : "var(--bg-solid)",
+      background: ff(1032) ? ncbPadTheme(dark).page : "var(--bg-solid)",
       boxSizing: "border-box",
       overflow: "hidden"
     }
@@ -10418,8 +10401,8 @@ function MatchScreen({
       gap: bp(4),
       padding: `0 ${bp(8)}px`,
       flexShrink: 0,
-      borderBottom: "1px solid " + (ff(1033) ? ncbPadTheme(dark).line : "var(--border)"),
-      background: tmTop ? "#6D28D9" : ff(1033) ? ncbPadTheme(dark).chrome : "var(--surface)"
+      borderBottom: "1px solid " + (ff(1032) ? ncbPadTheme(dark).line : "var(--border)"),
+      background: tmTop ? "#6D28D9" : ff(1032) ? ncbPadTheme(dark).chrome : "var(--surface)"
     }
   }, /*#__PURE__*/React.createElement("button", {
     style: {
@@ -10427,7 +10410,7 @@ function MatchScreen({
       marginBottom: 0,
       flexShrink: 0,
       fontSize: bf(12),
-      color: tmTop ? "#E9D5FF" : ff(1033) ? ncbPadTheme(dark).text2 : undefined
+      color: tmTop ? "#E9D5FF" : ff(1032) ? ncbPadTheme(dark).text2 : undefined
     },
     onClick: goBack
   }, IC.back), /*#__PURE__*/React.createElement("div", {
@@ -10442,25 +10425,25 @@ function MatchScreen({
     const canUndo = hasCurrentBattles || log[log.length - 1]?.type === "LER-STRIKE";
     const btnBase = {
       display: "flex",
-      flexDirection: ff(1033) ? "row" : "column",
+      flexDirection: ff(1032) ? "row" : "column",
       alignItems: "center",
       justifyContent: "center",
-      gap: ff(1033) ? 6 : 1,
+      gap: ff(1032) ? 6 : 1,
       flex: 1,
-      height: ff(1033) ? bp(34) : bp(30),
-      borderRadius: ff(1033) ? 10 : bp(6),
-      border: `1px solid ${tmTop ? "rgba(255,255,255,0.25)" : ff(1033) ? ncbPadTheme(dark).btnLine : "var(--border2)"}`,
-      background: tmTop ? "rgba(255,255,255,0.1)" : ff(1033) ? ncbPadTheme(dark).btn : "var(--surface2)",
+      height: ff(1032) ? bp(34) : bp(30),
+      borderRadius: ff(1032) ? 10 : bp(6),
+      border: `1px solid ${tmTop ? "rgba(255,255,255,0.25)" : ff(1032) ? ncbPadTheme(dark).btnLine : "var(--border2)"}`,
+      background: tmTop ? "rgba(255,255,255,0.1)" : ff(1032) ? ncbPadTheme(dark).btn : "var(--surface2)",
       fontFamily: "'Outfit',sans-serif",
       cursor: "pointer"
     };
     const lbl = {
-      fontSize: ff(1033) ? Math.max(11, bf(13)) : Math.max(6, bf(8)),
-      fontWeight: ff(1033) ? 600 : 700,
-      letterSpacing: ff(1033) ? 0 : 0.4,
+      fontSize: ff(1032) ? Math.max(11, bf(13)) : Math.max(6, bf(8)),
+      fontWeight: ff(1032) ? 600 : 700,
+      letterSpacing: ff(1032) ? 0 : 0.4,
       lineHeight: 1,
-      textTransform: ff(1033) ? "none" : "uppercase",
-      marginTop: ff(1033) ? 0 : 1
+      textTransform: ff(1032) ? "none" : "uppercase",
+      marginTop: ff(1032) ? 0 : 1
     };
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
       onClick: undo,
@@ -10507,7 +10490,7 @@ function MatchScreen({
         ...lbl,
         color: tmTop ? "#E9D5FF" : "var(--text-secondary)"
       }
-    }, "Swap")), (ff(1033) || hasCurrentBattles && currentMatch.some(e => e.set === curSet)) && /*#__PURE__*/React.createElement("button", {
+    }, "Swap")), (ff(1032) || hasCurrentBattles && currentMatch.some(e => e.set === curSet)) && /*#__PURE__*/React.createElement("button", {
       type: "button",
       title: "Restart this set at 0-0",
       disabled: !(hasCurrentBattles && currentMatch.some(e => e.set === curSet)),
@@ -10516,9 +10499,9 @@ function MatchScreen({
         ...btnBase,
         opacity: hasCurrentBattles && currentMatch.some(e => e.set === curSet) ? 1 : 0.45,
         flex: "0 0 auto",
-        width: ff(1033) ? "auto" : bp(30),
+        width: ff(1032) ? "auto" : bp(30),
         minWidth: bp(30),
-        padding: ff(1033) ? "0 10px" : undefined,
+        padding: ff(1032) ? "0 10px" : undefined,
         color: tmTop ? "#FCA5A5" : "var(--text-secondary)"
       }
     }, /*#__PURE__*/React.createElement("svg", {
@@ -10686,10 +10669,7 @@ function MatchScreen({
         borderRadius: bp(10),
         boxShadow: "0 6px 24px rgba(0,0,0,0.28)"
       }
-    }, ff(1014) ? null : menuRow("redo", IC.redo, "Redo", redo, {
-      disabled: !future.length,
-      color: future.length ? "#EA580C" : "var(--text-disabled)"
-    }), menuRow("fix", IC.editLog, "Fix", () => setMisreportOpen(true), {
+    }, menuRow("fix", IC.editLog, "Fix", () => setMisreportOpen(true), {
       disabled: !canUndoMenu
     }), menuRow("log", IC.history, "Log", () => setHistoryOpen(true)), menuRow("stream", "\uD83D\uDCE1", "Stream overlay", () => setOverlayModal(true), {
       hint: overlaySlot > 0 ? `Slot ${overlaySlot}` : "Off"
@@ -10712,12 +10692,12 @@ function MatchScreen({
       } else {
         startHandoff();
       }
-    }), ff(1014) && menuRow("timing", "\u23F1", "Match timing", () => setTimingOpen(true)), !ff(1033) && menuRow("layout", "\u283F", layoutEditMode ? "Exit layout edit" : "Adjust layout", () => setLayoutEditMode(m => !m), {
+    }), menuRow("timing", "\u23F1", "Match timing", () => setTimingOpen(true)), !ff(1032) && menuRow("layout", "\u283F", layoutEditMode ? "Exit layout edit" : "Adjust layout", () => setLayoutEditMode(m => !m), {
       color: layoutEditMode ? "#7C3AED" : undefined
     }), menuRow("report", "?", "Report a problem", () => {
       if (window.__ncbOpenBugReport) window.__ncbOpenBugReport();
     }), menuRow("dark", dark ? "\u2600\uFE0F" : "\uD83C\uDF19", dark ? "Light mode" : "Dark mode", toggleDark)))));
-  })())), ff(1033) && ncbPadScoreCard({
+  })())), ff(1032) && ncbPadScoreCard({
     dark,
     dA,
     dB,
@@ -10736,7 +10716,7 @@ function MatchScreen({
       border: "1px solid var(--border)",
       flexShrink: 0,
       overflow: "hidden",
-      display: ff(1033) ? "none" : "flex",
+      display: ff(1032) ? "none" : "flex",
       flexDirection: "column",
       justifyContent: "center",
       ...(sectionH.score ? {
@@ -10960,7 +10940,7 @@ function MatchScreen({
   }), /*#__PURE__*/React.createElement("div", {
     ref: comboDisplaySectionRef,
     style: {
-      display: ff(1033) ? "none" : "flex",
+      display: ff(1032) ? "none" : "flex",
       gap: bp(6),
       marginBottom: 0,
       flexShrink: 0,
@@ -11177,7 +11157,7 @@ function MatchScreen({
   }), /*#__PURE__*/React.createElement("div", {
     ref: finishSectionRef,
     style: {
-      display: ff(1033) ? "none" : "flex",
+      display: ff(1032) ? "none" : "flex",
       gap: bp(6),
       padding: `0 ${bp(10)}px 0`,
       ...(sectionH.finish ? {
@@ -11204,7 +11184,7 @@ function MatchScreen({
       const isFinish = !f.penalty;
       const label = f.id === "OF2" || f.id === "OF3" ? "Own" : f.name;
       const active = bothCombosSelected && !layoutEditMode;
-      const pad33 = ff(1033) && active ? ncbPadTile({
+      const pad33 = ff(1032) && active ? ncbPadTile({
         dark,
         p: f.p,
         penalty: !!f.penalty,
@@ -11369,7 +11349,7 @@ function MatchScreen({
           padding: `0 ${bp(4)}px`,
           borderRadius: bp(7),
           border: hasStrike ? `2px solid #F59E0B` : "2px dashed var(--border2)",
-          background: hasStrike ? (ff(1033) && dark ? "#3A2E0B" : "#FEF9C3") : ff(1033) ? "transparent" : "var(--surface2)",
+          background: hasStrike ? (ff(1032) && dark ? "#3A2E0B" : "#FEF9C3") : ff(1032) ? "transparent" : "var(--surface2)",
           color: lerLocked ? "var(--text-disabled)" : "var(--text-primary)",
           fontFamily: "'Outfit',sans-serif",
           cursor: lerLocked ? "not-allowed" : "pointer",
@@ -11446,7 +11426,7 @@ function MatchScreen({
           border: "2px solid transparent",
           background: canConfirm ? side.cl : "var(--surface3)",
           color: canConfirm ? "#fff" : "var(--text-disabled)",
-          boxShadow: ff(1033) && canConfirm ? "0 6px 18px " + side.cl + "61" : undefined,
+          boxShadow: ff(1032) && canConfirm ? "0 6px 18px " + side.cl + "61" : undefined,
           fontFamily: "'Outfit',sans-serif",
           cursor: canConfirm ? "pointer" : "not-allowed",
           boxSizing: "border-box",
@@ -11496,7 +11476,7 @@ function MatchScreen({
         }, `Confirm ${(side.pending?.name || "").replace(/ Finish$/, "").replace(/ Error$/, "")}`)))
       });
     })());
-  })), ff(1033) && ncbPadBattleBody({
+  })), ff(1032) && ncbPadBattleBody({
     dark,
     dA,
     dB,
