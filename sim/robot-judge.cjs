@@ -500,8 +500,8 @@ const FINISHES = [
   { label: "Over Finish +2", pts: 2, weight: 24 },
   { label: "Burst Finish +2", pts: 2, weight: 14 },
   { label: "Xtreme Finish +3", pts: 3, weight: 16 },
-  { label: "Own ×2 +2", pts: 2, weight: 3, penalty: true },
-  { label: "Own ×3 +3", pts: 3, weight: 2, penalty: true },
+  { label: "Own +2", pts: 2, weight: 3, penalty: true },
+  { label: "Own +3", pts: 3, weight: 2, penalty: true },
   { label: "Launch Error LER", pts: 0, weight: 7, ler: true },
 ];
 
