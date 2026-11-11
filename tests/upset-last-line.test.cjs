@@ -1,4 +1,4 @@
-// Behavioural test for flag 1029 (Upset Alert last line: score + stadium / judge). Runs the real code, no copies.
+// Behavioural test for the Upset Alert last line: score + stadium / judge (was flag 1029, now always on). Runs the real code, no copies.
 // Run: node tests/upset-last-line.test.cjs
 const assert = require("assert");
 const { loadApp, loadText } = require("./load-app.cjs");
@@ -17,7 +17,7 @@ const O = new Function("BD_GOLD", slice(overlay, "function upsetLastLine(", "// 
 const OV = O("#fc0");
 
 let n = 0; const test = (name, fn) => { fn(); n++; console.log("  ok  " + name); };
-console.log("upset alert last line (flag 1029)");
+console.log("upset alert last line");
 
 test("score text: sets won for a multi-set match, winner first", () => {
   assert.strictEqual(H.setScoreText("4-2,1-4,4-3", true), "2-1");
@@ -64,9 +64,9 @@ test("overlay line: stadium first, then judge, then just the score, then the old
   assert.strictEqual(OV.upsetCard("R1", "x").sub2, "Final result from another stadium");
   assert.strictEqual(OV.upsetCard("R1", "x", "Wins 2-1 on Stadium B").sub2, "Wins 2-1 on Stadium B");
 });
-test("the judge app saves the note after a sent result and the flag exists", () => {
+test("the judge app saves the note after a sent result, and flag 1029 is retired", () => {
   assert(/fetchActiveMatches\(\);\r?\n\s*saveMatchNote\(matchId\);/.test(app));
-  assert(/\b1029,/.test(slice(flagsSrc, "new Set([", "]);")));
-  assert(/1029:\s*\{\s*name:/.test(flagsSrc));
+  assert(!/\b1029,/.test(slice(flagsSrc, "new Set([", "]);")));
+  assert(!/1029:\s*\{\s*name:/.test(flagsSrc));
 });
 console.log("\n" + n + " passed");

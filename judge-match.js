@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-11d | new-part-requests (flag 1037: a New Part button at the end of every part list in the new deck builder (and under a search with no match); the judge types the name and waits while an organizer of the event adds or declines it in Org view > Notifications; once added it goes into the combo by itself) | previous: 2026-11-11c | deck-check-looks-good + own-buttons (deck builder check button says Looks Good and it and Show deck can be tapped right away; Own finish buttons say just Own, and on the new score pad the name and the +2/+3 sit side by side in bigger text) | previous: 2026-11-11b | next-action-popup (flag 1036, on by default: right after the judge submits, a "Next Action?" popup with New Match (main choice, waits for the bracket like the page button), Stay Here, and Finished this round. (only with a stream channel; starts the between-round standby slides)) | previous: 2026-11-11a | deck-order-redesign (flag 1035: the order screen call picks DeckOrderV2 from screens.js when the flag is on, and passes dark mode to it) | previous: 2026-11-10e | cx-picture-guide-new-parts (Picture guide lists Hurricane and Tread with the CXE blades, Tough with the over blades, Quell with the assist blades) | previous: 2026-11-10d | cxe-tag-dark-mode (flag 1034: the small CXE tag on the CX main blade buttons uses dark text in dark mode, it was white on near-white) | previous: 2026-11-10c | deck-builder-redesign (flag 1034, on by default: new Record decks screen from the teammate mock-up - deck always on screen, whole-combo search, ratchet grid, CX steps - then each player checks and confirms their own deck, with a hidden screen between them; Fast Blast uses it too; the old deck review and pickers stay as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-11e | retired flags 1008, 1009, 1011, 1020, 1022-1026, 1028-1030 (the stream overlay features are now permanent; old code paths removed) | previous: 2026-11-11d | new-part-requests (flag 1037: a New Part button at the end of every part list in the new deck builder (and under a search with no match); the judge types the name and waits while an organizer of the event adds or declines it in Org view > Notifications; once added it goes into the combo by itself) | previous: 2026-11-11c | deck-check-looks-good + own-buttons (deck builder check button says Looks Good and it and Show deck can be tapped right away; Own finish buttons say just Own, and on the new score pad the name and the +2/+3 sit side by side in bigger text) | previous: 2026-11-11b | next-action-popup (flag 1036, on by default: right after the judge submits, a "Next Action?" popup with New Match (main choice, waits for the bracket like the page button), Stay Here, and Finished this round. (only with a stream channel; starts the between-round standby slides)) | previous: 2026-11-11a | deck-order-redesign (flag 1035: the order screen call picks DeckOrderV2 from screens.js when the flag is on, and passes dark mode to it) | previous: 2026-11-10e | cx-picture-guide-new-parts (Picture guide lists Hurricane and Tread with the CXE blades, Tough with the over blades, Quell with the assist blades) | previous: 2026-11-10d | cxe-tag-dark-mode (flag 1034: the small CXE tag on the CX main blade buttons uses dark text in dark mode, it was white on near-white) | previous: 2026-11-10c | deck-builder-redesign (flag 1034, on by default: new Record decks screen from the teammate mock-up - deck always on screen, whole-combo search, ratchet grid, CX steps - then each player checks and confirms their own deck, with a hidden screen between them; Fast Blast uses it too; the old deck review and pickers stay as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 // FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
 // stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
 // (the set that was just won: its score is saved a moment after the overlay push) is added at
@@ -2808,7 +2808,6 @@ function MatchScreen({
   // sends. --espiiii
   const lastMatchupRef = useRef("");
   useEffect(() => {
-    if (!ff(1011)) return;
     if (phase !== "pick") {
       lastMatchupRef.current = "";
       return;
@@ -2834,7 +2833,7 @@ function MatchScreen({
   // seconds, so this adds almost no load).
   useEffect(() => {
     setOverlayRecords(null);
-    if (!ff(1022) || !challongeSlug || !p1 || !p2) return;
+    if (!challongeSlug || !p1 || !p2) return;
     let stale = false;
     let seeds = null; // FLAG 1024: read once per match
     const load = async () => {
@@ -2847,9 +2846,9 @@ function MatchScreen({
         if (stale) return;
         const recs = overlayRecordsFrom(data && data.pairings, challongeP1ParticipantId, challongeP2ParticipantId, p1, p2, challongeMatchId);
         // WCB lists only open matches and never marks them underway, so a count would be wrong there.
-        recs.pending = ff(1023) && !String(challongeSlug).startsWith("wcb-") ? overlayPendingFrom(data && data.pairings, challongeRound, challongeMatchId) : null;
+        recs.pending = !String(challongeSlug).startsWith("wcb-") ? overlayPendingFrom(data && data.pairings, challongeRound, challongeMatchId) : null;
         // FLAG 1024: seeds come with the bracket's player list (WCB has none, so no upsets there).
-        if (ff(1024) && !String(challongeSlug).startsWith("wcb-")) {
+        if (!String(challongeSlug).startsWith("wcb-")) {
           if (!seeds) {
             try {
               const pr = await fetch(`${OVERLAY_WORKER}/?slug=${encodeURIComponent(challongeSlug)}`, { signal: AbortSignal.timeout(8000) });
@@ -2858,7 +2857,7 @@ function MatchScreen({
           }
           recs.upsets = seeds ? overlayUpsetsFrom(data && data.pairings, challongeRound, seeds, challongeMatchId) : [];
           // FLAG 1029: who judged each of those matches and on which stadium (saved by the judge app when the result was sent)
-          if (ff(1029) && recs.upsets.length) {
+          if (recs.upsets.length) {
             try {
               const nr = await fetch("https://ncblast-db.danny61734.workers.dev/match-notes?slug=" + encodeURIComponent(challongeSlug), { signal: AbortSignal.timeout(6000) });
               if (nr.ok) { const nd = await nr.json(); recs.upsets = overlayUpsetsWithNotes(recs.upsets, nd && nd.notes); }
@@ -2870,10 +2869,10 @@ function MatchScreen({
       } catch (e) {}
     };
     load();
-    const timer = ff(1023) ? setInterval(load, 30000) : null;
+    const timer = setInterval(load, 30000);
     return () => {
       stale = true;
-      if (timer) clearInterval(timer);
+      clearInterval(timer);
     };
   }, [challongeSlug, p1, p2, challongeMatchId, challongeRound, challongeP1ParticipantId, challongeP2ParticipantId]);
   // Section heights in px — null = auto/flex
@@ -3157,9 +3156,9 @@ function MatchScreen({
     // LER — 1-strike system: first LER adds a strike, second converts to a point
     // Combos do NOT advance on LER — push overlay now with unchanged r1/r2
     // FLAG 1023: battles in the match including the one just scored (the match log is not updated yet).
-    const battleExtra = ff(1023) ? {
+    const battleExtra = {
       battleCount: currentMatch.filter(e => e.type !== "LER-STRIKE").length + (fin.id !== "LER-STRIKE" ? 1 : 0)
-    } : {};
+    };
     if (fin.id === "LER") {
       pushOverlay({
         lastFinish: {
@@ -3509,7 +3508,7 @@ function MatchScreen({
   // Best-effort and in the background: it can never hold up or break sending a result.
   const saveMatchNote = async matchId => {
     try {
-      if (!ff(1029) || !challongeSlug || matchId == null || String(challongeSlug).startsWith("wcb-")) return;
+      if (!challongeSlug || matchId == null || String(challongeSlug).startsWith("wcb-")) return;
       let stadium = "";
       try {
         const ar = await fetch(`${OVERLAY_WORKER}/stadium-assign?slug=${encodeURIComponent(challongeSlug)}`, { signal: AbortSignal.timeout(8000) });
@@ -3529,7 +3528,7 @@ function MatchScreen({
   // FLAG 1030: save both players' locked decks for this match (database Worker /deck-log). Best-effort, in the background.
   const saveDeckLog = locked => {
     try {
-      if (!ff(1030) || !challongeSlug || !challongeMatchId || String(challongeSlug).startsWith("wcb-")) return;
+      if (!challongeSlug || !challongeMatchId || String(challongeSlug).startsWith("wcb-")) return;
       const texts = list => (Array.isArray(list) ? list : []).map(c => comboStr(c)).filter(t => t && t !== "\u2014");
       fetch("https://ncblast-db.danny61734.workers.dev/deck-log?slug=" + encodeURIComponent(challongeSlug), {
         method: "POST",
@@ -3565,13 +3564,11 @@ function MatchScreen({
       standbyData.standings = standing.rows;
       standbyData.group = standing.group;
       const state = { standby: standbyData, sentAt: Date.now(), slug: ctx.slug, tournamentName: ctx.tName || "", judge: ctx.judge || "", p1: "", p2: "" };
-      if (ff(1025)) {
-        fetch(DB + "/overlay-live?slot=" + ctx.slot, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password: "zm77132596", state })
-        }).catch(() => {});
-      }
+      fetch(DB + "/overlay-live?slot=" + ctx.slot, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: "zm77132596", state })
+      }).catch(() => {});
       fetch(`${OVERLAY_WORKER}/overlay/push`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3615,11 +3612,11 @@ function MatchScreen({
     const queueIds = ((qd && qd.data || {})[letter] || []).map(String);
     return standbyNeedsAsk({ queueIds, pairings: pd && pd.pairings, round: challongeRound, currentMatchId: challongeMatchId });
   };
-  // New Match button (all over screens). With flag 1030 on and a stream channel connected, it first checks whether this
+  // New Match button (all over screens). With a stream channel connected, it first checks whether this
   // judge's station is out of matches; any failure just carries on to the normal New Match.
   const newMatchTap = async () => {
     const proceed = () => { setSheetsStatus(null); resetAndRestoreJudge(); };
-    if (!ff(1030) || !overlaySlot || !challongeSlug || String(challongeSlug).startsWith("wcb-") || standbyBusyRef.current) {
+    if (!overlaySlot || !challongeSlug || String(challongeSlug).startsWith("wcb-") || standbyBusyRef.current) {
       proceed();
       return;
     }
@@ -3842,56 +3839,47 @@ function MatchScreen({
       comboHistory,
       p1ActiveCombo: activeComboOf(d1, r1eff),
       p2ActiveCombo: activeComboOf(d2, r2eff),
-      // FLAG 1008: tells the overlay to mirror left/right. This now follows the
-      // cog menu's "Swap Stream Position" (overlayFlip), NOT the judge's own Swap
-      // button. Not sent at all with the flag off, so the overlay never flips.
-      // --espiiii
-      ...(ff(1008) ? { swapped: !!overlayFlip } : {}),
-      // FLAG 1022: round label + each player's match record for the overlay's second post-battle graphic.
-      ...(ff(1022) ? {
-        records: {
-          label: overlayRoundLabel(challongeRound),
-          p1: overlayRecords ? overlayRecords.p1 : [0, 0],
-          p2: overlayRecords ? overlayRecords.p2 : [0, 0],
-          // FLAG 1023: known = the bracket lookup worked; swiss = group stage (Top Cut rounds are negative);
-          // pending = matches of this round not started yet (null = unknown)
-          ...(ff(1023) ? {
-            known: !!overlayRecords,
-            swiss: Number(challongeRound) > 0,
-            pending: overlayRecords && typeof overlayRecords.pending === "number" ? overlayRecords.pending : null
-          } : {})
-        }
-      } : {}),
-      // FLAG 1023: battles in this match so far (LER strikes are not battles). A scoring push passes its own
+      // Tells the overlay to mirror left/right. This follows the cog menu's "Swap Stream Position"
+      // (overlayFlip), NOT the judge's own Swap button. --espiiii
+      swapped: !!overlayFlip,
+      // Round label + each player's match record for the overlay's post-battle graphics.
+      records: {
+        label: overlayRoundLabel(challongeRound),
+        p1: overlayRecords ? overlayRecords.p1 : [0, 0],
+        p2: overlayRecords ? overlayRecords.p2 : [0, 0],
+        // known = the bracket lookup worked; swiss = group stage (Top Cut rounds are negative);
+        // pending = matches of this round not started yet (null = unknown)
+        known: !!overlayRecords,
+        swiss: Number(challongeRound) > 0,
+        pending: overlayRecords && typeof overlayRecords.pending === "number" ? overlayRecords.pending : null
+      },
+      // Battles in this match so far (LER strikes are not battles). A scoring push passes its own
       // count (battleCount in the extra state wins), because the match log is one entry behind at that moment.
-      ...(ff(1023) ? { battleCount: currentMatch.filter(e => e.type !== "LER-STRIKE").length } : {}),
-      // Time this update left the judge app: lets the overlay ignore an older copy that arrives late (flag 1025)
+      battleCount: currentMatch.filter(e => e.type !== "LER-STRIKE").length,
+      // Time this update left the judge app: lets the overlay ignore an older copy that arrives late
       // and shows how long an update took in its optional &debug=1 readout.
       sentAt: Date.now(),
-      // FLAG 1024: the tournament link (so the overlay can tell which other live matches are still unfinished) and this
+      // The tournament link (so the overlay can tell which other live matches are still unfinished) and this
       // round's upsets (a lower seed beat a higher seed) for the Upset Alert graphic.
-      ...(ff(1024) ? { slug: challongeSlug || "", upsets: overlayRecords && Array.isArray(overlayRecords.upsets) ? overlayRecords.upsets : [] } : {}),
-      // FLAG 1020: winner of each finished set, in order (see overlaySetWinners above).
-      ...(ff(1020) ? { setWinners: overlaySetWinners(setScores, rest.sets || sets) } : {}),
+      slug: challongeSlug || "",
+      upsets: overlayRecords && Array.isArray(overlayRecords.upsets) ? overlayRecords.upsets : [],
+      // Winner of each finished set, in order (see overlaySetWinners above).
+      setWinners: overlaySetWinners(setScores, rest.sets || sets),
       ...rest
     };
 
-    // FLAG 1028: the locked deck order stays on the push until a battle (or launch error strike) is scored, or the match ends or changes.
-    if (ff(1028)) {
-      const dk = deckOrderRef.current;
-      if ("lastFinish" in extraState) deckOrderRef.current = null;
-      else if (dk && dk.names === p1 + "\u0000" + p2 && phase !== "over" && !state.matchOver) state.deckOrder = {
-        id: dk.id,
-        shuf: dk.shuf,
-        p1: dk.p1,
-        p2: dk.p2
-      };
-    }
-    // FLAG 1030: any real update ends standby mode.
-    if (ff(1030)) {
-      standbyRef.current = false;
-      setStandbyActive(false);
-    }
+    // The locked deck order stays on the push until a battle (or launch error strike) is scored, or the match ends or changes.
+    const dk = deckOrderRef.current;
+    if ("lastFinish" in extraState) deckOrderRef.current = null;
+    else if (dk && dk.names === p1 + "\u0000" + p2 && phase !== "over" && !state.matchOver) state.deckOrder = {
+      id: dk.id,
+      shuf: dk.shuf,
+      p1: dk.p1,
+      p2: dk.p2
+    };
+    // Any real update ends standby mode.
+    standbyRef.current = false;
+    setStandbyActive(false);
     // Always push via matchId for overlay/live tracking (no channel required)
     // Also push via slot number if OBS streaming is enabled
     const body = {
@@ -3915,9 +3903,9 @@ function MatchScreen({
       p1,
       p2
     });
-    // FLAG 1025: the same update also goes through the database Worker, which the stream overlay reads without delay
+    // The same update also goes through the database Worker, which the stream overlay reads without delay
     // (the original route keeps the match list and everything else working, and stays the fallback).
-    if (overlaySlot && ff(1025)) {
+    if (overlaySlot) {
       fetch("https://ncblast-db.danny61734.workers.dev/overlay-live?slot=" + overlaySlot, {
         method: "POST",
         headers: {
@@ -4298,18 +4286,11 @@ function MatchScreen({
     // beginMatchLog keeps that behaviour and prunes the log if it hit the cap.
     // --espiiii
     beginMatchLog(log);
-    // FLAG 1011: a streaming station stays streaming between matches; the
-    // judge turns the slot off in the cog menu. Off = the slot is cleared
-    // after every match, as before. --espiiii
-    if (!ff(1011)) setOverlaySlot(0);
+    // A streaming station stays streaming between matches; the judge turns the
+    // slot off in the cog menu. --espiiii
     setSwapped(false);
     setShuffleTimer(null);
     setSharedJudgePicker(false);
-    if (!ff(1011)) {
-      try {
-        localStorage.setItem(KEYS.overlaySlot, "0");
-      } catch {}
-    }
   };
   // After reset(), restore judge from session storage for solo mode.
   // Duo mode intentionally leaves judge blank — the per-match picker handles it.
@@ -8531,7 +8512,7 @@ function MatchScreen({
         // d1/d2 still hold the OLD order inside this click (setD1/setD2 only land on the next render), so the new order comes from
         // the screen itself. The first combos go out with it, so the scoreboard matches row 1 of the graphic.
         let deckExtra = null;
-        if (ff(1028) && locked && locked.p1Deck && locked.p2Deck) {
+        if (locked && locked.p1Deck && locked.p2Deck) {
           const plain = c => ({
             blade: c && c.blade || "",
             ratchet: c && c.ratchet || "",
@@ -8555,7 +8536,7 @@ function MatchScreen({
           };
         }
         // FLAG 1030: remember the locked decks (one record per match; locking again replaces it) for the standby "most used combos" slide.
-        if (ff(1030) && locked && locked.p1Deck && locked.p2Deck) saveDeckLog(locked);
+        if (locked && locked.p1Deck && locked.p2Deck) saveDeckLog(locked);
         if (shuffleTimer) {
           // Pass combo index 0 — deck order may have changed on this screen,
           // but the first bey to play is always slot 0 after a shuffle.
@@ -8847,7 +8828,7 @@ function MatchScreen({
     //   Stay Here         - closes the popup; the judge stays on this result page
     //   Finished this round. - only with a stream channel: puts the overlay into the between-round standby slides (flag 1030)
     const nextActionOpen = ff(1036) && submitted && nextActionFor !== null && nextActionFor === (matchKey || "match") && !standbyAsk;
-    const canFinishRound = !!overlaySlot && ff(1030) && !!challongeSlug && !String(challongeSlug).startsWith("wcb-");
+    const canFinishRound = !!overlaySlot && !!challongeSlug && !String(challongeSlug).startsWith("wcb-");
     const nextActionPopup = nextActionOpen && /*#__PURE__*/React.createElement("div", {
       role: "dialog",
       "aria-modal": "true",
@@ -10509,7 +10490,7 @@ function MatchScreen({
           p2Side: a.p1Side || ""
         } : a);
         // This Swap only flips the judge's own view. It used to push to the
-        // overlay (FLAG 1008); the overlay now flips only from the cog menu's
+        // overlay; the overlay now flips only from the cog menu's
         // "Swap Stream Position", so nothing is sent from here.
       },
       style: {
@@ -10719,7 +10700,7 @@ function MatchScreen({
       try {
         localStorage.setItem(KEYS.overlayFlip, next ? "1" : "0");
       } catch {}
-      if (ff(1008)) pushOverlay({
+      pushOverlay({
         swapped: next
       });
     }, {

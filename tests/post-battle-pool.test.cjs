@@ -1,4 +1,4 @@
-// Tests for flag 1023 (the pool of post-battle graphics, stage 1): which graphic is picked after a finish.
+// Tests for the pool of post-battle graphics (was flags 1022-1026, now always on): which graphic is picked after a finish.
 // Runs the real functions from overlay.html and judge-match.js - no copies.
 // Run: node tests/post-battle-pool.test.cjs
 const assert = require("assert");
@@ -41,7 +41,7 @@ function load(flags) {
   return new Function("ff", "FIN_POINTS", "comboLine", "BD_P1", "BD_P2", "LIVE", "upsetLoad", "upsetSave", "MU", "MU_MIN", "matchupKey", "comboText", "localStorage", "UPSET_KEY",
     poolSrc + "; return { choosePoolGraphic, postBattleContent, POOL_BASIC, POOL_PRIORITY, poolUpset, poolCtx, matchupCard, resetPoolMemory, POOL_MEM };")(ff, FIN_POINTS, () => "", "#3d9bff", "#ff6a2b", LIVE, upsetLoad, upsetSave, MU, 10, matchupKey, comboTextT, { removeItem: () => { upsetDisk = null; } }, "k");
 }
-const P = load([1009, 1022, 1023]);
+const P = load([]);
 const mem = () => ({ key: null, contextShown: false, lastBasic: null });
 
 const rec = (o = {}) => ({ label: "Swiss Round 2", p1: [2, 1], p2: [1, 2], known: true, swiss: true, pending: 4, ...o });
@@ -157,8 +157,8 @@ test("pending count shows even at 0, but is skipped when the judge app does not 
   assert.strictEqual(pick(st({ records: undefined }), null, m), null);
 });
 
-console.log("upset alert (flag 1024)");
-const P24 = load([1009, 1022, 1023, 1024]);
+console.log("upset alert");
+const P24 = load([]);
 const pick24 = (state, prev, m) => P24.choosePoolGraphic(state, prev, m);
 const up = (id, w, ws, l, ls) => ({ id, w, ws, l, ls });
 const withUps = (list, o = {}) => st({ upsets: list, ...o });
@@ -187,14 +187,11 @@ test("the upset where the best-seeded player lost goes first; each is shown once
   const m3 = mem(); m3.key = "m7"; m3.contextShown = true;
   assert.strictEqual(kindOf(pick24(next, next, m3)), "Upset!");                    // new round: same id is fair game again
 });
-test("no upsets, bad rows, or the flag off: nothing", () => {
+test("no upsets or bad rows: nothing", () => {
   upsetDisk = null;
   const m = mem(); m.key = "m7"; m.contextShown = true;
   const bad = withUps([up("1", "A", 3, "B", 9), up("2", "A", 4, "B", 4), { id: "3" }, null]);
   assert.notStrictEqual(kindOf(pick24(bad, bad, m)), "Upset!");
-  const off = withUps([up("5", "Sam", 9, "Alex", 2)]);
-  const m2 = mem(); m2.key = "m7"; m2.contextShown = true;
-  assert.notStrictEqual(kindOf(pick(off, off, m2)), "Upset!");   // P was loaded without 1024
 });
 test("order: final battle and match point beat the upset; the upset beats the basic pool", () => {
   upsetDisk = null;
@@ -206,7 +203,7 @@ test("order: final battle and match point beat the upset; the upset beats the ba
   assert.strictEqual(kindOf(pick24(plain, plain, m2)), "Upset!");
 });
 
-console.log("currently playing (flag 1024)");
+console.log("currently playing");
 const live = (o = {}) => ({ p1: "Alex", p2: "Sam", pts: [2, 1], sets: [1, 0], challongeMatchId: 21, tournamentName: "Event", ...o });
 const setLive = (list, complete = []) => { LIVE.states = list; LIVE.complete = new Set(complete); };
 test("lists other live matches with the set score and the sets", () => {
@@ -241,12 +238,6 @@ test("basic pool takes turns: Currently Playing, Matches Pending, Currently Play
   const m = mem(); m.key = "m7"; m.contextShown = true;
   const seq = [1, 2, 3].map(() => { const g = pick24(st({ tournamentName: "Event" }), null, m); return g.card.rows ? "playing" : g.card.big; });
   assert.deepStrictEqual(seq, ["playing", "Matches pending: 4", "playing"]);
-  setLive([]);
-});
-test("the flag off: no Currently Playing", () => {
-  setLive([live()]);
-  const m = mem(); m.key = "m7"; m.contextShown = true;
-  assert.strictEqual(pick(st({ tournamentName: "Event" }), null, m).card.big, "Matches pending: 4");
   setLive([]);
 });
 
@@ -285,25 +276,20 @@ test("the winner graphic does not use up the records turn", () => {
 });
 
 console.log("wiring in the overlay");
-test("flag 1023: the finish content carries the picked graphic", () => {
+test("the finish content carries the picked graphic", () => {
   const c = P.postBattleContent(st({ sets: [1, 0], pts: [3, 1] }), st({ sets: [1, 0], pts: [2, 1] }));
   assert.strictEqual(c.card.big, "Match point:");
   assert.strictEqual(c.info, null);
   assert.strictEqual(c.finishOnly, false);
 });
-test("flag 1023: nothing qualifies -> only the finish text", () => {
-  const c = load([1009, 1022, 1023]);
+test("nothing qualifies -> only the finish text", () => {
+  const c = load([]);
   const m = c.postBattleContent(st({ records: rec({ pending: null }) }), st());   // first pick: records
   assert.ok(m.info);
   const n = c.postBattleContent(st({ records: rec({ pending: null }) }), st());   // records used up, pending unknown
   assert.strictEqual(n.finishOnly, true);
   assert.strictEqual(n.info, null);
   assert.strictEqual(n.card, null);
-});
-test("flag 1023 off, 1022 on: records after every finish, as before", () => {
-  const c = load([1009, 1022]);
-  assert.ok(c.postBattleContent(st(), st()).info);
-  assert.ok(c.postBattleContent(st(), st()).info);
 });
 
 console.log("judge app side");
@@ -356,10 +342,10 @@ test("upsets: the current match, unknown seeds, unknown round and garbage are sk
 });
 
 const pushSrc = slice(app, "  const pushOverlay = (extraState = {}) => {", "\n  pushOverlayLatestRef.current = pushOverlay;");
-function sent({ flags, extra = {}, match = [], round = 3, overlayRecords = null }) {
+function sent({ extra = {}, match = [], round = 3, overlayRecords = null }) {
   const out = [];
   const env = {
-    ff: id => flags.includes(id),
+    standbyRef: { current: false }, setStandbyActive: () => {}, setScores: [], overlaySetWinners: () => [], deckOrderRef: { current: null },
     pushOverlayDebounceRef: { current: 0 }, pushOverlayTrailExtraRef: { current: null },
     pushOverlayTrailTimerRef: { current: null }, pushOverlayLatestRef: { current: null },
     setTimeout: () => 1, r1: 0, r2: 0, d1: [{}], d2: [{}], currentMatch: match, p1: "A", p2: "B",
@@ -374,46 +360,37 @@ function sent({ flags, extra = {}, match = [], round = 3, overlayRecords = null 
   return out[0];
 }
 const log3 = [{ type: "SPF" }, { type: "LER-STRIKE" }, { type: "XTR" }];
-test("flag 1023: battle count (strikes are not battles), Swiss flag, pending count and 'known' are sent", () => {
-  const s = sent({ flags: [1022, 1023], match: log3, overlayRecords: { p1: [1, 0], p2: [0, 1], pending: 6 } });
+test("battle count (strikes are not battles), Swiss flag, pending count and 'known' are sent", () => {
+  const s = sent({ match: log3, overlayRecords: { p1: [1, 0], p2: [0, 1], pending: 6 } });
   assert.strictEqual(s.battleCount, 2);
   assert.deepStrictEqual(s.records, { label: "Swiss Round 3", p1: [1, 0], p2: [0, 1], known: true, swiss: true, pending: 6 });
 });
-test("flag 1023: lookup not done -> known false, pending unknown; Top Cut is not Swiss", () => {
-  const s = sent({ flags: [1022, 1023], round: -1 });
+test("lookup not done -> known false, pending unknown; Top Cut is not Swiss", () => {
+  const s = sent({ round: -1 });
   assert.strictEqual(s.records.known, false);
   assert.strictEqual(s.records.pending, null);
   assert.strictEqual(s.records.swiss, false);
 });
 test("a battle count passed by the scoring code wins over the log's count", () => {
-  assert.strictEqual(sent({ flags: [1022, 1023], match: log3, extra: { battleCount: 9 } }).battleCount, 9);
+  assert.strictEqual(sent({ match: log3, extra: { battleCount: 9 } }).battleCount, 9);
 });
-test("flag 1023 off: nothing new is sent", () => {
-  const s = sent({ flags: [1022], match: log3, overlayRecords: { p1: [1, 0], p2: [0, 1], pending: 6 } });
-  assert.strictEqual("battleCount" in s, false);
-  assert.deepStrictEqual(Object.keys(s.records).sort(), ["label", "p1", "p2"]);
-});
-test("flag 1024: the tournament link and this round's upsets are sent; flag off: neither", () => {
+test("the tournament link and this round's upsets are sent", () => {
   const ups = [{ id: "4", w: "Cy", ws: 9, l: "Alex", ls: 1 }];
-  const on = sent({ flags: [1022, 1023, 1024], overlayRecords: { p1: [0, 0], p2: [0, 0], pending: 1, upsets: ups } });
+  const on = sent({ overlayRecords: { p1: [0, 0], p2: [0, 0], pending: 1, upsets: ups } });
   assert.strictEqual(on.slug, "my-event");
   assert.deepStrictEqual(on.upsets, ups);
-  assert.deepStrictEqual(sent({ flags: [1022, 1023, 1024] }).upsets, []);
-  const off = sent({ flags: [1022, 1023], overlayRecords: { p1: [0, 0], p2: [0, 0], upsets: ups } });
-  assert.strictEqual("slug" in off, false);
-  assert.strictEqual("upsets" in off, false);
+  assert.deepStrictEqual(sent({}).upsets, []);
 });
-const battleSrc = slice(app, "    const battleExtra = ff(1023)", '    if (fin.id === "LER") {');
-const battleExtra = (flags, match, fin) => new Function("ff", "currentMatch", "fin", battleSrc + "; return battleExtra;")(id => flags.includes(id), match, fin);
+const battleSrc = slice(app, "    const battleExtra = {", '    if (fin.id === "LER") {');
+const battleExtra = (match, fin) => new Function("currentMatch", "fin", battleSrc + "; return battleExtra;")(match, fin);
 test("scoring push: the battle just scored is counted (the log is one behind), a strike is not", () => {
-  assert.deepStrictEqual(battleExtra([1023], log3, { id: "OVR" }), { battleCount: 3 });
-  assert.deepStrictEqual(battleExtra([1023], log3, { id: "LER" }), { battleCount: 3 });
-  assert.deepStrictEqual(battleExtra([1023], log3, { id: "LER-STRIKE" }), { battleCount: 2 });
-  assert.deepStrictEqual(battleExtra([], log3, { id: "OVR" }), {});
+  assert.deepStrictEqual(battleExtra(log3, { id: "OVR" }), { battleCount: 3 });
+  assert.deepStrictEqual(battleExtra(log3, { id: "LER" }), { battleCount: 3 });
+  assert.deepStrictEqual(battleExtra(log3, { id: "LER-STRIKE" }), { battleCount: 2 });
 });
 
-console.log("matchup stats (flag 1026) and graphic memory");
-const P6 = load([1009, 1022, 1023, 1024, 1026]);
+console.log("matchup stats and graphic memory");
+const P6 = load([]);
 const combos = { p1ActiveCombo: { blade: "Shark Scale", ratchet: "3-60", bit: "Narrow" }, p2ActiveCombo: { blade: "Dran Sword", ratchet: "3-60", bit: "F" } };
 const muKey = "shark scale 3-60 narrow|dran sword 3-60 f";
 const setMu = e => MU.cache.set(muKey, Object.assign({ at: Date.now() }, e));
@@ -471,7 +448,7 @@ test("exactly even (same PPB and win rate) reads Even matchup", () => {
   const k = pick6(st(combos), st(combos)).card;
   assert.strictEqual(k.big, "Dran Sword"); assert.strictEqual(k.statRow.items[0][1].t, "55%");
 });
-test("skipped with fewer than 10 battles, a failed lookup, no lookup yet, missing combos, a finished match, or the flag off", () => {
+test("skipped with fewer than 10 battles, a failed lookup, no lookup yet, missing combos, or a finished match", () => {
   setMu({ n: 9, aWins: 9, bWins: 0, aPts: 20, bPts: 0 });
   assert.strictEqual(kindOf(pick6(st(combos), st(combos))), "context");
   setMu({ err: "E106" });
@@ -481,7 +458,6 @@ test("skipped with fewer than 10 battles, a failed lookup, no lookup yet, missin
   setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
   assert.strictEqual(kindOf(pick6(st(), st())), "context");
   assert.strictEqual(pick6(st({ ...combos, matchOver: true, sets: [2, 1] }), st(combos)).card.head.indexOf("Match winner") > -1, true);
-  assert.strictEqual(kindOf(pick(st(combos), st(combos))), "context");   // flag 1026 off
 });
 test("Clear graphic memory lets once-per-match graphics show again (same match)", () => {
   setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
@@ -511,7 +487,7 @@ test("a Test fire (sim) never reads or changes the real memory", () => {
   assert.strictEqual(P6.poolUpset(none, {}), null);   // nothing to build from: the Test fire falls back to a labelled sample
 });
 
-test("deferred pick (flag 1026): nothing is chosen or remembered until later() runs, then it matches a normal pick", () => {
+test("deferred pick: nothing is chosen or remembered until later() runs, then it matches a normal pick", () => {
   setMu({ n: 20, aWins: 14, bWins: 6, aPts: 40, bPts: 20 });
   const m = P6.POOL_MEM; P6.resetPoolMemory();
   const s1 = st(combos);
@@ -534,18 +510,11 @@ test("deferred pick (flag 1026): nothing is chosen or remembered until later() r
 
 console.log("flag registration");
 const flags = loadText("flags.js");
-test("1023 is on by default and has a menu description", () => {
-  assert(/^\s*1023,/m.test(flags));
-  assert(/1023:\s*\{\s*name:/.test(flags));
-});
-test("1024 is on by default and has a menu description", () => {
-  assert(/^\s*1024,/m.test(flags));
-  assert(/1024:\s*\{\s*name:/.test(flags));
-});
-
-test("1026 is on by default and has a menu description", () => {
-  assert(/^\s*1026,/m.test(flags));
-  assert(/1026:\s*\{\s*name:/.test(flags));
+test("flags 1022-1026 are retired (the post-battle graphics are always on)", () => {
+  [1022, 1023, 1024, 1025, 1026].forEach(id => {
+    assert(!new RegExp("^\\s*" + id + ",", "m").test(flags), id + " should be gone from the default-on list");
+    assert(!new RegExp(id + ":\\s*\\{\\s*name:").test(flags), id + " should be gone from the menu descriptions");
+  });
 });
 
 console.log("\n" + passed + " passed");

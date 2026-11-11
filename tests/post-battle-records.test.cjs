@@ -1,4 +1,4 @@
-// Tests for flag 1022 (round + match records on the stream overlay's second post-battle graphic).
+// Tests for the round + match records on the stream overlay's post-battle graphic (was flag 1022, now always on).
 // Runs the real functions from judge-match.js, overlay.html and flags.js - no copies.
 // Run: node tests/post-battle-records.test.cjs
 const assert = require("assert");
@@ -69,10 +69,10 @@ test("Swiss, Top Cut and no round", () => {
 
 console.log("what the judge app sends");
 const pushSrc = slice(app, "  const pushOverlay = (extraState = {}) => {", "\n  pushOverlayLatestRef.current = pushOverlay;");
-function sendWith({ on, challongeRound, overlayRecords }) {
+function sendWith({ challongeRound, overlayRecords }) {
   const sent = [];
   const env = {
-    ff: id => id === 1022 && on,
+    standbyRef: { current: false }, setStandbyActive: () => {}, overlayFlip: false, challongeSlug: "", setScores: [], overlaySetWinners: () => [], deckOrderRef: { current: null },
     pushOverlayDebounceRef: { current: 0 }, pushOverlayTrailExtraRef: { current: null },
     pushOverlayTrailTimerRef: { current: null }, pushOverlayLatestRef: { current: null },
     setTimeout: () => 1, r1: 0, r2: 0, d1: [{}], d2: [{}], currentMatch: [], p1: "A", p2: "B",
@@ -86,57 +86,47 @@ function sendWith({ on, challongeRound, overlayRecords }) {
   new Function(...names, pushSrc.replace("const pushOverlay =", "return") + ";")(...names.map(n => env[n]))();
   return sent[0];
 }
-test("flag on: round label and records are sent", () => {
-  const s = sendWith({ on: true, challongeRound: 2, overlayRecords: { p1: [2, 0], p2: [1, 1] } });
-  assert.deepStrictEqual(s.records, { label: "Swiss Round 2", p1: [2, 0], p2: [1, 1] });
+test("round label and records are sent", () => {
+  const s = sendWith({ challongeRound: 2, overlayRecords: { p1: [2, 0], p2: [1, 1] } });
+  assert.deepStrictEqual(s.records, { label: "Swiss Round 2", p1: [2, 0], p2: [1, 1], known: true, swiss: true, pending: null });
 });
-test("flag on, lookup not done or failed: 0-0 and the round still shows", () => {
-  const s = sendWith({ on: true, challongeRound: 1, overlayRecords: null });
-  assert.deepStrictEqual(s.records, { label: "Swiss Round 1", p1: [0, 0], p2: [0, 0] });
-});
-test("flag off: nothing extra is sent", () => {
-  const s = sendWith({ on: false, challongeRound: 1, overlayRecords: { p1: [1, 0], p2: [0, 1] } });
-  assert.strictEqual("records" in s, false);
+test("lookup not done or failed: 0-0 and the round still shows", () => {
+  const s = sendWith({ challongeRound: 1, overlayRecords: null });
+  assert.deepStrictEqual(s.records, { label: "Swiss Round 1", p1: [0, 0], p2: [0, 0], known: false, swiss: true, pending: null });
 });
 
 console.log("the overlay's graphic");
-const pbSrc = slice(overlay, "function buildRecordsInfo(", "// Size of the OBS source.");
-const FIN_POINTS = { SPF: 1, OVR: 2, BST: 2, XTR: 3, OF2: 2, OF3: 3, LER: 1 };
-function content(state, prev, on = true) {
-  const ff = id => (id === 1022 && on) || id === 1009;
-  return new Function("ff", "FIN_POINTS", "comboLine", "BD_P1", "BD_P2", pbSrc + "; return postBattleContent;")(ff, FIN_POINTS, () => "", "#3d9bff", "#ff6a2b")(state, prev);
-}
+const pbSrc = slice(overlay, "function buildRecordsInfo(", "// ── POST-BATTLE GRAPHIC POOL");
+const buildRecordsInfo = new Function(pbSrc + "; return buildRecordsInfo;")();
+function content(state) { return { info: buildRecordsInfo(state, state.sets || [0, 0]) }; }
 const st = (o = {}) => ({ p1: "Leaf", p2: "Chan", pts: [3, 0], sets: [0, 0], curSet: 1, lastFinish: { type: "XTR", scorerIdx: 0 }, records: { label: "Swiss Round 2", p1: [1, 0], p2: [0, 1] }, ...o });
 test("records graphic content comes from what the judge app sent", () => {
-  const i = content(st(), st({ pts: [0, 0], lastFinish: null })).info;
+  const i = content(st()).info;
   assert.deepStrictEqual(i, { label: "Swiss Round 2", p1: "Leaf", p2: "Chan", r1: [1, 0], r2: [0, 1], swapped: false });
 });
 test("no records sent: shows 0-0", () => {
-  const i = content(st({ records: undefined }), null).info;
+  const i = content(st({ records: undefined })).info;
   assert.deepStrictEqual([i.r1, i.r2, i.label], [[0, 0], [0, 0], ""]);
 });
 test("match just ended: that match is counted for the winner and loser", () => {
   const over = st({ matchOver: true, sets: [0, 2], pts: [1, 4], lastFinish: { type: "SPF", scorerIdx: 1 } });
-  const i = content(over, null).info;
+  const i = content(over).info;
   assert.deepStrictEqual([i.r1, i.r2], [[1, 1], [1, 1]]);
 });
 test("the records sent by the judge app are not changed by the overlay (a second finish does not add twice)", () => {
   const s = st({ matchOver: true, sets: [2, 0] });
-  content(s, null);
-  content(s, null);
+  content(s);
+  content(s);
   assert.deepStrictEqual(s.records, { label: "Swiss Round 2", p1: [1, 0], p2: [0, 1] });
 });
 test("stream position flipped: the records graphic is flipped too", () => {
-  assert.strictEqual(content(st({ swapped: true }), null).info.swapped, true);
-});
-test("flag off: no records graphic", () => {
-  assert.strictEqual(content(st(), null, false).info, null);
+  assert.strictEqual(content(st({ swapped: true })).info.swapped, true);
 });
 
 console.log("flag registration");
-test("1022 is on by default and has a menu description", () => {
-  assert(/^\s*1022,/m.test(flags), "1022 must be in the default-on list");
-  assert(/1022:\s*\{\s*name:/.test(flags), "1022 needs a menu description");
+test("flag 1022 is retired (the records are always sent)", () => {
+  assert(!/^\s*1022,/m.test(flags), "1022 should be gone from the default-on list");
+  assert(!/1022:\s*\{\s*name:/.test(flags), "1022 should be gone from the menu descriptions");
 });
 
 console.log("\n" + passed + " passed");

@@ -1,4 +1,4 @@
-// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-11-11a | popular-ratchets (Popular ratchets are now 1-50, 1-60, 1-70, 3-60, 3-70 / 5-50, 5-60, 7-60, 7-70, 9-60 in that order) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-10a | retired overlay flags 1007, 1010, 1018, 1019, 1021 (staff skip list now only 1026) | previous: 2026-11-08b | staff-flags-apply-on-first-load (a device that started with an older or empty list reloads once to apply the new one, unless a match is in progress) | previous: 2026-11-08a | staff-flag-defaults (flags the staff menu turned on/off for everyone are read here; cached copy used at load, fresh copy fetched in the background) | previous: 2026-11-03a | overlay-flip-key (new saved setting name for the stream overlay left/right flip) | previous: 2026-10-29a | quick-combos-update (new Top 10 quick combos, Glory Valkyrie Kick has no ratchet) | previous: 2026-10-22b split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
+// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-11-11b | flag-retire (no flag is kept out of the staff menu any more) | previous: 2026-11-11a | popular-ratchets (Popular ratchets are now 1-50, 1-60, 1-70, 3-60, 3-70 / 5-50, 5-60, 7-60, 7-70, 9-60 in that order) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-10a | retired overlay flags 1007, 1010, 1018, 1019, 1021 (staff skip list now only 1026) | previous: 2026-11-08b | staff-flags-apply-on-first-load (a device that started with an older or empty list reloads once to apply the new one, unless a match is in progress) | previous: 2026-11-08a | staff-flag-defaults (flags the staff menu turned on/off for everyone are read here; cached copy used at load, fresh copy fetched in the background) | previous: 2026-11-03a | overlay-flip-key (new saved setting name for the stream overlay left/right flip) | previous: 2026-10-29a | quick-combos-update (new Top 10 quick combos, Glory Valkyrie Kick has no ratchet) | previous: 2026-10-22b split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
 const {
   useState,
   useEffect,
@@ -54,7 +54,7 @@ const FLAG_OVERRIDES = readFlagOverrides();
 // is unreachable, nothing changes: the shipped defaults in flags.js are used.
 // Overlay-only flags are never taken from here (they go out through flags.js).
 const STAFF_FLAGS_KEY = "ncblast-staff-flags-v1";
-const STAFF_FLAG_EXCLUDED = [1026];
+const STAFF_FLAG_EXCLUDED = [];
 
 function cleanStaffFlags(raw) {
   const out = {};

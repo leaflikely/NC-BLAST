@@ -38,6 +38,8 @@ function makePush({ flagOn, sets, phase = "battle", need = 2 }) {
   const timers = [];
   const env = {
     ff: id => id === 1006 && flagOn,
+    standbyRef: { current: false }, setStandbyActive: () => {}, overlayFlip: false, overlayRecords: null, overlayRoundLabel: () => "", challongeRound: 1, challongeSlug: "",
+    setScores: [], overlaySetWinners: () => [], deckOrderRef: { current: null },
     pushOverlayDebounceRef: { current: 0 },
     pushOverlayTrailExtraRef: { current: null },
     pushOverlayTrailTimerRef: { current: null },

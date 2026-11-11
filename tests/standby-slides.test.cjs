@@ -1,4 +1,4 @@
-// Behavioural test for flag 1030 (standby slides between rounds). Runs the real code from judge-match.js / overlay.html / flags.js.
+// Behavioural test for the standby slides between rounds (was flag 1030, now always on). Runs the real code from judge-match.js / overlay.html / flags.js.
 // Run: node tests/standby-slides.test.cjs
 const assert = require("assert");
 const { loadApp, loadText } = require("./load-app.cjs");
@@ -14,7 +14,7 @@ const H = new Function(slice(app, "function setScoreText(", "function stadiumLet
 const OV = new Function("el", "space", "SHAPES", slice(overlay, "function sbPpb(", "async function sbLoop(") + "; return { sbSlidesFrom, sbPpb };")(() => ({}), { shape: "wide" }, {});
 
 let n = 0; const test = (name, fn) => { fn(); n++; console.log("  ok  " + name); };
-console.log("standby slides (flag 1030)");
+console.log("standby slides");
 
 const M = (id, round, p1, p2, state, winner, csv) => ({ id, round, state, player1_id: p1 && p1.charCodeAt(0), player2_id: p2 && p2.charCodeAt(0), player1_name: p1, player2_name: p2, winner_id: winner ? winner.charCodeAt(0) : null, scores_csv: csv });
 
@@ -139,15 +139,15 @@ test("overlay: PPB is written with a sign (minus sign for negatives)", () => {
   assert.strictEqual(OV.sbPpb(null), "");
 });
 
-test("judge app wiring: all three New Match buttons use the standby check; a real update ends standby; locking saves the decks", () => {
-  assert.strictEqual((app.match(/newMatchTap\(\);/g) || []).length, 3);
-  assert(/if \(ff\(1030\)\) \{\r?\n\s*standbyRef\.current = false;\r?\n\s*setStandbyActive\(false\);/.test(app));
-  assert(/if \(ff\(1030\) && locked && locked\.p1Deck && locked\.p2Deck\) saveDeckLog\(locked\);/.test(app));
+test("judge app wiring: every New Match button uses the standby check; a real update ends standby; locking saves the decks", () => {
+  assert.strictEqual((app.match(/newMatchTap\(\);/g) || []).length, 4);
+  assert(/standbyRef\.current = false;\r?\n\s*setStandbyActive\(false\);/.test(app));
+  assert(/if \(locked && locked\.p1Deck && locked\.p2Deck\) saveDeckLog\(locked\);/.test(app));
   assert(app.includes("Are there no more matches at this stadium?"));
 });
-test("flags.js: 1030 is on by default and described; overlay hook is flag-gated", () => {
-  assert(/\b1030,/.test(slice(flagsSrc, "new Set([", "]);")));
-  assert(/1030:\s*\{\s*name:/.test(flagsSrc));
-  assert(/ff\(1030\) && ff\(1021\) && state && state\.standby/.test(overlay));
+test("flag 1030 is retired; the overlay shows standby whenever the state asks for it", () => {
+  assert(!/\b1030,/.test(slice(flagsSrc, "new Set([", "]);")));
+  assert(!/1030:\s*\{\s*name:/.test(flagsSrc));
+  assert(/SPACE && state && state\.standby && typeof state\.standby === "object"/.test(overlay));
 });
 console.log("\n" + n + " passed");

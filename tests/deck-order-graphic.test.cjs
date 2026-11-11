@@ -1,4 +1,4 @@
-// Behavioural test for flag 1028 (deck order graphic on the stream overlay).
+// Behavioural test for the deck order graphic on the stream overlay (was flag 1028, now always on).
 // Runs the real code from screens.js / judge-match.js / flags.js - no copies - and checks what the judge app
 // sends to the overlay when the judge locks the deck order with Start Match.
 // Run: node tests/deck-order-graphic.test.cjs
@@ -36,18 +36,20 @@ function runConfirm({ swapped, topOrder, botOrder }) {
 }
 
 // The real lock step in the judge app's onConfirm.
-function runLock({ flagOn, locked, p1 = "Leaf", p2 = "Danny", displayShuf = 1 }) {
+function runLock({ locked, p1 = "Leaf", p2 = "Danny", displayShuf = 1 }) {
   const deckOrderRef = { current: null };
-  const deckExtra = new Function("ff", "locked", "deckOrderRef", "p1", "p2", "Date", "displayShuf", lockSrc + "; return deckExtra;")(
-    id => id === 1028 && flagOn, locked, deckOrderRef, p1, p2, { now: () => 4242 }, displayShuf);
+  const deckExtra = new Function("saveDeckLog", "locked", "deckOrderRef", "p1", "p2", "Date", "displayShuf", lockSrc + "; return deckExtra;")(
+    () => {}, locked, deckOrderRef, p1, p2, { now: () => 4242 }, displayShuf);
   return { deckExtra, ref: deckOrderRef };
 }
 
 // The real pushOverlay, with every sent state captured.
-function makePush({ flagOn, ref, phase = "battle", p1 = "Leaf", p2 = "Danny", matchOver = false }) {
+function makePush({ ref, phase = "battle", p1 = "Leaf", p2 = "Danny", matchOver = false }) {
   const sent = [];
   const env = {
-    ff: id => id === 1028 && flagOn,
+    standbyRef: { current: false }, setStandbyActive: () => {},
+    overlayFlip: false, overlayRecords: null, overlayRoundLabel: () => "", challongeRound: 1, challongeSlug: "",
+    setScores: [], overlaySetWinners: () => [],
     pushOverlayDebounceRef: { current: 0 },
     pushOverlayTrailExtraRef: { current: null },
     pushOverlayTrailTimerRef: { current: null },
@@ -72,7 +74,7 @@ function makePush({ flagOn, ref, phase = "battle", p1 = "Leaf", p2 = "Danny", ma
 let passed = 0;
 function test(name, fn) { fn(); passed++; console.log("  ok  " + name); }
 
-console.log("deck order graphic (flag 1028)");
+console.log("deck order graphic");
 
 test("Start Match hands back player 1's and player 2's locked decks (player 1 on top)", () => {
   const r = runConfirm({ swapped: false, topOrder: [2, 0, 1], botOrder: [1, 2, 0] });
@@ -91,7 +93,7 @@ test("Start Match with the sides swapped still returns the right deck for each p
 const locked = { p1Deck: [D1[2], D1[0], D1[1]], p2Deck: [D2[1], D2[2], D2[0]] };
 
 test("lock step stores plain combos in order and the first combos for the scoreboard", () => {
-  const { deckExtra, ref } = runLock({ flagOn: true, locked });
+  const { deckExtra, ref } = runLock({ locked });
   assert.strictEqual(ref.current.id, 4242);
   assert.deepStrictEqual(ref.current.p1, [
     { blade: "Hells Scythe", ratchet: "4-60", bit: "T" },
@@ -103,27 +105,21 @@ test("lock step stores plain combos in order and the first combos for the scoreb
 });
 
 test("the shuffle number of the set goes out with the order (second shuffle = 2)", () => {
-  const { ref } = runLock({ flagOn: true, locked, displayShuf: 2 });
-  const { push, sent } = makePush({ flagOn: true, ref });
+  const { ref } = runLock({ locked, displayShuf: 2 });
+  const { push, sent } = makePush({ ref });
   push({});
   assert.strictEqual(sent[0].deckOrder.shuf, 2);
 });
 
-test("flag OFF: nothing stored, nothing extra sent", () => {
-  const { deckExtra, ref } = runLock({ flagOn: false, locked });
-  assert.strictEqual(deckExtra, null);
-  assert.strictEqual(ref.current, null);
-});
-
 test("an older caller that passes nothing does not break the lock step", () => {
-  const { deckExtra, ref } = runLock({ flagOn: true, locked: undefined });
+  const { deckExtra, ref } = runLock({ locked: undefined });
   assert.strictEqual(deckExtra, null);
   assert.strictEqual(ref.current, null);
 });
 
 test("the push after the lock carries deckOrder and the new first combos (not the old order's)", () => {
-  const { deckExtra, ref } = runLock({ flagOn: true, locked });
-  const { push, sent } = makePush({ flagOn: true, ref });
+  const { deckExtra, ref } = runLock({ locked });
+  const { push, sent } = makePush({ ref });
   push({ shuffling: false, p1ComboIdx: 0, p2ComboIdx: 0, ...deckExtra });
   assert.strictEqual(sent.length, 1);
   assert.deepStrictEqual(sent[0].deckOrder, { id: 4242, shuf: 1, p1: ref.current.p1, p2: ref.current.p2 });
@@ -132,15 +128,15 @@ test("the push after the lock carries deckOrder and the new first combos (not th
 });
 
 test("a later push that is not a score (side change, judge name...) still carries it", () => {
-  const { ref } = runLock({ flagOn: true, locked });
-  const { push, sent } = makePush({ flagOn: true, ref });
+  const { ref } = runLock({ locked });
+  const { push, sent } = makePush({ ref });
   push({ p1Side: "B", p2Side: "X" });
   assert.strictEqual(sent[0].deckOrder.id, 4242);
 });
 
 test("the first scored battle clears it, and later pushes no longer carry it", () => {
-  const { ref } = runLock({ flagOn: true, locked });
-  const { push, sent, env } = makePush({ flagOn: true, ref });
+  const { ref } = runLock({ locked });
+  const { push, sent, env } = makePush({ ref });
   push({ lastFinish: { type: "XTR", scorerIdx: 0 }, pts: [3, 0] });
   assert.strictEqual(sent[0].deckOrder, undefined);
   assert.strictEqual(ref.current, null);
@@ -150,44 +146,37 @@ test("the first scored battle clears it, and later pushes no longer carry it", (
 });
 
 test("a launch error strike also counts as the first scoring push", () => {
-  const { ref } = runLock({ flagOn: true, locked });
-  const { push, sent } = makePush({ flagOn: true, ref });
+  const { ref } = runLock({ locked });
+  const { push, sent } = makePush({ ref });
   push({ lastFinish: { type: "LER-STRIKE", scorerIdx: 1 } });
   assert.strictEqual(sent[0].deckOrder, undefined);
   assert.strictEqual(ref.current, null);
 });
 
 test("a different pairing (old order left over) never carries it", () => {
-  const { ref } = runLock({ flagOn: true, locked, p1: "Leaf", p2: "Danny" });
-  const { push, sent } = makePush({ flagOn: true, ref, p1: "Sam", p2: "Alex" });
+  const { ref } = runLock({ locked, p1: "Leaf", p2: "Danny" });
+  const { push, sent } = makePush({ ref, p1: "Sam", p2: "Alex" });
   push({});
   assert.strictEqual(sent[0].deckOrder, undefined);
 });
 
 test("a finished match never carries it", () => {
-  const { ref } = runLock({ flagOn: true, locked });
-  const { push, sent } = makePush({ flagOn: true, ref, phase: "over", matchOver: true });
+  const { ref } = runLock({ locked });
+  const { push, sent } = makePush({ ref, phase: "over", matchOver: true });
   push({});
   assert.strictEqual(sent[0].deckOrder, undefined);
 });
 
-test("flag OFF: pushes are exactly as before (no deckOrder key at all)", () => {
-  const { ref } = runLock({ flagOn: true, locked });
-  const { push, sent } = makePush({ flagOn: false, ref });
-  push({});
-  assert.strictEqual("deckOrder" in sent[0], false);
-});
-
-test("flags.js: 1028 is on by default and has a menu description", () => {
+test("flags.js: flag 1028 is retired (the feature is always on)", () => {
   const set = slice(flagsSrc, "new Set([", "]);");
-  assert(/\b1028,/.test(set), "1028 missing from the default-on list");
-  assert(/1028:\s*\{\s*name:/.test(flagsSrc), "1028 missing from the descriptions");
+  assert(!/\b1028,/.test(set), "1028 should be gone from the list");
+  assert(!/1028:\s*\{\s*name:/.test(flagsSrc), "1028 should be gone from the descriptions");
 });
 
 test("overlay.html: the layer, the trigger and the phase switch are present", () => {
   assert(overlay.includes('id="gfx-deck"'));
   assert(overlay.includes('el("gfx-deck").classList.toggle("off", p !== "deck")'));
-  assert(/ff\(1028\) && state\.deckOrder && state\.deckOrder\.id && state\.deckOrder\.id !== lastDeckId/.test(overlay));
+  assert(/SPACE && state\.deckOrder && state\.deckOrder\.id && state\.deckOrder\.id !== lastDeckId/.test(overlay));
 });
 
 console.log("\n" + passed + " passed");
