@@ -1,4 +1,4 @@
-// NC BLAST screens.js | part 3 of 6 (load order is set in index.html) | last updated: 2026-11-11e | deck-order-buttons-always-shown (flag 1035: the two buttons are on screen from the start, greyed out and not tappable until both orders are set) | previous: 2026-11-11d | deck-order-fit (flag 1035: when both decks and the two buttons do not fit, the screen tightens its sizes in up to two steps so nothing needs scrolling) | previous: 2026-11-11c | deck-order-two-buttons (flag 1035: once both orders are set the screen stays and shows Check With Players (the one-by-one check) and Looks good, start battles. (starts the shuffle right away, no check)) | previous: 2026-11-11b | deck-order-both-decks (flag 1035: both players' decks on one screen, each in its own blue or red box with the name and what to tap next; the player tabs are gone; the check still goes one player at a time, top player first) | previous: 2026-11-11a | deck-order-redesign (flag 1035, on by default: new Deck order screen from the teammate mock-up for the first order of a set and every reshuffle - one player at a time with taps only, then each player checks and confirms their own order, with a hidden screen between them; top-bar Undo still undoes the last battle; the old Set Deck Order screen stays as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-22b | split-from-app.js (styles, library manager, event picker, format screen, shuffle and misreport screens, other shared screens; code moved here unchanged)
+// NC BLAST screens.js | part 3 of 6 (load order is set in index.html) | last updated: 2026-11-11f | deck-order-buttons-now (flag 1035: the two buttons turn on the moment both orders are set, no pause; Looks good, start battles. is blue with a soft glow, Check With Players is outlined) | previous: 2026-11-11e | deck-order-buttons-always-shown (flag 1035: the two buttons are on screen from the start, greyed out and not tappable until both orders are set) | previous: 2026-11-11d | deck-order-fit (flag 1035: when both decks and the two buttons do not fit, the screen tightens its sizes in up to two steps so nothing needs scrolling) | previous: 2026-11-11c | deck-order-two-buttons (flag 1035: once both orders are set the screen stays and shows Check With Players (the one-by-one check) and Looks good, start battles. (starts the shuffle right away, no check)) | previous: 2026-11-11b | deck-order-both-decks (flag 1035: both players' decks on one screen, each in its own blue or red box with the name and what to tap next; the player tabs are gone; the check still goes one player at a time, top player first) | previous: 2026-11-11a | deck-order-redesign (flag 1035, on by default: new Deck order screen from the teammate mock-up for the first order of a set and every reshuffle - one player at a time with taps only, then each player checks and confirms their own order, with a hidden screen between them; top-bar Undo still undoes the last battle; the old Set Deck Order screen stays as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-22b | split-from-app.js (styles, library manager, event picker, format screen, shuffle and misreport screens, other shared screens; code moved here unchanged)
 /* ═══════════════════════════════════════
    STYLES
 ═══════════════════════════════════════ */
@@ -3405,9 +3405,11 @@ const NCBDO_CSS = `
 
   }
   .ncbdo[data-stage="cover"] { background: var(--night); }
-  .ncbdo .dock-btn.go { background: var(--card); color: var(--ink); border: 2px solid var(--line-2); }
-  .ncbdo .dock-btn:disabled { background: var(--track); color: var(--muted); border: 2px solid transparent; opacity: 0.6; animation: none; }
-  .ncbdo .dock-btn.go:disabled { background: var(--card); border-color: var(--line); }
+  /* Looks good, start battles. is the usual pick: blue with a soft glow. Check With Players is the outlined one. */
+  .ncbdo .dock-btn.chk { background: var(--card); color: var(--ink); border: 2px solid var(--line-2); }
+  .ncbdo .dock-btn.go { background: linear-gradient(135deg, #1D4ED8, #2563EB); color: #FFFFFF; border: 2px solid transparent; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35); }
+  .ncbdo .dock-btn:disabled { background: var(--track); color: var(--muted); border: 2px solid transparent; box-shadow: none; opacity: 0.6; animation: none; }
+  .ncbdo .dock-btn.chk:disabled { background: var(--card); border-color: var(--line); }
   /* fit1 / fit2: added by the screen itself, one step at a time, when both decks and the buttons do not fit without scrolling. */
   .ncbdo.fit1 .pnl .ask-sub { display: none; }
   .ncbdo.fit1 .pnl .bey { min-height: calc(var(--prow-h) - 8px); }
@@ -3667,8 +3669,9 @@ function DeckOrderV2(props) {
     setS(Object.assign({}, S, { who: pi, order }));
     clearNotice();
     buzz(8);
-    // A short beat shows 1st, 2nd and 3rd before the screen moves on. Taps are ignored during it.
-    if (mine.length === 3) { setBusy(true); setTimeout(advance, NCBDO_CFG.beatMs); }
+    // Changing an order from a check screen: a short beat shows 1st, 2nd and 3rd before it goes back to the check
+    // (taps are ignored during it). Entering the orders has no beat: the two buttons turn on right away.
+    if (mine.length === 3 && S.fixing) { setBusy(true); setTimeout(advance, NCBDO_CFG.beatMs); }
   }
   // After the beat: back to the check after a change. Once both orders are set the screen stays put and
   // shows two buttons: Check With Players (one by one) or Looks good, start battles (no check).
@@ -3907,9 +3910,9 @@ function DeckOrderV2(props) {
       // While an order is being changed from a check screen, the screen goes back to that check by itself.
       if (S.fixing) return null;
       // Always on screen while the orders are entered; greyed out and not tappable until both orders are set.
-      const ready = !busy && bothSet(S);
+      const ready = bothSet(S);
       return [
-        h("button", { key: "sc", className: "dock-btn", type: "button", disabled: !ready, onClick: tap("start-check", startCheck) }, ncbdoIcon("eye", 22, 2.2), h("span", null, "Check With Players")),
+        h("button", { key: "sc", className: "dock-btn chk", type: "button", disabled: !ready, onClick: tap("start-check", startCheck) }, ncbdoIcon("eye", 22, 2.2), h("span", null, "Check With Players")),
         h("button", { key: "go", className: "dock-btn go", type: "button", disabled: !ready, onClick: tap("start-now", startNow) }, ncbdoIcon("check", 22, 2.6), h("span", null, "Looks good, start battles."))
       ];
     }
