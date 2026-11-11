@@ -55,6 +55,7 @@ window.FEATURE_FLAGS = new Set([
   // 1033, // Score pad redesign, battle screen (judge): the whole scoring screen gets the new look from the Claude Design mock-up (Own plus text in the opponent's colour, one shared confirm bar). Drawing only; scoring unchanged. Held OFF: a tournament is coming.
   1034, // Deck builder redesign (judge): new Record decks screen (deck always on screen, whole-combo search, ratchet grid, CX steps), then each player checks and confirms their own deck before the match starts. Fast Blast events use it too. Turn it off to get the old deck review and part pickers back.
   1035, // Deck order redesign (judge): new Deck order screen for the first order of a set and every reshuffle. Both decks on one screen, taps only, then Check With Players (each player confirms their own order) or Looks good, start battles. Turn it off to get the old Set Deck Order screen back.
+  1036, // Next Action popup (judge): right after the judge submits a match, ask New Match / Stay Here / Finished this round. (the last one only with a stream channel; starts the between-round slides). Turn it off to just stay on the result page like before.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -168,5 +169,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Deck order redesign + players check their own order (judge)",
     desc: "Replaces the Set Deck Order screen (first order of a set and every reshuffle) with a new Deck order screen: tap the combo that goes 1st, then 2nd (the 3rd fills in by itself), tap a numbered combo to take it back. Both players' decks are on the screen at once, each in its own blue or red box. When both orders are set, two buttons show: 'Check With Players' (each player sees only their own order and taps '<name> confirms', with a blank screen between them, switch in the ... menu shared with the deck builder; the second confirm starts the shuffle) or 'Looks good, start battles.' (starts the shuffle right away, like the old Start Match button). The top-bar Undo still undoes the last battle, and the 60-second timer still shows on reshuffles. No dragging.",
     off: "Old behaviour: the original Set Deck Order screen with both players' orders on one screen, drag to reorder, and one Start Match button."
+  },
+  1036: {
+    name: "Next Action popup after submitting (judge)",
+    desc: "Right after the judge taps Submit on a finished match, a 'Next Action?' popup opens. New Match (the main choice, shown biggest) is the same as the New Match button on the page, so it waits for the bracket site the same way. Stay Here closes the popup and leaves the judge on the result page. Finished this round. shows only when the judge is connected to a stream channel: it puts that channel into the between-round standby slides (standings, results, most used combos) until the next match starts.",
+    off: "Old behaviour: no popup; after Submit the judge stays on the result page and uses the New Match button there."
   }
 };

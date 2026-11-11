@@ -877,8 +877,35 @@ RobotJudge.prototype.finishMatch = async function () {
   try { const mb = await p.evaluate(() => performance.memory ? performance.memory.usedJSHeapSize / 1048576 : 0); if (mb) this.heap.push(Math.round(mb)); } catch (_) {}
   this.matchesDone.push({ name, matchId: this.current.matchId, handedOff: !!this.current.handedOff, retries: tries, exp, battles: this.battles, undos: this.undos, ms: Date.now() - this.current.startedAt });
 
+  // Flag 1036: the "Next Action?" popup opens right after Submit. Mostly the judge taps New Match there; now and then
+  // Stay Here (then the page's own New Match), or, with a stream channel, Finished this round. (standby slides).
+  let viaPopup = false;
+  const dlg = '[role="dialog"][aria-label="Next Action?"]';
+  if (await ui.until(p, () => p.$(dlg), 1500)) {
+    const btn = t => p.locator(dlg + " button", { hasText: t }).first();
+    const canFinish = await btn("Finished this round.").count();
+    const r = this.rnd();
+    if (canFinish && r < 0.2) {
+      this.say("Next Action: Finished this round.");
+      await btn("Finished this round.").click({ timeout: 3000 });
+      const slot = this.opts.streamSlot;
+      const ok = await ui.until(p, async () => !!(this.fw.overlay[slot] && this.fw.overlay[slot].standby), 5000);
+      if (!ok) this.fw.find("bug", this.who, "Finished this round. did not put the stream channel into the between-round slides", name + " (channel " + slot + ")");
+    } else if (r < 0.35) {
+      this.say("Next Action: Stay Here");
+      await btn("Stay Here").click({ timeout: 3000 });
+    } else {
+      this.say("Next Action: New Match");
+      await ui.until(p, async () => await btn("New Match").isEnabled(), 8000);
+      await btn("New Match").click({ timeout: 3000 });
+      viaPopup = true;
+    }
+    if (!viaPopup && await ui.until(p, () => p.$(dlg), 300)) this.fw.find("bug", this.who, "Next Action popup did not close", name);
+  } else if (await p.evaluate(() => typeof ff === "function" && ff(1036)).catch(() => false)) {
+    this.fw.find("bug", this.who, "Next Action popup did not open after Submit", name);
+  }
   // Back to the match list. The finished match should not still be offered.
-  await this.tap(/^New Match/);
+  if (!viaPopup) await this.tap(/^New Match/);
   const listOrPrompt = async () => { const b = await ui.buttons(p); return (b.includes("Yes, no more matches here") || b.some(x => /^#\d+ /.test(x))) && b; };
   await ui.until(p, listOrPrompt, 1500);
   if (await this.answerStandbyPrompt()) await ui.until(p, async () => (await ui.buttons(p)).some(x => /^#\d+ /.test(x)), 1500);

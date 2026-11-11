@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-11a | deck-order-redesign (flag 1035: the order screen call picks DeckOrderV2 from screens.js when the flag is on, and passes dark mode to it) | previous: 2026-11-10e | cx-picture-guide-new-parts (Picture guide lists Hurricane and Tread with the CXE blades, Tough with the over blades, Quell with the assist blades) | previous: 2026-11-10d | cxe-tag-dark-mode (flag 1034: the small CXE tag on the CX main blade buttons uses dark text in dark mode, it was white on near-white) | previous: 2026-11-10c | deck-builder-redesign (flag 1034, on by default: new Record decks screen from the teammate mock-up - deck always on screen, whole-combo search, ratchet grid, CX steps - then each player checks and confirms their own deck, with a hidden screen between them; Fast Blast uses it too; the old deck review and pickers stay as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-11b | next-action-popup (flag 1036, on by default: right after the judge submits, a "Next Action?" popup with New Match (main choice, waits for the bracket like the page button), Stay Here, and Finished this round. (only with a stream channel; starts the between-round standby slides)) | previous: 2026-11-11a | deck-order-redesign (flag 1035: the order screen call picks DeckOrderV2 from screens.js when the flag is on, and passes dark mode to it) | previous: 2026-11-10e | cx-picture-guide-new-parts (Picture guide lists Hurricane and Tread with the CXE blades, Tough with the over blades, Quell with the assist blades) | previous: 2026-11-10d | cxe-tag-dark-mode (flag 1034: the small CXE tag on the CX main blade buttons uses dark text in dark mode, it was white on near-white) | previous: 2026-11-10c | deck-builder-redesign (flag 1034, on by default: new Record decks screen from the teammate mock-up - deck always on screen, whole-combo search, ratchet grid, CX steps - then each player checks and confirms their own deck, with a hidden screen between them; Fast Blast uses it too; the old deck review and pickers stay as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 // FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
 // stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
 // (the set that was just won: its score is saved a moment after the overlay push) is added at
@@ -2404,6 +2404,9 @@ function MatchScreen({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [misreportOpen, setMisreportOpen] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
+  // FLAG 1036: the "Next Action?" popup after the judge submits. Holds the matchKey it was opened for, so it can
+  // never show on a later match's result screen; null = closed.
+  const [nextActionFor, setNextActionFor] = useState(null);
   const [manualJudge, setManualJudge] = useState(_resume ? _resume.manualJudge : false);
   const [setScores, setSetScores] = useState(_resume ? _resume.setScores : []);
   const [sideAssign, setSideAssign] = useState(_resume ? _resume.sideAssign : null);
@@ -8637,6 +8640,89 @@ function MatchScreen({
         setPhase("battle");
       }
     };
+    // FLAG 1036: "Next Action?" popup, opened right after the judge submits.
+    //   New Match         - the usual New Match (same button as on this page, so it waits for the bracket the same way)
+    //   Stay Here         - closes the popup; the judge stays on this result page
+    //   Finished this round. - only with a stream channel: puts the overlay into the between-round standby slides (flag 1030)
+    const nextActionOpen = ff(1036) && submitted && nextActionFor !== null && nextActionFor === (matchKey || "match") && !standbyAsk;
+    const canFinishRound = !!overlaySlot && ff(1030) && !!challongeSlug && !String(challongeSlug).startsWith("wcb-");
+    const nextActionPopup = nextActionOpen && /*#__PURE__*/React.createElement("div", {
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-label": "Next Action?",
+      onClick: e => {
+        if (e.target === e.currentTarget) setNextActionFor(null); // tap outside = Stay Here
+      },
+      style: {
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15,23,42,0.6)",
+        zIndex: 520,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "0 24px"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: "var(--surface)",
+        borderRadius: 18,
+        padding: "22px 20px 18px",
+        maxWidth: 360,
+        width: "100%",
+        textAlign: "center",
+        fontFamily: "'Outfit',sans-serif",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.3)"
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      style: { fontSize: 20, fontWeight: 800, color: "var(--text-primary)", marginBottom: 16 }
+    }, "Next Action?"), /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      disabled: newMatchLocked,
+      onClick: () => {
+        if (newMatchLocked) return;
+        setNextActionFor(null);
+        newMatchTap();
+      },
+      style: {
+        ...S.pri,
+        padding: "16px 0",
+        fontSize: 19,
+        fontWeight: 800,
+        borderRadius: 14,
+        marginBottom: 10,
+        boxShadow: newMatchLocked ? "none" : "0 6px 18px rgba(37,99,235,0.4)",
+        opacity: newMatchLocked ? 0.55 : 1,
+        cursor: newMatchLocked ? "default" : "pointer"
+      }
+    }, newMatchLocked ? "New Match (waiting for " + (String(challongeSlug || "").startsWith("wcb-") ? "WCB" : "Challonge") + ")" : "New Match"), /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => setNextActionFor(null),
+      style: {
+        ...S.pri,
+        background: "var(--surface2)",
+        color: "var(--text-primary)",
+        border: "1.5px solid var(--border)",
+        boxShadow: "none",
+        marginBottom: canFinishRound ? 10 : 0
+      }
+    }, "Stay Here"), canFinishRound && /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: () => {
+        setNextActionFor(null);
+        goStandby();
+      },
+      style: {
+        ...S.pri,
+        background: "transparent",
+        color: "#B45309",
+        border: "1.5px solid #B4530966",
+        boxShadow: "none",
+        marginBottom: 0
+      }
+    }, "Finished this round."), canFinishRound && /*#__PURE__*/React.createElement("p", {
+      style: { fontSize: 12, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.4 }
+    }, "Puts stream channel ", overlaySlot, " into the between-round slides until the next match starts.")));
     return /*#__PURE__*/React.createElement("div", {
       style: ff(1032) ? ncbPadFrameStyle(dark, padFixed) : {
         ...S.page,
@@ -8678,7 +8764,7 @@ function MatchScreen({
       type: "button",
       style: { ...S.pri, background: "var(--surface2)", color: "var(--text)", marginTop: 8 },
       onClick: () => answerStandby(false)
-    }, "No, more are coming"))), overBackConfirm && /*#__PURE__*/React.createElement("div", {
+    }, "No, more are coming"))), nextActionPopup, overBackConfirm && /*#__PURE__*/React.createElement("div", {
       style: {
         position: "fixed",
         inset: 0,
@@ -9683,6 +9769,7 @@ function MatchScreen({
             ...cs,
             judgeok: true
           });
+          if (ff(1036)) setNextActionFor(matchKey || "match"); // FLAG 1036: ask "Next Action?" right after the submit
           if (submitSheetsCheck) {
             onSendSheets(currentMatch, {
               p1,
