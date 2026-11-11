@@ -584,7 +584,12 @@ RobotJudge.prototype.playMatch = async function () {
         const els = await p.locator(boxSel(k)).locator(".bey:has(.badge:not(.on))").all();
         if (els.length) { await this.rnd.pick(els).click({ timeout: 2000 }).catch(() => {}); continue; }
       }
-      if (st.dock) { this.say("deck order set"); await ui.tap(p, "Check with the players", { optional: true, timeout: 1500 }); continue; }
+      if (st.dock) {
+        // Both orders set: two buttons. Sometimes the judge has the players check, sometimes starts right away.
+        if (this.rnd.chance(0.5)) { this.say("deck order set, check with players"); await ui.tap(p, "Check With Players", { optional: true, timeout: 1500 }); }
+        else { this.say("deck order set, start battles"); await ui.tap(p, "Looks good, start battles.", { optional: true, timeout: 1500 }); }
+        continue;
+      }
       // In the middle of the short pause after a 3rd place fills in: wait.
       await p.waitForTimeout(ui.POLL);
       continue;

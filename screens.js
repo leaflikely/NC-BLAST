@@ -1,4 +1,4 @@
-// NC BLAST screens.js | part 3 of 6 (load order is set in index.html) | last updated: 2026-11-11b | deck-order-both-decks (flag 1035: both players' decks on one screen, each in its own blue or red box with the name and what to tap next; the player tabs are gone; the check still goes one player at a time, top player first) | previous: 2026-11-11a | deck-order-redesign (flag 1035, on by default: new Deck order screen from the teammate mock-up for the first order of a set and every reshuffle - one player at a time with taps only, then each player checks and confirms their own order, with a hidden screen between them; top-bar Undo still undoes the last battle; the old Set Deck Order screen stays as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-22b | split-from-app.js (styles, library manager, event picker, format screen, shuffle and misreport screens, other shared screens; code moved here unchanged)
+// NC BLAST screens.js | part 3 of 6 (load order is set in index.html) | last updated: 2026-11-11d | deck-order-fit (flag 1035: when both decks and the two buttons do not fit, the screen tightens its sizes in up to two steps so nothing needs scrolling) | previous: 2026-11-11c | deck-order-two-buttons (flag 1035: once both orders are set the screen stays and shows Check With Players (the one-by-one check) and Looks good, start battles. (starts the shuffle right away, no check)) | previous: 2026-11-11b | deck-order-both-decks (flag 1035: both players' decks on one screen, each in its own blue or red box with the name and what to tap next; the player tabs are gone; the check still goes one player at a time, top player first) | previous: 2026-11-11a | deck-order-redesign (flag 1035, on by default: new Deck order screen from the teammate mock-up for the first order of a set and every reshuffle - one player at a time with taps only, then each player checks and confirms their own order, with a hidden screen between them; top-bar Undo still undoes the last battle; the old Set Deck Order screen stays as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-22b | split-from-app.js (styles, library manager, event picker, format screen, shuffle and misreport screens, other shared screens; code moved here unchanged)
 /* ═══════════════════════════════════════
    STYLES
 ═══════════════════════════════════════ */
@@ -3405,6 +3405,23 @@ const NCBDO_CSS = `
 
   }
   .ncbdo[data-stage="cover"] { background: var(--night); }
+  .ncbdo .dock-btn.go { background: var(--card); color: var(--ink); border: 2px solid var(--line-2); }
+  /* fit1 / fit2: added by the screen itself, one step at a time, when both decks and the buttons do not fit without scrolling. */
+  .ncbdo.fit1 .pnl .ask-sub { display: none; }
+  .ncbdo.fit1 .pnl .bey { min-height: calc(var(--prow-h) - 8px); }
+  .ncbdo.fit1 .dock { gap: 8px; padding-top: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .ncbdo.fit1 .dock-btn { min-height: 48px; font-size: 17px; }
+  .ncbdo.fit2 .score { margin-top: 6px; padding: 5px 12px; }
+  .ncbdo.fit2 .pnl { margin-top: 6px; padding: 6px 8px 8px; }
+  .ncbdo.fit2 .pnl-head { padding: 0 4px 5px; }
+  .ncbdo.fit2 .pnl .ask { font-size: 16px; }
+  .ncbdo.fit2 .pnl .beys { gap: 5px; }
+  .ncbdo.fit2 .pnl .bey { min-height: calc(var(--prow-h) - 14px); padding-top: 2px; padding-bottom: 2px; }
+  .ncbdo.fit2 .pnl .bey-name { font-size: 16px; }
+  .ncbdo.fit2 .pnl .bey-sub { font-size: 12px; }
+  .ncbdo.fit2 .pnl .badge { width: 32px; height: 32px; font-size: 13px; }
+  .ncbdo.fit2 .pnl .badge.on { font-size: 14px; }
+  .ncbdo.fit2 .dock-btn { min-height: 44px; font-size: 16px; }
   .ncbdo .pnl { margin-top: 10px; padding: 10px 10px 10px; border-radius: 16px; background: var(--tint); border: 2px solid var(--pc); }
   .ncbdo .pnl-head { padding: 2px 6px 8px; }
   .ncbdo .pnl .ask { margin-top: 2px; font-size: var(--pask-f); }
@@ -3651,14 +3668,20 @@ function DeckOrderV2(props) {
     // A short beat shows 1st, 2nd and 3rd before the screen moves on. Taps are ignored during it.
     if (mine.length === 3) { setBusy(true); setTimeout(advance, NCBDO_CFG.beatMs); }
   }
-  // After the beat: the check once both orders are set (or back to the check after a change).
-  // Both decks are on one screen, so the check always starts with the top player.
+  // After the beat: back to the check after a change. Once both orders are set the screen stays put and
+  // shows two buttons: Check With Players (one by one) or Looks good, start battles (no check).
   function advance() {
     setBusy(false);
     const st = SRef.current;
     if (st.stage !== "pick" || st.order[st.who].length !== 3) return;
     if (st.fixing) setS(Object.assign({}, st, { stage: "check", fixing: false, fixSnap: null }));
-    else if (bothSet(st)) setS(Object.assign({}, st, { stage: "check", ck: { order: [tabOrder[0], tabOrder[1]], i: 0 } }));
+  }
+  // Skip the player check: start the shuffle with both orders as they are on screen.
+  function startNow() {
+    if (busy || S.stage !== "pick" || S.fixing || !bothSet(S)) return;
+    buzz(15);
+    setMenu(false);
+    finish();
   }
   function startCheck() {
     if (busy || S.stage !== "pick" || S.fixing || !bothSet(S)) return;
@@ -3724,7 +3747,7 @@ function DeckOrderV2(props) {
   /* ---------- Taps ---------- */
   // These wait a moment after a new screen appears, so a double tap on one screen cannot
   // confirm, reveal or change anything on the next.
-  const WAITS = { back: 1, bey: 1, "start-check": 1, confirm: 1, show: 1, change: 1 };
+  const WAITS = { back: 1, bey: 1, "start-check": 1, "start-now": 1, confirm: 1, show: 1, change: 1 };
   const tapRef = useRef({ t: 0, x: 0, y: 0 });
   function tap(action, fn) {
     return e => {
@@ -3767,7 +3790,29 @@ function DeckOrderV2(props) {
     return () => document.removeEventListener("keydown", onKey);
   });
   const bodyRef = useRef(null);
+  const appRef = useRef(null);
   React.useLayoutEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = 0; }, [stageKey]);
+  // Both decks (and, once both orders are set, the two buttons) should fit without scrolling.
+  // If they do not, tighten the sizes one step at a time.
+  function fit() {
+    const app = appRef.current, body = bodyRef.current;
+    if (!app || !body) return;
+    app.classList.remove("fit1", "fit2");
+    if (app.getAttribute("data-stage") !== "pick") return;
+    for (const step of ["fit1", "fit2"]) {
+      if (body.scrollHeight <= body.clientHeight + 1) break;
+      app.classList.add(step);
+    }
+  }
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
+  React.useLayoutEffect(() => { fit(); });
+  useEffect(() => {
+    const run = () => fitRef.current();
+    window.addEventListener("resize", run);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(run).catch(() => {});
+    return () => window.removeEventListener("resize", run);
+  }, []);
 
   /* ---------- View ---------- */
   const ck = S.ck;
@@ -3857,7 +3902,11 @@ function DeckOrderV2(props) {
   }
   function dockEl() {
     if (S.stage === "pick") {
-      return !busy && !S.fixing && bothSet(S) ? h("button", { key: "sc" + stageKey, className: "dock-btn", type: "button", onClick: tap("start-check", startCheck) }, "Check with the players") : null;
+      if (busy || S.fixing || !bothSet(S)) return null;
+      return [
+        h("button", { key: "sc" + stageKey, className: "dock-btn", type: "button", onClick: tap("start-check", startCheck) }, ncbdoIcon("eye", 22, 2.2), h("span", null, "Check With Players")),
+        h("button", { key: "go" + stageKey, className: "dock-btn go", type: "button", onClick: tap("start-now", startNow) }, ncbdoIcon("check", 22, 2.6), h("span", null, "Looks good, start battles."))
+      ];
     }
     if (S.stage === "check") {
       const pi = ck.order[ck.i], o = other(pi);
@@ -3893,7 +3942,7 @@ function DeckOrderV2(props) {
   const appStyle = { "--pc": pl.color, "--pc-ink": pl.ink, "--tint": pl.tint, "--arm": NCBDO_CFG.stageGuardMs + "ms" };
   return h("div", { className: "ncbdo-wrap" },
     typeof BugReportInlineButton === "function" ? h(BugReportInlineButton, { hidden: true }) : null, // hides the floating ? (Report a problem is in the menu)
-    h("div", { className: "ncbdo", "data-stage": S.stage, "data-fixing": S.fixing ? "1" : undefined, style: appStyle },
+    h("div", { className: "ncbdo", ref: appRef, "data-stage": S.stage, "data-fixing": S.fixing ? "1" : undefined, style: appStyle },
       h("header", { className: "top" },
         h("div", { className: "bar" }, barEl()),
         menu ? h("div", { className: "menu-backdrop", onClick: tap("menu-close", () => setMenu(false)) }) : null,

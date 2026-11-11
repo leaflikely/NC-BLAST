@@ -54,7 +54,7 @@ window.FEATURE_FLAGS = new Set([
   // 1032, // Score pad redesign, first two screens (judge): the Match result screen and the player tap-to-confirm screen use the new look from the Claude Design mock-up. Drawing only, scoring and submitting are untouched. Held OFF on purpose (a tournament is coming): a judge can try it on their own device from the gear menu > Feature Flags, or remove the // at the start of this line to turn it on for everyone.
   // 1033, // Score pad redesign, battle screen (judge): the whole scoring screen gets the new look from the Claude Design mock-up (Own plus text in the opponent's colour, one shared confirm bar). Drawing only; scoring unchanged. Held OFF: a tournament is coming.
   1034, // Deck builder redesign (judge): new Record decks screen (deck always on screen, whole-combo search, ratchet grid, CX steps), then each player checks and confirms their own deck before the match starts. Fast Blast events use it too. Turn it off to get the old deck review and part pickers back.
-  1035, // Deck order redesign (judge): new Deck order screen for the first order of a set and every reshuffle. One player at a time, taps only, then each player checks and confirms their own order. Turn it off to get the old Set Deck Order screen back.
+  1035, // Deck order redesign (judge): new Deck order screen for the first order of a set and every reshuffle. Both decks on one screen, taps only, then Check With Players (each player confirms their own order) or Looks good, start battles. Turn it off to get the old Set Deck Order screen back.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -166,7 +166,7 @@ window.FEATURE_FLAG_INFO = {
   },
   1035: {
     name: "Deck order redesign + players check their own order (judge)",
-    desc: "Replaces the Set Deck Order screen (first order of a set and every reshuffle) with a new Deck order screen: tabs for the two players, tap the combo that goes 1st, then 2nd (the 3rd fills in by itself), tap a numbered combo to take it back. When both orders are set, each player sees only their own order and taps '<name> confirms'; a blank screen hides both orders while the phone is handed over (switch in the ... menu, shared with the deck builder). The second confirm starts the shuffle like the old Start Match button. The top-bar Undo still undoes the last battle, and the 60-second timer still shows on reshuffles. No dragging.",
+    desc: "Replaces the Set Deck Order screen (first order of a set and every reshuffle) with a new Deck order screen: tap the combo that goes 1st, then 2nd (the 3rd fills in by itself), tap a numbered combo to take it back. Both players' decks are on the screen at once, each in its own blue or red box. When both orders are set, two buttons show: 'Check With Players' (each player sees only their own order and taps '<name> confirms', with a blank screen between them, switch in the ... menu shared with the deck builder; the second confirm starts the shuffle) or 'Looks good, start battles.' (starts the shuffle right away, like the old Start Match button). The top-bar Undo still undoes the last battle, and the 60-second timer still shows on reshuffles. No dragging.",
     off: "Old behaviour: the original Set Deck Order screen with both players' orders on one screen, drag to reorder, and one Start Match button."
   }
 };
