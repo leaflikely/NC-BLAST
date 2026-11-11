@@ -342,7 +342,7 @@ class RobotJudge {
             continue;
           }
         }
-        const ok = await ui.tap(p, / confirms/, { optional: true, timeout: 1500 });
+        const ok = await ui.tap(p, /^Looks Good/, { optional: true, timeout: 1500 });
         if (ok) this.say("deck confirmed by its player");
         continue;
       }

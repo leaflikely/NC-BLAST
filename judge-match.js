@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-11b | next-action-popup (flag 1036, on by default: right after the judge submits, a "Next Action?" popup with New Match (main choice, waits for the bracket like the page button), Stay Here, and Finished this round. (only with a stream channel; starts the between-round standby slides)) | previous: 2026-11-11a | deck-order-redesign (flag 1035: the order screen call picks DeckOrderV2 from screens.js when the flag is on, and passes dark mode to it) | previous: 2026-11-10e | cx-picture-guide-new-parts (Picture guide lists Hurricane and Tread with the CXE blades, Tough with the over blades, Quell with the assist blades) | previous: 2026-11-10d | cxe-tag-dark-mode (flag 1034: the small CXE tag on the CX main blade buttons uses dark text in dark mode, it was white on near-white) | previous: 2026-11-10c | deck-builder-redesign (flag 1034, on by default: new Record decks screen from the teammate mock-up - deck always on screen, whole-combo search, ratchet grid, CX steps - then each player checks and confirms their own deck, with a hidden screen between them; Fast Blast uses it too; the old deck review and pickers stay as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-11c | deck-check-looks-good + own-buttons (deck builder check button says Looks Good and it and Show deck can be tapped right away; Own finish buttons say just Own, and on the new score pad the name and the +2/+3 sit side by side in bigger text) | previous: 2026-11-11b | next-action-popup (flag 1036, on by default: right after the judge submits, a "Next Action?" popup with New Match (main choice, waits for the bracket like the page button), Stay Here, and Finished this round. (only with a stream channel; starts the between-round standby slides)) | previous: 2026-11-11a | deck-order-redesign (flag 1035: the order screen call picks DeckOrderV2 from screens.js when the flag is on, and passes dark mode to it) | previous: 2026-11-10e | cx-picture-guide-new-parts (Picture guide lists Hurricane and Tread with the CXE blades, Tough with the over blades, Quell with the assist blades) | previous: 2026-11-10d | cxe-tag-dark-mode (flag 1034: the small CXE tag on the CX main blade buttons uses dark text in dark mode, it was white on near-white) | previous: 2026-11-10c | deck-builder-redesign (flag 1034, on by default: new Record decks screen from the teammate mock-up - deck always on screen, whole-combo search, ratchet grid, CX steps - then each player checks and confirms their own deck, with a hidden screen between them; Fast Blast uses it too; the old deck review and pickers stay as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 // FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
 // stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
 // (the set that was just won: its score is saved a moment after the overlay push) is added at
@@ -686,13 +686,13 @@ function ncbPadBattleBody(o) {
       key: f.id, type: "button", disabled: !active, "aria-pressed": isSel,
       onClick: () => { if (active) o.setPendingFinish(isSel ? null : { pi: side.ci, fin: f }); },
       style: Object.assign({
-        flex: "1 1 0", minWidth: 0, height: 56, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 2, padding: "0 6px",
+        flex: "1 1 0", minWidth: 0, height: 56, display: "flex", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8, padding: "0 6px",
         borderRadius: 12, border: pt.border, background: pt.background, color: pt.label, cursor: active ? "pointer" : "not-allowed", fontFamily: NCB_PAD_UI,
         opacity: !active ? 0.4 : (pend && !isSel ? 0.55 : 1), touchAction: "manipulation"
       }, pt.boxShadow ? { boxShadow: pt.boxShadow } : {})
     },
-      React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, f.id === "OF2" ? "Own ×2" : "Own ×3"),
-      React.createElement("span", { style: { fontFamily: NCB_PAD_NUM, fontSize: 22, lineHeight: 1, fontWeight: 800, color: pt.chip } }, "+" + f.p));
+      React.createElement("span", { style: { fontSize: "clamp(16px, 4.6vw, 21px)", lineHeight: 1, fontWeight: 700 } }, "Own"),
+      React.createElement("span", { style: { fontFamily: NCB_PAD_NUM, fontSize: "clamp(24px, 7vw, 30px)", lineHeight: 1, fontWeight: 800, color: pt.chip } }, "+" + f.p));
   };
   const column = (side, opp) => {
     const c = side.ri !== null ? (side.deck[side.ri] || {}) : null;
@@ -1056,7 +1056,7 @@ const NCBDB_CSS = `
   @media (prefers-reduced-motion: no-preference) {
   .ncbdb button { transition: transform 0.06s ease-out; }
   .ncbdb .notice { animation: ncbdbRise 0.18s ease-out both; }
-  .ncbdb .dock-btn { animation: ncbdbArm var(--arm, 600ms) ease-out both; }
+  .ncbdb .dock-btn { animation: none; }
 
   }
   @keyframes ncbdbRise {
@@ -1597,7 +1597,9 @@ function DeckBuilderV2(props) {
   // Picking with a tap closes the phone keyboard, so the next step has the whole screen.
   const CLOSES_KEYBOARD = { pick: 1, fill: 1, "use-last": 1, "cx-pick": 1, "cx-step": 1, edit: 1, tab: 1, seg: 1 };
   // These wait a moment after a check screen appears, so a double tap cannot confirm or reveal a deck.
-  const WAITS_FOR_STAGE = { confirm: 1, reveal: 1, back: 1 };
+  // Only Back waits. Looks Good and Show <name>'s deck can be tapped as soon as they appear (a double tap on the
+  // same spot is still ignored by the 0.3 s check above).
+  const WAITS_FOR_STAGE = { back: 1 };
   function tap(action, fn) {
     return e => {
       const now = performance.now();
@@ -1920,7 +1922,7 @@ function DeckBuilderV2(props) {
       const sub = ck.i === 1 ? "Both players checked. Starts the match" : (s.hide ? `Hides this deck, then ${P[o].name} checks` : `Next: ${P[o].name} checks`);
       return h("button", { key: "c" + stageKey, className: "dock-btn confirm", type: "button", onClick: tap("confirm", confirmCheck) },
         h("span", { className: "confirm-text" },
-          h("span", { className: "confirm-title" }, h("span", { className: "confirm-name" }, pl.name), h("span", { className: "confirm-verb" }, " confirms")),
+          h("span", { className: "confirm-title" }, "Looks Good"),
           h("span", { className: "confirm-sub" }, sub)),
         ncbdbIcon("check", 24, 2.6));
     }
@@ -11019,7 +11021,7 @@ function MatchScreen({
     }, [...FINISH, ...PENALTY.filter(f => f.id !== "LER")].map(f => {
       const isSel = side.pending?.id === f.id;
       const isFinish = !f.penalty;
-      const label = f.id === "OF2" ? "Own ×2" : f.id === "OF3" ? "Own ×3" : f.name;
+      const label = f.id === "OF2" || f.id === "OF3" ? "Own" : f.name;
       const active = bothCombosSelected && !layoutEditMode;
       const pad33 = ff(1033) && active ? ncbPadTile({
         dark,
