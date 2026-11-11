@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-11c | deck-check-looks-good + own-buttons (deck builder check button says Looks Good and it and Show deck can be tapped right away; Own finish buttons say just Own, and on the new score pad the name and the +2/+3 sit side by side in bigger text) | previous: 2026-11-11b | next-action-popup (flag 1036, on by default: right after the judge submits, a "Next Action?" popup with New Match (main choice, waits for the bracket like the page button), Stay Here, and Finished this round. (only with a stream channel; starts the between-round standby slides)) | previous: 2026-11-11a | deck-order-redesign (flag 1035: the order screen call picks DeckOrderV2 from screens.js when the flag is on, and passes dark mode to it) | previous: 2026-11-10e | cx-picture-guide-new-parts (Picture guide lists Hurricane and Tread with the CXE blades, Tough with the over blades, Quell with the assist blades) | previous: 2026-11-10d | cxe-tag-dark-mode (flag 1034: the small CXE tag on the CX main blade buttons uses dark text in dark mode, it was white on near-white) | previous: 2026-11-10c | deck-builder-redesign (flag 1034, on by default: new Record decks screen from the teammate mock-up - deck always on screen, whole-combo search, ratchet grid, CX steps - then each player checks and confirms their own deck, with a hidden screen between them; Fast Blast uses it too; the old deck review and pickers stay as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-11d | new-part-requests (flag 1037: a New Part button at the end of every part list in the new deck builder (and under a search with no match); the judge types the name and waits while an organizer of the event adds or declines it in Org view > Notifications; once added it goes into the combo by itself) | previous: 2026-11-11c | deck-check-looks-good + own-buttons (deck builder check button says Looks Good and it and Show deck can be tapped right away; Own finish buttons say just Own, and on the new score pad the name and the +2/+3 sit side by side in bigger text) | previous: 2026-11-11b | next-action-popup (flag 1036, on by default: right after the judge submits, a "Next Action?" popup with New Match (main choice, waits for the bracket like the page button), Stay Here, and Finished this round. (only with a stream channel; starts the between-round standby slides)) | previous: 2026-11-11a | deck-order-redesign (flag 1035: the order screen call picks DeckOrderV2 from screens.js when the flag is on, and passes dark mode to it) | previous: 2026-11-10e | cx-picture-guide-new-parts (Picture guide lists Hurricane and Tread with the CXE blades, Tough with the over blades, Quell with the assist blades) | previous: 2026-11-10d | cxe-tag-dark-mode (flag 1034: the small CXE tag on the CX main blade buttons uses dark text in dark mode, it was white on near-white) | previous: 2026-11-10c | deck-builder-redesign (flag 1034, on by default: new Record decks screen from the teammate mock-up - deck always on screen, whole-combo search, ratchet grid, CX steps - then each player checks and confirms their own deck, with a hidden screen between them; Fast Blast uses it too; the old deck review and pickers stay as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 // FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
 // stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
 // (the set that was just won: its score is saved a moment after the overlay push) is added at
@@ -1070,6 +1070,25 @@ const NCBDB_CSS = `
   .ncbdb .link-btn { flex: none; align-self: center; height: 30px; display: flex; align-items: center; gap: 5px; margin: -6px -4px -6px 0; padding: 0 8px; border: none; border-radius: 8px; background: transparent; color: var(--pc-ink); font-size: 13px; font-weight: 700; white-space: nowrap; }
   .ncbdb .link-btn.danger { color: var(--danger); }
   .ncbdb .link-btn:hover { background: var(--used-bg); }
+  /* FLAG 1037: New Part button and the request sheet */
+  .ncbdb .newpart { width: 100%; margin-top: 12px; min-height: 46px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; border: 1.5px dashed var(--dash); background: transparent; color: var(--ink-2); font-size: 15px; font-weight: 700; }
+  .ncbdb .none + .newpart { margin-top: 10px; }
+  .ncbdb .rq-shade { position: fixed; inset: 0; z-index: 30; display: flex; align-items: flex-start; justify-content: center; padding: max(16px, 7vh) 14px 16px; background: rgba(2, 6, 23, 0.6); overflow-y: auto; }
+  .ncbdb .rq { width: 100%; max-width: 420px; padding: 20px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 18px 40px rgba(2, 6, 23, 0.35); }
+  .ncbdb .rq-title { font-size: 21px; font-weight: 800; line-height: 1.25; }
+  .ncbdb .rq-title:focus { outline: none; }
+  .ncbdb .rq-text { margin-top: 8px; font-size: 15px; line-height: 1.45; color: var(--ink-3); }
+  .ncbdb .rq-kinds { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .ncbdb .rq-kind { height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--card); font-size: 14px; font-weight: 600; }
+  .ncbdb .rq-kind.on { border: 2px solid var(--pc); background: var(--tint); color: var(--pc-ink); }
+  .ncbdb .rq-one { margin-top: 12px; font-size: 14px; font-weight: 700; color: var(--ink-2); }
+  .ncbdb .rq-input { display: block; margin-top: 12px; width: 100%; box-sizing: border-box; height: 50px; padding: 0 14px; border-radius: 12px; border: 1.5px solid var(--field); background: var(--bg); color: var(--ink); font: inherit; font-size: 17px; }
+  .ncbdb .rq-input:focus { outline: none; border-color: var(--pc); }
+  .ncbdb .rq-msg { margin-top: 8px; font-size: 14px; font-weight: 600; color: var(--danger); }
+  .ncbdb .rq-name { margin-top: 12px; padding: 10px 14px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
+  .ncbdb .rq-spin { width: 36px; height: 36px; margin-bottom: 14px; border-radius: 50%; border: 4px solid var(--line-2); border-top-color: var(--pc); animation: ncbdbSpin 0.9s linear infinite; }
+  @keyframes ncbdbSpin { to { transform: rotate(360deg); } }
+  .ncbdb .rq-steps { margin: 10px 0 0; padding-left: 22px; font-size: 15px; line-height: 1.55; color: var(--ink); font-weight: 600; }
 `;
 function ncbdbEnsureCss() {
   try {
@@ -1108,6 +1127,7 @@ const NCBDB_ICONS = {
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
   x: '<path d="M18 6L6 18"/><path d="M6 6l12 12"/>',
+  plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
   image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>'
 };
 function ncbdbIcon(name, size, stroke) {
@@ -1125,6 +1145,13 @@ const NCBDB_CFG = {
   hideKey: "ncblast.deckHideBetween" // device setting: blank screen between the two deck checks
 };
 const NCBDB_PARTS = ["blade", "ratchet", "bit"];
+// FLAG 1037: the kinds of part a judge can ask an organizer to add (same names as the Worker's /part-requests).
+const NCBDB_REQ_KINDS = {
+  blade: "Blade", crossover: "Crossover blade", gear_chips: "CX lock chip", cx_blades: "CX main blade",
+  cxe_blades: "CXE main blade", cxe_over: "CXE over blade", assist: "CX assist blade", ratchet: "Ratchet", bit: "Bit"
+};
+const NCBDB_REQ_ONE_WORD = { gear_chips: 1, cx_blades: 1, cxe_blades: 1, cxe_over: 1, assist: 1 }; // a CX blade's name is its pieces joined by spaces
+const NCBDB_REQ_STEP = { gear_chips: "chip", cx_blades: "blade", cxe_blades: "blade", cxe_over: "over", assist: "assist" };
 const ncbdbClone = o => JSON.parse(JSON.stringify(o));
 const ncbdbCap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const ncbdbOther = i => (i === 0 ? 1 : 0);
@@ -1155,28 +1182,31 @@ function DeckBuilderV2(props) {
   ncbdbEnsureCss();
 
   /* ---------- Parts, from the parts library ---------- */
+  // FLAG 1037: parts an organizer just added for a New Part request. They show here at once, before the app reloads its parts list.
+  const [extra, setExtra] = useState({});
   const lists = useMemo(() => {
     const pcx = parts && parts.cx || {};
-    const crossover = pcx.crossover || CROSSOVER_BLADES;
+    const plus = (base, k) => (extra[k] && extra[k].length ? [...new Set((base || []).concat(extra[k]))] : base);
+    const crossover = plus(pcx.crossover || CROSSOVER_BLADES, "crossover");
     const cx = {
-      chips: pcx.gear_chips || CX_CHIPS,
-      blades: pcx.cx_blades || CX_BLADES,
-      cxeBlades: pcx.cxe_blades || CXE_BLADES,
-      overBlades: pcx.cxe_over || CXE_OVER_BLADES,
-      assists: pcx.assist || CX_ASSISTS,
+      chips: plus(pcx.gear_chips || CX_CHIPS, "gear_chips"),
+      blades: plus(pcx.cx_blades || CX_BLADES, "cx_blades"),
+      cxeBlades: plus(pcx.cxe_blades || CXE_BLADES, "cxe_blades"),
+      overBlades: plus(pcx.cxe_over || CXE_OVER_BLADES, "cxe_over"),
+      assists: plus(pcx.assist || CX_ASSISTS, "assist"),
       popularAssists: CX_ASSIST_TOP5,
       plainChip: "Standard" // left out of the blade's name, and may repeat in a deck
     };
     const notStandard = new Set([...crossover, ...cx.chips, ...cx.blades, ...cx.cxeBlades, ...cx.overBlades, ...cx.assists]);
-    const blades = [...new Set((parts && parts.blades || []).filter(n => n && !notStandard.has(n)))];
+    const blades = [...new Set((parts && parts.blades || []).concat(extra.blade || []).filter(n => n && !notStandard.has(n)))];
     const quick = QUICK_COMBOS.map(q => ({ blade: q.blade || null, ratchet: q.ratchet || null, bit: q.bit || null }));
     return {
       blades, crossover, cx, quick,
-      ratchets: parts && parts.ratchets || [],
-      bits: parts && parts.bits || [],
+      ratchets: plus(parts && parts.ratchets || [], "ratchet"),
+      bits: plus(parts && parts.bits || [], "bit"),
       popular: { blade: TOP10.blades || [], ratchet: TOP10.ratchets || [], bit: TOP10.bits || [] }
     };
-  }, [parts]);
+  }, [parts, extra]);
   const CX = lists.cx;
   const builtInRatchet = new Set(NO_RATCHET_BLADES);
   const builtInBit = new Set(NO_BIT_RATCHETS);
@@ -1295,6 +1325,7 @@ function DeckBuilderV2(props) {
     S.seg = "std";
     S.cx = ncbdbCxBlank();
     S.menu = false;
+    S.req = null; // FLAG 1037
   }
   // Store new decks, then move to the next empty part: same player first, then the other player, then the check.
   function commit(S, nd, player, note) {
@@ -1528,8 +1559,8 @@ function DeckBuilderV2(props) {
     if (!steps.includes("over")) x.over = "";
     const next = steps.find(st => !x[st]);
     x.step = next || kind;
-    if (next) { buzz(8); setUi({ cx: x }); return; }
-    pick("blade", cxName(x));
+    if (next) { buzz(8); setUi({ cx: x, req: null }); return true; }
+    return pick("blade", cxName(x));
   }
 
   /* ----- Search -----
@@ -1617,6 +1648,110 @@ function DeckBuilderV2(props) {
     };
   }
 
+  /* ---------- FLAG 1037: New Part requests ----------
+     A part is missing from the lists: the judge types its name and it goes to the Worker for this event. The judge
+     waits on a sheet until the organizer (owner or a head judge) adds or declines it in Org view > Notifications.
+     Once added, the part joins the lists on this phone at once and goes into the combo being built. */
+  const reqOn = ff(1037);
+  const req = s.req || null;
+  const liveRef = useRef(null);
+  liveRef.current = { setReq, finishReq };
+  function setReq(next) {
+    act(S => { S.req = next ? Object.assign({}, S.req || {}, next) : null; });
+  }
+  function openReq(kinds, name, first) {
+    const kind = first && kinds.includes(first) ? first : kinds[0];
+    setUi({ menu: false, req: { phase: "form", kinds, kind, name: name || "", msg: "" } });
+  }
+  function reqListOf(kind) {
+    return { blade: lists.blades, crossover: lists.crossover, gear_chips: CX.chips, cx_blades: CX.blades, cxe_blades: CX.cxeBlades, cxe_over: CX.overBlades, assist: CX.assists, ratchet: lists.ratchets, bit: lists.bits }[kind] || [];
+  }
+  function finishReq(kind, name, note) {
+    setExtra(e => ((e[kind] || []).includes(name) ? e : Object.assign({}, e, { [kind]: (e[kind] || []).concat(name) })));
+    setReq({ phase: "added", kind, finalName: name, note: note || "" });
+    try { window.dispatchEvent(new Event("ncblast:parts-refresh")); } catch (e) { /* old browser */ }
+  }
+  async function sendReq() {
+    const r = s.req, kind = r.kind;
+    // Capital first letters ("storm pegasis" -> "Storm Pegasis"), like every name in the lists.
+    const name = String(r.name || "").normalize("NFC").replace(/\s+/g, " ").trim().replace(/(^|[ -])(\p{Ll})/gu, (m0, sp, c) => sp + c.toUpperCase());
+    let msg = "";
+    if (!name) msg = "Type the part's name first.";
+    else if (NCBDB_REQ_ONE_WORD[kind] && name.includes(" ")) msg = "CX part names are one word (like Brave or Blast).";
+    else if (!/^[\p{L}\p{N} .'&+\-]{1,40}$/u.test(name)) msg = "Use only letters, numbers, spaces and - . ' & + (40 at most).";
+    if (msg) { setReq({ msg }); return; }
+    const have = reqListOf(kind).find(n => String(n).toLowerCase() === name.toLowerCase());
+    if (have) { finishReq(kind, have, `${have} is already in the list.`); return; }
+    const slug = props.slug || "";
+    if (!slug) {
+      setReq({ phase: "error", name, msg: "New parts can only be asked for during an event match. An organizer can add it in Org view > Parts Library." });
+      return;
+    }
+    setReq({ phase: "sending", name, msg: "" });
+    let res = null, d = null;
+    try {
+      res = await fetch(`${OVERLAY_WORKER}/part-requests`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, kind, name, judge: props.judge || "" }),
+        signal: AbortSignal.timeout(8000)
+      });
+      d = await res.json().catch(() => null);
+    } catch (e) {
+      liveRef.current.setReq({ phase: "form", msg: "Could not send it. Check the internet connection and try again." });
+      return;
+    }
+    const L = liveRef.current;
+    if (res.status === 404) {
+      L.setReq({ phase: "error", msg: `This event cannot take part requests yet (the server needs an update). Ask an organizer to add ${name} in Org view > Parts Library, then reload the app.` });
+      return;
+    }
+    if (!res.ok || !d || !d.ok) { L.setReq({ phase: "form", msg: (d && d.error) || `The request did not go through (error ${res.status}). Try again.` }); return; }
+    if (d.status === "exists") { L.finishReq(kind, d.name || name, `${d.name || name} is already in the parts library.`); return; }
+    L.setReq({ phase: "wait", id: d.id, name: d.name || name, msg: "" });
+  }
+  function cancelReq() {
+    const r = s.req;
+    if (r && r.phase === "wait" && r.id && props.slug) {
+      fetch(`${OVERLAY_WORKER}/part-requests/cancel`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug: props.slug, id: r.id })
+      }).then(x => x.json()).then(d => {
+        // Added in the same moment the judge gave up: the part is in the library, so load it.
+        if (d && d.status === "added") window.dispatchEvent(new Event("ncblast:parts-refresh"));
+      }).catch(() => {});
+    }
+    setReq(null);
+  }
+  // While waiting: ask the Worker every 3 seconds whether the organizer has decided.
+  const reqWaitId = req && req.phase === "wait" ? req.id : "";
+  useEffect(() => {
+    if (!reqWaitId || !props.slug) return undefined;
+    let stop = false, timer = null;
+    const check = async () => {
+      try {
+        const d = await workerGet(`/part-requests/status?slug=${encodeURIComponent(props.slug)}&id=${encodeURIComponent(reqWaitId)}`);
+        if (stop) return;
+        if (d.status === "added") { liveRef.current.finishReq(d.kind, d.finalName || d.name, `${d.finalName || d.name} was added to the parts list.`); return; }
+        if (d.status === "declined" || d.status === "cancelled") { liveRef.current.setReq({ phase: "declined", msg: "" }); return; }
+      } catch (e) {
+        if (stop) return;
+        if (/HTTP 404/.test(String(e && e.message))) { liveRef.current.setReq({ phase: "declined", msg: "The request is gone (requests expire after 2 days). Send it again if the part is still missing." }); return; }
+      }
+      if (!stop) timer = setTimeout(check, 3000);
+    };
+    timer = setTimeout(check, 1500);
+    return () => { stop = true; clearTimeout(timer); };
+  }, [reqWaitId]);
+  // Added: put the part into the combo being built (the lists already have it on this render).
+  const reqAddedKey = req && req.phase === "added" ? req.kind + "|" + req.finalName : "";
+  useEffect(() => {
+    if (!reqAddedKey) return;
+    const { kind, finalName, note } = s.req;
+    let ok = false;
+    if (s.active) ok = NCBDB_REQ_STEP[kind] ? pickCx(NCBDB_REQ_STEP[kind], finalName) : pick(kind === "crossover" ? "blade" : kind, finalName);
+    if (!ok) setReq(null);
+    notify(note || `${finalName} was added.`, "ok");
+  }, [reqAddedKey]);
+
   /* ---------- View pieces ---------- */
   const stage = stageOf(s, decks), building = stage === "build", ck = s.check;
   const a = building ? s.active : null;
@@ -1672,6 +1807,60 @@ function DeckBuilderV2(props) {
     }, h("span", { className: "cc-blade" }, qc.blade), h("span", { className: "cc-sub" }, clash || rest));
   }
 
+  // FLAG 1037: the New Part button at the end of each list.
+  function newPartBtn(kinds, name, first) {
+    if (!reqOn) return null;
+    return h("button", { key: "newpart", className: "newpart", type: "button", onClick: tap("new-part", () => openReq(kinds, name, first)) }, ncbdbIcon("plus", 18, 2.4), "New Part");
+  }
+  function reqSheet() {
+    const r = req, kindName = NCBDB_REQ_KINDS[r.kind] || "Part";
+    let inner, title;
+    if (r.phase === "form" || r.phase === "sending") {
+      const sending = r.phase === "sending";
+      title = "Ask for a new part";
+      inner = [
+        h("h2", { key: "t", className: "rq-title" }, title),
+        h("p", { key: "x", className: "rq-text" }, "Missing from the list? Type its name. An organizer has to confirm it before it can be used."),
+        r.kinds.length > 1
+          ? h("div", { key: "k", className: "rq-kinds", role: "group", "aria-label": "What kind of part" }, r.kinds.map(k => h("button", {
+            key: k, type: "button", className: "rq-kind" + (k === r.kind ? " on" : ""), "aria-pressed": k === r.kind, disabled: sending,
+            onClick: tap("req-kind", () => setReq({ kind: k, msg: "" }))
+          }, NCBDB_REQ_KINDS[k])))
+          : h("p", { key: "k1", className: "rq-one" }, kindName),
+        h("input", {
+          key: "i", className: "rq-input", type: "text", value: r.name || "", maxLength: 40, autoFocus: true, autoComplete: "off", autoCorrect: "off",
+          spellCheck: false, autoCapitalize: "words", enterKeyHint: "send", disabled: sending,
+          placeholder: NCBDB_REQ_ONE_WORD[r.kind] ? "One word, like Brave" : "Part name", "aria-label": kindName + " name",
+          onChange: e => setReq({ name: e.target.value, msg: "" }),
+          onKeyDown: e => { if (e.key === "Enter" && !(e.nativeEvent && e.nativeEvent.isComposing)) { e.preventDefault(); sendReq(); } }
+        }),
+        r.msg ? h("p", { key: "m", className: "rq-msg", role: "alert" }, r.msg) : null,
+        h("button", { key: "s", type: "button", className: "card-btn", disabled: sending, onClick: tap("req-send", sendReq) }, sending ? "Sending\u2026" : "Send to organizer"),
+        h("button", { key: "c", type: "button", className: "card-btn ghost", disabled: sending, onClick: tap("req-close", () => setReq(null)) }, "Cancel")
+      ];
+    } else if (r.phase === "wait") {
+      title = "Waiting for an organizer";
+      inner = [
+        h("div", { key: "sp", className: "rq-spin", "aria-hidden": "true" }),
+        h("h2", { key: "t", className: "rq-title" }, title),
+        h("div", { key: "n", className: "rq-name" }, `${kindName}: ${r.name}`),
+        h("p", { key: "x", className: "rq-text" }, "To keep the parts list correct, an organizer has to confirm every new part. Ask the event organizer or a head judge to:"),
+        h("ol", { key: "o", className: "rq-steps" }, h("li", null, "Open Org view for this event"), h("li", null, "Go to the Notifications tab"), h("li", null, "Tap Add part")),
+        h("p", { key: "y", className: "rq-text" }, "Keep this screen open. The part goes into the combo by itself once it is added."),
+        h("button", { key: "c", type: "button", className: "card-btn ghost", onClick: tap("req-close", cancelReq) }, "Cancel request")
+      ];
+    } else {
+      const declined = r.phase === "declined";
+      title = declined ? "Not added" : "Can't ask right now";
+      inner = [
+        h("h2", { key: "t", className: "rq-title" }, title),
+        declined && r.name ? h("div", { key: "n", className: "rq-name" }, `${kindName}: ${r.name}`) : null,
+        h("p", { key: "x", className: "rq-text" }, r.msg || "The organizer did not add this part. Check the name with the player, or pick a part from the list."),
+        h("button", { key: "ok", type: "button", className: "card-btn", onClick: tap("req-close", () => setReq(null)) }, "OK")
+      ];
+    }
+    return h("div", { className: "rq-shade" }, h("div", { className: "rq", role: "dialog", "aria-modal": "true", "aria-label": title }, inner));
+  }
   function barEl() {
     const fixing = building && !!ck;
     let backLabel = "Back";
@@ -1781,10 +1970,11 @@ function DeckBuilderV2(props) {
     out.push(h("div", { key: "bg", className: "grid g2 mb" }, lists.popular.blade.map(n => chip("blade", n))));
     out.push(h("div", { key: "al", className: "label" }, "All blades, A to Z"));
     out.push(h("div", { key: "ag", className: "grid g2" }, azList("blade", lists.blades, true)));
+    out.push(newPartBtn(["blade"]));
     return out;
   }
   function crossBody() {
-    return [h("div", { key: "l", className: "label" }, "Crossover blades, A to Z"), h("div", { key: "g", className: "grid g2" }, azList("blade", lists.crossover, false))];
+    return [h("div", { key: "l", className: "label" }, "Crossover blades, A to Z"), h("div", { key: "g", className: "grid g2" }, azList("blade", lists.crossover, false)), newPartBtn(["crossover"])];
   }
   function cxBody() {
     const x = s.cx, steps = cxSteps(x);
@@ -1824,7 +2014,8 @@ function DeckBuilderV2(props) {
       h("div", { key: "l", className: "label-row" },
         h("span", { className: "label shrink" }, `Step ${idx + 1} of ${steps.length}: ${titles[step]}`),
         guideKind && props.onGuide ? h("button", { className: "link-btn", type: "button", onClick: tap("guide", () => props.onGuide(guideKind)) }, ncbdbIcon("image", 14, 2.2), "Picture guide") : null),
-      h("div", { key: "g", className: "grid " + grid }, buttons)
+      h("div", { key: "g", className: "grid " + grid }, buttons),
+      newPartBtn(step === "chip" ? ["gear_chips"] : step === "blade" ? ["cx_blades", "cxe_blades"] : step === "over" ? ["cxe_over"] : ["assist"])
     ];
   }
   // All ratchets as a table: row = first number, column = height. Built from the list, so new sizes show up on their own.
@@ -1847,7 +2038,8 @@ function DeckBuilderV2(props) {
         h("span", { className: "mx-label", "aria-hidden": "true" }, k),
         heights.map(x => (map[k][x] ? chip("ratchet", map[k][x], "mx") : h("span", { key: "n" + x, className: "mx-none", "aria-hidden": "true" }))))),
       rest.length ? h("div", { key: "ol", className: "label mx-other" }, "Other") : null,
-      rest.length ? h("div", { key: "og", className: "grid g3" }, rest.map(n => chip("ratchet", n))) : null
+      rest.length ? h("div", { key: "og", className: "grid g3" }, rest.map(n => chip("ratchet", n))) : null,
+      newPartBtn(["ratchet"])
     ];
   }
   function bitsBody() {
@@ -1855,7 +2047,8 @@ function DeckBuilderV2(props) {
       h("div", { key: "pl", className: "label" }, "Popular bits"),
       h("div", { key: "pg", className: "grid g2 mb" }, lists.popular.bit.map(n => chip("bit", n, "lg"))),
       h("div", { key: "al", className: "label" }, "All bits, A to Z"),
-      h("div", { key: "ag", className: "grid g3" }, azList("bit", lists.bits, false))
+      h("div", { key: "ag", className: "grid g3" }, azList("bit", lists.bits, false)),
+      newPartBtn(["bit"])
     ];
   }
   function searchBody(qq) {
@@ -1873,7 +2066,11 @@ function DeckBuilderV2(props) {
     if (b.length) out.push(h("div", { key: "bl", className: "label" }, "Blades"), h("div", { key: "bg", className: "grid g2 mb" }, b.map(n => chip("blade", n))));
     if (r.length) out.push(h("div", { key: "rl", className: "label" }, "Ratchets"), h("div", { key: "rg", className: "grid g5 mb" }, r.map(n => chip("ratchet", n))));
     if (x.length) out.push(h("div", { key: "xl", className: "label" }, "Bits"), h("div", { key: "xg", className: "grid g3 mb" }, x.map(n => chip("bit", n))));
-    if (!b.length && !r.length && !x.length) out.push(h("div", { key: "none", className: "none" }, `Nothing matches "${qq}". Check the spelling, or add the part in the parts library.`));
+    if (!b.length && !r.length && !x.length) {
+      out.push(h("div", { key: "none", className: "none" }, reqOn ? `Nothing matches "${qq}". Check the spelling, or ask for it with New Part.` : `Nothing matches "${qq}". Check the spelling, or add the part in the parts library.`));
+    }
+    // Also under results: the part searched for may still be missing (the search matched something else).
+    out.push(newPartBtn(eventFast ? ["blade"] : ["blade", "ratchet", "bit"], qq.replace(/(^|\s)(\S)/g, (m0, sp, c) => sp + c.toUpperCase()), a.p));
     return out;
   }
   function deckDoneBody() {
@@ -2108,7 +2305,8 @@ function DeckBuilderV2(props) {
             ncbdbIcon(noticeKind === "warn" ? "alert" : (noticeKind === "info" ? "info" : "check"), 18, noticeKind === "ok" ? 2.8 : 2.2),
             h("span", null, notice.text)) : null)),
       docked ? h("footer", { className: "dock", ref: R.dock }, dockEl()) : null,
-      h("div", { className: "sr-only", "aria-live": "polite" }, say)));
+      h("div", { className: "sr-only", "aria-live": "polite" }, say),
+      req && req.phase !== "added" && building ? reqSheet() : null));
 }
 
 function MatchScreen({
@@ -8052,6 +8250,8 @@ function MatchScreen({
       },
       st: deckV2State,
       setSt: setDeckV2State,
+      slug: challongeSlug || "", // FLAG 1037: New Part requests go to this event
+      judge: judge || "",
       onOpen: () => {
         if (ff(1014)) setTiming(t => timingStampPure(t, "start", null, Date.now())); // FLAG 1014: the clock starts the first time the deck builder opens
       },

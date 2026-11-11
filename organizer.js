@@ -1,4 +1,4 @@
-// NC BLAST organizer.js | part 5 of 6 (load order is set in index.html) | last updated: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-30a | station-live-row (each Station Queue module shows its current live match, score and judge) | previous: 2026-10-27a notifications-tab-and-queue-auto-add (flag 1017) | previous: 2026-10-22b split-from-app.js (PIN window, organizer dashboard (OrgApp) and event add/list screen; code moved here unchanged)
+// NC BLAST organizer.js | part 5 of 6 (load order is set in index.html) | last updated: 2026-11-11a | part-requests (flag 1037: the Notifications tab lists judges' New Part requests for this event at the top, with the name to correct and Add part / Decline; pending requests count in the red badge; decided ones go under Resolved) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-30a | station-live-row (each Station Queue module shows its current live match, score and judge) | previous: 2026-10-27a notifications-tab-and-queue-auto-add (flag 1017) | previous: 2026-10-22b split-from-app.js (PIN window, organizer dashboard (OrgApp) and event add/list screen; code moved here unchanged)
 function PinModal({
   title,
   subtitle,
@@ -1023,6 +1023,77 @@ function OrgApp({
     const t = setInterval(loadNotifs, 10000);
     return () => clearInterval(t);
   }, [slug]);
+  // ── FLAG 1037: New Part requests from judges (shown in the Notifications tab) ──
+  // A judge could not find a part while recording a deck and is waiting on their screen. The owner or a head judge
+  // of this event adds it to the shared parts library (name can be corrected first) or declines it.
+  const [partReqs, setPartReqs] = useState([]);
+  const [partReqNames, setPartReqNames] = useState({}); // id -> name as corrected here
+  const [partReqBusy, setPartReqBusy] = useState({}); // id -> true while saving
+  const [partReqErr, setPartReqErr] = useState({}); // id -> why the last save failed
+  const loadPartReqs = async () => {
+    if (!ff(1037) || !slug) return;
+    try {
+      const d = await workerGet(`/part-requests?slug=${encodeURIComponent(slug)}`);
+      if (Array.isArray(d.requests)) setPartReqs(d.requests);
+    } catch (_) {}
+  };
+  React.useEffect(() => {
+    if (!ff(1037) || !slug) return;
+    loadPartReqs();
+    const t = setInterval(loadPartReqs, 5000);
+    return () => clearInterval(t);
+  }, [slug]);
+  const decidePartReq = async (r, action) => {
+    if (partReqBusy[r.id]) return;
+    const a = notifAuth();
+    const name = String(partReqNames[r.id] ?? r.name).replace(/\s+/g, " ").trim();
+    if (action === "add") {
+      let why = "";
+      if (!name) why = "Type the part's name.";
+      else if (/^(gear_chips|cx_blades|cxe_blades|cxe_over|assist)$/.test(r.kind) && name.includes(" ")) why = "CX part names must be one word.";
+      else if (!/^[\p{L}\p{N} .'&+\-]{1,40}$/u.test(name)) why = "Use only letters, numbers, spaces and - . ' & + (40 at most).";
+      if (why) {
+        setPartReqErr(x => ({ ...x, [r.id]: why }));
+        return;
+      }
+    }
+    setPartReqBusy(b => ({ ...b, [r.id]: true }));
+    setPartReqErr(x => ({ ...x, [r.id]: "" }));
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/part-requests/decide`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Auth-Token": a.token,
+          ...(a.masterKey ? {
+            "X-Master-Key": a.masterKey
+          } : {})
+        },
+        body: JSON.stringify({
+          slug,
+          id: r.id,
+          action,
+          name,
+          username: a.username
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d || !d.ok) throw new Error(d && d.error || "HTTP " + res.status);
+      setPartReqs(list => list.map(x => x.id === r.id ? {
+        ...x,
+        status: d.status,
+        finalName: d.finalName || null,
+        decidedBy: a.username || "you",
+        decidedAt: Date.now()
+      } : x));
+      if (action === "add") window.dispatchEvent(new Event("ncblast:parts-refresh"));
+    } catch (e) {
+      setPartReqErr(x => ({ ...x, [r.id]: String(e && e.message || e) }));
+      loadPartReqs();
+    }
+    setPartReqBusy(b => ({ ...b, [r.id]: false }));
+  };
   // A score the judge could not send is done as soon as the bracket shows the match finished (Challonge only:
   // WCB's match list never shows finished matches, so those are marked entered by hand).
   React.useEffect(() => {
@@ -1134,12 +1205,14 @@ function OrgApp({
     });
   }, [pairings, liveSlots, stationQueues, queuesGenerated, stadiumCount]);
   // Red number on the Notifications tab: things the TO has to act on (not the quiet "added to a queue" notes).
-  const notifBadgeCount = ff(1017) ? notifs.filter(n => !n.resolved && (n.type === "bracket-send" || n.type === "error")).length : 0;
+  const partReqPending = ff(1037) ? partReqs.filter(r => r.status === "pending") : [];
+  const notifBadgeCount = (ff(1017) ? notifs.filter(n => !n.resolved && (n.type === "bracket-send" || n.type === "error")).length : 0) + partReqPending.length;
   const renderNotificationsPanel = () => {
     const h = React.createElement;
     const needs = notifs.filter(n => !n.resolved && (n.type === "bracket-send" || n.type === "error"));
     const quiet = notifs.filter(n => !n.resolved && n.type !== "bracket-send" && n.type !== "error");
     const done = notifs.filter(n => n.resolved);
+    const partDone = ff(1037) ? partReqs.filter(r => r.status !== "pending").slice(0, 20) : [];
     const isWcb = slug.startsWith("wcb-");
     const bracketUrl = isWcb ? `https://westcoastbladers.com/brackets/view/${slug.slice(4)}` : slug.indexOf("-") > 0 ? `https://${slug.slice(0, slug.indexOf("-"))}.challonge.com/${slug.slice(slug.indexOf("-") + 1)}` : `https://challonge.com/${slug}`;
     const when = t => t ? new Date(t).toLocaleTimeString([], {
@@ -1258,6 +1331,101 @@ function OrgApp({
         }
       }, "Open bracket"), !n.resolved && btn(isSend ? "Mark as entered" : "Done", () => resolveNotif(n, true), "primary"), n.resolved && btn("Re-open", () => resolveNotif(n, false))));
     };
+    // FLAG 1037: one New Part request from a judge.
+    const PR_KIND = {
+      blade: "Blade",
+      crossover: "Crossover blade",
+      gear_chips: "CX lock chip",
+      cx_blades: "CX main blade",
+      cxe_blades: "CXE main blade",
+      cxe_over: "CXE over blade",
+      assist: "CX assist blade",
+      ratchet: "Ratchet",
+      bit: "Bit"
+    };
+    const prCard = r => {
+      const busy = !!partReqBusy[r.id], err = partReqErr[r.id];
+      return h("div", {
+        key: "pr-" + r.id,
+        style: {
+          padding: "12px 14px",
+          borderRadius: 12,
+          background: "var(--surface)",
+          border: "2px solid #2563EB",
+          marginBottom: 10
+        }
+      }, h("p", {
+        style: {
+          fontSize: 12,
+          fontWeight: 800,
+          color: "#2563EB",
+          margin: "0 0 4px"
+        }
+      }, `New part request  ·  ${PR_KIND[r.kind] || r.kind}`, h("span", {
+        style: {
+          fontWeight: 600,
+          color: "var(--text-muted)"
+        }
+      }, `  ·  ${when(r.at)}${r.judge ? `  ·  Judge: ${r.judge}` : ""}`)), h("p", {
+        style: {
+          fontSize: 12,
+          color: "var(--text-secondary)",
+          margin: "0 0 8px"
+        }
+      }, "A judge could not find this part while recording a deck and is waiting on their screen. Check the spelling, then add it to the parts library (every event uses the same list)."), h("input", {
+        value: partReqNames[r.id] ?? r.name,
+        maxLength: 40,
+        disabled: busy,
+        "aria-label": "Part name",
+        onChange: e => {
+          const v = e.target.value;
+          setPartReqNames(x => ({ ...x, [r.id]: v }));
+        },
+        style: {
+          width: "100%",
+          boxSizing: "border-box",
+          padding: "10px 12px",
+          borderRadius: 8,
+          border: "1px solid var(--border2)",
+          background: "var(--surface2)",
+          color: "var(--text-primary)",
+          fontSize: 16,
+          fontWeight: 800,
+          fontFamily: "'Outfit',sans-serif"
+        }
+      }), err && h("p", {
+        style: {
+          fontSize: 12,
+          fontWeight: 700,
+          color: "#DC2626",
+          margin: "6px 0 0"
+        }
+      }, err), h("div", {
+        style: {
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          marginTop: 10
+        }
+      }, btn(busy ? "Saving…" : "Add part", () => decidePartReq(r, "add"), "primary"), btn("Decline", () => decidePartReq(r, "decline"))));
+    };
+    const prDoneCard = r => h("div", {
+      key: "prd-" + r.id,
+      style: {
+        padding: "10px 14px",
+        borderRadius: 12,
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        marginBottom: 8,
+        opacity: 0.8,
+        fontSize: 12,
+        color: "var(--text-secondary)"
+      }
+    }, h("b", {
+      style: {
+        color: "var(--text-primary)"
+      }
+    }, r.finalName || r.name), `  ·  ${PR_KIND[r.kind] || r.kind}  ·  `, r.status === "added" ? `added${r.decidedBy ? ` by ${r.decidedBy}` : ""}` : r.status === "declined" ? `declined${r.decidedBy ? ` by ${r.decidedBy}` : ""}` : "the judge cancelled", r.decidedAt ? `  ·  ${when(r.decidedAt)}` : "", r.judge ? `  ·  asked by ${r.judge}` : "");
     return h("div", null, h("div", {
       style: {
         display: "flex",
@@ -1278,7 +1446,10 @@ function OrgApp({
         color: "var(--text-muted)",
         margin: 0
       }
-    }, "Scores that need entering, send errors, and automatic queue fixes")), btn("↻ Refresh", loadNotifs)), needs.length === 0 && h("div", {
+    }, ff(1037) ? "Part requests from judges, scores that need entering, send errors, and automatic queue fixes" : "Scores that need entering, send errors, and automatic queue fixes")), btn("↻ Refresh", () => {
+      loadNotifs();
+      loadPartReqs();
+    })), partReqPending.map(prCard), needs.length === 0 && partReqPending.length === 0 && h("div", {
       style: {
         padding: "14px",
         borderRadius: 12,
@@ -1315,16 +1486,16 @@ function OrgApp({
         cursor: "pointer",
         textAlign: "left"
       }
-    }, `${notifResolvedOpen ? "▾" : "▸"} Resolved (${done.length})`), notifResolvedOpen && h("div", {
+    }, `${notifResolvedOpen ? "▾" : "▸"} Resolved (${done.length + partDone.length})`), notifResolvedOpen && h("div", {
       style: {
         marginTop: 10
       }
-    }, done.length === 0 ? h("p", {
+    }, done.length + partDone.length === 0 ? h("p", {
       style: {
         fontSize: 12,
         color: "var(--text-muted)"
       }
-    }, "Nothing resolved yet.") : done.map(card)));
+    }, "Nothing resolved yet.") : [partDone.map(prDoneCard), done.map(card)]));
   };
 
   // ── Tournament select screen ──────────────────────────────────────
@@ -1523,7 +1694,7 @@ function OrgApp({
       background: "var(--surface)",
       flexShrink: 0
     }
-  }, (ff(1017) ? ["dashboard", "combos", "notifications"] : ["dashboard", "combos"]).map(tab => /*#__PURE__*/React.createElement("button", {
+  }, (ff(1017) || ff(1037) ? ["dashboard", "combos", "notifications"] : ["dashboard", "combos"]).map(tab => /*#__PURE__*/React.createElement("button", {
     key: tab,
     onClick: async () => {
       setOrgTab(tab);
@@ -1580,7 +1751,7 @@ function OrgApp({
       padding: "16px 24px 40px",
       boxSizing: "border-box"
     }
-  }, orgTab === "notifications" && ff(1017) ? renderNotificationsPanel() : orgTab === "combos" ? (() => {
+  }, orgTab === "notifications" && (ff(1017) || ff(1037)) ? renderNotificationsPanel() : orgTab === "combos" ? (() => {
     // ── Combo Registry tab ───────────────────────────────────────────
     const refreshComboRegistry = async () => {
       if (!slug) return;

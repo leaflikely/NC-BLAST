@@ -56,6 +56,7 @@ window.FEATURE_FLAGS = new Set([
   1034, // Deck builder redesign (judge): new Record decks screen (deck always on screen, whole-combo search, ratchet grid, CX steps), then each player checks and confirms their own deck before the match starts. Fast Blast events use it too. Turn it off to get the old deck review and part pickers back.
   1035, // Deck order redesign (judge): new Deck order screen for the first order of a set and every reshuffle. Both decks on one screen, taps only, then Check With Players (each player confirms their own order) or Looks good, start battles. Turn it off to get the old Set Deck Order screen back.
   1036, // Next Action popup (judge): right after the judge submits a match, ask New Match / Stay Here / Finished this round. (the last one only with a stream channel; starts the between-round slides). Turn it off to just stay on the result page like before.
+  1037, // New Part requests (judge + org view): a New Part button in every part list of the new deck builder; the organizer or a head judge of the event adds or declines it in Org view > Notifications. Needs the Worker part-requests block.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
@@ -174,5 +175,10 @@ window.FEATURE_FLAG_INFO = {
     name: "Next Action popup after submitting (judge)",
     desc: "Right after the judge taps Submit on a finished match, a 'Next Action?' popup opens. New Match (the main choice, shown biggest) is the same as the New Match button on the page, so it waits for the bracket site the same way. Stay Here closes the popup and leaves the judge on the result page. Finished this round. shows only when the judge is connected to a stream channel: it puts that channel into the between-round standby slides (standings, results, most used combos) until the next match starts.",
     off: "Old behaviour: no popup; after Submit the judge stays on the result page and uses the New Match button there."
+  },
+  1037: {
+    name: "New Part requests (judge + org view)",
+    desc: "In the new deck builder (flag 1034) every part list ends with a New Part button (blades, crossover blades, each CX step, ratchets, bits, and a search that finds nothing). The judge types the missing part's name and sends it to the event; a waiting screen tells them an organizer has to confirm it. In Org view the Notifications tab lists the request: the event's organizer or a head judge can fix the spelling and tap Add part (it goes into the shared parts library) or Decline. Once added, the part goes into the judge's combo by itself. Needs the part-requests block in the Worker.",
+    off: "Old behaviour: no New Part button; missing parts are added by hand in the Parts Library."
   }
 };
