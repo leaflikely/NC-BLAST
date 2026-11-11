@@ -550,7 +550,9 @@ RobotJudge.prototype.playMatch = async function () {
       const st = await p.evaluate(() => {
         const a = document.querySelector(".ncbdo");
         if (!a) return null;
-        return { stage: a.getAttribute("data-stage"), open: a.querySelectorAll(".bey .badge:not(.on)").length, picked: a.querySelectorAll(".bey .badge.on").length, dock: !!a.querySelector(".dock-btn"), fixing: a.getAttribute("data-stage") === "pick" && !a.querySelector(".tabs") };
+        // One box per player (both on screen; only one while an order is being changed): how many places are set in each.
+        const boxes = [...a.querySelectorAll(".pnl")].map(b => ({ open: b.querySelectorAll(".bey .badge:not(.on)").length, picked: b.querySelectorAll(".bey .badge.on").length }));
+        return { stage: a.getAttribute("data-stage"), fixing: a.getAttribute("data-fixing") === "1", boxes, dock: !!a.querySelector(".dock-btn") };
       });
       if (!st) continue;
       if (st.stage === "check") {
@@ -564,22 +566,26 @@ RobotJudge.prototype.playMatch = async function () {
         continue;
       }
       if (st.stage === "cover") { await ui.tap(p, /^Show .+'s order$/, { optional: true, timeout: 1500 }); continue; }
-      if (st.picked === 1 && this.rnd.chance(0.1)) {
-        this.say("takes back the 1st pick");
-        await p.click(".ncbdo .bey:has(.badge.on)", { timeout: 2000 }).catch(() => {});
+      const boxSel = k => `.ncbdo .pnl >> nth=${k}`;
+      if (st.fixing && st.boxes[0] && st.boxes[0].picked === 3) {
+        // Changing an order from the check screen: take back the 1st place, then pick again.
+        await p.locator(boxSel(0)).locator(".bey:has(.badge.on)").first().click({ timeout: 2000 }).catch(() => {});
         continue;
       }
-      if (st.open && st.picked < 3) {
-        const els = await p.$$(".ncbdo .bey:has(.badge:not(.on))");
+      const k1 = st.boxes.findIndex(b => b.picked === 1);
+      if (k1 >= 0 && this.rnd.chance(0.1)) {
+        this.say("takes back a 1st pick");
+        await p.locator(boxSel(k1)).locator(".bey:has(.badge.on)").first().click({ timeout: 2000 }).catch(() => {});
+        continue;
+      }
+      const todo = st.boxes.map((b, k) => (b.picked < 3 && b.open ? k : -1)).filter(k => k >= 0);
+      if (todo.length) {
+        const k = this.rnd.pick(todo);
+        const els = await p.locator(boxSel(k)).locator(".bey:has(.badge:not(.on))").all();
         if (els.length) { await this.rnd.pick(els).click({ timeout: 2000 }).catch(() => {}); continue; }
       }
-      if (st.fixing && st.picked === 3) {
-        // Changing an order from the check screen: take back the 1st place, then pick again.
-        await p.click(".ncbdo .bey:has(.badge.on)", { timeout: 2000 }).catch(() => {});
-        continue;
-      }
-      if (st.picked === 3 && st.dock) { this.say("deck order set"); await ui.tap(p, "Check with the players", { optional: true, timeout: 1500 }); continue; }
-      // In the middle of the short pause after the 3rd place fills in: wait, or switch to the player still to do.
+      if (st.dock) { this.say("deck order set"); await ui.tap(p, "Check with the players", { optional: true, timeout: 1500 }); continue; }
+      // In the middle of the short pause after a 3rd place fills in: wait.
       await p.waitForTimeout(ui.POLL);
       continue;
     }

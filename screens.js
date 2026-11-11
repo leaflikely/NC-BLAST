@@ -1,4 +1,4 @@
-// NC BLAST screens.js | part 3 of 6 (load order is set in index.html) | last updated: 2026-11-11a | deck-order-redesign (flag 1035, on by default: new Deck order screen from the teammate mock-up for the first order of a set and every reshuffle - one player at a time with taps only, then each player checks and confirms their own order, with a hidden screen between them; top-bar Undo still undoes the last battle; the old Set Deck Order screen stays as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-22b | split-from-app.js (styles, library manager, event picker, format screen, shuffle and misreport screens, other shared screens; code moved here unchanged)
+// NC BLAST screens.js | part 3 of 6 (load order is set in index.html) | last updated: 2026-11-11b | deck-order-both-decks (flag 1035: both players' decks on one screen, each in its own blue or red box with the name and what to tap next; the player tabs are gone; the check still goes one player at a time, top player first) | previous: 2026-11-11a | deck-order-redesign (flag 1035, on by default: new Deck order screen from the teammate mock-up for the first order of a set and every reshuffle - one player at a time with taps only, then each player checks and confirms their own order, with a hidden screen between them; top-bar Undo still undoes the last battle; the old Set Deck Order screen stays as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-22b | split-from-app.js (styles, library manager, event picker, format screen, shuffle and misreport screens, other shared screens; code moved here unchanged)
 /* ═══════════════════════════════════════
    STYLES
 ═══════════════════════════════════════ */
@@ -3405,6 +3405,20 @@ const NCBDO_CSS = `
 
   }
   .ncbdo[data-stage="cover"] { background: var(--night); }
+  .ncbdo .pnl { margin-top: 10px; padding: 10px 10px 10px; border-radius: 16px; background: var(--tint); border: 2px solid var(--pc); }
+  .ncbdo .pnl-head { padding: 2px 6px 8px; }
+  .ncbdo .pnl .ask { margin-top: 2px; font-size: var(--pask-f); }
+  .ncbdo .pnl .ask-sub { margin-top: 1px; font-size: 14px; }
+  .ncbdo .pnl .beys { margin-top: 0; gap: 8px; }
+  .ncbdo .pnl .bey { min-height: var(--prow-h); padding: 4px 10px 4px 14px; border-radius: 13px; }
+  .ncbdo .pnl .bey-name { font-size: var(--prow-f); }
+  .ncbdo .pnl .bey-sub { font-size: 14px; }
+  .ncbdo .pnl .badge { width: var(--pbadge); height: var(--pbadge); font-size: 15px; }
+  .ncbdo .pnl .badge.on { font-size: 17px; }
+  .ncbdo .pnl.done .ask::after { content: " ✓"; color: var(--pc-ink); }
+  .ncbdo { --prow-h: 62px; --prow-f: 19px; --pbadge: 46px; --pask-f: 20px; }
+  @media (max-height: 760px) { .ncbdo { --prow-h: 54px; --prow-f: 18px; --pbadge: 42px; --pask-f: 18px; } .ncbdo .pnl .ask-sub { display: none; } }
+  @media (max-height: 660px) { .ncbdo { --prow-h: 46px; --prow-f: 17px; --pbadge: 36px; --pask-f: 17px; } .ncbdo .pnl { margin-top: 8px; padding: 8px; } .ncbdo .pnl-head { padding-bottom: 6px; } .ncbdo .pnl .beys { gap: 6px; } .ncbdo .pnl .bey-sub { font-size: 13px; } }
   .ncbdo .top { flex: none; }
   .ncbdo .main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
   .ncbdo .bar { height: calc(var(--bar-h) + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 6px 0 2px; display: flex; align-items: center; gap: 4px; background: var(--card); border-bottom: 1px solid var(--line); }
@@ -3618,9 +3632,10 @@ function DeckOrderV2(props) {
   /* ---------- Actions ---------- */
   // Tap a combo. An open one takes the next place; after two, the last one fills in by itself.
   // A numbered one is taken back, along with any place after it.
-  function tapBey(ci) {
+  function tapBey(pi, ci) {
     if (busy || S.stage !== "pick") return;
-    const pi = S.who, at = S.order[pi].indexOf(ci);
+    if (S.fixing && pi !== S.who) return;
+    const at = S.order[pi].indexOf(ci);
     let mine = S.order[pi].slice();
     if (at >= 0) {
       mine = mine.slice(0, mine.length === 3 ? Math.min(at, 1) : at);
@@ -3630,30 +3645,24 @@ function DeckOrderV2(props) {
     }
     const order = S.order.slice();
     order[pi] = mine;
-    setS(Object.assign({}, S, { order }));
+    setS(Object.assign({}, S, { who: pi, order }));
     clearNotice();
     buzz(8);
     // A short beat shows 1st, 2nd and 3rd before the screen moves on. Taps are ignored during it.
     if (mine.length === 3) { setBusy(true); setTimeout(advance, NCBDO_CFG.beatMs); }
   }
-  // After the beat: the other player's turn, or the check once both orders are set.
-  // The check starts with the player whose order is already on screen.
+  // After the beat: the check once both orders are set (or back to the check after a change).
+  // Both decks are on one screen, so the check always starts with the top player.
   function advance() {
     setBusy(false);
-    const st = SRef.current, pi = st.who, o = other(pi);
-    if (st.stage !== "pick" || st.order[pi].length !== 3) return;
+    const st = SRef.current;
+    if (st.stage !== "pick" || st.order[st.who].length !== 3) return;
     if (st.fixing) setS(Object.assign({}, st, { stage: "check", fixing: false, fixSnap: null }));
-    else if (st.order[o].length === 3) setS(Object.assign({}, st, { stage: "check", ck: { order: [pi, o], i: 0 } }));
-    else { setS(Object.assign({}, st, { who: o })); notify(`${P[pi].name}'s order is set. Now ${P[o].name}'s.`, "ok"); }
-  }
-  function switchPlayer(i) {
-    if (busy || S.stage !== "pick" || S.fixing || S.who === i) return;
-    setS(Object.assign({}, S, { who: i }));
-    clearNotice();
+    else if (bothSet(st)) setS(Object.assign({}, st, { stage: "check", ck: { order: [tabOrder[0], tabOrder[1]], i: 0 } }));
   }
   function startCheck() {
     if (busy || S.stage !== "pick" || S.fixing || !bothSet(S)) return;
-    setS(Object.assign({}, S, { stage: "check", ck: { order: [S.who, other(S.who)], i: 0 } }));
+    setS(Object.assign({}, S, { stage: "check", ck: { order: [tabOrder[0], tabOrder[1]], i: 0 } }));
     clearNotice();
   }
   // Both players confirmed: same steps as the old Start Match button.
@@ -3801,32 +3810,27 @@ function DeckOrderV2(props) {
       h("span", { key: "f" }, "First to ", target)
     ];
   }
+  // Both players' decks on one screen, each inside its own blue or red box with the name and what to tap next.
+  // While an order is being changed from a check screen, only that player's box is shown.
   function pickBody() {
-    const pi = S.who, mine = S.order[pi], n = mine.length, next = NCBDO_ORD[n] || "";
-    const out = [];
-    if (!S.fixing) {
-      out.push(h("div", { key: "tabs", className: "tabs", role: "group", "aria-label": "Whose order" }, tabOrder.map(i => {
-        const k = S.order[i].length, on = i === pi;
-        return h("button", { key: i, className: "tab" + (on ? " on" : ""), type: "button", "aria-pressed": on, onClick: tap("tab", () => switchPlayer(i)) },
-          h("span", { className: "tab-dot", style: { background: P[i].color } }),
-          h("span", { className: "tab-name" }, P[i].name),
-          h("span", { className: "tab-count" + (k === 3 ? " ready" : "") }, k === 3 ? "Ready" : k + "/3"));
-      })));
-    }
-    const ask = n === 0 ? "Tap the bey that goes 1st" : (n === 1 ? "Now tap the 2nd" : "Order set");
-    const sub = n === 0 ? "It plays the first battle." : (n === 1 ? "The last one fills in by itself." : "Tap a numbered bey to take it back.");
-    out.push(h("div", { key: "ban", className: "banner" },
-      h("div", { className: "who" }, h("span", { className: "dot" }), h("span", null, P[pi].name)),
-      h("h2", { className: "ask" }, ask),
-      h("p", { className: "ask-sub" }, sub)));
-    out.push(h("div", { key: "beys", className: "beys" }, decks[pi].map((c, ci) => {
-      const at = mine.indexOf(ci), picked = at >= 0;
-      return h("button", { key: ci, className: "bey", type: "button", style: paint(c), onClick: tap("bey", () => tapBey(ci)) },
-        h("span", { className: "bey-text" }, h("span", { className: "bey-name" }, c && c.blade || "?"), h("span", { className: "bey-sub" }, subOf(c))),
-        picked ? h("span", { className: "badge on" }, NCBDO_ORD[at]) : h("span", { className: "badge" }, next + "?"),
-        picked ? h("span", { className: "sr-only" }, ". Tap to take it back") : null);
-    })));
-    return out;
+    const shownPlayers = S.fixing ? [S.who] : tabOrder;
+    return shownPlayers.map(pi => {
+      const mine = S.order[pi], n = mine.length, next = NCBDO_ORD[n] || "";
+      const ask = n === 0 ? "Tap the bey that goes 1st" : (n === 1 ? "Now tap the 2nd" : "Order set");
+      const sub = n === 0 ? "It plays the first battle." : (n === 1 ? "The last one fills in by itself." : "Tap a numbered bey to take it back.");
+      const vars = { "--pc": P[pi].color, "--pc-ink": P[pi].ink, "--tint": P[pi].tint };
+      return h("section", { key: pi, className: "pnl" + (n === 3 ? " done" : ""), style: vars, "aria-label": `${P[pi].name}'s order` },
+        h("div", { className: "pnl-head" },
+          h("div", { className: "who" }, h("span", { className: "dot" }), h("span", null, P[pi].name)),
+          h("h2", { className: "ask" }, ask),
+          h("p", { className: "ask-sub" }, sub)),
+        h("div", { className: "beys" }, decks[pi].map((c, ci) => {
+          const at = mine.indexOf(ci), picked = at >= 0;
+          return h("button", { key: ci, className: "bey", type: "button", style: paint(c), "aria-label": `${P[pi].name}: ${c && c.blade || "?"}${picked ? ", " + NCBDO_ORD[at] + ". Tap to take it back" : ". Tap to make it " + next}`, onClick: tap("bey", () => tapBey(pi, ci)) },
+            h("span", { className: "bey-text" }, h("span", { className: "bey-name" }, c && c.blade || "?"), h("span", { className: "bey-sub" }, subOf(c))),
+            picked ? h("span", { className: "badge on" }, NCBDO_ORD[at]) : h("span", { className: "badge" }, next + "?"));
+        })));
+    });
   }
   // One player's combos in play order, for that player to check. Nothing of the other player is here.
   function checkBody(pi) {
@@ -3885,11 +3889,11 @@ function DeckOrderV2(props) {
   let say = "";
   if (S.stage === "check") say = `${pl.name}, is this your order?`;
   else if (S.stage === "cover") say = `Both orders are hidden. Next: ${pl.name}.`;
-  else say = `${pl.name}: ${S.order[S.who].length === 3 ? "order set" : "tap the bey that goes " + NCBDO_ORD[S.order[S.who].length]}`;
+  else say = tabOrder.map(i => `${P[i].name}: ${S.order[i].length === 3 ? "order set" : "tap the bey that goes " + NCBDO_ORD[S.order[i].length]}`).join(". ");
   const appStyle = { "--pc": pl.color, "--pc-ink": pl.ink, "--tint": pl.tint, "--arm": NCBDO_CFG.stageGuardMs + "ms" };
   return h("div", { className: "ncbdo-wrap" },
     typeof BugReportInlineButton === "function" ? h(BugReportInlineButton, { hidden: true }) : null, // hides the floating ? (Report a problem is in the menu)
-    h("div", { className: "ncbdo", "data-stage": S.stage, style: appStyle },
+    h("div", { className: "ncbdo", "data-stage": S.stage, "data-fixing": S.fixing ? "1" : undefined, style: appStyle },
       h("header", { className: "top" },
         h("div", { className: "bar" }, barEl()),
         menu ? h("div", { className: "menu-backdrop", onClick: tap("menu-close", () => setMenu(false)) }) : null,
