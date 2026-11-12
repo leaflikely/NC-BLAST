@@ -1,4 +1,4 @@
-// NC BLAST organizer.js | part 5 of 6 (load order is set in index.html) | last updated: 2026-11-11b | retired flags 1013-1017 and 1036 (database sending, match timing, cloud error files, submit check + notifications, Next Action popup are now permanent; old code paths removed); 1033 folded into 1032 and 1037 into 1034 | previous: 2026-11-11a | part-requests (flag 1037: the Notifications tab lists judges' New Part requests for this event at the top, with the name to correct and Add part / Decline; pending requests count in the red badge; decided ones go under Resolved) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-30a | station-live-row (each Station Queue module shows its current live match, score and judge) | previous: 2026-10-27a notifications-tab-and-queue-auto-add (flag 1017) | previous: 2026-10-22b split-from-app.js (PIN window, organizer dashboard (OrgApp) and event add/list screen; code moved here unchanged)
+// NC BLAST organizer.js | part 5 of 6 (load order is set in index.html) | last updated: 2026-11-11c | matchmason-events (flag 1038): MatchMason (matchmason.com) events work like WCB events - slug mm-<id>, final set scores only (organizer side: Load from MatchMason link, MM pill, labels) | retired flags 1013-1017 and 1036 (database sending, match timing, cloud error files, submit check + notifications, Next Action popup are now permanent; old code paths removed); 1033 folded into 1032 and 1037 into 1034 | previous: 2026-11-11a | part-requests (flag 1037: the Notifications tab lists judges' New Part requests for this event at the top, with the name to correct and Add part / Decline; pending requests count in the red badge; decided ones go under Resolved) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-10-30a | station-live-row (each Station Queue module shows its current live match, score and judge) | previous: 2026-10-27a notifications-tab-and-queue-auto-add (flag 1017) | previous: 2026-10-22b split-from-app.js (PIN window, organizer dashboard (OrgApp) and event add/list screen; code moved here unchanged)
 function PinModal({
   title,
   subtitle,
@@ -1097,7 +1097,7 @@ function OrgApp({
   // A score the judge could not send is done as soon as the bracket shows the match finished (Challonge only:
   // WCB's match list never shows finished matches, so those are marked entered by hand).
   React.useEffect(() => {
-    if (!slug || slug.startsWith("wcb-") || !Array.isArray(pairings) || notifs.length === 0) return;
+    if (!slug || isOtherBracket(slug) || !Array.isArray(pairings) || notifs.length === 0) return;
     notifs.forEach(n => {
       if (n.resolved || n.type !== "bracket-send" || !n.matchId) return;
       const m = pairings.find(p => String(p.id) === String(n.matchId));
@@ -1214,7 +1214,7 @@ function OrgApp({
     const done = notifs.filter(n => n.resolved);
     const partDone = ff(1034) ? partReqs.filter(r => r.status !== "pending").slice(0, 20) : [];
     const isWcb = slug.startsWith("wcb-");
-    const bracketUrl = isWcb ? `https://westcoastbladers.com/brackets/view/${slug.slice(4)}` : slug.indexOf("-") > 0 ? `https://${slug.slice(0, slug.indexOf("-"))}.challonge.com/${slug.slice(slug.indexOf("-") + 1)}` : `https://challonge.com/${slug}`;
+    const bracketUrl = isWcb ? `https://westcoastbladers.com/brackets/view/${slug.slice(4)}` : slug.startsWith("mm-") ? `https://matchmason.com/t/${slug.slice(3)}` : slug.indexOf("-") > 0 ? `https://${slug.slice(0, slug.indexOf("-"))}.challonge.com/${slug.slice(slug.indexOf("-") + 1)}` : `https://challonge.com/${slug}`;
     const when = t => t ? new Date(t).toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit"
@@ -1263,7 +1263,7 @@ function OrgApp({
           color: n.resolved ? "var(--text-muted)" : isSend && manual ? "#DC2626" : "#B45309",
           margin: "0 0 4px"
         }
-      }, isSend ? manual ? `Enter this score on ${isWcb ? "WCB" : "Challonge"} by hand` : "Score not sent yet (the judge is still retrying)" : n.type === "queue-auto-add" ? "Added to a queue automatically" : n.type === "info" ? "Note" : "Error", h("span", {
+      }, isSend ? manual ? `Enter this score on ${bracketSiteName(slug)} by hand` : "Score not sent yet (the judge is still retrying)" : n.type === "queue-auto-add" ? "Added to a queue automatically" : n.type === "info" ? "Note" : "Error", h("span", {
         style: {
           fontWeight: 600,
           color: "var(--text-muted)"
@@ -4987,6 +4987,11 @@ function OrgTournamentSelect({
   const [wcbLinkError, setWcbLinkError] = useState(null);
   const [wcbStep, setWcbStep] = useState(null); // null | "confirm" | "adding"
   const [wcbPendingId, setWcbPendingId] = useState(null);
+  // MatchMason (matchmason.com) event creation (flag 1038), same steps as the WCB one above
+  const [mmLinkInput, setMmLinkInput] = useState("");
+  const [mmLinkError, setMmLinkError] = useState(null);
+  const [mmStep, setMmStep] = useState(null); // null | "confirm" | "adding"
+  const [mmPendingId, setMmPendingId] = useState(null);
   const [pendingRanked, setPendingRanked] = useState(true); // true = RANKED, false = UNRANKED
   const [pendingFast, setPendingFast] = useState(false); // Fast Blast switch on the name screen (flag 1031)
   const [pendingSlug, setPendingSlug] = useState(null);
@@ -5154,6 +5159,57 @@ function OrgTournamentSelect({
     } catch (e) {
       setWcbLinkError("Couldn't add WCB event: " + e.message);
       setWcbStep("confirm");
+    }
+  };
+  // ── MatchMason event creation (flag 1038) ───────────────────────
+  // Pulls the tournament ID out of a pasted MatchMason link, e.g.
+  // https://matchmason.com/t/5d8d5e9ff11174f24ce9c2ed973ed669 -> 5d8d5e9ff11174f24ce9c2ed973ed669
+  const parseMmId = raw => {
+    let id = raw.trim();
+    try {
+      if (id.startsWith("http") || id.indexOf("matchmason.com") >= 0) {
+        const u = new URL(id.startsWith("http") ? id : "https://" + id);
+        const parts = u.pathname.replace(/\/$/, "").split("/").filter(Boolean);
+        const ti = parts.indexOf("t");
+        id = ti >= 0 && parts[ti + 1] ? parts[ti + 1] : parts[parts.length - 1] || id;
+      }
+    } catch (_) {}
+    return id;
+  };
+  const handleMmLinkSubmit = () => {
+    setMmLinkError(null);
+    const id = parseMmId(mmLinkInput);
+    if (!id || !/^[A-Za-z0-9_-]{4,80}$/.test(id)) { setMmLinkError("Enter a valid MatchMason event link (matchmason.com/t/...) or ID."); return; }
+    setMmPendingId(id);
+    setMmStep("confirm");
+  };
+  const handleAddMmTournament = async (ranked) => {
+    setMmStep("adding");
+    setMmLinkError(null);
+    const token = sessionStorage.getItem("ncblast-auth-token");
+    try {
+      const res = await fetch(`${OVERLAY_WORKER}/org/tournament/add-mm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tournamentId: mmPendingId,
+          ranked,
+          orgToken: token,
+          username: sessionStorage.getItem("ncblast-auth-user")
+        }),
+        signal: AbortSignal.timeout(20000)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setMmStep(null);
+      setMmLinkInput("");
+      const addedId = mmPendingId;
+      setMmPendingId(null);
+      await refreshList();
+      onSelect(data.slug, data.mmName || addedId);
+    } catch (e) {
+      setMmLinkError("Couldn't add MatchMason event: " + e.message);
+      setMmStep("confirm");
     }
   };
   const handleDelete = async (slug, masterKeyOverride) => {
@@ -6271,7 +6327,69 @@ function OrgTournamentSelect({
     }
   }, "Go")), wcbLinkError && /*#__PURE__*/React.createElement("p", {
     style: { fontSize: 11, color: "#EF4444", marginTop: 8 }
-  }, wcbLinkError)), /*#__PURE__*/React.createElement("p", {
+  }, wcbLinkError)), ff(1038) && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--surface)",
+      borderRadius: 14,
+      padding: "14px",
+      marginBottom: 20,
+      border: "1px solid var(--border)"
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 12, fontWeight: 800, color: "var(--text-primary)", marginBottom: 4 }
+  }, "Load from MatchMason link (test)"), /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }
+  }, "MatchMason — name and roster pulled automatically. Final set scores are sent back when a judge submits a match."),
+  mmStep === "confirm" || mmStep === "adding" ? /*#__PURE__*/React.createElement("div", null,
+    /*#__PURE__*/React.createElement("p", {
+      style: { fontSize: 12, color: "var(--text-primary)", marginBottom: 10, fontWeight: 700 }
+    }, "Add this MatchMason event?"),
+    /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 8 } },
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => handleAddMmTournament(true),
+        disabled: mmStep === "adding",
+        style: {
+          flex: 1, padding: "10px 0", borderRadius: 10, border: "none",
+          background: mmStep === "adding" ? "var(--surface3)" : "#0E7490",
+          color: mmStep === "adding" ? "var(--text-faint)" : "#fff",
+          fontSize: 13, fontWeight: 800, fontFamily: "'Outfit',sans-serif",
+          cursor: mmStep === "adding" ? "not-allowed" : "pointer"
+        }
+      }, mmStep === "adding" ? "Adding…" : "Add Event")),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => { setMmStep(null); setMmPendingId(null); setMmLinkError(null); },
+      disabled: mmStep === "adding",
+      style: {
+        width: "100%", padding: "8px 0", borderRadius: 8,
+        border: "1px solid var(--border)", background: "none",
+        color: "var(--text-muted)", fontSize: 12, fontWeight: 700,
+        fontFamily: "'Outfit',sans-serif", cursor: mmStep === "adding" ? "not-allowed" : "pointer"
+      }
+    }, "Cancel")
+  ) : /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", gap: 8 }
+  }, /*#__PURE__*/React.createElement("input", {
+    value: mmLinkInput,
+    onChange: e => setMmLinkInput(e.target.value),
+    onKeyDown: e => e.key === "Enter" && handleMmLinkSubmit(),
+    placeholder: "matchmason.com/t/...",
+    style: {
+      flex: 1, borderRadius: 10, border: "1px solid var(--border2)",
+      background: "var(--input-bg)", padding: "9px 12px", fontSize: 13,
+      fontFamily: "'Outfit',sans-serif", outline: "none", color: "var(--text-primary)"
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: handleMmLinkSubmit,
+    disabled: !mmLinkInput.trim(),
+    style: {
+      borderRadius: 10, border: "none", background: "#0E7490", color: "#fff",
+      fontSize: 13, fontWeight: 800, fontFamily: "'Outfit',sans-serif",
+      padding: "0 16px", cursor: !mmLinkInput.trim() ? "not-allowed" : "pointer",
+      opacity: !mmLinkInput.trim() ? 0.6 : 1
+    }
+  }, "Go")), mmLinkError && /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 11, color: "#EF4444", marginTop: 8 }
+  }, mmLinkError)), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
       fontWeight: 800,
@@ -6393,7 +6511,12 @@ function OrgTournamentSelect({
       fontSize: 9, fontWeight: 800, color: "#7C3AED", background: "rgba(124,58,237,0.12)",
       borderRadius: 6, padding: "2px 6px", marginLeft: 6, verticalAlign: "middle"
     }
-  }, "WCB")), /*#__PURE__*/React.createElement("p", {
+  }, "WCB"), t.backend === "mm" && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 9, fontWeight: 800, color: "#0E7490", background: "rgba(14,116,144,0.12)",
+      borderRadius: 6, padding: "2px 6px", marginLeft: 6, verticalAlign: "middle"
+    }
+  }, "MM")), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 10,
       color: "var(--text-faint)",

@@ -1,4 +1,4 @@
-// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-11f | retired flags 1013-1017 and 1036 (database sending, match timing, cloud error files, submit check + notifications, Next Action popup are now permanent; old code paths removed); 1033 folded into 1032 and 1037 into 1034 | previous: 2026-11-11e | retired flags 1008, 1009, 1011, 1020, 1022-1026, 1028-1030 (the stream overlay features are now permanent; old code paths removed) | previous: 2026-11-11d | new-part-requests (flag 1037: a New Part button at the end of every part list in the new deck builder (and under a search with no match); the judge types the name and waits while an organizer of the event adds or declines it in Org view > Notifications; once added it goes into the combo by itself) | previous: 2026-11-11c | deck-check-looks-good + own-buttons (deck builder check button says Looks Good and it and Show deck can be tapped right away; Own finish buttons say just Own, and on the new score pad the name and the +2/+3 sit side by side in bigger text) | previous: 2026-11-11b | next-action-popup (flag 1036, on by default: right after the judge submits, a "Next Action?" popup with New Match (main choice, waits for the bracket like the page button), Stay Here, and Finished this round. (only with a stream channel; starts the between-round standby slides)) | previous: 2026-11-11a | deck-order-redesign (flag 1035: the order screen call picks DeckOrderV2 from screens.js when the flag is on, and passes dark mode to it) | previous: 2026-11-10e | cx-picture-guide-new-parts (Picture guide lists Hurricane and Tread with the CXE blades, Tough with the over blades, Quell with the assist blades) | previous: 2026-11-10d | cxe-tag-dark-mode (flag 1034: the small CXE tag on the CX main blade buttons uses dark text in dark mode, it was white on near-white) | previous: 2026-11-10c | deck-builder-redesign (flag 1034, on by default: new Record decks screen from the teammate mock-up - deck always on screen, whole-combo search, ratchet grid, CX steps - then each player checks and confirms their own deck, with a hidden screen between them; Fast Blast uses it too; the old deck review and pickers stay as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
+// NC BLAST judge-match.js | part 4 of 6 (load order is set in index.html) | last updated: 2026-11-11g | matchmason-events (flag 1038): MatchMason (matchmason.com) events work like WCB events - slug mm-<id>, final set scores only (judge side: match list, final-score send, labels) | retired flags 1013-1017 and 1036 (database sending, match timing, cloud error files, submit check + notifications, Next Action popup are now permanent; old code paths removed); 1033 folded into 1032 and 1037 into 1034 | previous: 2026-11-11e | retired flags 1008, 1009, 1011, 1020, 1022-1026, 1028-1030 (the stream overlay features are now permanent; old code paths removed) | previous: 2026-11-11d | new-part-requests (flag 1037: a New Part button at the end of every part list in the new deck builder (and under a search with no match); the judge types the name and waits while an organizer of the event adds or declines it in Org view > Notifications; once added it goes into the combo by itself) | previous: 2026-11-11c | deck-check-looks-good + own-buttons (deck builder check button says Looks Good and it and Show deck can be tapped right away; Own finish buttons say just Own, and on the new score pad the name and the +2/+3 sit side by side in bigger text) | previous: 2026-11-11b | next-action-popup (flag 1036, on by default: right after the judge submits, a "Next Action?" popup with New Match (main choice, waits for the bracket like the page button), Stay Here, and Finished this round. (only with a stream channel; starts the between-round standby slides)) | previous: 2026-11-11a | deck-order-redesign (flag 1035: the order screen call picks DeckOrderV2 from screens.js when the flag is on, and passes dark mode to it) | previous: 2026-11-10e | cx-picture-guide-new-parts (Picture guide lists Hurricane and Tread with the CXE blades, Tough with the over blades, Quell with the assist blades) | previous: 2026-11-10d | cxe-tag-dark-mode (flag 1034: the small CXE tag on the CX main blade buttons uses dark text in dark mode, it was white on near-white) | previous: 2026-11-10c | deck-builder-redesign (flag 1034, on by default: new Record decks screen from the teammate mock-up - deck always on screen, whole-combo search, ratchet grid, CX steps - then each player checks and confirms their own deck, with a hidden screen between them; Fast Blast uses it too; the old deck review and pickers stay as the flag-off path) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-08c | score-pad-battle-screen (flag 1033, whole battle screen in the new layout, Own plus text in opponent colour) | previous: 2026-11-08a | score-pad-result-and-confirm (flag 1032, off by default: the Match result screen and the player tap-to-confirm screen get the new look from the Claude Design mock-up; drawing only, scoring and submitting are untouched) | previous: 2026-11-03d | graphic-pool-stage-1 (flag 1023: the judge app also sends the overlay the battle count of the match, whether the event is Swiss, and how many matches of this round have not started; it refreshes the bracket every 30 seconds during a match) | previous: 2026-11-03b | overlay-records (flag 1022: the judge app looks up the bracket's finished matches when a match starts and sends the stream overlay the round label and each player's match record (W-L) for its new second post-battle graphic; 0-0 when it cannot) | previous: 2026-11-03a | menu-cleanup-and-stream-flip (judge scorer: the ? report button and the dark mode toggle moved into the cog menu; the Reset-set button now reads "Set"; new cog menu button "Swap Stream Position" flips left and right on the stream overlay only, and the judge's own Swap button no longer touches the overlay) | previous: 2026-11-02a | overlay-set-winners (flag 1020: the overlay payload now lists who won each finished set, in order, so the stream overlay can colour set dot 1 for the set 1 winner) | previous: 2026-10-29d simple-match-history (post-game Match History defaults to names + "+points" with a check button for Full Stat View) | previous: 2026-10-29c confirm-names-black-crown (player names in black and a crown beside the winner on the tap-confirm screen) | previous: 2026-10-29b confirm-screen-scores (final match + per-set scores shown on the two-player tap-confirm screen) | previous: 2026-10-29a die-roll-wording (priority question now reads "Who Won the Die Roll?") | 2026-10-27a submit-check-and-notifications (flag 1017: confirm score with the bracket site, lock New Match until confirmed, escape button tells the TO) | previous: 2026-10-22b split-from-app.js (MatchScreen (the judge scoring screen) and its confirm window; code moved here unchanged)
 // FLAG 1020: who won each finished set, oldest first (0 = player 1, 1 = player 2), for the
 // stream overlay's set dots. Built from the per-set scores. Any win the scores don't list yet
 // (the set that was just won: its score is saved a moment after the overlay push) is added at
@@ -2841,9 +2841,9 @@ function MatchScreen({
         if (stale) return;
         const recs = overlayRecordsFrom(data && data.pairings, challongeP1ParticipantId, challongeP2ParticipantId, p1, p2, challongeMatchId);
         // WCB lists only open matches and never marks them underway, so a count would be wrong there.
-        recs.pending = !String(challongeSlug).startsWith("wcb-") ? overlayPendingFrom(data && data.pairings, challongeRound, challongeMatchId) : null;
+        recs.pending = !isOtherBracket(challongeSlug) ? overlayPendingFrom(data && data.pairings, challongeRound, challongeMatchId) : null;
         // FLAG 1024: seeds come with the bracket's player list (WCB has none, so no upsets there).
-        if (!String(challongeSlug).startsWith("wcb-")) {
+        if (!isOtherBracket(challongeSlug)) {
           if (!seeds) {
             try {
               const pr = await fetch(`${OVERLAY_WORKER}/?slug=${encodeURIComponent(challongeSlug)}`, { signal: AbortSignal.timeout(8000) });
@@ -2960,7 +2960,7 @@ function MatchScreen({
   // Auto-fetch active matches if we default to active tab
   useEffect(() => {
     if (!challongeSlug) return;
-    if (challongeSlug.startsWith("wcb-")) fetchWcbOpenMatches();
+    if (isOtherBracket(challongeSlug)) fetchWcbOpenMatches();
     else fetchActiveMatches();
   }, []);
 
@@ -3483,12 +3483,12 @@ function MatchScreen({
     }
   };
 
-  // Read-only preview of a WCB event's open matches — no scoring/selection wired up yet.
+  // The open matches of a WCB or MatchMason event (the Worker route is picked by the slug: /wcb/open-matches or /mm/open-matches).
   const fetchWcbOpenMatches = async () => {
     if (!challongeSlug) return;
     setWcbOpenMatches("loading");
     try {
-      const res = await fetch(`${OVERLAY_WORKER}/wcb/open-matches?slug=${encodeURIComponent(challongeSlug)}`, {
+      const res = await fetch(`${OVERLAY_WORKER}/${bracketKind(challongeSlug)}/open-matches?slug=${encodeURIComponent(challongeSlug)}`, {
         signal: AbortSignal.timeout(8000)
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -3503,7 +3503,7 @@ function MatchScreen({
   // Best-effort and in the background: it can never hold up or break sending a result.
   const saveMatchNote = async matchId => {
     try {
-      if (!challongeSlug || matchId == null || String(challongeSlug).startsWith("wcb-")) return;
+      if (!challongeSlug || matchId == null || isOtherBracket(challongeSlug)) return;
       let stadium = "";
       try {
         const ar = await fetch(`${OVERLAY_WORKER}/stadium-assign?slug=${encodeURIComponent(challongeSlug)}`, { signal: AbortSignal.timeout(8000) });
@@ -3523,7 +3523,7 @@ function MatchScreen({
   // FLAG 1030: save both players' locked decks for this match (database Worker /deck-log). Best-effort, in the background.
   const saveDeckLog = locked => {
     try {
-      if (!challongeSlug || !challongeMatchId || String(challongeSlug).startsWith("wcb-")) return;
+      if (!challongeSlug || !challongeMatchId || isOtherBracket(challongeSlug)) return;
       const texts = list => (Array.isArray(list) ? list : []).map(c => comboStr(c)).filter(t => t && t !== "\u2014");
       fetch("https://ncblast-db.danny61734.workers.dev/deck-log?slug=" + encodeURIComponent(challongeSlug), {
         method: "POST",
@@ -3611,7 +3611,7 @@ function MatchScreen({
   // judge's station is out of matches; any failure just carries on to the normal New Match.
   const newMatchTap = async () => {
     const proceed = () => { setSheetsStatus(null); resetAndRestoreJudge(); };
-    if (!overlaySlot || !challongeSlug || String(challongeSlug).startsWith("wcb-") || standbyBusyRef.current) {
+    if (!overlaySlot || !challongeSlug || isOtherBracket(challongeSlug) || standbyBusyRef.current) {
       proceed();
       return;
     }
@@ -4101,9 +4101,10 @@ function MatchScreen({
     // participant id (set from the flat player1_id/player2_id on the WCB match object when
     // it was selected), so no extra mapping is needed. Everything below this branch is the
     // existing Challonge path.
-    if (challongeSlug.startsWith("wcb-")) {
+    // MatchMason events (slug "mm-...") go the same way through /mm/match/result: final set scores only.
+    if (isOtherBracket(challongeSlug)) {
       try {
-        const res = await fetch(`${OVERLAY_WORKER}/wcb/match/result`, {
+        const res = await fetch(`${OVERLAY_WORKER}/${bracketKind(challongeSlug)}/match/result`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -4120,10 +4121,11 @@ function MatchScreen({
           // WCB refuses a second result for a match it already finished. If WCB really shows it finished, that is a success, not a failure.
           const alreadyDone = /unfinished/i.test(String(data.data?.message || ""));
           const again = alreadyDone ? await verifyBracketScore(matchId, scoresCsv) : null;
-          if (!(again && again.confirmed === true)) throw new Error(data.data?.message || data.data?.code || `HTTP ${data.status || res.status}`);
+          if (!(again && again.confirmed === true)) throw new Error(data.data?.message || data.data?.code || data.error || `HTTP ${data.status || res.status}`);
         }
-        const vr = await verifyBracketScoreTwice(matchId, scoresCsv);
-        if (vr.confirmed === false) throw new Error("Not confirmed by WCB - " + vr.reason);
+        // MatchMason: the Worker already read the match back and checked it shows these exact sets, so no second look is needed.
+        const vr = bracketKind(challongeSlug) === "mm" ? { confirmed: true, reason: "" } : await verifyBracketScoreTwice(matchId, scoresCsv);
+        if (vr.confirmed === false) throw new Error("Not confirmed by " + bracketSiteName(challongeSlug) + " - " + vr.reason);
         setChallongeSubmitStatus("ok");
         if (bracketFailReportedRef.current) {
           bracketFailReportedRef.current = false;
@@ -6901,7 +6903,8 @@ function MatchScreen({
       // lock it out of being scored later. The /wcb/match/start route in the Worker is left
       // in place in case a future flow needs it (e.g. a station "called" display), but
       // nothing calls it automatically anymore.
-      if (challongeSlug.startsWith("wcb-")) {
+      // MatchMason events are treated the same way: the final scores go straight in, nothing is marked in progress.
+      if (isOtherBracket(challongeSlug)) {
         setUnderwayStatus(null);
         return;
       }
@@ -7523,7 +7526,7 @@ function MatchScreen({
       onClick: () => {
         setPickTab(tab);
         if (tab === "active") {
-          if ((challongeSlug || "").startsWith("wcb-")) fetchWcbOpenMatches();
+          if (isOtherBracket(challongeSlug)) fetchWcbOpenMatches();
           else fetchActiveMatches();
         }
         if (tab === "station") fetchStationMatches();
@@ -7575,7 +7578,7 @@ function MatchScreen({
           opacity: 0.85
         }
       }, tag));
-    }))), pickTab === "active" && (challongeSlug || "").startsWith("wcb-") && (() => {
+    }))), pickTab === "active" && isOtherBracket(challongeSlug) && (() => {
       // WCB event match selection (Phase 2). Tapping a match calls the same
       // selectActivePairing used for Challonge — it already works generically off
       // player1_id/player2_id/player1_name/player2_name — and markMatchUnderway/
@@ -7587,7 +7590,7 @@ function MatchScreen({
         style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }
       }, /*#__PURE__*/React.createElement("p", {
         style: { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", letterSpacing: 1, textTransform: "uppercase", margin: 0 }
-      }, "Select WCB Match"), /*#__PURE__*/React.createElement("button", {
+      }, "Select " + bracketSiteName(challongeSlug) + " Match"), /*#__PURE__*/React.createElement("button", {
         type: "button",
         onClick: fetchWcbOpenMatches,
         style: {
@@ -7652,14 +7655,14 @@ function MatchScreen({
         }
       }, /*#__PURE__*/React.createElement("span", { style: { fontSize: 13 } }, "\u2705"), /*#__PURE__*/React.createElement("p", {
         style: { fontSize: 12, color: "#15803D", margin: 0, fontWeight: 700 }
-      }, "WCB access confirmed \u2014 match marked in progress")), underwayStatus === "error" && /*#__PURE__*/React.createElement("div", {
+      }, bracketSiteName(challongeSlug) + " access confirmed \u2014 match marked in progress")), underwayStatus === "error" && /*#__PURE__*/React.createElement("div", {
         style: {
           display: "flex", alignItems: "center", gap: 8, padding: "9px 12px",
           borderRadius: 9, background: "#F59E0B18", border: "1.5px solid #F59E0B"
         }
       }, /*#__PURE__*/React.createElement("span", { style: { fontSize: 13 } }, "\u26A0\uFE0F"), /*#__PURE__*/React.createElement("p", {
         style: { fontSize: 12, color: "#F59E0B", margin: 0, fontWeight: 700 }
-      }, "Could not mark match in progress on WCB \u2014 check console for details")), /*#__PURE__*/React.createElement("button", {
+      }, "Could not mark match in progress on " + bracketSiteName(challongeSlug) + " \u2014 check console for details")), /*#__PURE__*/React.createElement("button", {
         style: {
           ...S.pri,
           margin: 0,
@@ -7689,7 +7692,7 @@ function MatchScreen({
           }
         }
       }, deckLoadingCombos ? "Loading\u2026" : eventRanked ? (eventFast ? "Pick Blades \u2192" : "Build Decks \u2192") : "Start Match \u2192")));
-    })(), pickTab === "active" && !(challongeSlug || "").startsWith("wcb-") && (() => {
+    })(), pickTab === "active" && !isOtherBracket(challongeSlug) && (() => {
       // canProceed: match selected only (judge is handled by sharedJudgePicker per match)
       const activeCanProceed = challongeMatchId && p1 && p2;
       return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
@@ -8814,7 +8817,7 @@ function MatchScreen({
     //   Stay Here         - closes the popup; the judge stays on this result page
     //   Finished this round. - only with a stream channel: puts the overlay into the between-round standby slides
     const nextActionOpen = submitted && nextActionFor !== null && nextActionFor === (matchKey || "match") && !standbyAsk;
-    const canFinishRound = !!overlaySlot && !!challongeSlug && !String(challongeSlug).startsWith("wcb-");
+    const canFinishRound = !!overlaySlot && !!challongeSlug && !isOtherBracket(challongeSlug);
     const nextActionPopup = nextActionOpen && /*#__PURE__*/React.createElement("div", {
       role: "dialog",
       "aria-modal": "true",
@@ -8864,7 +8867,7 @@ function MatchScreen({
         opacity: newMatchLocked ? 0.55 : 1,
         cursor: newMatchLocked ? "default" : "pointer"
       }
-    }, newMatchLocked ? "New Match (waiting for " + (String(challongeSlug || "").startsWith("wcb-") ? "WCB" : "Challonge") + ")" : "New Match"), /*#__PURE__*/React.createElement("button", {
+    }, newMatchLocked ? "New Match (waiting for " + bracketSiteName(challongeSlug) + ")" : "New Match"), /*#__PURE__*/React.createElement("button", {
       type: "button",
       onClick: () => setNextActionFor(null),
       style: {
@@ -9717,8 +9720,7 @@ function MatchScreen({
       const p1FinalScore = sets[0];
       const p2FinalScore = sets[1];
       const hasChallonge = !!(challongeSlug && challongeMatchId);
-      const isWcbEvent = (challongeSlug || "").startsWith("wcb-");
-      const bracketLabel = isWcbEvent ? "WCB" : "Challonge";
+      const bracketLabel = bracketSiteName(challongeSlug);
       return /*#__PURE__*/React.createElement("div", {
         style: {
           position: "fixed",
@@ -9998,7 +10000,7 @@ function MatchScreen({
       // result here too - a failed send must never go unnoticed.
       const winnerIsP1 = sets[0] >= need;
       const winnerId = winnerIsP1 ? challongeP1ParticipantId : challongeP2ParticipantId;
-      const bracketLabel = (challongeSlug || "").startsWith("wcb-") ? "WCB" : "Challonge";
+      const bracketLabel = bracketSiteName(challongeSlug);
       const st = challongeSubmitStatus;
       if (st === "ok") return /*#__PURE__*/React.createElement("div", {
         style: {
@@ -10065,11 +10067,11 @@ function MatchScreen({
         if (newMatchLocked) return;
         newMatchTap();
       }
-    }, newMatchLocked ? "New Match (waiting for " + ((challongeSlug || "").startsWith("wcb-") ? "WCB" : "Challonge") + ")" : "New Match"), config.tm && !eventRanked && (() => {
+    }, newMatchLocked ? "New Match (waiting for " + bracketSiteName(challongeSlug) + ")" : "New Match"), config.tm && !eventRanked && (() => {
       // ── Unranked over screen: simple bracket submit + New Match ──
       const winnerIsP1 = sets[0] >= need;
       const winnerId = winnerIsP1 ? challongeP1ParticipantId : challongeP2ParticipantId;
-      const bracketLabel = (challongeSlug || "").startsWith("wcb-") ? "WCB" : "Challonge";
+      const bracketLabel = bracketSiteName(challongeSlug);
       return /*#__PURE__*/React.createElement(React.Fragment, null,
         challongeSlug && challongeMatchId && (challongeSubmitStatus === "ok"
           ? /*#__PURE__*/React.createElement("div", {
@@ -10125,7 +10127,7 @@ function MatchScreen({
     })(), !config.tm && /*#__PURE__*/React.createElement(React.Fragment, null, challongeSlug && challongeMatchId && (() => {
       const winnerIsP1 = sets[0] >= need;
       const winnerId = winnerIsP1 ? challongeP1ParticipantId : challongeP2ParticipantId;
-      const bracketLabel = (challongeSlug || "").startsWith("wcb-") ? "WCB" : "Challonge";
+      const bracketLabel = bracketSiteName(challongeSlug);
       return challongeSubmitStatus === "ok" ? /*#__PURE__*/React.createElement("div", {
         style: {
           padding: "10px 14px",

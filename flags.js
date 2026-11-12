@@ -48,11 +48,17 @@ window.FEATURE_FLAGS = new Set([
   1031, // Fast Blast event mode: the org can switch Fast Blast on when creating an event (blade-only combos, no deck building). This flag covers the toggle on the name screen and the Fast Blast badge on the event list. Turn it off to hide both.
   // 1032, // Score pad redesign (judge): the Match result screen, the player tap-to-confirm screen and the battle (scoring) screen all use the new look from the Claude Design mock-up (Own plus text in the opponent's colour, one shared confirm bar). Drawing only; scoring and submitting are untouched. Held OFF for now: a judge can try it on their own device from the gear menu > Feature Flags, or remove the // at the start of this line to turn it on for everyone.
   1034, // Deck builder redesign (judge): new Record decks screen (deck always on screen, whole-combo search, ratchet grid, CX steps), then each player checks and confirms their own deck before the match starts. Fast Blast events use it too. Also New Part requests: a New Part button in every part list; the organizer or a head judge of the event adds or declines it in Org view > Notifications (needs the Worker part-requests block). Turn it off to get the old deck review and part pickers back.
+  // 1038, // MatchMason events (organizer + judge): the org can load an event from a MatchMason (matchmason.com) link; judges pick its open matches and the final set scores go back to MatchMason when the match is submitted. Held OFF until the MM_API_KEY secret and the new MatchMason routes are in the Worker. A judge or organizer can try it on their own device from the gear menu > Feature Flags, or remove the // at the start of this line to turn it on for everyone. Events already loaded keep working with the flag off; it only shows or hides the Load from MatchMason link box.
   1035, // Deck order redesign (judge): new Deck order screen for the first order of a set and every reshuffle. Both decks on one screen, taps only, then Check With Players (each player confirms their own order) or Looks good, start battles. Turn it off to get the old Set Deck Order screen back.
 ]);
 
 /* Shown in the Feature Flags menu. Keep in sync with the set above. */
 window.FEATURE_FLAG_INFO = {
+  1038: {
+    name: "MatchMason events (organizer + judge)",
+    desc: "Adds a Load from MatchMason link box in Org view (paste matchmason.com/t/... and tap Go, then Add Event). The event's name and roster are pulled in, judges pick from its open matches (with the Swiss / bracket round shown), and when a match is submitted the final set scores are sent to MatchMason and read back to make sure it shows them (no battle-by-battle sending). The event list shows a small MM label. Needs the MM_API_KEY secret and the MatchMason routes in the Worker. The key acts as the account that made it, so this only works for events that account runs.",
+    off: "Old behaviour: no Load from MatchMason link box (events already loaded from MatchMason keep working)."
+  },
   1031: {
     name: "Fast Blast event mode (organizer + judge)",
     desc: "The organizer can switch Fast Blast on when creating an event. Fast Blast events are the quick format: judges pick just the blade for each combo instead of building full decks. This flag shows the Fast Blast switch on the Name This Tournament screen and the Fast Blast label on the event list.",

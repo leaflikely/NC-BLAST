@@ -1,4 +1,4 @@
-// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-11-11c | retired flags 1013-1017 and 1036 (database sending, match timing, cloud error files, submit check + notifications, Next Action popup are now permanent; old code paths removed); 1033 folded into 1032 and 1037 into 1034 | previous: 2026-11-11b | flag-retire (no flag is kept out of the staff menu any more) | previous: 2026-11-11a | popular-ratchets (Popular ratchets are now 1-50, 1-60, 1-70, 3-60, 3-70 / 5-50, 5-60, 7-60, 7-70, 9-60 in that order) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-10a | retired overlay flags 1007, 1010, 1018, 1019, 1021 (staff skip list now only 1026) | previous: 2026-11-08b | staff-flags-apply-on-first-load (a device that started with an older or empty list reloads once to apply the new one, unless a match is in progress) | previous: 2026-11-08a | staff-flag-defaults (flags the staff menu turned on/off for everyone are read here; cached copy used at load, fresh copy fetched in the background) | previous: 2026-11-03a | overlay-flip-key (new saved setting name for the stream overlay left/right flip) | previous: 2026-10-29a | quick-combos-update (new Top 10 quick combos, Glory Valkyrie Kick has no ratchet) | previous: 2026-10-22b split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
+// NC BLAST core.js | part 2 of 6 (load order is set in index.html) | last updated: 2026-11-11d | matchmason-events (flag 1038): MatchMason (matchmason.com) events work like WCB events - slug mm-<id>, final set scores only: shared helpers bracketKind / isOtherBracket / bracketSiteName | retired flags 1013-1017 and 1036 (database sending, match timing, cloud error files, submit check + notifications, Next Action popup are now permanent; old code paths removed); 1033 folded into 1032 and 1037 into 1034 | previous: 2026-11-11b | flag-retire (no flag is kept out of the staff menu any more) | previous: 2026-11-11a | popular-ratchets (Popular ratchets are now 1-50, 1-60, 1-70, 3-60, 3-70 / 5-50, 5-60, 7-60, 7-70, 9-60 in that order) | previous: 2026-11-10b | retired flags 1001-1006, 1012, 1027 (now permanent) | previous:2026-11-10a | retired overlay flags 1007, 1010, 1018, 1019, 1021 (staff skip list now only 1026) | previous: 2026-11-08b | staff-flags-apply-on-first-load (a device that started with an older or empty list reloads once to apply the new one, unless a match is in progress) | previous: 2026-11-08a | staff-flag-defaults (flags the staff menu turned on/off for everyone are read here; cached copy used at load, fresh copy fetched in the background) | previous: 2026-11-03a | overlay-flip-key (new saved setting name for the stream overlay left/right flip) | previous: 2026-10-29a | quick-combos-update (new Top 10 quick combos, Glory Valkyrie Kick has no ratchet) | previous: 2026-10-22b split-from-app.js (top of the old app.js: React setup, feature-flag helpers, bug log, Worker + sign-in helpers, combos, timing, backup tools, parts lists; code moved here unchanged)
 const {
   useState,
   useEffect,
@@ -7,6 +7,21 @@ const {
   useMemo,
   memo
 } = React;
+
+/* Which bracket site an event lives on, read off its slug: "wcb-..." = West Coast Bladers, "mm-..." = MatchMason,
+   anything else = Challonge. isOtherBracket() is the old startsWith("wcb-") check, now covering every non-Challonge site.
+   bracketSiteName() is the name shown to judges and organizers. */
+function bracketKind(slug) {
+  const s = String(slug || "");
+  return s.startsWith("wcb-") ? "wcb" : s.startsWith("mm-") ? "mm" : "challonge";
+}
+function isOtherBracket(slug) {
+  return bracketKind(slug) !== "challonge";
+}
+function bracketSiteName(slug) {
+  const k = bracketKind(slug);
+  return k === "wcb" ? "WCB" : k === "mm" ? "MatchMason" : "Challonge";
+}
 
 /* ═══════════════════════════════════════
    FEATURE FLAGS
