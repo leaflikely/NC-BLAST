@@ -1670,27 +1670,40 @@
         }
         const submitsBefore = this.fw.submits.length;
         const ingestsBefore = this.fw.ingests.length;
+        const confirmedAt = Date.now();
         if (!await ui.until(p, async () => (await ui.buttons(p)).includes("Submit"), 8e3)) {
           const t = (await this.screen()).replace(/\n+/g, " / ");
           const where = name + (this.current.handedOff ? " (after a handoff)" : "");
-          if (!this.current.reloadTried) {
-            this.current.reloadTried = { judge: (/JUDGE \/ ([^/]+) \//.exec(t) || [])[1] || "?", buttons: (await ui.buttons(p)).join(" | ") };
-            this.say("no bracket Submit button: reload, log in again, try once more");
-            await this.login(this.opts.baseUrl);
-            if ((await ui.buttons(this.page)).includes("\u2696\uFE0F Judge Confirm \u2192")) return this.finishMatch();
+          let diag = "";
+          try {
+            const all = await p.evaluate(() => [...document.querySelectorAll("button")].map((b) => (b.innerText || b.getAttribute("aria-label") || b.getAttribute("title") || "").replace(/\s+/g, " ").trim().slice(0, 40) + (b.disabled ? " [disabled]" : "")).filter((x) => x && x !== " [disabled]"));
+            diag = " | All buttons (incl. disabled): " + all.join(" | ") + " | Screen: " + t.slice(0, 700);
+          } catch (_) {
           }
-          this.fw.find("bug", this.who, "No bracket Submit button at the end of the match", where + ". Judge shown: " + this.current.reloadTried.judge + "; buttons: " + this.current.reloadTried.buttons + (this.current.reloadTried ? " (still none after reloading and logging in again)" : ""));
-          const cap2 = this.opts.setPoints || 4;
-          const wins2 = this.expSets.reduce((a, x) => {
-            if (x[0] >= cap2) a[0]++;
-            else if (x[1] >= cap2) a[1]++;
-            return a;
-          }, [0, 0]);
-          this.fw.enterByHand(this.current.matchId, this.expSets.map((x) => x[0] + "-" + x[1]).join(","), wins2[0] > wins2[1] ? 1 : 2);
-          this.matchesDone.push({ name, matchId: this.current.matchId, handedOff: !!this.current.handedOff, exp: "(entered by hand)", battles: this.battles, undos: this.undos, ms: Date.now() - this.current.startedAt });
-          if (this.fw.inPlay) delete this.fw.inPlay[String(this.current.matchId)];
-          await this.login(this.opts.baseUrl);
-          return;
+          const late = await ui.until(p, async () => (await ui.buttons(p)).includes("Submit"), 25e3);
+          if (late) {
+            this.fw.find("warn", this.who, "Submit button appeared late (more than 8 seconds after both players confirmed)", name + ": after " + Math.round((Date.now() - confirmedAt) / 1e3) + " s" + diag);
+            this.current.reloadTried = null;
+          } else {
+            if (!this.current.reloadTried) {
+              this.current.reloadTried = { judge: (/JUDGE \/ ([^/]+) \//.exec(t) || [])[1] || "?", buttons: (await ui.buttons(p)).join(" | ") + diag };
+              this.say("no bracket Submit button: reload, log in again, try once more");
+              await this.login(this.opts.baseUrl);
+              if ((await ui.buttons(this.page)).includes("\u2696\uFE0F Judge Confirm \u2192")) return this.finishMatch();
+            }
+            this.fw.find("bug", this.who, "No bracket Submit button at the end of the match", where + ". Judge shown: " + this.current.reloadTried.judge + "; buttons: " + this.current.reloadTried.buttons + (this.current.reloadTried ? " (still none after reloading and logging in again)" : ""));
+            const cap2 = this.opts.setPoints || 4;
+            const wins2 = this.expSets.reduce((a, x) => {
+              if (x[0] >= cap2) a[0]++;
+              else if (x[1] >= cap2) a[1]++;
+              return a;
+            }, [0, 0]);
+            this.fw.enterByHand(this.current.matchId, this.expSets.map((x) => x[0] + "-" + x[1]).join(","), wins2[0] > wins2[1] ? 1 : 2);
+            this.matchesDone.push({ name, matchId: this.current.matchId, handedOff: !!this.current.handedOff, exp: "(entered by hand)", battles: this.battles, undos: this.undos, ms: Date.now() - this.current.startedAt });
+            if (this.fw.inPlay) delete this.fw.inPlay[String(this.current.matchId)];
+            await this.login(this.opts.baseUrl);
+            return;
+          }
         }
         if (this.current.reloadTried) this.fw.find("bug", this.who, "No bracket Submit button at the end of the match until the judge reloads and logs in again", name + (this.current.handedOff ? " (after a handoff)" : "") + ". Before reloading, judge shown: " + this.current.reloadTried.judge + "; buttons: " + this.current.reloadTried.buttons);
         await this.tap("Submit", { timeout: 8e3 });

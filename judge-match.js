@@ -4283,6 +4283,17 @@ function MatchScreen({
   // After reset(), restore judge from session storage for solo mode.
   // Duo mode intentionally leaves judge blank — the per-match picker handles it.
   const resetAndRestoreJudge = () => {
+    // Keep the name the judge is already using (the bracket name picked at login). Only when there is none,
+    // fall back to the Challonge username. Before this, every match after the first was saved under the
+    // username, so one judge showed up under two names in the stats.
+    const keepJudge = (judge || "").trim();
+    // A match that was just sent to the bracket should not stay on the Station list until Refresh.
+    const doneMatchId = challongeSubmitStatus === "ok" ? challongeMatchId : null;
+    if (doneMatchId != null) {
+      setStationMatchesData(prev => prev && typeof prev === "object" && Array.isArray(prev.queuedMatches)
+        ? { ...prev, queuedMatches: prev.queuedMatches.filter(m => String(m.id) !== String(doneMatchId)) }
+        : prev);
+    }
     reset();
     if (!sharedJudges) {
       const fromSession = (() => {
@@ -4292,7 +4303,8 @@ function MatchScreen({
           return "";
         }
       })();
-      if (fromSession) setJudge(fromSession);
+      if (keepJudge) setJudge(keepJudge);
+      else if (fromSession) setJudge(fromSession);
     }
   };
 

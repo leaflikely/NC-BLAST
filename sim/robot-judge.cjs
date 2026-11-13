@@ -781,12 +781,25 @@ RobotJudge.prototype.finishMatch = async function () {
   }
   const submitsBefore = this.fw.submits.length;
   const ingestsBefore = this.fw.ingests.length;
+  const confirmedAt = Date.now();
   if (!(await ui.until(p, async () => (await ui.buttons(p)).includes("Submit"), 8000))) {
     const t = (await this.screen()).replace(/\n+/g, " / ");
     const where = name + (this.current.handedOff ? " (after a handoff)" : "");
+    // Is the Submit button missing, or just late? Look at the whole screen (disabled buttons too), then wait
+    // up to 25 more seconds before doing anything else, and say which it was.
+    let diag = "";
+    try {
+      const all = await p.evaluate(() => [...document.querySelectorAll("button")].map(b => ((b.innerText || b.getAttribute("aria-label") || b.getAttribute("title") || "").replace(/\s+/g, " ").trim().slice(0, 40)) + (b.disabled ? " [disabled]" : "")).filter(x => x && x !== " [disabled]"));
+      diag = " | All buttons (incl. disabled): " + all.join(" | ") + " | Screen: " + t.slice(0, 700);
+    } catch (_) {}
+    const late = await ui.until(p, async () => (await ui.buttons(p)).includes("Submit"), 25000);
+    if (late) {
+      this.fw.find("warn", this.who, "Submit button appeared late (more than 8 seconds after both players confirmed)", name + ": after " + Math.round((Date.now() - confirmedAt) / 1000) + " s" + diag);
+      this.current.reloadTried = null;
+    } else {
     // First try what a judge would: reload the page, log in again, and confirm once more.
     if (!this.current.reloadTried) {
-      this.current.reloadTried = { judge: (/JUDGE \/ ([^/]+) \//.exec(t) || [])[1] || "?", buttons: (await ui.buttons(p)).join(" | ") };
+      this.current.reloadTried = { judge: (/JUDGE \/ ([^/]+) \//.exec(t) || [])[1] || "?", buttons: (await ui.buttons(p)).join(" | ") + diag };
       this.say("no bracket Submit button: reload, log in again, try once more");
       await this.login(this.opts.baseUrl);
       if ((await ui.buttons(this.page)).includes("⚖️ Judge Confirm →")) return this.finishMatch();
@@ -802,6 +815,7 @@ RobotJudge.prototype.finishMatch = async function () {
     // Start this phone fresh (reload and log in again), like a judge would.
     await this.login(this.opts.baseUrl);
     return;
+    }
   }
   if (this.current.reloadTried) this.fw.find("bug", this.who, "No bracket Submit button at the end of the match until the judge reloads and logs in again", name + (this.current.handedOff ? " (after a handoff)" : "") + ". Before reloading, judge shown: " + this.current.reloadTried.judge + "; buttons: " + this.current.reloadTried.buttons);
   await this.tap("Submit", { timeout: 8000 });
