@@ -1,0 +1,7 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>blank frame for the NC BLAST robots</title>
+<script>
+// The robot page writes the app into this frame (with its safety shim first) by calling __boot.
+window.__boot = function (html) { document.open(); document.write(html); document.close(); };
+</script>

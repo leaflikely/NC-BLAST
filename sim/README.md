@@ -112,6 +112,23 @@ The run ends when no new round appears in that time.
   the run stops at the start and says so. Flag 1038 is switched on for the robots only.
 - Clash tests and the handoff test are off in this mode (clashes would send conflicting results).
 
+## Run it in the browser (no download): ncblast.pages.dev/robots/
+
+Open `https://ncblast.pages.dev/robots/` in Chrome, leave the box empty for a practice run on a pretend
+bracket, or paste a MatchMason test event link (and tick the "for real" box) to play it for real. Keep
+the tab open and in front. Pick up to 8 robot judges; the page shows each judge's phone as a small frame.
+
+- Same robots, same checks: it reuses the robot code from this folder. The "phones" are frames inside the
+  page instead of separate Chrome windows, so all robots share one browser tab and take turns.
+- Speed: on a 2-core test machine 8 robots finished a round in about the same time as the separate-windows
+  version. On a computer with many cores, separate windows (`node run.cjs`) can be faster.
+- Not in this edition: the handoff-to-a-second-phone test, memory growth and bad-wifi checks, screenshots,
+  and the "match abandoned" signal check. MatchMason runs skip the clash and handoff tests anyway.
+- Chrome only (it needs the Navigation API to keep the app inside the frames).
+- Files: `robots/index.html`, `robots/frame.html`, `robots/bundle.js` (built file), and the sources in
+  `sim/web/`. After changing anything in `sim/`, rebuild the bundle: `npm install --no-save esbuild` then
+  `node sim/web/build.cjs`.
+
 ## Extra tests (added Nov 2026)
 
 - Previous Combos: each player's real last deck is recorded; in later matches the 🕐 Previous Combos

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BLAST robot judges (in the browser)</title>
+<style>
+  body{font:15px/1.45 system-ui,sans-serif;margin:0;background:#0f1115;color:#e8eaf0}
+  main{max-width:1280px;margin:0 auto;padding:18px}
+  h1{font-size:20px;margin:0 0 4px} .sub{color:#9aa3b5;margin:0 0 14px}
+  .card{background:#171a21;border:1px solid #2a2f3a;border-radius:10px;padding:14px;margin-bottom:14px}
+  label{display:block;margin:8px 0 3px;color:#b8c0d0;font-size:13px}
+  input[type=text],input[type=number]{background:#0f1115;border:1px solid #333a48;color:#fff;border-radius:6px;padding:8px;width:100%;box-sizing:border-box}
+  .row{display:flex;gap:12px;flex-wrap:wrap}.row>div{flex:1;min-width:120px}
+  button{background:#3b82f6;color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:600;cursor:pointer;margin:10px 8px 0 0}
+  button:disabled{opacity:.45;cursor:default} button.alt{background:#2a2f3a}
+  .warn{background:#3a2a10;border:1px solid #7a5a1a;color:#ffd9a0;border-radius:8px;padding:8px 10px;margin-top:10px;font-size:13px}
+  pre{background:#0b0d11;border:1px solid #2a2f3a;border-radius:8px;padding:10px;height:190px;overflow:auto;margin:0;font-size:12.5px;white-space:pre-wrap}
+  #grid{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
+  .dev .cap{font-size:12px;color:#9aa3b5;margin-bottom:2px}.dev .box{position:relative;overflow:hidden;border:1px solid #2a2f3a;border-radius:6px;background:#fff}
+</style></head><body><main>
+<h1>BLAST robot judges, in the browser</h1>
+<p class="sub">Eight robot judges play a whole event on this page. Paste a MatchMason test event link to play it for real, or leave it empty for a practice run on a pretend bracket.</p>
+<div class="card">
+  <label for="link">MatchMason event link (optional)</label>
+  <input type="text" id="link" placeholder="https://matchmason.com/t/...">
+  <div id="okrow" hidden class="warn"><label style="margin:0;color:#ffd9a0"><input type="checkbox" id="ok"> I understand every result the robots submit is written to this MatchMason event for real and cannot be taken back.</label></div>
+  <div class="row">
+    <div><label for="judges">Robot judges (1-8)</label><input type="number" id="judges" value="8" min="1" max="8"></div>
+    <div><label for="wait">Wait for next round (minutes, MatchMason)</label><input type="number" id="wait" value="10" min="1"></div>
+    <div><label for="rounds">Swiss rounds (practice run)</label><input type="number" id="rounds" value="1" min="1" max="8"></div>
+    <div><label for="seed">Robot choices (seed)</label><input type="number" id="seed" value="1"></div>
+  </div>
+  <button id="go">Start</button><button id="stop" class="alt" disabled>Stop</button>
+  <div class="warn">Keep this tab open and in front while it runs. Chrome slows down tabs you are not looking at.</div>
+</div>
+<div class="card"><pre id="log"></pre>
+  <div id="done" hidden><button id="open">Open report</button><button id="dl" class="alt">Download report (.html)</button><button id="dlj" class="alt">Download report (.json)</button></div></div>
+<div id="grid"></div>
+<script src="bundle.js"></script>
+</main></body></html>
