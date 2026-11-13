@@ -88,25 +88,31 @@ class RobotJudge {
     // Screen by screen, so it also works after a refresh (when some steps are skipped).
     const evName = new RegExp("^" + this.fw.ev.name.replace(/[()]/g, "\\$&"));
     for (let guard = 0; guard < 80; guard++) {
-      const s = await this.screen();
-      const btns = await ui.buttons(p);
-      if (/Spin Finish|Set Deck Order|Pick a Side|Who Won the Die Roll|Deck Review|Record decks|Check decks|Record blades|Check blades|Both decks are hidden|CONFIRM RESULT|Select Match/.test(s) && !/Select the Challonge event/.test(s)) break;
-      if (btns.includes("⚖️ A Judge")) { await ui.tap(p, "⚖️ A Judge", { optional: true, timeout: 1500 }); continue; }
-      if (btns.some(t => evName.test(t))) { await ui.tap(p, evName, { optional: true, timeout: 1500 }); continue; }
-      if (btns.includes("Log in with Challonge →")) { await ui.tap(p, "Log in with Challonge →", { optional: true, timeout: 1500 }); continue; }
-      if (/Enter your Challonge username/.test(s)) {
-        await p.fill("input", this.judge.username);
-        await ui.tap(p, "Confirm →", { optional: true, timeout: 1500 });
-        continue;
+      // The app can reload itself while starting (for example to apply new feature flags).
+      try {
+        const s = await this.screen();
+        const btns = await ui.buttons(p);
+        if (/Spin Finish|Set Deck Order|Pick a Side|Who Won the Die Roll|Deck Review|Record decks|Check decks|Record blades|Check blades|Both decks are hidden|CONFIRM RESULT|Select Match/.test(s) && !/Select the Challonge event/.test(s)) break;
+        if (btns.includes("⚖️ A Judge")) { await ui.tap(p, "⚖️ A Judge", { optional: true, timeout: 1500 }); continue; }
+        if (btns.some(t => evName.test(t))) { await ui.tap(p, evName, { optional: true, timeout: 1500 }); continue; }
+        if (btns.includes("Log in with Challonge →")) { await ui.tap(p, "Log in with Challonge →", { optional: true, timeout: 1500 }); continue; }
+        if (/Enter your Challonge username/.test(s)) {
+          await p.fill("input", this.judge.username);
+          await ui.tap(p, "Confirm →", { optional: true, timeout: 1500 });
+          continue;
+        }
+        if (btns.includes("✏️ Manual Name Entry") && !(await p.$("input[placeholder='Enter your name…']"))) { await ui.tap(p, "✏️ Manual Name Entry", { optional: true, timeout: 1500 }); continue; }
+        if (await p.$("input[placeholder='Enter your name…']")) {
+          await p.fill("input[placeholder='Enter your name…']", this.judge.bracketName);
+          await ui.tap(p, "Confirm", { optional: true, timeout: 1500 });
+          continue;
+        }
+        if (btns.includes("Next: Players →")) { await ui.tap(p, "Next: Players →", { optional: true, timeout: 1500 }); continue; }
+        await p.waitForTimeout(ui.POLL * 2);
+      } catch (e) {
+        if (!/context was destroyed|navigation|Target closed/i.test(String(e.message))) throw e;
+        await p.waitForLoadState("domcontentloaded").catch(() => {});
       }
-      if (btns.includes("✏️ Manual Name Entry") && !(await p.$("input[placeholder='Enter your name…']"))) { await ui.tap(p, "✏️ Manual Name Entry", { optional: true, timeout: 1500 }); continue; }
-      if (await p.$("input[placeholder='Enter your name…']")) {
-        await p.fill("input[placeholder='Enter your name…']", this.judge.bracketName);
-        await ui.tap(p, "Confirm", { optional: true, timeout: 1500 });
-        continue;
-      }
-      if (btns.includes("Next: Players →")) { await ui.tap(p, "Next: Players →", { optional: true, timeout: 1500 }); continue; }
-      await p.waitForTimeout(ui.POLL * 2);
     }
     await ui.waitForText(p, /Select Match|Spin Finish|Set Deck Order|Pick a Side|Who Won the Die Roll|Deck Review|Record decks|Check decks|Record blades|Check blades|Both decks are hidden|CONFIRM RESULT/, 10000);
     this.say("logged in as " + this.judge.username + " (" + this.judge.bracketName + ")");
@@ -805,15 +811,15 @@ RobotJudge.prototype.finishMatch = async function () {
   for (;;) {
     const r = await ui.until(p, async () => {
       const t = await this.screen();
-      if (/✓ Submitted to Challonge/.test(t)) return "ok";
-      if ((await ui.buttons(p)).some(b => /Failed — Retry|NOT sent to Challonge — tap to retry/.test(b))) return "failed";
+      if (/✓ Submitted to (Challonge|MatchMason|WCB)/.test(t)) return "ok";
+      if ((await ui.buttons(p)).some(b => /Failed — Retry|NOT sent to (Challonge|MatchMason|WCB) — tap to retry/.test(b))) return "failed";
       return false;
     }, 20000);
     if (r !== "failed" || tries >= 5) break;
     tries++;
     this.retries = (this.retries || 0) + 1;
     this.say("bracket send failed, Retry (" + tries + ")");
-    await ui.tap(p, /Failed — Retry|NOT sent to Challonge — tap to retry/);
+    await ui.tap(p, /Failed — Retry|NOT sent to (Challonge|MatchMason|WCB) — tap to retry/);
   }
   for (let d = 0; d < 3; d++) {
     const failed = await ui.until(p, async () => {
@@ -828,9 +834,9 @@ RobotJudge.prototype.finishMatch = async function () {
   await ui.until(p, async () =>
     this.fw.submits.slice(submitsBefore).some(x => x.who === this.who) &&
     this.fw.ingests.slice(ingestsBefore).some(x => x.who === this.who) &&
-    /✓ Submitted to Challonge/.test(await this.screen()), 2500);
+    /✓ Submitted to (Challonge|MatchMason|WCB)/.test(await this.screen()), 2500);
   const s = await this.screen();
-  if (!/✓ Submitted to Challonge/.test(s)) this.fw.find("bug", this.who, "Bracket submit did not show success", name + ": " + (s.match(/[^\n]*Challonge[^\n]*/g) || []).join(" / "));
+  if (!/✓ Submitted to (Challonge|MatchMason|WCB)/.test(s)) this.fw.find("bug", this.who, "Bracket submit did not show success", name + ": " + (s.match(/[^\n]*Challonge[^\n]*/g) || []).join(" / "));
   if (/Database: (failed|error)/i.test(s)) this.fw.find(this.fw.wifiBad ? "warn" : "bug", this.who, "Database send failed" + (this.fw.wifiBad ? " even after retrying (bad wifi)" : ""), name);
   if (/Sheets.*(failed|error)/i.test(s)) this.fw.find(this.fw.wifiBad ? "warn" : "bug", this.who, "Sheets send failed" + (this.fw.wifiBad ? " (bad wifi)" : ""), name);
 
@@ -1018,7 +1024,8 @@ RobotJudge.prototype.run = async function (baseUrl, isEventOver) {
       idle++;
       // If no result has reached the bracket for 2 minutes, another station is stuck: stop waiting.
       const lastSubmit = this.fw.submits.length ? this.fw.submits[this.fw.submits.length - 1].at : this.fw.startedAt;
-      if (Date.now() - lastSubmit > 120000) throw new Error("Waited 2 minutes for a match (another station may be stuck)");
+      const limit = this.opts.maxWaitMs || 120000;
+      if (Date.now() - lastSubmit > limit) throw new Error("Waited " + Math.round(limit / 60000) + " minutes for a match (another station may be stuck)");
       await this.page.waitForTimeout(1000);
       continue;
     }

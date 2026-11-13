@@ -320,6 +320,31 @@ class FakeWorker {
     return R({ match: { ...m }, usedToken: false });
   }
 
+  // A bracket call that went to the real Worker (real MatchMason event). Results are recorded
+  // just like the fake bracket records them, so every robot check still works.
+  onRealBracketCall(who, method, url, postData, status, text) {
+    const path = new URL(url).pathname;
+    this.log.push({ t: Date.now(), who, method, host: "REAL", path });
+    if (!(method === "POST" && path === "/mm/match/result")) return;
+    let body = {}, data = {};
+    try { body = JSON.parse(postData || "{}"); } catch (_) {}
+    try { data = JSON.parse(text || "{}"); } catch (_) {}
+    const m = this.ev.matches.find(x => String(x.id) === String(body.matchId));
+    if (status >= 400 || data.ok === false) {
+      this.find("bug", who, "MatchMason refused a result", "match " + body.matchId + " (" + body.scores_csv + "): HTTP " + status + " " + String(data.error || JSON.stringify(data.data || data)).slice(0, 200));
+      return;
+    }
+    if (m && m.state === "complete") {
+      const first = this.submits.find(x => String(x.matchId) === String(m.id));
+      this.find(first && first.who !== who ? "bug" : "warn", who, "Same match sent to MatchMason twice", "match " + m.id + " (was " + m.scores_csv + ", now " + body.scores_csv + ")");
+    }
+    if (m) {
+      m.state = "complete"; m.scores_csv = body.scores_csv; m.winner_id = isNaN(Number(body.winner_id)) ? body.winner_id : Number(body.winner_id);
+      m.updated_at = new Date().toISOString();
+    }
+    this.submits.push({ who, matchId: m ? m.id : body.matchId, scores_csv: body.scores_csv, winner_id: m ? m.winner_id : body.winner_id, at: Date.now() });
+  }
+
   // An organizer typing a result into the bracket by hand (used when the app could not send it).
   enterByHand(matchId, scores_csv, winnerSide) {
     const m = this.ev.matches.find(x => String(x.id) === String(matchId));

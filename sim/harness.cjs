@@ -61,6 +61,21 @@ async function openDevice(browser, fw, who, opts = {}) {
     if (siteHost && new URL(r.url()).host === siteHost) return route.continue();
     // Bad venue wifi (--wifi bad): some requests are slow, some are lost before they arrive,
     // and some arrive but the reply is lost on the way back (the app cannot tell which).
+    if (fw.real && fw.real.isBracketCall(r.url())) {
+      const target = fw.real.base + new URL(r.url()).pathname + new URL(r.url()).search;
+      let resp = null, text = "";
+      try {
+        resp = await route.fetch({ url: target, timeout: 30000 });
+        text = await resp.text();
+      } catch (e) {
+        fw.find("bug", who, "Could not reach the real Worker for a MatchMason call", r.method() + " " + new URL(r.url()).pathname + ": " + String(e.message).slice(0, 160));
+        try { await route.abort("failed"); } catch (_) {}
+        return;
+      }
+      try { fw.onRealBracketCall(who, r.method(), r.url(), r.postData(), resp.status(), text); } catch (_) {}
+      try { await route.fulfill({ status: resp.status(), headers: { ...resp.headers(), "access-control-allow-origin": "*" }, body: text }); } catch (_) {}
+      return;
+    }
     const fate = fw.wifiFate ? fw.wifiFate(r.method(), r.url()) : null;
     if (fate && fate.delay) await new Promise(res => setTimeout(res, fate.delay));
     if (fate && fate.fail === "before") { try { await route.abort("failed"); } catch (_) {} return; }

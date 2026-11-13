@@ -64,12 +64,25 @@ async function tap(page, match, opts = {}) {
   }
 }
 
+// While the page is reloading there is nothing to read: wait a moment and try again (up to ~5 s).
+const RELOADING = /context was destroyed|navigation|Cannot read properties of null|Target closed|frame was detached/i;
+async function readPage(page, fn, arg, empty) {
+  for (let i = 0; ; i++) {
+    try { return await page.evaluate(fn, arg); }
+    catch (e) {
+      if (!RELOADING.test(String(e && e.message)) || i >= 25) throw e;
+      await page.waitForLoadState("domcontentloaded").catch(() => {});
+      await page.waitForTimeout(200);
+    }
+  }
+}
+
 async function buttons(page) {
-  return page.evaluate(fn => eval(fn).filter(b => !b.disabled).map(b => b.text).filter(Boolean), visibleButtonsFn());
+  return readPage(page, fn => eval(fn).filter(b => !b.disabled).map(b => b.text).filter(Boolean), visibleButtonsFn());
 }
 
 async function screenText(page) {
-  return page.evaluate(() => (document.body.innerText || "").replace(/[ \t]+/g, " "));
+  return readPage(page, () => ((document.body && document.body.innerText) || "").replace(/[ \t]+/g, " "));
 }
 
 async function waitForText(page, re, timeout = 8000) {

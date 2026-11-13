@@ -24,6 +24,7 @@ const { makeEvent, roundComplete } = require("./fake-event.cjs");
 const { FakeWorker } = require("./fake-worker.cjs");
 const { RobotJudge, makeRandom } = require("./robot-judge.cjs");
 const { writeReport, writeSweep } = require("./report.cjs");
+const mm = require("./mm.cjs");
 
 function args() {
   const a = process.argv.slice(2);
@@ -45,6 +46,9 @@ function args() {
     else if (k === "undo-rate") { o.undoRate = parseFloat(v); i++; }
     else if (k === "refresh-rate") { o.refreshRate = parseFloat(v); i++; }
     else if (k === "site") { o.site = v; i++; }
+    else if (k === "matchmason" || k === "mm") { o.matchmason = v; i++; }
+    else if (k === "worker") { o.worker = v; i++; }
+    else if (k === "round-wait") { o.roundWait = parseInt(v, 10); i++; }
     else if (k === "wifi") { o.wifi = v === "bad" ? "bad" : v === "mixed" ? "mixed" : "good"; o.wifiExplicit = true; i++; }
     else if (["handoff-rate", "clash-rate", "reopen-rate", "reuse-rate"].includes(k)) { o[k.replace(/-(\w)/g, (_, c) => c.toUpperCase())] = parseFloat(v); i++; }
     else if (k === "chrome") { o.chrome = v; i++; }
@@ -75,8 +79,30 @@ async function runEvent(browser, o, site, runSeed, outDir, quiet) {
   const started = Date.now();
   fs.mkdirSync(path.join(outDir, "shots"), { recursive: true });
   const setup = eventSetup(o, runSeed);
-  const ev = makeEvent({ players: setup.players, judges: setup.judges });
-  const fw = new FakeWorker(ev, { rounds: setup.rounds, wifi: setup.wifi, seed: runSeed, newRoutes: !!o.newRoutes });
+  const ev = o.mmEvent || makeEvent({ players: setup.players, judges: setup.judges });
+  const fw = new FakeWorker(ev, { rounds: setup.rounds, wifi: o.mmEvent ? "good" : setup.wifi, seed: runSeed, newRoutes: !!o.newRoutes, rename: !o.mmEvent, flags: o.mmEvent ? { "1038": true } : undefined });
+  let mmTimer = null;
+  if (o.mmEvent) {
+    // Real MatchMason: bracket calls go to the real Worker; check MatchMason every 5 s for a new round.
+    fw.real = { base: o.workerBase, isBracketCall: url => mm.isBracketCall(url, ev.slug) };
+    fw.mmQuietSince = Date.now();
+    mmTimer = setInterval(async () => {
+      try {
+        const open = await mm.getJson(`${o.workerBase}/mm/open-matches?slug=${encodeURIComponent(ev.slug)}`);
+        if (!open.ok || !open.body) return;
+        const before = ev.round;
+        const added = mm.syncOpen(ev, open.body.matches || []);
+        if (added) { fw.mmQuietSince = Date.now(); if (!quiet) console.log(`  MatchMason opened ${added} new match(es) (round ${ev.round})`); }
+        if (ev.round !== before) fw.mmQuietSince = Date.now();
+        // Matches MatchMason closed without a robot result (an organizer finished them by hand).
+        ev.matches.filter(m => m.state !== "complete" && !m.stillOpenOnMm && Date.now() - fw.startedAt > 15000).forEach(m => { m.state = "complete"; m.scores_csv = m.scores_csv || "(closed on MatchMason)"; });
+        const left = ev.matches.filter(m => m.state !== "complete").length;
+        if (left) fw.mmQuietSince = Date.now();
+        else if (!fw.mmWaitNoted && !quiet) { fw.mmWaitNoted = true; console.log(`  Round ${ev.round} is done. Waiting up to ${o.roundWait >= 120 ? Math.round(o.roundWait / 60) + " min" : o.roundWait + " s"} for MatchMason's next round (start it on MatchMason if it does not start by itself).`); }
+        if (left) fw.mmWaitNoted = false;
+      } catch (_) {}
+    }, 5000);
+  }
   const { baseUrl, siteHost } = site;
 
   const devices = [];
@@ -97,11 +123,14 @@ async function runEvent(browser, o, site, runSeed, outDir, quiet) {
       streamSlot: overlayDev && i === 0 ? 1 : 0, overlayPage: overlayDev && i === 0 ? overlayDev.page : null,
       overlayEvery: o.overlayEvery, baseUrl,
       handoffRate: o.handoffRate, clashRate: o.clashRate, reopenRate: o.reopenRate, reuseRate: o.reuseRate,
+      maxWaitMs: o.mmEvent ? (o.roundWait + 60) * 1000 : undefined,
       openReliefDevice: async who => { const d = await openDevice(browser, fw, who, { siteHost }); devices.push(d); return d; },
     }));
   }
 
-  const isEventOver = () => ev.round >= setup.rounds && roundComplete(ev);
+  const isEventOver = o.mmEvent
+    ? () => !ev.matches.some(m => m.state !== "complete") && Date.now() - fw.mmQuietSince > o.roundWait * 1000
+    : () => ev.round >= setup.rounds && roundComplete(ev);
   const failures = [];
   const progress = quiet ? null : setInterval(() => {
     const done = ev.matches.filter(m => m.state === "complete").length;
@@ -123,6 +152,7 @@ async function runEvent(browser, o, site, runSeed, outDir, quiet) {
     }
   }));
   if (progress) clearInterval(progress);
+  if (mmTimer) clearInterval(mmTimer);
 
   // Crashes and error messages seen on any device
   robots.forEach(r => r.allDevs.forEach(dev => {
@@ -203,6 +233,29 @@ async function main() {
       try { browser = await chromium.launch(launch); }
       catch (e) { console.error("No browser found. Install Google Chrome, or run:  npx playwright install chromium"); process.exit(2); }
     }
+  }
+
+  // ── a real MatchMason event ─────────────────────────────────────────────
+  if (o.matchmason) {
+    const id = mm.parseMmId(o.matchmason);
+    if (!id) { console.error("That is not a MatchMason event link or ID (expected matchmason.com/t/<id>)."); process.exit(2); }
+    o.workerBase = (o.worker || mm.REAL_WORKER).replace(/\/+$/, "");
+    o.roundWait = o.roundWait || 300;
+    Object.assign(o, { runs: 1, mix: false, clashRate: 0, reopenRate: 0, handoffRate: 0 });   // no clash tests (they would write conflicting results); handoffs are covered by normal runs
+    try { o.mmEvent = await mm.loadMmEvent(o.workerBase, id, o.judges); }
+    catch (e) { console.error("\nCould not start the MatchMason run: " + e.message); await browser.close(); server.close(); process.exit(2); }
+    const ev = o.mmEvent;
+    console.log(`NC BLAST simulator on REAL MatchMason: "${ev.name}" (${ev.slug}), ${ev.players.length} players, ${ev.judges.length} robot judges, ${ev.matches.length} open match(es) in round ${ev.round}, site ${site.label}`);
+    console.log("WARNING: results will be written to this MatchMason event for real. Use a test bracket. Starting in 5 seconds (Ctrl+C to stop).");
+    await new Promise(r => setTimeout(r, 5000));
+    const r = await runEvent(browser, o, site, o.seed, outRoot, false);
+    await browser.close(); server.close();
+    const bugs = kindsOf(r.findings, "bug"), warns = kindsOf(r.findings, "warn");
+    console.log(`\nDone in ${r.seconds}s: ${r.event.complete}/${r.event.matches} matches played on MatchMason, ${bugs.length} kind(s) of bug, ${warns.length} kind(s) of check.`);
+    [...bugs.map(w => ["BUG  ", w]), ...warns.map(w => ["CHECK", w])].forEach(([lvl, w]) =>
+      console.log(`  ${lvl} ${w} (${r.findings.filter(f => f.what === w).length}x)`));
+    console.log("Report: " + r.reportFile);
+    process.exit(bugs.length ? 1 : 0);
   }
 
   // ── a single event (the original behaviour) ─────────────────────────────

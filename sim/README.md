@@ -93,6 +93,25 @@ the robot files. Open it in a browser.
 - Confirm, let both players tap, submit, press New Match, repeat until the event is over.
 - Station A streams to channel 1, and an OBS-sized overlay window watches that channel.
 
+## Run an event on a real MatchMason bracket
+
+```
+node run.cjs --matchmason https://matchmason.com/t/<event id>
+```
+
+The robots play the whole event on that MatchMason bracket: they read its players and open matches
+through the live Worker, and every result they submit is written to MatchMason for real. When a
+round is done they wait (5 minutes by default, `--round-wait 600` for 10) for MatchMason's next
+round; if MatchMason does not start rounds by itself, start it there and the robots carry on.
+The run ends when no new round appears in that time.
+
+- Use a fresh test bracket each time: results cannot be taken back by the robots.
+- Only the bracket calls are real. The database, Sheets, overlay, combos and logins are still pretend,
+  so your real stats are not touched.
+- Needs the MatchMason Worker update live (the `/mm` routes and the MM_API_KEY secret). If it is not,
+  the run stops at the start and says so. Flag 1038 is switched on for the robots only.
+- Clash tests and the handoff test are off in this mode (clashes would send conflicting results).
+
 ## Extra tests (added Nov 2026)
 
 - Previous Combos: each player's real last deck is recorded; in later matches the 🕐 Previous Combos
